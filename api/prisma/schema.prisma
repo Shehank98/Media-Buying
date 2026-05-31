@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  MANAGER
+  GROUP_HEAD
+  PLANNER
+}
+
+enum ChannelType {
+  TV
+  RADIO
+  PRINT
+}
+
+enum PropertyType {
+  BOUGHT_AIRTIME
+  SPONSORSHIP
+  BONUS_COMMERCIAL
+  OTHER
+}
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  email               String               @unique
+  passwordHash        String               @map("password_hash")
+  name                String
+  role                Role
+  mustChangePassword  Boolean              @default(true) @map("must_change_password")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  agencyAccess        UserAgencyAccess[]
+  clientAccess        UserClientAccess[]
+  teamMembers         TeamMember[]
+  properties          Property[]           @relation("CreatedBy")
+  propertyHistory     PropertyHistory[]    @relation("ChangedBy")
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model Agency {
+  id        Int                @id @default(autoincrement())
+  name      String             @unique
+  createdAt DateTime           @default(now()) @map("created_at")
+  users     UserAgencyAccess[]
+  clients   Client[]
+  teams     Team[]
+
+  @@map("agencies")
+}
+
+model UserAgencyAccess {
+  id       Int    @id @default(autoincrement())
+  userId   Int    @map("user_id")
+  agencyId Int    @map("agency_id")
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agencyId])
+  @@map("user_agency_access")
+}
+
+model Client {
+  id        Int                @id @default(autoincrement())
+  agencyId  Int                @map("agency_id")
+  name      String
+  createdAt DateTime           @default(now()) @map("created_at")
+  agency    Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  users     UserClientAccess[]
+  channels  Channel[]
+  teams     TeamClient[]
+
+  @@unique([agencyId, name])
+  @@map("clients")
+}
+
+model UserClientAccess {
+  id       Int    @id @default(autoincrement())
+  userId   Int    @map("user_id")
+  clientId Int    @map("client_id")
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+  @@map("user_client_access")
+}
+
+model Team {
+  id       Int          @id @default(autoincrement())
+  agencyId Int          @map("agency_id")
+  name     String
+  agency   Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  clients  TeamClient[]
+
+  @@unique([agencyId, name])
+  @@map("teams")
+}
+
+model TeamMember {
+  id     Int  @id @default(autoincrement())
+  teamId Int  @map("team_id")
+  userId Int  @map("user_id")
+  role   Role
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model TeamClient {
+  id       Int    @id @default(autoincrement())
+  teamId   Int    @map("team_id")
+  clientId Int    @map("client_id")
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, clientId])
+  @@map("team_clients")
+}
+
+model Channel {
+  id         Int         @id @default(autoincrement())
+  clientId   Int         @map("client_id")
+  type       ChannelType
+  name       String
+  createdAt  DateTime    @default(now()) @map("created_at")
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  properties Property[]
+
+  @@unique([clientId, name])
+  @@map("channels")
+}
+
+model Property {
+  id        Int            @id @default(autoincrement())
+  channelId Int            @map("channel_id")
+  name      String
+  type      PropertyType
+  cost      Decimal        @db.Decimal(12, 2)
+  notes     String?
+  createdBy Int            @map("created_by")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  channel   Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  creator   User           @relation("CreatedBy", fields: [createdBy], references: [id])
+  history   PropertyHistory[]
+
+  @@map("properties")
+}
+
+model PropertyHistory {
+  id             Int      @id @default(autoincrement())
+  propertyId     Int      @map("property_id")
+  changedBy      Int      @map("changed_by")
+  previousValues Json     @map("previous_values")
+  newValues      Json     @map("new_values")
+  changeNote     String   @map("change_note")
+  changedAt      DateTime @default(now()) @map("changed_at")
+  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  changer        User     @relation("ChangedBy", fields: [changedBy], references: [id])
+
+  @@map("property_history")
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}

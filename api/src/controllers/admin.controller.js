@@ -1,0 +1,430 @@
+import prisma from '../utils/prisma.js';
+import { hashPassword } from '../services/auth.service.js';
+
+// ── Agencies ──
+
+export async function listAgencies(req, res) {
+  try {
+    const agencies = await prisma.agency.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        clients: { select: { id: true, name: true } },
+        _count: { select: { clients: true, users: true } },
+      },
+    });
+    return res.json(agencies);
+  } catch (error) {
+    console.error('List agencies error:', error);
+    return res.status(500).json({ error: 'Failed to list agencies' });
+  }
+}
+
+export async function createAgency(req, res) {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Agency name is required' });
+    }
+
+    const agency = await prisma.agency.create({ data: { name } });
+    return res.status(201).json(agency);
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ error: 'Agency with this name already exists' });
+    }
+    console.error('Create agency error:', error);
+    return res.status(500).json({ error: 'Failed to create agency' });
+  }
+}
+
+export async function updateAgency(req, res) {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    const agency = await prisma.agency.update({
+      where: { id: parseInt(id) },
+      data: { name },
+    });
+    return res.json(agency);
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Agency not found' });
+    }
+    if (error.code === 'P2002') {
+      return res.status(409).json({ error: 'Agency with this name already exists' });
+    }
+    console.error('Update agency error:', error);
+    return res.status(500).json({ error: 'Failed to update agency' });
+  }
+}
+
+export async function deleteAgency(req, res) {
+  try {
+    const { id } = req.params;
+    await prisma.agency.delete({ where: { id: parseInt(id) } });
+    return res.json({ message: 'Agency deleted successfully' });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Agency not found' });
+    }
+    console.error('Delete agency error:', error);
+    return res.status(500).json({ error: 'Failed to delete agency' });
+  }
+}
+
+// ── Users ──
+
+export async function listUsers(req, res) {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        mustChangePassword: true,
+        createdAt: true,
+        agencyAccess: {
+          include: { agency: { select: { id: true, name: true } } },
+        },
+        clientAccess: {
+          include: { client: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return res.json(users);
+  } catch (error) {
+    console.error('List users error:', error);
+    return res.status(500).json({ error: 'Failed to list users' });
+  }
+}
+
+export async function createUser(req, res) {
+  try {
+    const { email, name, role, password, agencyIds, clientIds } = req.body;
+
+    if (!email || !name || !role) {
+      return res.status(400).json({ error: 'Email, name, and role are required' });
+    }
+
+    const tempPassword = password || 'TempPass@123';
+    const passwordHash = await hashPassword(tempPassword);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        role,
+        passwordHash,
+        mustChangePassword: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    if (Array.isArray(agencyIds) && agencyIds.length > 0) {
+      await prisma.userAgencyAccess.createMany({
+        data: agencyIds.map((agencyId) => ({ userId: user.id, agencyId })),
+      });
+    }
+
+    if (Array.isArray(clientIds) && clientIds.length > 0) {
+      await prisma.userClientAccess.createMany({
+        data: clientIds.map((clientId) => ({ userId: user.id, clientId })),
+      });
+    }
+
+    return res.status(201).json({ ...user, temporaryPassword: tempPassword });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+    console.error('Create user error:', error);
+    return res.status(500).json({ error: 'Failed to create user' });
+  }
+}
+
+export async function updateUser(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, role, agencyIds, clientIds } = req.body;
+    const userId = parseInt(id);
+
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (role !== undefined) data.role = role;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        mustChangePassword: true,
+        createdAt: true,
+      },
+    });
+
+    if (Array.isArray(agencyIds)) {
+      await prisma.userAgencyAccess.deleteMany({ where: { userId } });
+      if (agencyIds.length > 0) {
+        await prisma.userAgencyAccess.createMany({
+          data: agencyIds.map((agencyId) => ({ userId, agencyId })),
+        });
+      }
+    }
+
+    if (Array.isArray(clientIds)) {
+      await prisma.userClientAccess.deleteMany({ where: { userId } });
+      if (clientIds.length > 0) {
+        await prisma.userClientAccess.createMany({
+          data: clientIds.map((clientId) => ({ userId, clientId })),
+        });
+      }
+    }
+
+    return res.json(user);
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    console.error('Update user error:', error);
+    return res.status(500).json({ error: 'Failed to update user' });
+  }
+}
+
+export async function deleteUser(req, res) {
+  try {
+    const { id } = req.params;
+    await prisma.user.delete({ where: { id: parseInt(id) } });
+    return res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    console.error('Delete user error:', error);
+    return res.status(500).json({ error: 'Failed to delete user' });
+  }
+}
+
+export async function assignAgencies(req, res) {
+  try {
+    const { id } = req.params;
+    const { agencyIds } = req.body;
+
+    if (!Array.isArray(agencyIds)) {
+      return res.status(400).json({ error: 'agencyIds must be an array' });
+    }
+
+    const userId = parseInt(id);
+
+    await prisma.$transaction([
+      prisma.userAgencyAccess.deleteMany({ where: { userId } }),
+      ...agencyIds.map((agencyId) =>
+        prisma.userAgencyAccess.create({
+          data: { userId, agencyId },
+        })
+      ),
+    ]);
+
+    const updated = await prisma.userAgencyAccess.findMany({
+      where: { userId },
+      include: { agency: { select: { id: true, name: true } } },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Assign agencies error:', error);
+    return res.status(500).json({ error: 'Failed to assign agencies' });
+  }
+}
+
+export async function assignClients(req, res) {
+  try {
+    const { id } = req.params;
+    const { clientIds } = req.body;
+
+    if (!Array.isArray(clientIds)) {
+      return res.status(400).json({ error: 'clientIds must be an array' });
+    }
+
+    const userId = parseInt(id);
+
+    await prisma.$transaction([
+      prisma.userClientAccess.deleteMany({ where: { userId } }),
+      ...clientIds.map((clientId) =>
+        prisma.userClientAccess.create({
+          data: { userId, clientId },
+        })
+      ),
+    ]);
+
+    const updated = await prisma.userClientAccess.findMany({
+      where: { userId },
+      include: { client: { select: { id: true, name: true } } },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Assign clients error:', error);
+    return res.status(500).json({ error: 'Failed to assign clients' });
+  }
+}
+
+// ── Teams ──
+
+export async function listTeams(req, res) {
+  try {
+    const { agencyId } = req.query;
+
+    const where = agencyId ? { agencyId: parseInt(agencyId) } : {};
+
+    const teams = await prisma.team.findMany({
+      where,
+      include: {
+        agency: { select: { id: true, name: true } },
+        members: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        clients: {
+          include: { client: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return res.json(teams);
+  } catch (error) {
+    console.error('List teams error:', error);
+    return res.status(500).json({ error: 'Failed to list teams' });
+  }
+}
+
+export async function createTeam(req, res) {
+  try {
+    const { name, agencyId } = req.body;
+
+    if (!name || !agencyId) {
+      return res.status(400).json({ error: 'Name and agencyId are required' });
+    }
+
+    const team = await prisma.team.create({
+      data: { name, agencyId },
+      include: { agency: { select: { id: true, name: true } } },
+    });
+    return res.status(201).json(team);
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ error: 'Team with this name already exists in this agency' });
+    }
+    console.error('Create team error:', error);
+    return res.status(500).json({ error: 'Failed to create team' });
+  }
+}
+
+export async function updateTeam(req, res) {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    const team = await prisma.team.update({
+      where: { id: parseInt(id) },
+      data: { name },
+      include: { agency: { select: { id: true, name: true } } },
+    });
+    return res.json(team);
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+    console.error('Update team error:', error);
+    return res.status(500).json({ error: 'Failed to update team' });
+  }
+}
+
+export async function deleteTeam(req, res) {
+  try {
+    const { id } = req.params;
+    await prisma.team.delete({ where: { id: parseInt(id) } });
+    return res.json({ message: 'Team deleted successfully' });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+    console.error('Delete team error:', error);
+    return res.status(500).json({ error: 'Failed to delete team' });
+  }
+}
+
+export async function assignTeamMembers(req, res) {
+  try {
+    const { id } = req.params;
+    const { members } = req.body;
+
+    if (!Array.isArray(members)) {
+      return res.status(400).json({ error: 'members must be an array of {userId, role}' });
+    }
+
+    const teamId = parseInt(id);
+
+    await prisma.$transaction([
+      prisma.teamMember.deleteMany({ where: { teamId } }),
+      ...members.map((m) =>
+        prisma.teamMember.create({
+          data: { teamId, userId: m.userId, role: m.role },
+        })
+      ),
+    ]);
+
+    const updated = await prisma.teamMember.findMany({
+      where: { teamId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Assign team members error:', error);
+    return res.status(500).json({ error: 'Failed to assign team members' });
+  }
+}
+
+export async function assignTeamClients(req, res) {
+  try {
+    const { id } = req.params;
+    const { clientIds } = req.body;
+
+    if (!Array.isArray(clientIds)) {
+      return res.status(400).json({ error: 'clientIds must be an array' });
+    }
+
+    const teamId = parseInt(id);
+
+    await prisma.$transaction([
+      prisma.teamClient.deleteMany({ where: { teamId } }),
+      ...clientIds.map((clientId) =>
+        prisma.teamClient.create({
+          data: { teamId, clientId },
+        })
+      ),
+    ]);
+
+    const updated = await prisma.teamClient.findMany({
+      where: { teamId },
+      include: { client: { select: { id: true, name: true } } },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('Assign team clients error:', error);
+    return res.status(500).json({ error: 'Failed to assign team clients' });
+  }
+}
