@@ -1,13 +1,12 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma.js';
 
+BigInt.prototype.toJSON = function () { return Number(this); };
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Build a raw SQL fragment that restricts schedule_logs to the MANAGER's
- * accessible agencies, or to an explicit agencyId if provided.
- * Returns a Prisma.sql fragment ready to embed in a WHERE clause with AND.
- */
+const EMPTY = Prisma.raw('');
+
 function buildAgencyFilter(user, agencyId) {
   if (agencyId) {
     return Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
@@ -17,10 +16,9 @@ function buildAgencyFilter(user, agencyId) {
       SELECT agency_id FROM user_agency_access WHERE user_id = ${user.id}
     )`;
   }
-  return Prisma.sql``;
+  return EMPTY;
 }
 
-/** Format a Date to "YYYY-MM" */
 function toYearMonth(date) {
   if (!date) return null;
   const d = date instanceof Date ? date : new Date(date);
@@ -106,7 +104,7 @@ export async function getChannelSummary(req, res) {
     });
   } catch (error) {
     console.error('getChannelSummary error:', error);
-    return res.status(500).json({ error: 'Failed to get channel summary' });
+    return res.status(500).json({ error: 'Failed to get channel summary', detail: error.message });
   }
 }
 
@@ -119,11 +117,11 @@ export async function getChannelMonthlySpend(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const { agencyId, clientId, yearFrom, yearTo } = req.query;
 
-    let dateFilter = Prisma.sql``;
-    if (yearFrom) dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
+    let dateFilter = EMPTY;
+    if (yearFrom) dateFilter = Prisma.sql`AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
     if (yearTo)   dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) <= ${parseInt(yearTo)}`;
 
-    let clientFilter = Prisma.sql``;
+    let clientFilter = EMPTY;
     if (clientId) {
       clientFilter = Prisma.sql`AND sl.client_id = ${parseInt(clientId)}`;
     } else if (agencyId) {
@@ -167,7 +165,7 @@ export async function getChannelMonthlySpend(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getChannelMonthlySpend error:', error);
-    return res.status(500).json({ error: 'Failed to get monthly spend' });
+    return res.status(500).json({ error: 'Failed to get monthly spend', detail: error.message });
   }
 }
 
@@ -180,11 +178,11 @@ export async function getChannelClients(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const { yearFrom, yearTo } = req.query;
 
-    let dateFilter = Prisma.sql``;
-    if (yearFrom) dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
+    let dateFilter = EMPTY;
+    if (yearFrom) dateFilter = Prisma.sql`AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
     if (yearTo)   dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) <= ${parseInt(yearTo)}`;
 
-    let managerFilter = Prisma.sql``;
+    let managerFilter = EMPTY;
     if (req.user.role === 'MANAGER') {
       managerFilter = Prisma.sql`AND sl.client_id IN (
         SELECT id FROM clients WHERE agency_id IN (
@@ -226,7 +224,7 @@ export async function getChannelClients(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getChannelClients error:', error);
-    return res.status(500).json({ error: 'Failed to get channel clients' });
+    return res.status(500).json({ error: 'Failed to get channel clients', detail: error.message });
   }
 }
 
@@ -239,7 +237,7 @@ export async function getChannelPropertyHistory(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const { propertyName, clientId, yearFrom, yearTo } = req.query;
 
-    let filters = Prisma.sql``;
+    let filters = EMPTY;
     if (clientId)      filters = Prisma.sql`${filters} AND cl.id = ${parseInt(clientId)}`;
     if (propertyName)  filters = Prisma.sql`${filters} AND p.name ILIKE ${'%' + propertyName + '%'}`;
     if (yearFrom)      filters = Prisma.sql`${filters} AND EXTRACT(year FROM p.created_at) >= ${parseInt(yearFrom)}`;
@@ -314,7 +312,7 @@ export async function getChannelPropertyHistory(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getChannelPropertyHistory error:', error);
-    return res.status(500).json({ error: 'Failed to get property history' });
+    return res.status(500).json({ error: 'Failed to get property history', detail: error.message });
   }
 }
 
@@ -392,7 +390,7 @@ export async function getDashboardSummary(req, res) {
     });
   } catch (error) {
     console.error('getDashboardSummary error:', error);
-    return res.status(500).json({ error: 'Failed to get dashboard summary' });
+    return res.status(500).json({ error: 'Failed to get dashboard summary', detail: error.message });
   }
 }
 
@@ -402,7 +400,7 @@ export async function getDashboardSummary(req, res) {
  */
 export async function getAgencyComparison(req, res) {
   try {
-    let agencyWhere = Prisma.sql``;
+    let agencyWhere = EMPTY;
     if (req.user.role === 'MANAGER') {
       agencyWhere = Prisma.sql`WHERE a.id IN (
         SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
@@ -479,7 +477,7 @@ export async function getAgencyComparison(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getAgencyComparison error:', error);
-    return res.status(500).json({ error: 'Failed to get agency comparison' });
+    return res.status(500).json({ error: 'Failed to get agency comparison', detail: error.message });
   }
 }
 
@@ -489,7 +487,7 @@ export async function getAgencyComparison(req, res) {
  */
 export async function getTopClients(req, res) {
   try {
-    let agencyFilter = Prisma.sql``;
+    let agencyFilter = EMPTY;
     if (req.user.role === 'MANAGER') {
       agencyFilter = Prisma.sql`AND c.agency_id IN (
         SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
@@ -540,7 +538,7 @@ export async function getTopClients(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getTopClients error:', error);
-    return res.status(500).json({ error: 'Failed to get top clients' });
+    return res.status(500).json({ error: 'Failed to get top clients', detail: error.message });
   }
 }
 
@@ -550,7 +548,7 @@ export async function getTopClients(req, res) {
  */
 export async function getTopChannels(req, res) {
   try {
-    let agencyFilter = Prisma.sql``;
+    let agencyFilter = EMPTY;
     if (req.user.role === 'MANAGER') {
       agencyFilter = Prisma.sql`AND sl.client_id IN (
         SELECT id FROM clients WHERE agency_id IN (
@@ -602,7 +600,7 @@ export async function getTopChannels(req, res) {
     return res.json(result);
   } catch (error) {
     console.error('getTopChannels error:', error);
-    return res.status(500).json({ error: 'Failed to get top channels' });
+    return res.status(500).json({ error: 'Failed to get top channels', detail: error.message });
   }
 }
 
@@ -666,7 +664,7 @@ export async function getMediumSplit(req, res) {
     });
   } catch (error) {
     console.error('getMediumSplit error:', error);
-    return res.status(500).json({ error: 'Failed to get medium split' });
+    return res.status(500).json({ error: 'Failed to get medium split', detail: error.message });
   }
 }
 
@@ -676,7 +674,7 @@ export async function getMediumSplit(req, res) {
  */
 export async function getMonthlyTrend(req, res) {
   try {
-    let agencyFilter = Prisma.sql``;
+    let agencyFilter = EMPTY;
     if (req.user.role === 'MANAGER') {
       agencyFilter = Prisma.sql`AND c.agency_id IN (
         SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
@@ -739,7 +737,7 @@ export async function getMonthlyTrend(req, res) {
     });
   } catch (error) {
     console.error('getMonthlyTrend error:', error);
-    return res.status(500).json({ error: 'Failed to get monthly trend' });
+    return res.status(500).json({ error: 'Failed to get monthly trend', detail: error.message });
   }
 }
 
@@ -754,17 +752,18 @@ export async function getActivityLog(req, res) {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit ?? '50')));
     const { agencyId, userId } = req.query;
 
-    let slAgencyFilter = Prisma.sql``;
+    let slAgencyFilter = EMPTY;
     if (agencyId) slAgencyFilter = Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
-    let slUserFilter = Prisma.sql``;
+    let slUserFilter = EMPTY;
     if (userId) slUserFilter = Prisma.sql`AND sl.created_by = ${parseInt(userId)}`;
 
-    let phAgencyFilter = Prisma.sql``;
+    let phAgencyFilter = EMPTY;
     if (agencyId) phAgencyFilter = Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
-    let phUserFilter = Prisma.sql``;
+    let phUserFilter = EMPTY;
     if (userId) phUserFilter = Prisma.sql`AND ph.changed_by = ${parseInt(userId)}`;
 
     const halfLimit = Math.ceil(limit / 2);
+    const limitSql = Prisma.raw(String(halfLimit));
 
     const [slRows, phRows] = await Promise.all([
       prisma.$queryRaw`
@@ -787,7 +786,7 @@ export async function getActivityLog(req, res) {
           ${slAgencyFilter}
           ${slUserFilter}
         ORDER BY sl.created_at DESC
-        LIMIT ${halfLimit}
+        LIMIT ${limitSql}
       `,
       prisma.$queryRaw`
         SELECT
@@ -809,7 +808,7 @@ export async function getActivityLog(req, res) {
           ${phAgencyFilter}
           ${phUserFilter}
         ORDER BY ph.changed_at DESC
-        LIMIT ${halfLimit}
+        LIMIT ${limitSql}
       `,
     ]);
 
@@ -843,6 +842,6 @@ export async function getActivityLog(req, res) {
     return res.json({ items: paged, total, page });
   } catch (error) {
     console.error('getActivityLog error:', error);
-    return res.status(500).json({ error: 'Failed to get activity log' });
+    return res.status(500).json({ error: 'Failed to get activity log', detail: error.message });
   }
 }
