@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,11 +17,12 @@ import channelRoutes from './routes/channel.routes.js';
 import propertyRoutes from './routes/property.routes.js';
 import reportRoutes from './routes/report.routes.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
   origin: process.env.FRONTEND_URL
     ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
@@ -28,21 +32,30 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// Routes
-app.use('/auth', authRoutes);
-app.use('/admin', adminRoutes);
-app.use('/agencies', agencyRoutes);
-app.use('/clients', clientRoutes);
-app.use('/channels', channelRoutes);
-app.use('/properties', propertyRoutes);
-app.use('/reports', reportRoutes);
+// API routes under /api prefix
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/agencies', agencyRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/channels', channelRoutes);
+app.use('/api/properties', propertyRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// 404 handler
+// Serve React frontend
+const distPath = path.resolve(__dirname, '../../web/dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// 404 handler (for API routes when frontend isn't built)
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
