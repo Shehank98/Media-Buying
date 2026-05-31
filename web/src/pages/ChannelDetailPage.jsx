@@ -62,7 +62,8 @@ export default function ChannelDetailPage() {
         api.get(`/channels/${channelId}/properties`),
       ]);
       setChannel(channelRes.data.channel || channelRes.data);
-      setProperties(propertiesRes.data.properties || propertiesRes.data || []);
+      const rawProps = propertiesRes.data.properties || propertiesRes.data;
+      setProperties(Array.isArray(rawProps) ? rawProps : []);
     } catch (err) {
       setError('Failed to load channel details.');
     } finally {
@@ -159,7 +160,8 @@ export default function ChannelDetailPage() {
     setHistoryData([]);
     try {
       const { data } = await api.get(`/properties/${property.id}/history`);
-      setHistoryData(data.history || data || []);
+      const rawH = data.history || data;
+      setHistoryData(Array.isArray(rawH) ? rawH : []);
     } catch {
       setHistoryData([]);
     } finally {

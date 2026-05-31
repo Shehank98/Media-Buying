@@ -12,12 +12,14 @@ export default function ClientsPage() {
     const fetchClients = async () => {
       try {
         const { data: agenciesData } = await api.get('/agencies');
-        const agencies = agenciesData.agencies || agenciesData || [];
+        const rawAg = agenciesData.agencies || agenciesData;
+        const agencies = Array.isArray(rawAg) ? rawAg : [];
         const allClients = [];
         for (const ag of agencies) {
           try {
             const { data: clientsData } = await api.get(`/agencies/${ag.id}/clients`);
-            const cls = clientsData.clients || clientsData || [];
+            const rawCl = clientsData.clients || clientsData;
+            const cls = Array.isArray(rawCl) ? rawCl : [];
             cls.forEach(c => allClients.push({ ...c, agencyName: ag.name }));
           } catch { /* skip agency */ }
         }

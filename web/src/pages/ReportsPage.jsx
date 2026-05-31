@@ -22,7 +22,8 @@ export default function ReportsPage() {
     (async () => {
       try {
         const { data } = await api.get('/agencies');
-        setAgencies(data.agencies || data || []);
+        const rawAg = data.agencies || data;
+        setAgencies(Array.isArray(rawAg) ? rawAg : []);
       } catch {
         setError('Failed to load agencies.');
       } finally {
@@ -38,11 +39,13 @@ export default function ReportsPage() {
       setError('');
       try {
         const { data } = await api.get(`/agencies/${selectedAgency}/clients`);
-        const allClients = data.clients || data || [];
+        const rawCl = data.clients || data;
+        const allClients = Array.isArray(rawCl) ? rawCl : [];
         const channelPromises = allClients.map(c =>
           api.get(`/clients/${c.id}/channels`)
             .then(r => {
-              const chs = r.data.channels || r.data || [];
+              const rawChs = r.data.channels || r.data;
+              const chs = Array.isArray(rawChs) ? rawChs : [];
               return chs.flatMap(ch =>
                 (ch.properties || []).map(p => ({
                   ...p,

@@ -70,7 +70,8 @@ export default function AdminPage({ initialTab = 'users' }) {
         api.get('/admin/teams'),
       ]);
       if (agenciesRes.status === 'fulfilled') {
-        const agencyData = agenciesRes.value.data.agencies || agenciesRes.value.data || [];
+        const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
+        const agencyData = Array.isArray(rawAg) ? rawAg : [];
         setAgencies(agencyData);
         const clients = agencyData.flatMap(a =>
           (a.clients || []).map(c => ({ ...c, agencyName: a.name }))
@@ -78,10 +79,12 @@ export default function AdminPage({ initialTab = 'users' }) {
         setAllClients(clients);
       }
       if (usersRes.status === 'fulfilled') {
-        setUsers(usersRes.value.data.users || usersRes.value.data || []);
+        const rawUsers = usersRes.value.data.users || usersRes.value.data;
+        setUsers(Array.isArray(rawUsers) ? rawUsers : []);
       }
       if (teamsRes.status === 'fulfilled') {
-        setTeams(teamsRes.value.data.teams || teamsRes.value.data || []);
+        const rawTeams = teamsRes.value.data.teams || teamsRes.value.data;
+        setTeams(Array.isArray(rawTeams) ? rawTeams : []);
       }
     } catch {
       setError('Failed to load admin data.');

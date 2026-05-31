@@ -19,7 +19,8 @@ export default function AgencyDetailPage() {
           api.get(`/agencies/${agencyId}/clients`),
         ]);
         setAgency(agencyRes.data.agency || agencyRes.data);
-        setClients(clientsRes.data.clients || clientsRes.data || []);
+        const raw = clientsRes.data.clients || clientsRes.data;
+        setClients(Array.isArray(raw) ? raw : []);
       } catch (err) {
         setError('Failed to load agency details.');
       } finally {

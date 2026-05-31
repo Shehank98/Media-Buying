@@ -13,7 +13,8 @@ export default function AgenciesPage() {
     const fetchAgencies = async () => {
       try {
         const { data } = await api.get('/agencies');
-        setAgencies(data.agencies || data || []);
+        const raw = data.agencies || data;
+        setAgencies(Array.isArray(raw) ? raw : []);
       } catch (err) {
         setError('Failed to load agencies.');
       } finally {

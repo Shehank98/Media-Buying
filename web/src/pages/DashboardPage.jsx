@@ -30,7 +30,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     api.get('/agencies').then(({ data }) => {
-      const list = data.agencies || data || [];
+      const raw = data.agencies || data;
+      const list = Array.isArray(raw) ? raw : [];
       setAgencies(list);
       const totalClients = list.reduce((s, a) => s + (a._count?.clients || a.clientCount || 0), 0);
       setStats({ agencies: list.length, clients: totalClients });

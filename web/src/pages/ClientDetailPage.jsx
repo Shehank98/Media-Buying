@@ -43,7 +43,8 @@ export default function ClientDetailPage() {
           api.get(`/clients/${clientId}/channels`),
         ]);
         setClient(clientRes.data.client || clientRes.data);
-        setChannels(channelsRes.data.channels || channelsRes.data || []);
+        const rawCh = channelsRes.data.channels || channelsRes.data;
+        setChannels(Array.isArray(rawCh) ? rawCh : []);
       } catch {
         setError('Failed to load client details.');
       } finally {
