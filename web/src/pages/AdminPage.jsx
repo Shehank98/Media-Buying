@@ -74,7 +74,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         const agencyData = Array.isArray(rawAg) ? rawAg : [];
         setAgencies(agencyData);
         const clients = agencyData.flatMap(a =>
-          (a.clients || []).map(c => ({ ...c, agencyName: a.name }))
+          (a.clients || []).map(c => ({ ...c, agencyId: a.id, agencyName: a.name }))
         );
         setAllClients(clients);
       }
@@ -386,8 +386,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <button className="act-btn" onClick={() => openEditUser(u)} title="Edit user">
                           <Icon name="edit" size={15} />
                         </button>
-                        <button className="act-btn" onClick={() => confirmDelete(u, 'users')} title="Settings">
-                          <Icon name="settings" size={15} />
+                        <button className="act-btn" onClick={() => confirmDelete(u, 'users')} title="Delete user" style={{ color: 'var(--red-600,#dc2626)' }}>
+                          <Icon name="x" size={15} />
                         </button>
                       </div>
                     </td>
@@ -483,7 +483,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ USER MODAL ============ */}
       {showUserModal && (
-        <div className="modal-scrim" onClick={() => setShowUserModal(false)}>
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowUserModal(false); }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
             <div className="modal-head">
               <h2>{editingUser ? 'Edit User' : 'Create user'}</h2>
@@ -646,7 +646,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ AGENCY MODAL ============ */}
       {showAgencyModal && (
-        <div className="modal-scrim" onClick={() => setShowAgencyModal(false)}>
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowAgencyModal(false); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <h2>{editingAgency ? 'Edit Agency' : 'Add Agency'}</h2>
@@ -683,7 +683,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ TEAM MODAL ============ */}
       {showTeamModal && (
-        <div className="modal-scrim" onClick={() => setShowTeamModal(false)}>
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowTeamModal(false); }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
             <div className="modal-head">
               <h2>{editingTeam ? 'Edit Team' : 'Add Team'}</h2>
@@ -744,7 +744,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <label className="field-label">Clients</label>
                   <div className="chips">
                     {allClients
-                      .filter(c => !teamForm.agencyId || c.agencyId === teamForm.agencyId)
+                      .filter(c => !teamForm.agencyId || c.agencyId === parseInt(teamForm.agencyId))
                       .map(c => (
                         <button
                           key={c.id}
@@ -777,7 +777,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ DELETE MODAL ============ */}
       {showDeleteModal && (
-        <div className="modal-scrim" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) { setShowDeleteModal(false); setDeleteTarget(null); } }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <h2>Delete {deleteType.slice(0, -1)}</h2>
