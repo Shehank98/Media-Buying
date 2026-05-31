@@ -17,7 +17,6 @@ export default function ReportsPage() {
   const [sortField, setSortField] = useState('clientName');
   const [sortDir, setSortDir] = useState('asc');
 
-  /* ---- data fetching ---- */
   useEffect(() => {
     (async () => {
       try {
@@ -38,36 +37,62 @@ export default function ReportsPage() {
       setLoading(true);
       setError('');
       try {
-        const { data } = await api.get(`/agencies/${selectedAgency}/clients`);
-        const rawCl = data.clients || data;
-        const allClients = Array.isArray(rawCl) ? rawCl : [];
-        const channelPromises = allClients.map(c =>
-          api.get(`/clients/${c.id}/channels`)
-            .then(r => {
-              const rawChs = r.data.channels || r.data;
+        // Use the report endpoint which returns fully nested data
+        const { data } = await api.get(`/reports/agency/${selectedAgency}`);
+        const flat = [];
+        for (const client of (data.clients || [])) {
+          for (const channel of (client.channels || [])) {
+            for (const p of (channel.properties || [])) {
+              flat.push({
+                ...p,
+                clientName: client.name,
+                channelName: channel.name,
+                channelType: channel.type,
+                createdByName: p.creator?.name || p.createdByName || '-',
+              });
+            }
+          }
+        }
+        setResults(flat);
+      } catch (err) {
+        // Fallback: fetch clients → channels → properties individually
+        try {
+          const { data: agData } = await api.get(`/agencies/${selectedAgency}/clients`);
+          const rawCl = agData.clients || agData;
+          const allClients = Array.isArray(rawCl) ? rawCl : [];
+
+          const flat = [];
+          await Promise.all(allClients.map(async (c) => {
+            try {
+              const { data: chData } = await api.get(`/clients/${c.id}/channels`);
+              const rawChs = chData.channels || chData;
               const chs = Array.isArray(rawChs) ? rawChs : [];
-              return chs.flatMap(ch =>
-                (ch.properties || []).map(p => ({
-                  ...p,
-                  clientName: c.name,
-                  channelName: ch.name,
-                  channelType: ch.type,
-                }))
-              );
-            })
-            .catch(() => [])
-        );
-        const propertyArrays = await Promise.all(channelPromises);
-        setResults(propertyArrays.flat());
-      } catch {
-        setError('Failed to load report data.');
+              await Promise.all(chs.map(async (ch) => {
+                try {
+                  const { data: prData } = await api.get(`/channels/${ch.id}/properties`);
+                  const rawPr = prData.properties || prData;
+                  const props = Array.isArray(rawPr) ? rawPr : [];
+                  props.forEach(p => flat.push({
+                    ...p,
+                    clientName: c.name,
+                    channelName: ch.name,
+                    channelType: ch.type,
+                    createdByName: p.creator?.name || '-',
+                  }));
+                } catch { /* skip channel */ }
+              }));
+            } catch { /* skip client */ }
+          }));
+          setResults(flat);
+        } catch {
+          setError('Failed to load report data.');
+        }
       } finally {
         setLoading(false);
       }
     })();
   }, [selectedAgency]);
 
-  /* ---- derived ---- */
   const uniqueChannels = useMemo(() => {
     const map = new Map();
     results.forEach(r => { if (r.channelName) map.set(r.channelName, true); });
@@ -110,28 +135,18 @@ export default function ReportsPage() {
   );
 
   const filtersActive = selectedChannel || selectedClient;
+  const resetFilters = () => { setSelectedChannel(''); setSelectedClient(''); };
 
-  const resetFilters = () => {
-    setSelectedChannel('');
-    setSelectedClient('');
-  };
-
-  /* ---- sort helpers ---- */
   const handleSort = field => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
   };
   const sortIcon = field => sortField !== field ? '' : sortDir === 'asc' ? ' ↑' : ' ↓';
 
-  /* ---- export ---- */
-  const handleExport = async format => {
+  const handleExport = async (format) => {
+    if (!selectedAgency) { setError('Select an agency first.'); return; }
     try {
-      const params = new URLSearchParams({ format });
-      if (selectedAgency) params.set('agencyId', selectedAgency);
-      if (selectedChannel) params.set('channel', selectedChannel);
-      if (selectedClient) params.set('client', selectedClient);
-
-      const response = await api.get(`/reports/export?${params}`, { responseType: 'blob' });
+      const response = await api.get(`/reports/agency/${selectedAgency}?format=${format}`, { responseType: 'blob' });
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -143,7 +158,7 @@ export default function ReportsPage() {
       window.URL.revokeObjectURL(url);
       showToast(`${format === 'excel' ? 'Excel' : 'PDF'} exported successfully`);
     } catch {
-      setError(`Failed to export ${format}.`);
+      setError(`Failed to export ${format}. Make sure an agency is selected.`);
     }
   };
 
@@ -152,7 +167,6 @@ export default function ReportsPage() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  /* ---- render ---- */
   return (
     <div className="fade-in">
       <div className="page-head">
@@ -161,10 +175,10 @@ export default function ReportsPage() {
           <p className="page-sub">Cross-client buying summary &mdash; read-only view for managers</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={() => handleExport('excel')}>
+          <button className="btn btn-ghost" onClick={() => handleExport('excel')} disabled={!selectedAgency || loading}>
             <Icon name="download" size={16} /> Export Excel
           </button>
-          <button className="btn btn-navy" onClick={() => handleExport('pdf')}>
+          <button className="btn btn-primary" onClick={() => handleExport('pdf')} disabled={!selectedAgency || loading}>
             <Icon name="download" size={16} /> Export PDF
           </button>
         </div>
@@ -177,7 +191,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Agency selector */}
       <div style={{ marginBottom: 16 }}>
         <div className="filter-field" style={{ maxWidth: 300 }}>
           <label>Agency</label>
@@ -198,7 +211,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Filter bar */}
       {results.length > 0 && (
         <div className="filterbar">
           <div className="filter-field">
@@ -226,14 +238,19 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Loading */}
       {loading && (
         <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
           Loading report data...
         </div>
       )}
 
-      {/* Results table */}
+      {!loading && selectedAgency && !loading && results.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+          <Icon name="file" size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
+          <p>No properties found for this agency yet.</p>
+        </div>
+      )}
+
       {!loading && sorted.length > 0 && (
         <div className="tbl-wrap">
           <table className="tbl">
@@ -255,13 +272,13 @@ export default function ReportsPage() {
                 return (
                   <tr key={item.id}>
                     <td className="strong">{item.clientName || '-'}</td>
-                    <td>{item.channelName || item.channel?.name || '-'}</td>
+                    <td>{item.channelName || '-'}</td>
                     <td>{item.name}</td>
                     <td><TypeBadge type={item.type} /></td>
                     <td className="num mono" style={isAddedValue ? { color: 'var(--green-600)' } : undefined}>
                       {isAddedValue ? 'Added value' : fmtLKR(cost)}
                     </td>
-                    <td>{item.createdBy?.name || item.createdByName || '-'}</td>
+                    <td>{item.creator?.name || item.createdByName || '-'}</td>
                     <td>
                       {item.createdAt
                         ? new Date(item.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -284,7 +301,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Empty state */}
       {!loading && selectedAgency && results.length > 0 && sorted.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
           <Icon name="search" size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
@@ -292,7 +308,6 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Toast */}
       {toast && (
         <div className="toast">
           <span className="toast-icon"><Icon name="check" size={14} /></span>

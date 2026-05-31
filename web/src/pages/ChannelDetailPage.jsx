@@ -258,9 +258,14 @@ export default function ChannelDetailPage() {
                   <td>
                     <div className="row-actions">
                       {canModify(user?.role) && (
-                        <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
-                          <Icon name="edit" size={16} />
-                        </button>
+                        <>
+                          <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
+                            <Icon name="edit" size={16} />
+                          </button>
+                          <button className="act-btn" title="Delete" onClick={() => { setDeletingProperty(property); setShowDeleteModal(true); }}>
+                            <Icon name="trash" size={16} />
+                          </button>
+                        </>
                       )}
                       <button className="act-btn" title="History" onClick={() => openHistory(property)}>
                         <Icon name="history" size={16} />
@@ -309,28 +314,41 @@ export default function ChannelDetailPage() {
                 {historyData.length} changes &middot; newest first
               </div>
               <div className="timeline">
-                {historyData.map((h, i) => (
-                  <div className={`tl-item${i === historyData.length - 1 ? ' old' : ''}`} key={h.id || i}>
-                    <div className="tl-node" />
-                    <div className="tl-meta">
-                      <span className="tl-date">{fmtDate(h.createdAt)}</span>
-                      <span className="tl-who">{fmtTime(h.createdAt)} &middot; by {h.changedBy?.name || 'Unknown'}</span>
-                    </div>
-                    <div className="tl-change">
-                      <div className="tl-field">{h.fieldName || 'Changed'}</div>
-                      <div className="tl-vals">
-                        {h.oldValue ? (
-                          <>
-                            <span className="tl-old">{h.oldValue}</span>
-                            <span className="tl-arrow"><Icon name="chevR" size={15} /></span>
-                          </>
-                        ) : null}
-                        <span className="tl-new">{h.newValue || h.changeNote || 'Updated'}</span>
+                {historyData.map((h, i) => {
+                  const prev = h.previousValues || {};
+                  const next = h.newValues || {};
+                  const changedFields = Object.keys(next).filter(
+                    (k) => String(next[k]) !== String(prev[k] ?? '')
+                  );
+                  return (
+                    <div className={`tl-item${i === historyData.length - 1 ? ' old' : ''}`} key={h.id || i}>
+                      <div className="tl-node" />
+                      <div className="tl-meta">
+                        <span className="tl-date">{fmtDate(h.changedAt)}</span>
+                        <span className="tl-who">{fmtTime(h.changedAt)} &middot; by {h.changer?.name || h.changedBy || 'Unknown'}</span>
                       </div>
-                      {h.changeNote && <div className="tl-note">{h.changeNote}</div>}
+                      <div className="tl-change">
+                        {changedFields.length > 0 ? changedFields.map((field) => (
+                          <div key={field} style={{ marginBottom: 6 }}>
+                            <div className="tl-field">{field}</div>
+                            <div className="tl-vals">
+                              {prev[field] !== undefined && prev[field] !== null ? (
+                                <>
+                                  <span className="tl-old">{String(prev[field])}</span>
+                                  <span className="tl-arrow"><Icon name="chevR" size={15} /></span>
+                                </>
+                              ) : null}
+                              <span className="tl-new">{String(next[field])}</span>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="tl-field">Updated</div>
+                        )}
+                        {h.changeNote && <div className="tl-note">{h.changeNote}</div>}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
