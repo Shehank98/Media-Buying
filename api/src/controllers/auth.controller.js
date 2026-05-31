@@ -7,6 +7,7 @@ import {
   comparePassword,
   generateResetToken,
 } from '../services/auth.service.js';
+import { sendEmail } from '../services/email.service.js';
 
 export async function login(req, res) {
   try {
@@ -120,23 +121,15 @@ export async function forgotPassword(req, res) {
       },
     });
 
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+    const frontendUrl = process.env.FRONTEND_URL || '';
+    const resetLink = `${frontendUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
-    // Send email via Google Apps Script
-    try {
-      const fetch = (await import('node-fetch')).default;
-      await fetch(process.env.GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: email,
-          subject: 'Password Reset - Media Buying System',
-          resetLink,
-        }),
-      });
-    } catch (emailError) {
-      console.error('Failed to send reset email:', emailError);
-    }
+    sendEmail({
+      type: 'reset',
+      to: email,
+      name: user.name,
+      resetLink,
+    }).catch(err => console.error('Reset email failed:', err));
 
     return res.json({ message: 'If the email exists, a reset link has been sent' });
   } catch (error) {

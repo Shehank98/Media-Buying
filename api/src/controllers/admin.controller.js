@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
+import { sendEmail } from '../services/email.service.js';
 
 // ── shared include/map helpers ──
 
@@ -125,6 +126,16 @@ export async function createUser(req, res) {
         data: clientIds.map(clientId => ({ userId: user.id, clientId: parseInt(clientId) })),
       });
     }
+
+    // Send welcome email (fire-and-forget)
+    const loginUrl = process.env.FRONTEND_URL || 'https://your-app.railway.app';
+    sendEmail({
+      type: 'welcome',
+      to: email,
+      name,
+      password: tempPassword,
+      loginUrl,
+    }).catch(err => console.error('Welcome email failed:', err));
 
     return res.status(201).json({ ...user, temporaryPassword: tempPassword, agencies: [], clients: [] });
   } catch (error) {
