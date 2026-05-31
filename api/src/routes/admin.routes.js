@@ -17,6 +17,10 @@ import {
   deleteTeam,
   assignTeamMembers,
   assignTeamClients,
+  listChannelMasters,
+  createChannelMaster,
+  updateChannelMaster,
+  deleteChannelMaster,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -44,5 +48,11 @@ router.put('/teams/:id', updateTeam);
 router.delete('/teams/:id', deleteTeam);
 router.post('/teams/:id/members', assignTeamMembers);
 router.post('/teams/:id/clients', assignTeamClients);
+
+// Channel Masters
+router.get('/channel-masters', listChannelMasters);
+router.post('/channel-masters', createChannelMaster);
+router.put('/channel-masters/:id', updateChannelMaster);
+router.delete('/channel-masters/:id', deleteChannelMaster);
 
 export default router;

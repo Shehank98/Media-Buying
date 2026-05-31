@@ -15,6 +15,8 @@ import ChannelDetailPage from './pages/ChannelDetailPage';
 import ReportsPage from './pages/ReportsPage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
+import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
+import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 
 export default function App() {
   return (
@@ -45,6 +47,22 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
+            <Route
+              path="/executive-dashboard"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                  <ExecutiveDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/channel-masters/:channelMasterId"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD']}>
+                  <ChannelIntelligencePage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/reports"
               element={

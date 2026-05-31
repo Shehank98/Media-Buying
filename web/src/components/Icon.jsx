@@ -32,6 +32,14 @@ const PATHS = {
   sparkle: "M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2L12 3z",
   activity: "M22 12h-4l-3 9L9 3l-3 9H2",
   money: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  'bar-chart': "M12 20V10M18 20V4M6 20v-4",
+  calendar: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  'trending-up': "M22 7l-8.5 8.5-5-5L2 17M22 7h-6M22 7v6",
+  'trending-down': "M22 17l-8.5-8.5-5 5L2 7M22 17h-6M22 17v-6",
+  dollar: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  chevL: "M15 18l-6-6 6-6",
+  chevDown: "M6 9l6 6 6-6",
+  upload: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
 };
 
 export default function Icon({ name, size = 24, stroke = 2, className, style }) {

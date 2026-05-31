@@ -391,3 +391,67 @@ export async function assignTeamClients(req, res) {
     return res.status(500).json({ error: 'Failed to assign team clients' });
   }
 }
+
+// ── Channel Masters ──
+
+export async function listChannelMasters(req, res) {
+  try {
+    const includeInactive = req.query.includeInactive === 'true';
+    const where = includeInactive ? {} : { isActive: true };
+    const channelMasters = await prisma.channelMaster.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { scheduleLogs: true } } },
+    });
+    return res.json({ channelMasters });
+  } catch (error) {
+    console.error('List channel masters error:', error);
+    return res.status(500).json({ error: 'Failed to list channel masters' });
+  }
+}
+
+export async function createChannelMaster(req, res) {
+  try {
+    const { name, medium, aliases } = req.body;
+    if (!name || !medium) return res.status(400).json({ error: 'Name and medium are required' });
+    const cm = await prisma.channelMaster.create({
+      data: { name, medium, aliases: Array.isArray(aliases) ? aliases : [] },
+    });
+    return res.status(201).json({ channelMaster: cm });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'Channel master with this name already exists' });
+    console.error('Create channel master error:', error);
+    return res.status(500).json({ error: 'Failed to create channel master' });
+  }
+}
+
+export async function updateChannelMaster(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, medium, aliases, isActive } = req.body;
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (medium !== undefined) data.medium = medium;
+    if (aliases !== undefined) data.aliases = Array.isArray(aliases) ? aliases : [];
+    if (isActive !== undefined) data.isActive = isActive;
+    const cm = await prisma.channelMaster.update({ where: { id: parseInt(id) }, data });
+    return res.json({ channelMaster: cm });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
+    if (error.code === 'P2002') return res.status(409).json({ error: 'Channel master with this name already exists' });
+    console.error('Update channel master error:', error);
+    return res.status(500).json({ error: 'Failed to update channel master' });
+  }
+}
+
+export async function deleteChannelMaster(req, res) {
+  try {
+    const { id } = req.params;
+    await prisma.channelMaster.update({ where: { id: parseInt(id) }, data: { isActive: false } });
+    return res.json({ message: 'Channel master deactivated' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
+    console.error('Delete channel master error:', error);
+    return res.status(500).json({ error: 'Failed to deactivate channel master' });
+  }
+}

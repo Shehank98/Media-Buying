@@ -4,6 +4,7 @@ import Icon, { Avatar, RoleBadge } from './Icon';
 
 const NAV = [
   { key: '/', label: 'Dashboard', icon: 'grid' },
+  { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/clients', label: 'Clients', icon: 'folder' },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },

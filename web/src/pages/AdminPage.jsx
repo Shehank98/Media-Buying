@@ -54,6 +54,15 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamError, setTeamError] = useState('');
 
+  /* ---- channel master modal ---- */
+  const [channelMasters, setChannelMasters] = useState([]);
+  const [showChMasterModal, setShowChMasterModal] = useState(false);
+  const [editingChMaster, setEditingChMaster] = useState(null);
+  const [chMasterForm, setChMasterForm] = useState({ name: '', medium: 'TV', aliases: '', isActive: true });
+  const [chMasterSubmitting, setChMasterSubmitting] = useState(false);
+  const [chMasterError, setChMasterError] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -64,10 +73,11 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, chMasterRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
+        api.get('/admin/channel-masters?includeInactive=true'),
       ]);
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
@@ -85,6 +95,10 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (teamsRes.status === 'fulfilled') {
         const rawTeams = teamsRes.value.data.teams || teamsRes.value.data;
         setTeams(Array.isArray(rawTeams) ? rawTeams : []);
+      }
+      if (chMasterRes.status === 'fulfilled') {
+        const rawCm = chMasterRes.value.data.channelMasters || chMasterRes.value.data;
+        setChannelMasters(Array.isArray(rawCm) ? rawCm : []);
       }
     } catch {
       setError('Failed to load admin data.');
@@ -216,6 +230,63 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- Channel Master CRUD ---- */
+  const openAddChMaster = () => {
+    setEditingChMaster(null);
+    setChMasterForm({ name: '', medium: 'TV', aliases: '', isActive: true });
+    setChMasterError('');
+    setShowChMasterModal(true);
+  };
+  const openEditChMaster = cm => {
+    setEditingChMaster(cm);
+    setChMasterForm({
+      name: cm.name,
+      medium: cm.medium,
+      aliases: Array.isArray(cm.aliases) ? cm.aliases.join(', ') : '',
+      isActive: cm.isActive !== false,
+    });
+    setChMasterError('');
+    setShowChMasterModal(true);
+  };
+  const handleChMasterSubmit = async e => {
+    e.preventDefault();
+    setChMasterError('');
+    if (!chMasterForm.name.trim()) { setChMasterError('Name is required.'); return; }
+    setChMasterSubmitting(true);
+    try {
+      const payload = {
+        name: chMasterForm.name,
+        medium: chMasterForm.medium,
+        aliases: chMasterForm.aliases ? chMasterForm.aliases.split(',').map(s => s.trim()).filter(Boolean) : [],
+        isActive: chMasterForm.isActive,
+      };
+      if (editingChMaster) await api.put(`/admin/channel-masters/${editingChMaster.id}`, payload);
+      else await api.post('/admin/channel-masters', payload);
+      setShowChMasterModal(false);
+      await fetchData();
+    } catch (err) {
+      setChMasterError(err.response?.data?.error || 'Failed to save channel master.');
+    } finally {
+      setChMasterSubmitting(false);
+    }
+  };
+  const handleDeactivateChMaster = async cm => {
+    try {
+      await api.delete(`/admin/channel-masters/${cm.id}`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to deactivate channel.');
+    }
+  };
+  const handleReactivateChMaster = async cm => {
+    try {
+      await api.put(`/admin/channel-masters/${cm.id}`, { isActive: true });
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to reactivate channel.');
+    }
+  };
+
   /* ---- Delete ---- */
   const confirmDelete = (item, type) => {
     setDeleteTarget(item);
@@ -255,6 +326,12 @@ export default function AdminPage({ initialTab = 'users' }) {
     teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
     [teams, search]);
 
+  const filteredChMasters = useMemo(() =>
+    channelMasters
+      .filter(cm => showInactive || cm.isActive !== false)
+      .filter(cm => cm.name.toLowerCase().includes(search.toLowerCase())),
+    [channelMasters, search, showInactive]);
+
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   if (loading) {
@@ -269,6 +346,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'users', label: 'Users', count: users.length },
     { key: 'agencies', label: 'Agencies', count: agencies.length },
     { key: 'teams', label: 'Teams', count: teams.length },
+    { key: 'channels', label: 'Channels', count: channelMasters.length },
   ];
 
   return (
@@ -327,6 +405,16 @@ export default function AdminPage({ initialTab = 'users' }) {
           <button className="btn btn-primary" onClick={openAddTeam} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Team
           </button>
+        )}
+        {activeTab === 'channels' && (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Show inactive
+            </label>
+            <button className="btn btn-primary" onClick={openAddChMaster} style={{ marginLeft: 'auto' }}>
+              <Icon name="plus" size={16} /> Add Channel
+            </button>
+          </>
         )}
       </div>
 
@@ -478,6 +566,120 @@ export default function AdminPage({ initialTab = 'users' }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ============ CHANNELS TABLE ============ */}
+      {activeTab === 'channels' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Medium</th>
+                <th>Status</th>
+                <th>Schedule Logs</th>
+                <th>Aliases</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredChMasters.map(cm => (
+                <tr key={cm.id}>
+                  <td className="strong">{cm.name}</td>
+                  <td>
+                    <span style={{
+                      background: cm.medium === 'TV' ? '#dbeafe' : cm.medium === 'RADIO' ? '#fff5f0' : '#ecfdf5',
+                      color: cm.medium === 'TV' ? '#1e3a5f' : cm.medium === 'RADIO' ? '#E85D24' : '#059669',
+                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700,
+                    }}>{cm.medium}</span>
+                  </td>
+                  <td>
+                    <span style={{
+                      background: cm.isActive !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
+                      color: cm.isActive !== false ? 'var(--green-600)' : 'var(--red-600)',
+                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
+                    }}>{cm.isActive !== false ? 'Active' : 'Inactive'}</span>
+                  </td>
+                  <td>{cm._count?.scheduleLogs || 0}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 12 }}>
+                    {Array.isArray(cm.aliases) && cm.aliases.length > 0 ? cm.aliases.join(', ') : '—'}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditChMaster(cm)} title="Edit">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      {cm.isActive !== false ? (
+                        <button className="act-btn" onClick={() => handleDeactivateChMaster(cm)} title="Deactivate" style={{ color: 'var(--red-600)' }}>
+                          <Icon name="x" size={15} />
+                        </button>
+                      ) : (
+                        <button className="act-btn" onClick={() => handleReactivateChMaster(cm)} title="Reactivate" style={{ color: 'var(--green-600)' }}>
+                          <Icon name="check" size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredChMasters.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No channels found</div>
+          )}
+        </div>
+      )}
+
+      {/* ============ CHANNEL MASTER MODAL ============ */}
+      {showChMasterModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowChMasterModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingChMaster ? 'Edit Channel' : 'Add Channel'}</h2>
+              <button className="act-btn" onClick={() => setShowChMasterModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleChMasterSubmit}>
+              <div className="modal-body">
+                {chMasterError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>
+                    {chMasterError}
+                  </div>
+                )}
+                <div className="field">
+                  <label className="field-label">Channel Name <span className="req">*</span></label>
+                  <input className="input" value={chMasterForm.name} onChange={e => setChMasterForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. TV Derana" />
+                </div>
+                <div className="field">
+                  <label className="field-label">Medium <span className="req">*</span></label>
+                  <select className="select" value={chMasterForm.medium} onChange={e => setChMasterForm(p => ({ ...p, medium: e.target.value }))}>
+                    <option value="TV">TV</option>
+                    <option value="RADIO">Radio</option>
+                    <option value="PRINT">Print</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">Aliases</label>
+                  <input className="input" value={chMasterForm.aliases} onChange={e => setChMasterForm(p => ({ ...p, aliases: e.target.value }))} placeholder="Comma-separated aliases" />
+                  <span className="field-hint">Alternative names for this channel (e.g. "Derana TV, TV Derana HD")</span>
+                </div>
+                {editingChMaster && (
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={chMasterForm.isActive} onChange={e => setChMasterForm(p => ({ ...p, isActive: e.target.checked }))} />
+                      Active
+                    </label>
+                  </div>
+                )}
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowChMasterModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={chMasterSubmitting}>
+                  {chMasterSubmitting ? 'Saving...' : editingChMaster ? 'Save Changes' : 'Add Channel'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
