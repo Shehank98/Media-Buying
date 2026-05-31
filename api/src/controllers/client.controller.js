@@ -26,6 +26,37 @@ export async function getClient(req, res) {
   }
 }
 
+export async function updateClient(req, res) {
+  try {
+    const { clientId } = req.params;
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Client name is required' });
+    const client = await prisma.client.update({
+      where: { id: parseInt(clientId) },
+      data: { name },
+      include: { agency: { select: { id: true, name: true } }, _count: { select: { channels: true } } },
+    });
+    return res.json({ client: { ...client, agencyName: client.agency?.name } });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
+    if (error.code === 'P2002') return res.status(409).json({ error: 'A client with this name already exists in this agency' });
+    console.error('Update client error:', error);
+    return res.status(500).json({ error: 'Failed to update client' });
+  }
+}
+
+export async function deleteClient(req, res) {
+  try {
+    const { clientId } = req.params;
+    await prisma.client.delete({ where: { id: parseInt(clientId) } });
+    return res.json({ message: 'Client deleted successfully' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
+    console.error('Delete client error:', error);
+    return res.status(500).json({ error: 'Failed to delete client' });
+  }
+}
+
 export async function getChannels(req, res) {
   try {
     const { clientId } = req.params;

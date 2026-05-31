@@ -1,8 +1,10 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 import { checkClientAccess } from '../middleware/access.js';
 import {
   getClient,
+  updateClient,
+  deleteClient,
   getChannels,
   createChannel,
   updateChannel,
@@ -12,6 +14,8 @@ import {
 const router = Router();
 
 router.get('/:clientId', authenticate, checkClientAccess, getClient);
+router.put('/:clientId', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), checkClientAccess, updateClient);
+router.delete('/:clientId', authenticate, requireRole('SUPER_ADMIN'), checkClientAccess, deleteClient);
 router.get('/:clientId/channels', authenticate, checkClientAccess, getChannels);
 router.post('/:clientId/channels', authenticate, checkClientAccess, createChannel);
 router.put('/channels/:id', authenticate, updateChannel);
