@@ -126,13 +126,40 @@ After seeding, log in with:
 
 ## Railway Deployment
 
+### 1. Create Project & Database
 1. Create a new Railway project
-2. Add a PostgreSQL plugin
-3. Create two services: `api` and `web`
-4. Set root directory to `/api` and `/web` respectively
-5. Configure environment variables on the `api` service
-6. Set `FRONTEND_URL` to the `web` service URL
-7. Deploy
+2. Click **+ New** → **Database** → **PostgreSQL**
+3. Railway auto-provisions the database and sets `DATABASE_URL`
+
+### 2. Deploy API Service
+1. Click **+ New** → **GitHub Repo** → select this repo
+2. In **Settings** → **Root Directory**: set to `/api`
+3. Railway auto-detects the `railway.toml` and runs:
+   - **Build:** `npm install && npx prisma generate && npx prisma db push`
+   - **Start:** `node src/index.js`
+4. Go to **Variables** tab and add:
+   - `DATABASE_URL` → click **Reference** → select the PostgreSQL service
+   - `JWT_SECRET` → generate a random string (e.g. `openssl rand -hex 32`)
+   - `JWT_REFRESH_SECRET` → generate another random string
+   - `GOOGLE_SCRIPT_URL` → your Google Apps Script webhook URL
+   - `FRONTEND_URL` → will be set after web service deploys (e.g. `https://your-web.up.railway.app`)
+5. Go to **Settings** → **Networking** → **Generate Domain** to get a public URL
+6. After first deploy, run the seed: open **Railway CLI** or use the deploy logs to run `npm run seed`
+
+### 3. Deploy Web Service
+1. Click **+ New** → **GitHub Repo** → select this repo again
+2. In **Settings** → **Root Directory**: set to `/web`
+3. Railway auto-detects the `railway.toml` and runs:
+   - **Build:** `npm install && vite build`
+   - **Start:** `serve dist -s` (SPA static server)
+4. Go to **Variables** tab and add:
+   - `VITE_API_URL` → the API service's public URL (e.g. `https://your-api.up.railway.app`)
+5. Go to **Settings** → **Networking** → **Generate Domain**
+6. Copy the web service URL and set it as `FRONTEND_URL` on the API service
+
+### 4. Verify
+- Visit your web service URL → you should see the login page
+- Log in with `shehan.kavishka@ogilvy.com` / `Shehan@98`
 
 ## Password Reset Flow
 
