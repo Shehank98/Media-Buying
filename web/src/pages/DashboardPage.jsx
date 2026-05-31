@@ -1,175 +1,155 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Building2, Users, BarChart3, FileText, ArrowRight } from 'lucide-react';
+import Icon from '../components/Icon';
 import api from '../lib/api';
-import LoadingSpinner from '../components/LoadingSpinner';
+
+function Stat({ icon, ig, ifg, label, val, meta, trend, trendCls }) {
+  return (
+    <div className="stat">
+      <div className="stat-top">
+        <div className="stat-ico" style={{ background: ig, color: ifg }}>
+          <Icon name={icon} size={19} />
+        </div>
+        <div className="stat-label">{label}</div>
+      </div>
+      <div className="stat-val">{val}</div>
+      <div className="stat-meta">
+        {trend && <span className={`stat-trend ${trendCls}`}>{trend}</span>}
+        {meta}
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [stats, setStats] = useState({ agencies: 0, clients: 0, properties: 0 });
+  const navigate = useNavigate();
   const [agencies, setAgencies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [stats, setStats] = useState({ agencies: 0, clients: 0 });
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const [agenciesRes, statsRes] = await Promise.allSettled([
-          api.get('/agencies'),
-          api.get('/dashboard/stats'),
-        ]);
-
-        if (agenciesRes.status === 'fulfilled') {
-          const agencyData = agenciesRes.value.data.agencies || agenciesRes.value.data || [];
-          setAgencies(agencyData);
-        }
-
-        if (statsRes.status === 'fulfilled') {
-          setStats(statsRes.value.data);
-        } else if (agenciesRes.status === 'fulfilled') {
-          const agencyData = agenciesRes.value.data.agencies || agenciesRes.value.data || [];
-          const clientCount = agencyData.reduce(
-            (sum, a) => sum + (a.clientCount || a._count?.clients || 0),
-            0
-          );
-          setStats({
-            agencies: agencyData.length,
-            clients: clientCount,
-            properties: 0,
-          });
-        }
-      } catch (err) {
-        setError('Failed to load dashboard data.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboard();
+    api.get('/agencies').then(({ data }) => {
+      const list = data.agencies || data || [];
+      setAgencies(list);
+      const totalClients = list.reduce((s, a) => s + (a._count?.clients || a.clientCount || 0), 0);
+      setStats({ agencies: list.length, clients: totalClients });
+    }).catch(() => {});
   }, []);
 
-  if (loading) {
-    return <LoadingSpinner size="lg" className="py-20" />;
-  }
+  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); };
 
-  if (error) {
-    return (
-      <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
-        {error}
-      </div>
-    );
-  }
-
-  const statCards = [
-    {
-      name: 'My Agencies',
-      value: stats.agencies,
-      icon: Building2,
-      color: 'bg-indigo-50 text-indigo-600',
-      href: '/agencies',
-    },
-    {
-      name: 'My Clients',
-      value: stats.clients,
-      icon: Users,
-      color: 'bg-emerald-50 text-emerald-600',
-      href: '/agencies',
-    },
-    {
-      name: 'Recent Properties',
-      value: stats.properties,
-      icon: FileText,
-      color: 'bg-amber-50 text-amber-600',
-      href: null,
-    },
-  ];
+  const firstName = user?.name?.split(' ')[0] || 'User';
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div className="space-y-8">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {user?.name?.split(' ')[0] || 'User'}
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Here is an overview of your media buying activity.
-        </p>
+    <div className="content-narrow fade-in">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">{greeting}, {firstName}</h1>
+          <p className="page-sub">Here's what's moving across Ogilvy Media today — {dateStr}.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => go('/reports')}>
+          <Icon name="chart" size={16} />New report
+        </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {statCards.map((stat) => (
-          <div
-            key={stat.name}
-            className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">{stat.name}</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">
-                  {stat.value}
-                </p>
-              </div>
-              <div
-                className={`h-12 w-12 rounded-xl ${stat.color} flex items-center justify-center`}
-              >
-                <stat.icon className="h-6 w-6" />
+      <div className="summary-grid">
+        <Stat
+          icon="building" ig="var(--navy-900)" ifg="#fff"
+          label="My Agencies" val={String(stats.agencies)}
+          meta={agencies.map(a => a.name).join(' · ') || '—'}
+          trend="Full access" trendCls="trend-flat"
+        />
+        <Stat
+          icon="folder" ig="var(--coral-50)" ifg="var(--coral-600)"
+          label="Active Clients" val={String(stats.clients)}
+          meta="this quarter"
+          trend="+3" trendCls="trend-up"
+        />
+        <Stat
+          icon="sparkle" ig="var(--green-50)" ifg="var(--green-600)"
+          label="Properties This Month" val="—"
+          meta="vs last month"
+        />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 20, alignItems: 'start' }}>
+        <div className="section-card">
+          <div className="section-head">
+            <h3>Recent activity</h3>
+            <span className="link" style={{ fontSize: 12.5 }}>View all</span>
+          </div>
+          <div style={{ padding: '6px 20px 8px' }}>
+            <div className="feed">
+              <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                Activity feed will populate as your team makes changes.
               </div>
             </div>
-            {stat.href && (
-              <Link
-                to={stat.href}
-                className="mt-4 inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-500 font-medium"
-              >
-                View all <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            )}
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* Quick access */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Quick Access
-        </h2>
-        {agencies.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-            <Building2 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">
-              No agencies assigned yet. Contact your administrator.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agencies.map((agency) => (
-              <Link
-                key={agency.id}
-                to={`/agencies/${agency.id}`}
-                className="group bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-indigo-200 transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-100 transition-colors">
-                    <Building2 className="h-5 w-5" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div className="section-card">
+            <div className="section-head"><h3>Quick access</h3></div>
+            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {[
+                { ic: 'folder', t: 'Clients', s: 'Browse all clients', v: '/clients' },
+                { ic: 'chart', t: 'Buying report', s: 'Filter & export buys', v: '/reports' },
+                { ic: 'shield', t: 'User management', s: 'Roles & access', v: '/admin' },
+              ].map((q) => (
+                <button
+                  key={q.v}
+                  onClick={() => go(q.v)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px',
+                    border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--bg-sunken)', display: 'grid', placeItems: 'center', color: 'var(--navy-700)', flex: 'none' }}>
+                    <Icon name={q.ic} size={18} />
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
-                      {agency.name}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {agency.clientCount || agency._count?.clients || 0} clients
-                    </p>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{q.t}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{q.s}</div>
                   </div>
-                </div>
-                <div className="mt-3 flex items-center justify-end text-sm text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="font-medium">View details</span>
-                  <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </div>
-              </Link>
-            ))}
+                  <Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} />
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+
+          <div className="section-card">
+            <div className="section-head"><h3>Your agencies</h3></div>
+            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {agencies.map((ag) => (
+                <button
+                  key={ag.id}
+                  onClick={() => go(`/agencies/${ag.id}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+                    border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--navy-900)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>
+                    {ag.name?.[0] || 'A'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{ag.name}</div>
+                  </div>
+                  <span className="count-badge">{ag._count?.clients || ag.clientCount || 0} clients</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

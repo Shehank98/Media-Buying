@@ -1,131 +1,93 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon';
 import api from '../lib/api';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!email.trim()) {
-      setError('Please enter your email address.');
-      return;
-    }
+    if (!email.trim()) { setError('Please enter your email address.'); return; }
 
     setSubmitting(true);
     try {
       await api.post('/auth/forgot-password', { email });
       setSent(true);
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          'Failed to send reset email. Please try again.'
-      );
+      setError(err.response?.data?.message || 'Failed to send reset email. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-50 px-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-indigo-600 mb-4">
-            <span className="text-white font-bold text-xl">MB</span>
+    <div className="login-wrap" style={{ gridTemplateColumns: '1fr' }}>
+      <div className="login-card-side">
+        <div className="login-card fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 28 }}>
+            <div className="brand-mark" style={{ width: 40, height: 40, fontSize: 19 }}>O</div>
+            <div>
+              <div className="brand-name" style={{ fontSize: 17, color: 'var(--ink)' }}>Ogilvy</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '.3px', marginTop: 2 }}>Media Buying Records</div>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Media<span className="text-indigo-600">Buy</span>
-          </h1>
-        </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
           {sent ? (
-            <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-                <Mail className="h-6 w-6 text-green-600" />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 24, background: 'var(--green-50)', color: 'var(--green-600)', display: 'grid', placeItems: 'center', margin: '0 auto 16px' }}>
+                <Icon name="mail" size={24} />
               </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Check your inbox
-              </h2>
-              <p className="text-gray-500 mb-6">
-                We sent password reset instructions to{' '}
-                <span className="font-medium text-gray-700">{email}</span>.
-                Please check your email and follow the link to reset your
-                password.
+              <h1 style={{ fontSize: 20, fontWeight: 720, margin: '0 0 8px' }}>Check your inbox</h1>
+              <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>
+                We sent password reset instructions to <b style={{ color: 'var(--ink)' }}>{email}</b>.
               </p>
-              <Link
-                to="/login"
-                className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-500"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to login
-              </Link>
+              <button className="btn btn-ghost" onClick={() => navigate('/login')}>
+                <Icon name="chevR" size={14} style={{ transform: 'rotate(180deg)' }} />Back to login
+              </button>
             </div>
           ) : (
             <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Forgot your password?
-              </h2>
-              <p className="text-sm text-gray-500 mb-6">
-                Enter your email address and we will send you instructions to
-                reset your password.
-              </p>
+              <h1>Forgot password?</h1>
+              <div className="sub">Enter your email and we'll send you reset instructions.</div>
 
               {error && (
-                <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                <div style={{ marginBottom: 16, padding: '10px 13px', borderRadius: 9, background: 'var(--red-100)', color: 'var(--red-600)', fontSize: 13, fontWeight: 600 }}>
                   {error}
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="block text-sm font-medium text-gray-700 mb-1.5"
-                  >
-                    Email address
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-                    placeholder="you@example.com"
-                  />
+              <form onSubmit={handleSubmit}>
+                <div className="field">
+                  <label className="field-label">Email address</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 12, top: 11, color: 'var(--muted-2)' }}>
+                      <Icon name="mail" size={18} />
+                    </span>
+                    <input
+                      className="input"
+                      type="email"
+                      value={email}
+                      style={{ paddingLeft: 38 }}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@agency.com"
+                      autoFocus
+                    />
+                  </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {submitting ? (
-                    <LoadingSpinner size="sm" />
-                  ) : (
-                    'Send Reset Instructions'
-                  )}
+                <button className="btn btn-primary btn-lg" type="submit" style={{ width: '100%', marginTop: 8 }} disabled={submitting}>
+                  {submitting ? 'Sending…' : 'Send Reset Instructions'}
                 </button>
               </form>
 
-              <div className="mt-6 text-center">
-                <Link
-                  to="/login"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to login
-                </Link>
+              <div className="login-foot">
+                <a onClick={() => navigate('/login')}>Back to login</a>
               </div>
             </>
           )}

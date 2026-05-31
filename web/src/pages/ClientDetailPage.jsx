@@ -1,69 +1,72 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Tv, Radio, Newspaper, Plus, ArrowRight } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import Icon from '../components/Icon';
 import api from '../lib/api';
-import LoadingSpinner from '../components/LoadingSpinner';
-import Modal from '../components/Modal';
+import { useAuth } from '../contexts/AuthContext';
 
-const channelTypes = [
-  { key: 'TV', label: 'TV Channels', icon: Tv, color: 'bg-blue-50 text-blue-600' },
-  { key: 'RADIO', label: 'Radio Channels', icon: Radio, color: 'bg-green-50 text-green-600' },
-  { key: 'PRINT', label: 'Print', icon: Newspaper, color: 'bg-orange-50 text-orange-600' },
+const TABS = [
+  { key: 'TV', label: 'TV Channels', icon: 'tv' },
+  { key: 'RADIO', label: 'Radio Channels', icon: 'radio' },
+  { key: 'PRINT', label: 'Print', icon: 'print' },
 ];
+
+const TAB_COLORS = {
+  TV:    { bg: 'var(--blue-50,#EFF6FF)',  fg: 'var(--blue-700,#1D4ED8)' },
+  RADIO: { bg: 'var(--coral-50,#FFF5F0)', fg: 'var(--coral-600,#D4541E)' },
+  PRINT: { bg: 'var(--green-50,#ECFDF5)', fg: 'var(--green-600,#059669)' },
+};
 
 const canAddChannel = (role) =>
   ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN'].includes(role);
 
 export default function ClientDetailPage() {
   const { clientId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [client, setClient] = useState(null);
   const [channels, setChannels] = useState([]);
   const [activeTab, setActiveTab] = useState('TV');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', type: 'TV' });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const fetchData = async () => {
-    try {
-      const [clientRes, channelsRes] = await Promise.all([
-        api.get(`/clients/${clientId}`),
-        api.get(`/clients/${clientId}/channels`),
-      ]);
-      setClient(clientRes.data.client || clientRes.data);
-      setChannels(channelsRes.data.channels || channelsRes.data || []);
-    } catch (err) {
-      setError('Failed to load client details.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [clientRes, channelsRes] = await Promise.all([
+          api.get(`/clients/${clientId}`),
+          api.get(`/clients/${clientId}/channels`),
+        ]);
+        setClient(clientRes.data.client || clientRes.data);
+        setChannels(channelsRes.data.channels || channelsRes.data || []);
+      } catch {
+        setError('Failed to load client details.');
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchData();
-  }, [clientId]);
+  }, [clientId, refreshKey]);
 
   const filteredChannels = channels.filter((c) => c.type === activeTab);
 
-  const handleAddChannel = async (e) => {
-    e.preventDefault();
+  const handleAddChannel = async () => {
     setFormError('');
-
     if (!formData.name.trim()) {
       setFormError('Channel name is required.');
       return;
     }
-
     setSubmitting(true);
     try {
       await api.post(`/clients/${clientId}/channels`, formData);
-      setShowAddModal(false);
+      setShowModal(false);
       setFormData({ name: '', type: 'TV' });
-      await fetchData();
+      setRefreshKey(k => k + 1);
     } catch (err) {
       setFormError(err.response?.data?.message || 'Failed to add channel.');
     } finally {
@@ -71,193 +74,129 @@ export default function ClientDetailPage() {
     }
   };
 
-  if (loading) {
-    return <LoadingSpinner size="lg" className="py-20" />;
-  }
+  const closeModal = () => {
+    setShowModal(false);
+    setFormError('');
+    setFormData({ name: '', type: 'TV' });
+  };
 
-  if (error) {
-    return (
-      <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
-        {error}
-      </div>
-    );
-  }
+  if (loading) return <div className="content-narrow fade-in" style={{padding:'60px 0',textAlign:'center',color:'var(--muted)'}}>Loading…</div>;
+
+  if (error) return <div className="content-narrow fade-in" style={{padding:'60px 0',textAlign:'center',color:'var(--red-600,#DC2626)'}}>{error}</div>;
+
+  const tabColor = TAB_COLORS[activeTab] || TAB_COLORS.TV;
+  const tabInfo = TABS.find(t => t.key === activeTab);
+  const tabIcon = tabInfo?.icon || 'tv';
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="content-narrow fade-in">
+      <div className="page-head">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{client?.name}</h1>
-          <p className="text-gray-500 mt-0.5">
-            Agency:{' '}
-            <Link
-              to={`/agencies/${client?.agencyId}`}
-              className="text-indigo-600 hover:text-indigo-500"
-            >
-              {client?.agency?.name || client?.agencyName || 'Agency'}
-            </Link>
-          </p>
+          <h1 className="page-title">{client?.name}</h1>
+          <p className="page-sub">Lead planner</p>
         </div>
         {canAddChannel(user?.role) && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Add Channel
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+            <Icon name="plus" size={16} />Add channel
           </button>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-6">
-          {channelTypes.map((type) => (
-            <button
-              key={type.key}
-              onClick={() => setActiveTab(type.key)}
-              className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-colors ${
-                activeTab === type.key
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <type.icon className="h-4 w-4" />
-              {type.label}
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  activeTab === type.key
-                    ? 'bg-indigo-50 text-indigo-600'
-                    : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {channels.filter((c) => c.type === type.key).length}
-              </span>
-            </button>
-          ))}
-        </nav>
+      <div className="tabs">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            className={`tab${activeTab === t.key ? ' active' : ''}`}
+            onClick={() => setActiveTab(t.key)}
+          >
+            <Icon name={t.icon} size={16} />{t.label}
+            <span className="tcount">{channels.filter(c => c.type === t.key).length}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Channel cards */}
       {filteredChannels.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          {(() => {
-            const typeInfo = channelTypes.find((t) => t.key === activeTab);
-            const Icon = typeInfo?.icon || Tv;
-            return <Icon className="h-12 w-12 text-gray-300 mx-auto mb-3" />;
-          })()}
-          <h3 className="font-medium text-gray-900 mb-1">
-            No {activeTab.toLowerCase()} channels
-          </h3>
-          <p className="text-sm text-gray-500">
-            Add a {activeTab.toLowerCase()} channel to get started.
-          </p>
+        <div style={{padding:'60px 0',textAlign:'center',color:'var(--muted)'}}>
+          <Icon name={tabIcon} size={40} style={{color:'var(--muted-2)',marginBottom:10}} />
+          <div style={{fontWeight:650,color:'var(--ink)',marginBottom:4}}>No {activeTab.toLowerCase()} channels</div>
+          <div style={{fontSize:13}}>Add a {activeTab.toLowerCase()} channel to get started.</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredChannels.map((channel) => {
-            const typeInfo = channelTypes.find((t) => t.key === channel.type);
-            const Icon = typeInfo?.icon || Tv;
-            return (
-              <Link
-                key={channel.id}
-                to={`/channels/${channel.id}`}
-                className="group bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-indigo-200 transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`h-10 w-10 rounded-lg ${typeInfo?.color || 'bg-gray-50 text-gray-600'} flex items-center justify-center flex-shrink-0`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
-                      {channel.name}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {channel.propertyCount || channel._count?.properties || 0}{' '}
-                      properties
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-end text-sm text-indigo-600 font-medium">
-                  View properties <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </div>
-              </Link>
-            );
-          })}
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead><tr>
+              <th>Channel</th>
+              <th style={{textAlign:'center'}}>Properties</th>
+              <th>Type</th>
+              <th style={{width:40}}></th>
+            </tr></thead>
+            <tbody>
+              {filteredChannels.map(ch => (
+                <tr key={ch.id} className="clickable" onClick={() => navigate(`/channels/${ch.id}`)}>
+                  <td><div style={{display:'flex',alignItems:'center',gap:11}}>
+                    <div style={{width:34,height:34,borderRadius:9,background:tabColor.bg,color:tabColor.fg,display:'grid',placeItems:'center',flex:'none'}}>
+                      <Icon name={tabIcon} size={17} />
+                    </div>
+                    <span className="strong">{ch.name}</span>
+                  </div></td>
+                  <td style={{textAlign:'center'}}><span className="count-badge">{ch.propertyCount || ch._count?.properties || 0} properties</span></td>
+                  <td><span style={{color:'var(--muted)'}}>{ch.type || '—'}</span></td>
+                  <td><Icon name="chevR" size={16} style={{color:'var(--muted-2)'}} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Add Channel Modal */}
-      <Modal
-        isOpen={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setFormError('');
-          setFormData({ name: '', type: 'TV' });
-        }}
-        title="Add Channel"
-      >
-        {formError && (
-          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-            {formError}
+      {showModal && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div className="modal" style={{width: 500}}>
+            <div className="modal-head">
+              <div>
+                <div style={{fontSize:17,fontWeight:720,color:'var(--ink)',letterSpacing:'-.3px'}}>Add channel</div>
+                <div style={{fontSize:12.5,color:'var(--muted)',marginTop:3}}>{client?.name}</div>
+              </div>
+              <button className="icon-btn" style={{border:'none',background:'var(--bg-sunken)'}} onClick={closeModal}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {formError && (
+                <div style={{fontSize:12.5,color:'var(--red-600,#DC2626)',fontWeight:600,marginBottom:14,display:'flex',alignItems:'center',gap:5}}>
+                  <Icon name="alert" size={14} />{formError}
+                </div>
+              )}
+              <div className="field">
+                <label className="field-label">Channel name<span className="req">*</span></label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter channel name"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label className="field-label">Type<span className="req">*</span></label>
+                <select
+                  className="select"
+                  value={formData.type}
+                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
+                >
+                  <option value="TV">TV</option>
+                  <option value="RADIO">Radio</option>
+                  <option value="PRINT">Print</option>
+                </select>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-ghost" onClick={closeModal}>Cancel</button>
+              <button className="btn btn-primary" disabled={submitting} onClick={handleAddChannel}>
+                <Icon name="plus" size={16} />{submitting ? 'Adding…' : 'Add channel'}
+              </button>
+            </div>
           </div>
-        )}
-        <form onSubmit={handleAddChannel} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Channel Name
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, name: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="Enter channel name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Type
-            </label>
-            <select
-              value={formData.type}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, type: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-            >
-              <option value="TV">TV</option>
-              <option value="RADIO">Radio</option>
-              <option value="PRINT">Print</option>
-            </select>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddModal(false);
-                setFormError('');
-              }}
-              className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-            >
-              {submitting ? 'Adding...' : 'Add Channel'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }

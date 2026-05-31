@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, KeyRound, Shield } from 'lucide-react';
-import LoadingSpinner from '../components/LoadingSpinner';
+import Icon, { Avatar, RoleBadge } from '../components/Icon';
 
 export default function ProfilePage() {
   const { user, changePassword } = useAuth();
@@ -22,12 +21,10 @@ export default function ProfilePage() {
       setError('New password must be at least 8 characters long.');
       return;
     }
-
     if (newPassword !== confirmPassword) {
       setError('New passwords do not match.');
       return;
     }
-
     if (currentPassword === newPassword) {
       setError('New password must be different from current password.');
       return;
@@ -43,126 +40,106 @@ export default function ProfilePage() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-          'Failed to change password. Please check your current password.'
+        'Failed to change password. Please check your current password.'
       );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const userInitials = user?.name
-    ? user.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : 'U';
+  const userName = user?.name || 'User';
+  const userRole = user?.role || 'PLANNER';
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+    <div className="content-narrow fade-in" style={{ maxWidth: 640 }}>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Profile</h1>
+          <p className="page-sub">Manage your account & password</p>
+        </div>
+      </div>
 
-      {/* User Info */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-5">
-          <div className="h-16 w-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl font-bold flex-shrink-0">
-            {userInitials}
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {user?.name || 'User'}
-            </h2>
-            <p className="text-gray-500">{user?.email}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <Shield className="h-4 w-4 text-indigo-500" />
-              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-50 text-indigo-700">
-                {user?.role?.replace('_', ' ') || 'User'}
-              </span>
+      <div className="section-card" style={{ marginBottom: 20 }}>
+        <div style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Avatar name={userName} size={56} />
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>{userName}</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{user?.email}</div>
+              <div style={{ marginTop: 8 }}><RoleBadge role={userRole} /></div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Change Password */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
-            <KeyRound className="h-5 w-5 text-amber-600" />
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900">
+      <div className="section-card">
+        <div className="section-head">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="lock" size={16} />
             Change Password
-          </h2>
+          </h3>
         </div>
+        <div style={{ padding: '22px 24px' }}>
+          {error && (
+            <div style={{ marginBottom: 16, padding: '10px 13px', borderRadius: 9, background: 'var(--red-100)', color: 'var(--red-600)', fontSize: 13, fontWeight: 600 }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div style={{ marginBottom: 16, padding: '10px 13px', borderRadius: 9, background: 'var(--green-100)', color: 'var(--green-600)', fontSize: 13, fontWeight: 600 }}>
+              {success}
+            </div>
+          )}
 
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
-            {success}
-          </div>
-        )}
-
-        <form onSubmit={handleChangePassword} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Current Password
-            </label>
-            <input
-              type="password"
-              required
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="Enter current password"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              New Password
-            </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="At least 8 characters"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="Confirm new password"
-            />
-          </div>
-          <div className="pt-2">
+          <form onSubmit={handleChangePassword}>
+            <div className="field">
+              <label className="field-label">Current Password <span className="req">*</span></label>
+              <input
+                className="input"
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+              />
+            </div>
+            <div className="field-grid2">
+              <div className="field">
+                <label className="field-label">New Password <span className="req">*</span></label>
+                <input
+                  className="input"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
+              </div>
+              <div className="field">
+                <label className="field-label">Confirm Password <span className="req">*</span></label>
+                <input
+                  className="input"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                />
+              </div>
+            </div>
             <button
+              className="btn btn-primary"
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ marginTop: 4 }}
             >
-              {submitting ? (
-                <LoadingSpinner size="sm" />
-              ) : (
-                'Update Password'
-              )}
+              <Icon name="check" size={16} />
+              {submitting ? 'Updating…' : 'Update Password'}
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

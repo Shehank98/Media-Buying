@@ -1,27 +1,25 @@
-import { useState, useEffect } from 'react';
-import { BarChart3, Download, FileText, Search } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import Icon, { TypeBadge, fmtLKR } from '../components/Icon';
 import api from '../lib/api';
-import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function ReportsPage() {
-  const [mode, setMode] = useState('channel');
   const [agencies, setAgencies] = useState([]);
-  const [channels, setChannels] = useState([]);
-  const [clients, setClients] = useState([]);
   const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [agenciesLoading, setAgenciesLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
 
   const [selectedAgency, setSelectedAgency] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('');
   const [selectedClient, setSelectedClient] = useState('');
 
-  const [loading, setLoading] = useState(false);
-  const [agenciesLoading, setAgenciesLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [sortField, setSortField] = useState('name');
+  const [sortField, setSortField] = useState('clientName');
   const [sortDir, setSortDir] = useState('asc');
 
+  /* ---- data fetching ---- */
   useEffect(() => {
-    const fetchAgencies = async () => {
+    (async () => {
       try {
         const { data } = await api.get('/agencies');
         setAgencies(data.agencies || data || []);
@@ -30,398 +28,274 @@ export default function ReportsPage() {
       } finally {
         setAgenciesLoading(false);
       }
-    };
-    fetchAgencies();
+    })();
   }, []);
 
   useEffect(() => {
-    if (!selectedAgency) {
-      setChannels([]);
-      setClients([]);
-      setResults([]);
-      return;
-    }
-
-    const fetchOptions = async () => {
+    if (!selectedAgency) { setResults([]); return; }
+    (async () => {
+      setLoading(true);
+      setError('');
       try {
-        if (mode === 'channel') {
-          const { data } = await api.get(
-            `/agencies/${selectedAgency}/clients`
-          );
-          const allClients = data.clients || data || [];
-          setClients(allClients);
-          const channelPromises = allClients.map((c) =>
-            api.get(`/clients/${c.id}/channels`).then((r) => {
+        const { data } = await api.get(`/agencies/${selectedAgency}/clients`);
+        const allClients = data.clients || data || [];
+        const channelPromises = allClients.map(c =>
+          api.get(`/clients/${c.id}/channels`)
+            .then(r => {
               const chs = r.data.channels || r.data || [];
-              return chs.map((ch) => ({ ...ch, clientName: c.name }));
-            }).catch(() => [])
-          );
-          const channelArrays = await Promise.all(channelPromises);
-          setChannels(channelArrays.flat());
-        } else {
-          const { data } = await api.get(
-            `/agencies/${selectedAgency}/clients`
-          );
-          setClients(data.clients || data || []);
-        }
+              return chs.flatMap(ch =>
+                (ch.properties || []).map(p => ({
+                  ...p,
+                  clientName: c.name,
+                  channelName: ch.name,
+                  channelType: ch.type,
+                }))
+              );
+            })
+            .catch(() => [])
+        );
+        const propertyArrays = await Promise.all(channelPromises);
+        setResults(propertyArrays.flat());
       } catch {
-        // Silently handle
-      }
-    };
-    fetchOptions();
-  }, [selectedAgency, mode]);
-
-  const fetchReport = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      let url = '';
-      if (mode === 'channel' && selectedChannel) {
-        url = `/reports/channel/${selectedChannel}`;
-      } else if (mode === 'client' && selectedClient) {
-        url = `/reports/client/${selectedClient}`;
-      } else {
+        setError('Failed to load report data.');
+      } finally {
         setLoading(false);
-        return;
       }
-      const { data } = await api.get(url);
-      setResults(data.properties || data.results || data || []);
-    } catch (err) {
-      setError('Failed to load report data.');
-    } finally {
-      setLoading(false);
-    }
+    })();
+  }, [selectedAgency]);
+
+  /* ---- derived ---- */
+  const uniqueChannels = useMemo(() => {
+    const map = new Map();
+    results.forEach(r => { if (r.channelName) map.set(r.channelName, true); });
+    return [...map.keys()];
+  }, [results]);
+
+  const uniqueClients = useMemo(() => {
+    const map = new Map();
+    results.forEach(r => { if (r.clientName) map.set(r.clientName, true); });
+    return [...map.keys()];
+  }, [results]);
+
+  const filtered = useMemo(() => {
+    let rows = results;
+    if (selectedChannel) rows = rows.filter(r => r.channelName === selectedChannel);
+    if (selectedClient) rows = rows.filter(r => r.clientName === selectedClient);
+    return rows;
+  }, [results, selectedChannel, selectedClient]);
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      if (sortField === 'cost') {
+        aVal = Number(aVal) || 0;
+        bVal = Number(bVal) || 0;
+      } else {
+        aVal = String(aVal || '').toLowerCase();
+        bVal = String(bVal || '').toLowerCase();
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filtered, sortField, sortDir]);
+
+  const totalCost = useMemo(
+    () => filtered.reduce((s, r) => s + (Number(r.cost) || 0), 0),
+    [filtered]
+  );
+
+  const filtersActive = selectedChannel || selectedClient;
+
+  const resetFilters = () => {
+    setSelectedChannel('');
+    setSelectedClient('');
   };
 
-  const handleExport = async (format) => {
+  /* ---- sort helpers ---- */
+  const handleSort = field => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
+  };
+  const sortIcon = field => sortField !== field ? '' : sortDir === 'asc' ? ' ↑' : ' ↓';
+
+  /* ---- export ---- */
+  const handleExport = async format => {
     try {
-      let url = '';
-      if (mode === 'channel' && selectedChannel) {
-        url = `/reports/channel/${selectedChannel}?format=${format}`;
-      } else if (mode === 'client' && selectedClient) {
-        url = `/reports/client/${selectedClient}?format=${format}`;
-      } else {
-        return;
-      }
-      const response = await api.get(url, { responseType: 'blob' });
+      const params = new URLSearchParams({ format });
+      if (selectedAgency) params.set('agencyId', selectedAgency);
+      if (selectedChannel) params.set('channel', selectedChannel);
+      if (selectedClient) params.set('client', selectedClient);
+
+      const response = await api.get(`/reports/export?${params}`, { responseType: 'blob' });
       const blob = new Blob([response.data]);
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = url;
       link.download = `report.${format === 'excel' ? 'xlsx' : 'pdf'}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      window.URL.revokeObjectURL(url);
+      showToast(`${format === 'excel' ? 'Excel' : 'PDF'} exported successfully`);
     } catch {
       setError(`Failed to export ${format}.`);
     }
   };
 
-  const sortedResults = [...results].sort((a, b) => {
-    let aVal = a[sortField];
-    let bVal = b[sortField];
-    if (sortField === 'cost') {
-      aVal = Number(aVal) || 0;
-      bVal = Number(bVal) || 0;
-    } else {
-      aVal = String(aVal || '').toLowerCase();
-      bVal = String(bVal || '').toLowerCase();
-    }
-    if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDir('asc');
-    }
+  const showToast = msg => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
   };
 
-  const sortIcon = (field) => {
-    if (sortField !== field) return '';
-    return sortDir === 'asc' ? ' ↑' : ' ↓';
-  };
-
-  const formatCurrency = (value) => {
-    if (value == null) return '-';
-    return Number(value).toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    });
-  };
-
+  /* ---- render ---- */
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-gray-500 mt-1">
-          Generate and export media buying reports.
-        </p>
-      </div>
-
-      {/* Mode tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-6">
-          <button
-            onClick={() => {
-              setMode('channel');
-              setResults([]);
-              setSelectedChannel('');
-              setSelectedClient('');
-            }}
-            className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-colors ${
-              mode === 'channel'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <BarChart3 className="h-4 w-4" />
-            By Channel
+    <div className="fade-in">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Buying Manager Report</h1>
+          <p className="page-sub">Cross-client buying summary &mdash; read-only view for managers</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => handleExport('excel')}>
+            <Icon name="download" size={16} /> Export Excel
           </button>
-          <button
-            onClick={() => {
-              setMode('client');
-              setResults([]);
-              setSelectedChannel('');
-              setSelectedClient('');
-            }}
-            className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-colors ${
-              mode === 'client'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <FileText className="h-4 w-4" />
-            By Client
+          <button className="btn btn-navy" onClick={() => handleExport('pdf')}>
+            <Icon name="download" size={16} /> Export PDF
           </button>
-        </nav>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Agency
-            </label>
-            <select
-              value={selectedAgency}
-              onChange={(e) => {
-                setSelectedAgency(e.target.value);
-                setSelectedChannel('');
-                setSelectedClient('');
-                setResults([]);
-              }}
-              disabled={agenciesLoading}
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-            >
-              <option value="">Select agency...</option>
-              {agencies.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {mode === 'channel' ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Channel
-              </label>
-              <select
-                value={selectedChannel}
-                onChange={(e) => {
-                  setSelectedChannel(e.target.value);
-                  setResults([]);
-                }}
-                disabled={!selectedAgency}
-                className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-400"
-              >
-                <option value="">Select channel...</option>
-                {channels.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.type})
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Client
-              </label>
-              <select
-                value={selectedClient}
-                onChange={(e) => {
-                  setSelectedClient(e.target.value);
-                  setResults([]);
-                }}
-                disabled={!selectedAgency}
-                className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-400"
-              >
-                <option value="">Select client...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="flex items-end">
-            <button
-              onClick={fetchReport}
-              disabled={
-                loading ||
-                !selectedAgency ||
-                (mode === 'channel' ? !selectedChannel : !selectedClient)
-              }
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full justify-center"
-            >
-              <Search className="h-4 w-4" />
-              Generate Report
-            </button>
-          </div>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+        <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>
           {error}
+          <button onClick={() => setError('')} style={{ marginLeft: 8, fontWeight: 600, textDecoration: 'underline', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>Dismiss</button>
         </div>
       )}
 
-      {/* Results */}
-      {loading ? (
-        <LoadingSpinner size="lg" className="py-12" />
-      ) : results.length > 0 ? (
-        <div className="space-y-4">
-          {/* Export buttons */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              {results.length} propert{results.length !== 1 ? 'ies' : 'y'}{' '}
-              found
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleExport('excel')}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <Download className="h-4 w-4" />
-                Export Excel
-              </button>
-              <button
-                onClick={() => handleExport('pdf')}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                <Download className="h-4 w-4" />
-                Export PDF
-              </button>
-            </div>
-          </div>
+      {/* Agency selector */}
+      <div style={{ marginBottom: 16 }}>
+        <div className="filter-field" style={{ maxWidth: 300 }}>
+          <label>Agency</label>
+          <select
+            className="select"
+            value={selectedAgency}
+            onChange={e => {
+              setSelectedAgency(e.target.value);
+              setSelectedChannel('');
+              setSelectedClient('');
+              setResults([]);
+            }}
+            disabled={agenciesLoading}
+          >
+            <option value="">Select agency...</option>
+            {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50">
-                    <th
-                      className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer hover:text-gray-900"
-                      onClick={() => handleSort('name')}
-                    >
-                      Name{sortIcon('name')}
-                    </th>
-                    <th
-                      className="text-left px-4 py-3 font-medium text-gray-600 cursor-pointer hover:text-gray-900"
-                      onClick={() => handleSort('type')}
-                    >
-                      Type{sortIcon('type')}
-                    </th>
-                    <th
-                      className="text-right px-4 py-3 font-medium text-gray-600 cursor-pointer hover:text-gray-900"
-                      onClick={() => handleSort('cost')}
-                    >
-                      Cost{sortIcon('cost')}
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">
-                      {mode === 'client' ? 'Channel' : 'Client'}
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">
-                      Created By
-                    </th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedResults.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {item.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
-                          {item.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-900">
-                        {formatCurrency(item.cost)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                        {mode === 'client'
-                          ? item.channel?.name || item.channelName || '-'
-                          : item.client?.name || item.clientName || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
-                        {item.createdBy?.name || item.createdByName || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
-                        {item.createdAt
-                          ? new Date(item.createdAt).toLocaleDateString()
-                          : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-gray-200 bg-gray-50">
-                    <td
-                      colSpan={2}
-                      className="px-4 py-3 font-semibold text-gray-900"
-                    >
-                      Total
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                      {formatCurrency(
-                        results.reduce(
-                          (sum, r) => sum + (Number(r.cost) || 0),
-                          0
-                        )
-                      )}
-                    </td>
-                    <td
-                      colSpan={3}
-                      className="hidden md:table-cell"
-                    />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+      {/* Filter bar */}
+      {results.length > 0 && (
+        <div className="filterbar">
+          <div className="filter-field">
+            <label>Channel</label>
+            <select className="select" value={selectedChannel} onChange={e => setSelectedChannel(e.target.value)}>
+              <option value="">All channels</option>
+              {uniqueChannels.map(ch => <option key={ch} value={ch}>{ch}</option>)}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label>Client</label>
+            <select className="select" value={selectedClient} onChange={e => setSelectedClient(e.target.value)}>
+              <option value="">All clients</option>
+              {uniqueClients.map(cl => <option key={cl} value={cl}>{cl}</option>)}
+            </select>
+          </div>
+          {filtersActive && (
+            <button className="btn btn-subtle btn-sm" onClick={resetFilters}>
+              <Icon name="x" size={15} />Clear filters
+            </button>
+          )}
+          <div style={{ marginLeft: 'auto', marginBottom: 4, fontSize: 12.5, color: 'var(--muted)' }}>
+            <b style={{ color: 'var(--ink)', fontWeight: 700 }}>{filtered.length}</b> results
           </div>
         </div>
-      ) : null}
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+          Loading report data...
+        </div>
+      )}
+
+      {/* Results table */}
+      {!loading && sorted.length > 0 && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th onClick={() => handleSort('clientName')} style={{ cursor: 'pointer' }}>Client{sortIcon('clientName')}</th>
+                <th onClick={() => handleSort('channelName')} style={{ cursor: 'pointer' }}>Channel{sortIcon('channelName')}</th>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>Property{sortIcon('name')}</th>
+                <th onClick={() => handleSort('type')} style={{ cursor: 'pointer' }}>Type{sortIcon('type')}</th>
+                <th onClick={() => handleSort('cost')} style={{ cursor: 'pointer', textAlign: 'right' }}>Cost (LKR){sortIcon('cost')}</th>
+                <th onClick={() => handleSort('createdByName')} style={{ cursor: 'pointer' }}>Planner{sortIcon('createdByName')}</th>
+                <th onClick={() => handleSort('createdAt')} style={{ cursor: 'pointer' }}>Date{sortIcon('createdAt')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(item => {
+                const cost = Number(item.cost) || 0;
+                const isAddedValue = cost === 0;
+                return (
+                  <tr key={item.id}>
+                    <td className="strong">{item.clientName || '-'}</td>
+                    <td>{item.channelName || item.channel?.name || '-'}</td>
+                    <td>{item.name}</td>
+                    <td><TypeBadge type={item.type} /></td>
+                    <td className="num mono" style={isAddedValue ? { color: 'var(--green-600)' } : undefined}>
+                      {isAddedValue ? 'Added value' : fmtLKR(cost)}
+                    </td>
+                    <td>{item.createdBy?.name || item.createdByName || '-'}</td>
+                    <td>
+                      {item.createdAt
+                        ? new Date(item.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : '-'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="strong" colSpan={4}>
+                  Total &mdash; {filtered.length} propert{filtered.length !== 1 ? 'ies' : 'y'}
+                </td>
+                <td className="num mono">{fmtLKR(totalCost)}</td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && selectedAgency && results.length > 0 && sorted.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+          <Icon name="search" size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+          <p>No buys match these filters</p>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="toast">
+          <span className="toast-icon"><Icon name="check" size={14} /></span>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

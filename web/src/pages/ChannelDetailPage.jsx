@@ -1,49 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  History,
-  Tv,
-  Radio,
-  Newspaper,
-  Clock,
-  User as UserIcon,
-} from 'lucide-react';
+import Icon, { Avatar, TypeBadge, fmtLKR } from '../components/Icon';
 import api from '../lib/api';
-import LoadingSpinner from '../components/LoadingSpinner';
-import Modal from '../components/Modal';
 
-const typeColors = {
-  TV: 'bg-blue-100 text-blue-700',
-  RADIO: 'bg-green-100 text-green-700',
-  PRINT: 'bg-orange-100 text-orange-700',
-};
-
-const typeIcons = {
-  TV: Tv,
-  RADIO: Radio,
-  PRINT: Newspaper,
-};
-
-const propertyTypeBadge = {
-  BOUGHT_AIRTIME: 'bg-purple-100 text-purple-700',
-  SPONSORSHIP: 'bg-blue-100 text-blue-700',
-  BONUS_COMMERCIAL: 'bg-green-100 text-green-700',
-  OTHER: 'bg-gray-100 text-gray-700',
-};
-
-const propertyTypeLabels = {
-  BOUGHT_AIRTIME: 'Bought Airtime',
-  SPONSORSHIP: 'Sponsorship',
-  BONUS_COMMERCIAL: 'Bonus Commercial',
-  OTHER: 'Other',
+const CHANNEL_ICON = {
+  TV:    { icon: 'tv',    bg: 'var(--blue-50)',  fg: 'var(--blue-700)' },
+  RADIO: { icon: 'radio', bg: 'var(--coral-50)', fg: 'var(--coral-700)' },
+  PRINT: { icon: 'print', bg: 'var(--green-50)', fg: 'var(--green-600)' },
 };
 
 const canModify = (role) =>
   ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN'].includes(role);
+
+const fmtDate = (iso) => {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const fmtTime = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+};
 
 export default function ChannelDetailPage() {
   const { channelId } = useParams();
@@ -55,7 +33,7 @@ export default function ChannelDetailPage() {
   const [error, setError] = useState('');
 
   // Add/Edit property modal
-  const [showPropertyModal, setShowPropertyModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
   const [propertyForm, setPropertyForm] = useState({
     name: '',
@@ -67,11 +45,10 @@ export default function ChannelDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // History modal
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  // History panel
+  const [panel, setPanel] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyPropertyName, setHistoryPropertyName] = useState('');
 
   // Delete confirmation
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -99,15 +76,9 @@ export default function ChannelDetailPage() {
 
   const openAddModal = () => {
     setEditingProperty(null);
-    setPropertyForm({
-      name: '',
-      type: 'BOUGHT_AIRTIME',
-      cost: '',
-      notes: '',
-      changeNote: '',
-    });
+    setPropertyForm({ name: '', type: 'BOUGHT_AIRTIME', cost: '', notes: '', changeNote: '' });
     setFormError('');
-    setShowPropertyModal(true);
+    setShowModal(true);
   };
 
   const openEditModal = (property) => {
@@ -120,7 +91,7 @@ export default function ChannelDetailPage() {
       changeNote: '',
     });
     setFormError('');
-    setShowPropertyModal(true);
+    setShowModal(true);
   };
 
   const handlePropertySubmit = async (e) => {
@@ -158,12 +129,10 @@ export default function ChannelDetailPage() {
         await api.post(`/channels/${channelId}/properties`, payload);
       }
 
-      setShowPropertyModal(false);
+      setShowModal(false);
       await fetchData();
     } catch (err) {
-      setFormError(
-        err.response?.data?.message || 'Failed to save property.'
-      );
+      setFormError(err.response?.data?.message || 'Failed to save property.');
     } finally {
       setSubmitting(false);
     }
@@ -185,9 +154,9 @@ export default function ChannelDetailPage() {
   };
 
   const openHistory = async (property) => {
-    setHistoryPropertyName(property.name);
+    setPanel(property);
     setHistoryLoading(true);
-    setShowHistoryModal(true);
+    setHistoryData([]);
     try {
       const { data } = await api.get(`/properties/${property.id}/history`);
       setHistoryData(data.history || data || []);
@@ -198,391 +167,307 @@ export default function ChannelDetailPage() {
     }
   };
 
-  const formatCurrency = (value) => {
-    if (value == null) return '-';
-    return Number(value).toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    });
-  };
-
   if (loading) {
-    return <LoadingSpinner size="lg" className="py-20" />;
-  }
-
-  if (error) {
     return (
-      <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-700">
-        {error}
+      <div className="content-narrow fade-in" style={{ padding: '80px 0', textAlign: 'center', color: 'var(--muted)' }}>
+        Loading...
       </div>
     );
   }
 
-  const TypeIcon = typeIcons[channel?.type] || Tv;
+  if (error) {
+    return (
+      <div className="content-narrow fade-in" style={{ padding: '40px 0' }}>
+        <div style={{ background: 'var(--red-100, #fee)', border: '1px solid var(--red-200, #fcc)', borderRadius: 10, padding: 16, color: 'var(--red-600, #c00)' }}>
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  const ci = CHANNEL_ICON[channel?.type] || CHANNEL_ICON.TV;
+  const clientName = channel?.client?.name || channel?.clientName || 'Client';
+  const totalCost = properties.reduce((sum, p) => sum + (Number(p.cost) || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="content-narrow fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div
-            className={`h-14 w-14 rounded-xl flex items-center justify-center flex-shrink-0 ${
-              typeColors[channel?.type] || 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            <TypeIcon className="h-7 w-7" />
+      <div className="page-head">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: ci.bg, color: ci.fg, flexShrink: 0,
+          }}>
+            <Icon name={ci.icon} size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {channel?.name}
-              </h1>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  typeColors[channel?.type] || 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {channel?.type}
-              </span>
-            </div>
-            <p className="text-gray-500 mt-0.5">
-              Client:{' '}
-              <Link
-                to={`/clients/${channel?.clientId}`}
-                className="text-indigo-600 hover:text-indigo-500"
-              >
-                {channel?.client?.name || channel?.clientName || 'Client'}
+            <h1 className="page-title">{channel?.name}</h1>
+            <div className="page-sub">
+              <Link to={`/clients/${channel?.clientId}`} style={{ color: 'var(--coral-600)', textDecoration: 'none', fontWeight: 600 }}>
+                {clientName}
               </Link>
-            </p>
+              {' '}&middot; {properties.length} {properties.length === 1 ? 'property' : 'properties'} &middot; {fmtLKR(totalCost)}
+            </div>
           </div>
         </div>
         {canModify(user?.role) && (
-          <button
-            onClick={openAddModal}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Add Property
+          <button className="btn btn-primary" onClick={openAddModal}>
+            <Icon name="plus" size={16} />
+            Add property
           </button>
         )}
       </div>
 
       {/* Properties table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="tbl-wrap">
         {properties.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500">No properties yet. Add one to get started.</p>
+          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5 }}>
+            No properties yet. Add one to get started.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Name
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">
-                    Type
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">
-                    Cost
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">
-                    Created By
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">
-                    Date
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {properties.map((property) => (
-                  <tr
-                    key={property.id}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {property.name}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          propertyTypeBadge[property.type] ||
-                          'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {propertyTypeLabels[property.type] || property.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {formatCurrency(property.cost)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {property.createdBy?.name || property.createdByName || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
-                      {property.createdAt
-                        ? new Date(property.createdAt).toLocaleDateString()
-                        : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openHistory(property)}
-                          title="View History"
-                          className="rounded-lg p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                        >
-                          <History className="h-4 w-4" />
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Property name</th>
+                <th>Type</th>
+                <th className="num">Cost (LKR)</th>
+                <th>Added by</th>
+                <th>Date</th>
+                <th className="num">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {properties.map((property) => (
+                <tr key={property.id}>
+                  <td className="strong">{property.name}</td>
+                  <td><TypeBadge type={property.type} /></td>
+                  <td className="num mono">
+                    {Number(property.cost) === 0
+                      ? <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Added value</span>
+                      : fmtLKR(property.cost)}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar name={property.createdBy?.name || property.createdByName || '-'} size={24} />
+                      <span>{property.createdBy?.name || property.createdByName || '-'}</span>
+                    </div>
+                  </td>
+                  <td>{fmtDate(property.createdAt)}</td>
+                  <td>
+                    <div className="row-actions">
+                      {canModify(user?.role) && (
+                        <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
+                          <Icon name="edit" size={16} />
                         </button>
-                        {canModify(user?.role) && (
-                          <>
-                            <button
-                              onClick={() => openEditModal(property)}
-                              title="Edit"
-                              className="rounded-lg p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setDeletingProperty(property);
-                                setShowDeleteModal(true);
-                              }}
-                              title="Delete"
-                              className="rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      )}
+                      <button className="act-btn" title="History" onClick={() => openHistory(property)}>
+                        <Icon name="history" size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2}>Total committed</td>
+                <td className="num mono">{fmtLKR(totalCost)}</td>
+                <td colSpan={3} />
+              </tr>
+            </tfoot>
+          </table>
         )}
       </div>
 
-      {/* Add/Edit Property Modal */}
-      <Modal
-        isOpen={showPropertyModal}
-        onClose={() => setShowPropertyModal(false)}
-        title={editingProperty ? 'Edit Property' : 'Add Property'}
-      >
-        {formError && (
-          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-            {formError}
+      {/* History slide-out panel */}
+      <div className={`scrim${panel ? ' show' : ''}`} onClick={() => setPanel(null)} />
+      <div className={`panel${panel ? ' show' : ''}`}>
+        <div className="panel-head">
+          <div style={{ flex: 1 }}>
+            <div className="panel-title">Change history</div>
+            <div className="panel-sub">{panel?.name} &middot; {channel?.name}</div>
           </div>
-        )}
-        <form onSubmit={handlePropertySubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Name
-            </label>
-            <input
-              type="text"
-              required
-              value={propertyForm.name}
-              onChange={(e) =>
-                setPropertyForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="Property name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Type
-            </label>
-            <select
-              value={propertyForm.type}
-              onChange={(e) =>
-                setPropertyForm((prev) => ({ ...prev, type: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-            >
-              <option value="BOUGHT_AIRTIME">Bought Airtime</option>
-              <option value="SPONSORSHIP">Sponsorship</option>
-              <option value="BONUS_COMMERCIAL">Bonus Commercial</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Cost
-            </label>
-            <input
-              type="number"
-              required
-              min="0"
-              step="0.01"
-              value={propertyForm.cost}
-              onChange={(e) =>
-                setPropertyForm((prev) => ({ ...prev, cost: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors"
-              placeholder="0.00"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Notes
-            </label>
-            <textarea
-              rows={3}
-              value={propertyForm.notes}
-              onChange={(e) =>
-                setPropertyForm((prev) => ({ ...prev, notes: e.target.value }))
-              }
-              className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors resize-none"
-              placeholder="Optional notes..."
-            />
-          </div>
-          {editingProperty && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Change Note <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                rows={2}
-                required
-                value={propertyForm.changeNote}
-                onChange={(e) =>
-                  setPropertyForm((prev) => ({
-                    ...prev,
-                    changeNote: e.target.value,
-                  }))
-                }
-                className="block w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-colors resize-none"
-                placeholder="Describe what changed and why..."
-              />
-            </div>
-          )}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setShowPropertyModal(false)}
-              className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-            >
-              {submitting
-                ? 'Saving...'
-                : editingProperty
-                ? 'Save Changes'
-                : 'Add Property'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* History Modal */}
-      <Modal
-        isOpen={showHistoryModal}
-        onClose={() => setShowHistoryModal(false)}
-        title={`History: ${historyPropertyName}`}
-        maxWidth="max-w-2xl"
-      >
-        {historyLoading ? (
-          <LoadingSpinner size="md" className="py-8" />
-        ) : historyData.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No history available.</p>
-        ) : (
-          <div className="max-h-96 overflow-y-auto">
-            <div className="relative border-l-2 border-gray-200 ml-4 space-y-6 py-2">
-              {historyData.map((entry, index) => (
-                <div key={entry.id || index} className="relative pl-6">
-                  <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full bg-white border-2 border-indigo-400" />
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <UserIcon className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="font-medium text-gray-900">
-                        {entry.changedBy?.name || entry.changedByName || 'Unknown'}
-                      </span>
-                      <span className="text-gray-400">-</span>
-                      <Clock className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="text-gray-500">
-                        {entry.createdAt
-                          ? new Date(entry.createdAt).toLocaleString()
-                          : '-'}
-                      </span>
-                    </div>
-                    {entry.changeNote && (
-                      <p className="mt-2 text-sm text-gray-700 italic">
-                        &quot;{entry.changeNote}&quot;
-                      </p>
-                    )}
-                    {entry.changes && (
-                      <div className="mt-2 text-xs text-gray-600 space-y-1">
-                        {Object.entries(
-                          typeof entry.changes === 'string'
-                            ? JSON.parse(entry.changes)
-                            : entry.changes
-                        ).map(([key, val]) => (
-                          <div key={key}>
-                            <span className="font-medium">{key}:</span>{' '}
-                            {typeof val === 'object'
-                              ? `${val.from || '-'} → ${val.to || '-'}`
-                              : String(val)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={showDeleteModal}
-        onClose={() => {
-          setShowDeleteModal(false);
-          setDeletingProperty(null);
-        }}
-        title="Delete Property"
-      >
-        <p className="text-gray-600 mb-6">
-          Are you sure you want to delete{' '}
-          <span className="font-semibold text-gray-900">
-            {deletingProperty?.name}
-          </span>
-          ? This action cannot be undone.
-        </p>
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setShowDeleteModal(false);
-              setDeletingProperty(null);
-            }}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:opacity-50 transition-colors"
-          >
-            {deleting ? 'Deleting...' : 'Delete'}
+          <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => setPanel(null)}>
+            <Icon name="x" size={18} />
           </button>
         </div>
-      </Modal>
+        <div className="panel-body">
+          {historyLoading ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Loading history...
+            </div>
+          ) : historyData.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              No history available.
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, fontSize: 12.5, color: 'var(--muted)' }}>
+                <Icon name="history" size={15} />
+                {historyData.length} changes &middot; newest first
+              </div>
+              <div className="timeline">
+                {historyData.map((h, i) => (
+                  <div className={`tl-item${i === historyData.length - 1 ? ' old' : ''}`} key={h.id || i}>
+                    <div className="tl-node" />
+                    <div className="tl-meta">
+                      <span className="tl-date">{fmtDate(h.createdAt)}</span>
+                      <span className="tl-who">{fmtTime(h.createdAt)} &middot; by {h.changedBy?.name || 'Unknown'}</span>
+                    </div>
+                    <div className="tl-change">
+                      <div className="tl-field">{h.fieldName || 'Changed'}</div>
+                      <div className="tl-vals">
+                        {h.oldValue ? (
+                          <>
+                            <span className="tl-old">{h.oldValue}</span>
+                            <span className="tl-arrow"><Icon name="chevR" size={15} /></span>
+                          </>
+                        ) : null}
+                        <span className="tl-new">{h.newValue || h.changeNote || 'Updated'}</span>
+                      </div>
+                      {h.changeNote && <div className="tl-note">{h.changeNote}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Add/Edit Property Modal */}
+      {showModal && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          <div className="modal" style={{ width: 500 }}>
+            <div className="modal-head">
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>
+                  {editingProperty ? 'Edit property' : 'Add property'}
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
+                  {clientName} &middot; {channel?.name}
+                </div>
+              </div>
+              <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => setShowModal(false)}>
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+            <form onSubmit={handlePropertySubmit}>
+              <div className="modal-body">
+                {formError && (
+                  <div className="field-err" style={{ marginBottom: 14, fontSize: 12.5, padding: '8px 10px', background: 'var(--red-100, #fee)', borderRadius: 6 }}>
+                    <Icon name="alert" size={14} />
+                    {formError}
+                  </div>
+                )}
+
+                <div className="field">
+                  <label className="field-label">
+                    Property name<span className="req">*</span>
+                  </label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="Property name"
+                    value={propertyForm.name}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">Type</label>
+                    <select
+                      className="select"
+                      value={propertyForm.type}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, type: e.target.value }))}
+                    >
+                      <option value="BOUGHT_AIRTIME">Bought Airtime</option>
+                      <option value="SPONSORSHIP">Sponsorship</option>
+                      <option value="BONUS_COMMERCIAL">Bonus Commercial</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label">Cost (LKR)</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0"
+                      value={propertyForm.cost}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, cost: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Notes</label>
+                  <textarea
+                    className="textarea"
+                    rows={3}
+                    placeholder="Optional notes..."
+                    value={propertyForm.notes}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  />
+                </div>
+
+                {editingProperty && (
+                  <div className="field">
+                    <label className="field-label">
+                      Change note<span className="req">*</span>
+                    </label>
+                    <textarea
+                      className="textarea"
+                      rows={2}
+                      placeholder="Describe what changed and why..."
+                      value={propertyForm.changeNote}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, changeNote: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>
+                  <Icon name="check" size={16} />
+                  {submitting ? 'Saving...' : editingProperty ? 'Save changes' : 'Add property'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) { setShowDeleteModal(false); setDeletingProperty(null); } }}>
+          <div className="modal" style={{ width: 420 }}>
+            <div className="modal-head">
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>Delete property</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>{deletingProperty?.name}</div>
+              </div>
+              <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => { setShowDeleteModal(false); setDeletingProperty(null); }}>
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--ink-soft)', fontSize: 13.5, margin: 0, lineHeight: 1.6 }}>
+                Are you sure you want to delete <strong style={{ color: 'var(--ink)' }}>{deletingProperty?.name}</strong>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeletingProperty(null); }}>Cancel</button>
+              <button className="btn" style={{ background: 'var(--red-600, #dc2626)', color: '#fff' }} disabled={deleting} onClick={handleDelete}>
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

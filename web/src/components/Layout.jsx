@@ -1,237 +1,139 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  LayoutDashboard,
-  Building2,
-  BarChart3,
-  Shield,
-  User,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
-} from 'lucide-react';
+import Icon, { Avatar, RoleBadge } from './Icon';
 
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: null },
-  { name: 'Agencies', href: '/agencies', icon: Building2, roles: null },
-  {
-    name: 'Reports',
-    href: '/reports',
-    icon: BarChart3,
-    roles: ['SUPER_ADMIN', 'MANAGER'],
-  },
-  { name: 'Admin', href: '/admin', icon: Shield, roles: ['SUPER_ADMIN'] },
+const NAV = [
+  { key: '/', label: 'Dashboard', icon: 'grid' },
+  { key: '/agencies', label: 'Agencies', icon: 'building' },
+  { key: '/clients', label: 'Clients', icon: 'folder' },
+  { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
+];
+const NAV_ADMIN = [
+  { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
+  { key: '/profile', label: 'Profile', icon: 'user' },
 ];
 
-const pageTitles = {
-  '/': 'Dashboard',
-  '/agencies': 'Agencies',
-  '/reports': 'Reports',
-  '/admin': 'Administration',
-  '/admin/users': 'User Management',
-  '/admin/teams': 'Team Management',
-  '/profile': 'Profile',
-};
+function Breadcrumbs({ go }) {
+  const location = useLocation();
+  const path = location.pathname;
 
-function getBreadcrumbs(pathname) {
-  const segments = pathname.split('/').filter(Boolean);
-  const crumbs = [{ name: 'Home', href: '/' }];
-  let currentPath = '';
+  const home = <a onClick={() => go('/')}>Ogilvy Media</a>;
+  const sep = <Icon name="chevR" size={14} />;
 
-  for (const segment of segments) {
-    currentPath += `/${segment}`;
-    const title = pageTitles[currentPath];
-    if (title) {
-      crumbs.push({ name: title, href: currentPath });
-    } else {
-      // Dynamic segments - capitalize the segment
-      crumbs.push({
-        name: segment.charAt(0).toUpperCase() + segment.slice(1),
-        href: currentPath,
-      });
-    }
-  }
-
-  return crumbs;
+  if (path === '/') return <><b>Dashboard</b></>;
+  if (path === '/agencies') return <>{home}{sep}<b>Agencies</b></>;
+  if (path === '/clients') return <>{home}{sep}<b>Clients</b></>;
+  if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
+  if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Channel</b></>;
+  if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
+  if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
+  if (path === '/profile') return <>{home}{sep}<b>Profile</b></>;
+  return <>{home}</>;
 }
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const breadcrumbs = getBreadcrumbs(location.pathname);
-  const pageTitle =
-    pageTitles[location.pathname] || breadcrumbs[breadcrumbs.length - 1]?.name || 'Page';
+  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); };
 
-  const filteredNavigation = navigation.filter(
-    (item) => !item.roles || item.roles.includes(user?.role)
-  );
-
-  const handleLogout = async () => {
-    await logout();
+  const activeKey = (key) => {
+    if (key === '/') return location.pathname === '/';
+    return location.pathname.startsWith(key);
   };
 
-  const userInitials = user?.name
-    ? user.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : 'U';
+  const isClientOrChannel = location.pathname.startsWith('/clients/') || location.pathname.startsWith('/channels/');
+  const clientsActive = location.pathname === '/clients' || isClientOrChannel;
+
+  const userName = user?.name || 'User';
+  const userRole = user?.role || 'PLANNER';
+
+  const filteredNav = NAV.filter(n => !n.roles || n.roles.includes(userRole));
+  const filteredAdminNav = NAV_ADMIN.filter(n => !n.roles || n.roles.includes(userRole));
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/30 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:z-auto ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-          <NavLink to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">MB</span>
-            </div>
-            <span className="text-xl font-bold text-gray-900">
-              Media<span className="text-indigo-600">Buy</span>
-            </span>
-          </NavLink>
-          <button
-            type="button"
-            className="lg:hidden rounded-lg p-1 text-gray-400 hover:text-gray-600"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="h-5 w-5" />
-          </button>
+    <div className="app">
+      <div className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">O</div>
+          <div>
+            <div className="brand-name">Ogilvy</div>
+            <div className="brand-sub">MEDIA BUYING RECORDS</div>
+          </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {filteredNavigation.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.href}
-              end={item.href === '/'}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-indigo-50 text-indigo-600'
-                    : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                }`
-              }
-            >
-              <item.icon className="h-5 w-5 flex-shrink-0" />
-              {item.name}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* User info */}
-        <div className="border-t border-gray-200 p-3">
-          <NavLink
-            to="/profile"
-            onClick={() => setSidebarOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                isActive
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`
-            }
-          >
-            <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-semibold">
-              {userInitials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 truncate">
-                {user?.role?.replace('_', ' ') || 'User'}
-              </p>
-            </div>
-          </NavLink>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors w-full mt-1"
-          >
-            <LogOut className="h-5 w-5 flex-shrink-0" />
-            Sign Out
-          </button>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
+        <div className="nav-group">
+          <div className="nav-label">Workspace</div>
+          {filteredNav.map(n => (
             <button
-              type="button"
-              className="lg:hidden rounded-lg p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-              onClick={() => setSidebarOpen(true)}
+              key={n.key}
+              className={`nav-item${n.key === '/clients' ? (clientsActive ? ' active' : '') : (activeKey(n.key) ? ' active' : '')}`}
+              onClick={() => go(n.key)}
             >
-              <Menu className="h-5 w-5" />
+              <Icon name={n.icon} size={18} />
+              {n.label}
             </button>
-
-            {/* Breadcrumbs */}
-            <nav className="hidden sm:flex items-center gap-1 text-sm">
-              {breadcrumbs.map((crumb, index) => (
-                <span key={crumb.href} className="flex items-center gap-1">
-                  {index > 0 && (
-                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                  )}
-                  {index === breadcrumbs.length - 1 ? (
-                    <span className="text-gray-900 font-medium">
-                      {crumb.name}
-                    </span>
-                  ) : (
-                    <NavLink
-                      to={crumb.href}
-                      className="text-gray-500 hover:text-gray-700"
-                    >
-                      {crumb.name}
-                    </NavLink>
-                  )}
-                </span>
-              ))}
-            </nav>
-
-            {/* Mobile title */}
-            <h1 className="sm:hidden text-lg font-semibold text-gray-900">
-              {pageTitle}
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="hidden md:block text-sm text-gray-600">
-              {user?.name}
-            </span>
-            <NavLink
-              to="/profile"
-              className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-semibold hover:bg-indigo-200 transition-colors"
+          ))}
+          <div className="nav-label">Administration</div>
+          {filteredAdminNav.map(n => (
+            <button
+              key={n.key}
+              className={`nav-item${activeKey(n.key) ? ' active' : ''}`}
+              onClick={() => go(n.key)}
             >
-              {userInitials}
-            </NavLink>
-          </div>
-        </header>
+              <Icon name={n.icon} size={18} />
+              {n.label}
+            </button>
+          ))}
+        </div>
 
-        {/* Page content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <div className="sidebar-foot">
+          <div className="user-chip">
+            <Avatar name={userName} size={32} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="nm">{userName}</div>
+              <div className="rl">{userRole.replace('_', ' ')}</div>
+            </div>
+            <button
+              className="nav-item"
+              style={{ width: 'auto', padding: 6 }}
+              title="Sign out"
+              onClick={logout}
+            >
+              <Icon name="logout" size={17} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="main">
+        <div className="topbar">
+          <div className="crumb">
+            <Breadcrumbs go={go} />
+          </div>
+          <div className="topbar-search">
+            <Icon name="search" size={16} />
+            <input placeholder="Search clients, channels, properties…" />
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted-2)', border: '1px solid var(--border-strong)', borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
+          </div>
+          <div className="topbar-spacer" />
+          <button className="icon-btn">
+            <Icon name="bell" size={18} />
+            <span className="dot" />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 6 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.1, whiteSpace: 'nowrap' }}>{userName}</div>
+              <div style={{ marginTop: 3 }}><RoleBadge role={userRole} small /></div>
+            </div>
+            <Avatar name={userName} size={36} />
+          </div>
+        </div>
+
+        <div className="content">
           <Outlet />
-        </main>
+        </div>
       </div>
     </div>
   );

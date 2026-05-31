@@ -9,6 +9,7 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import AgenciesPage from './pages/AgenciesPage';
 import AgencyDetailPage from './pages/AgencyDetailPage';
+import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
 import ChannelDetailPage from './pages/ChannelDetailPage';
 import ReportsPage from './pages/ReportsPage';
@@ -20,12 +21,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-
-          {/* Protected route outside layout */}
           <Route
             path="/change-password"
             element={
@@ -34,8 +32,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* Protected routes inside layout */}
           <Route
             element={
               <ProtectedRoute>
@@ -46,6 +42,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/agencies" element={<AgenciesPage />} />
             <Route path="/agencies/:agencyId" element={<AgencyDetailPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
             <Route
@@ -61,22 +58,6 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
                   <AdminPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/users"
-              element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
-                  <AdminPage initialTab="users" />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/teams"
-              element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
-                  <AdminPage initialTab="teams" />
                 </ProtectedRoute>
               }
             />
