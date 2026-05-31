@@ -16,6 +16,9 @@ import clientRoutes from './routes/client.routes.js';
 import channelRoutes from './routes/channel.routes.js';
 import propertyRoutes from './routes/property.routes.js';
 import reportRoutes from './routes/report.routes.js';
+import brandRoutes from './routes/brand.routes.js';
+import scheduleLogRoutes from './routes/schedulelog.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -40,6 +43,9 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/brands', brandRoutes);
+app.use('/api/schedule-logs', scheduleLogRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

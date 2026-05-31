@@ -42,6 +42,7 @@ model User {
   properties          Property[]           @relation("CreatedBy")
   propertyHistory     PropertyHistory[]    @relation("ChangedBy")
   passwordResetTokens PasswordResetToken[]
+  scheduleLogs        ScheduleLog[]        @relation("ScheduleLogCreator")
 
   @@map("users")
 }
@@ -69,14 +70,17 @@ model UserAgencyAccess {
 }
 
 model Client {
-  id        Int                @id @default(autoincrement())
-  agencyId  Int                @map("agency_id")
-  name      String
-  createdAt DateTime           @default(now()) @map("created_at")
-  agency    Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  users     UserClientAccess[]
-  channels  Channel[]
-  teams     TeamClient[]
+  id           Int                @id @default(autoincrement())
+  agencyId     Int                @map("agency_id")
+  name         String
+  createdAt    DateTime           @default(now()) @map("created_at")
+  agency       Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  users        UserClientAccess[]
+  channels     Channel[]
+  teams        TeamClient[]
+  brands       Brand[]
+  campaigns    Campaign[]
+  scheduleLogs ScheduleLog[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -128,32 +132,55 @@ model TeamClient {
   @@map("team_clients")
 }
 
+// ─── Channel Master (canonical channel registry) ───────────────────────────
+
+model ChannelMaster {
+  id           Int           @id @default(autoincrement())
+  name         String        @unique
+  medium       ChannelType
+  aliases      String[]      @default([])
+  isActive     Boolean       @default(true)  @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  channels     Channel[]
+  scheduleLogs ScheduleLog[]
+
+  @@map("channel_masters")
+}
+
+// ─── Channel (client-specific channel record) ──────────────────────────────
+
 model Channel {
-  id         Int         @id @default(autoincrement())
-  clientId   Int         @map("client_id")
-  type       ChannelType
-  name       String
-  createdAt  DateTime    @default(now()) @map("created_at")
-  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  properties Property[]
+  id              Int            @id @default(autoincrement())
+  clientId        Int            @map("client_id")
+  type            ChannelType
+  name            String
+  channelMasterId Int?           @map("channel_master_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  channelMaster   ChannelMaster? @relation(fields: [channelMasterId], references: [id])
+  properties      Property[]
 
   @@unique([clientId, name])
   @@map("channels")
 }
 
+// ─── Property (negotiated deal on a channel) ───────────────────────────────
+
 model Property {
-  id        Int            @id @default(autoincrement())
-  channelId Int            @map("channel_id")
-  name      String
-  type      PropertyType
-  cost      Decimal        @db.Decimal(12, 2)
-  notes     String?
-  createdBy Int            @map("created_by")
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @updatedAt @map("updated_at")
-  channel   Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  creator   User           @relation("CreatedBy", fields: [createdBy], references: [id])
-  history   PropertyHistory[]
+  id                 Int             @id @default(autoincrement())
+  channelId          Int             @map("channel_id")
+  name               String
+  type               PropertyType
+  cost               Decimal         @db.Decimal(12, 2)
+  bonusPct           Decimal?        @db.Decimal(6, 3)  @map("bonus_pct")
+  sponsorshipDetails String?         @map("sponsorship_details")
+  notes              String?
+  createdBy          Int             @map("created_by")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  channel            Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  creator            User            @relation("CreatedBy", fields: [createdBy], references: [id])
+  history            PropertyHistory[]
 
   @@map("properties")
 }
@@ -171,6 +198,73 @@ model PropertyHistory {
 
   @@map("property_history")
 }
+
+// ─── Brand + Campaign ───────────────────────────────────────────────────────
+
+model Brand {
+  id           Int           @id @default(autoincrement())
+  clientId     Int           @map("client_id")
+  name         String
+  createdAt    DateTime      @default(now()) @map("created_at")
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  campaigns    Campaign[]
+  scheduleLogs ScheduleLog[]
+
+  @@unique([clientId, name])
+  @@map("brands")
+}
+
+model Campaign {
+  id           Int           @id @default(autoincrement())
+  brandId      Int           @map("brand_id")
+  clientId     Int           @map("client_id")
+  name         String
+  createdAt    DateTime      @default(now()) @map("created_at")
+  brand        Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scheduleLogs ScheduleLog[]
+
+  @@unique([brandId, name])
+  @@map("campaigns")
+}
+
+// ─── Schedule Log (monthly execution record) ────────────────────────────────
+
+model ScheduleLog {
+  id              Int           @id @default(autoincrement())
+  clientId        Int           @map("client_id")
+  channelMasterId Int           @map("channel_master_id")
+  brandId         Int?          @map("brand_id")
+  campaignId      Int?          @map("campaign_id")
+  createdBy       Int           @map("created_by")
+  scheduleMonth   DateTime      @map("schedule_month")   // always first day of month
+  invoiceMonth    DateTime?     @map("invoice_month")
+  scheduleValue   Decimal       @db.Decimal(14, 2) @map("schedule_value")
+  invoiceValue    Decimal?      @db.Decimal(14, 2) @map("invoice_value")
+  roNumber        String?       @map("ro_number")
+  cagPct          Decimal?      @db.Decimal(6, 3)  @map("cag_pct")
+  cagAmount       Decimal?      @db.Decimal(14, 2) @map("cag_amount")
+  aorPct          Decimal?      @db.Decimal(6, 3)  @map("aor_pct")
+  aorRevenue      Decimal?      @db.Decimal(14, 2) @map("aor_revenue")
+  mediaGroup      String?       @map("media_group")
+  notes           String?
+  // Phase 2 — reserved as nullable, no breaking migration needed later
+  invoiceSentToClientDate DateTime? @map("invoice_sent_to_client_date")
+  paymentReceivedDate     DateTime? @map("payment_received_date")
+  propertyId              Int?      @map("property_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt      @map("updated_at")
+
+  client        Client        @relation(fields: [clientId],        references: [id], onDelete: Cascade)
+  channelMaster ChannelMaster @relation(fields: [channelMasterId], references: [id])
+  brand         Brand?        @relation(fields: [brandId],         references: [id])
+  campaign      Campaign?     @relation(fields: [campaignId],      references: [id])
+  creator       User          @relation("ScheduleLogCreator",      fields: [createdBy], references: [id])
+
+  @@map("schedule_logs")
+}
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
 
 model PasswordResetToken {
   id        Int      @id @default(autoincrement())
