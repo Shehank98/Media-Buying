@@ -17,6 +17,7 @@ import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
 import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
+import DatabasePage from './pages/DatabasePage';
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
             }
           >
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/database" element={<DatabasePage />} />
             <Route path="/agencies" element={<AgenciesPage />} />
             <Route path="/agencies/:agencyId" element={<AgencyDetailPage />} />
             <Route path="/clients" element={<ClientsPage />} />

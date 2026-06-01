@@ -19,6 +19,8 @@ import reportRoutes from './routes/report.routes.js';
 import brandRoutes from './routes/brand.routes.js';
 import scheduleLogRoutes from './routes/schedulelog.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import databaseRoutes from './routes/database.routes.js';
+import masterdataRoutes from './routes/masterdata.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -46,6 +48,8 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/brands', brandRoutes);
 app.use('/api/schedule-logs', scheduleLogRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/database', databaseRoutes);
+app.use('/api/masterdata', masterdataRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

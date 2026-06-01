@@ -12,6 +12,7 @@ import {
   getMediumSplit,
   getMonthlyTrend,
   getActivityLog,
+  getRecentUploads,
 } from '../controllers/analytics.controller.js';
 
 const router = Router();
@@ -30,5 +31,6 @@ router.get('/dashboard/top-channels', authenticate, requireRole('SUPER_ADMIN', '
 router.get('/dashboard/medium-split', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getMediumSplit);
 router.get('/dashboard/monthly-trend', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getMonthlyTrend);
 router.get('/dashboard/activity-log', authenticate, requireRole('SUPER_ADMIN'), getActivityLog);
+router.get('/dashboard/recent-uploads', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRecentUploads);
 
 export default router;

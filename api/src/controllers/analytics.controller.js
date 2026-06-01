@@ -1,392 +1,102 @@
-import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma.js';
 
 BigInt.prototype.toJSON = function () { return Number(this); };
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const EMPTY = Prisma.raw('');
-
-function buildAgencyFilter(user, agencyId) {
-  if (agencyId) {
-    return Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
-  }
-  if (user.role === 'MANAGER') {
-    return Prisma.sql`AND c.agency_id IN (
-      SELECT agency_id FROM user_agency_access WHERE user_id = ${user.id}
-    )`;
-  }
-  return EMPTY;
-}
-
-function toYearMonth(date) {
-  if (!date) return null;
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toISOString().slice(0, 7);
-}
 
 function safeNum(v) {
   if (v == null) return null;
   return Number(v);
 }
 
-// ── Channel Intelligence ──────────────────────────────────────────────────────
-
-/**
- * GET /analytics/channel/:channelMasterId/summary
- * Access: SUPER_ADMIN, MANAGER, GROUP_HEAD
- */
-export async function getChannelSummary(req, res) {
-  try {
-    const channelMasterId = parseInt(req.params.channelMasterId);
-
-    const channel = await prisma.channelMaster.findUnique({
-      where: { id: channelMasterId },
-      select: { id: true, name: true, medium: true },
-    });
-    if (!channel) return res.status(404).json({ error: 'Channel master not found' });
-
-    const [ytdRows, lastYearRows, bestMonthRows, activeClientsRows, totalRows] =
-      await Promise.all([
-        prisma.$queryRaw`
-          SELECT COALESCE(SUM(invoice_value), 0) AS total
-          FROM schedule_logs
-          WHERE channel_master_id = ${channelMasterId}
-            AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW())
-        `,
-        prisma.$queryRaw`
-          SELECT COALESCE(SUM(invoice_value), 0) AS total
-          FROM schedule_logs
-          WHERE channel_master_id = ${channelMasterId}
-            AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW()) - 1
-        `,
-        prisma.$queryRaw`
-          SELECT DATE_TRUNC('month', schedule_month) AS month,
-                 SUM(invoice_value)                  AS total
-          FROM schedule_logs
-          WHERE channel_master_id = ${channelMasterId}
-            AND invoice_value IS NOT NULL
-          GROUP BY DATE_TRUNC('month', schedule_month)
-          ORDER BY SUM(invoice_value) DESC
-          LIMIT 1
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(DISTINCT client_id) AS cnt
-          FROM schedule_logs
-          WHERE channel_master_id = ${channelMasterId}
-            AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW())
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(*) AS cnt
-          FROM schedule_logs
-          WHERE channel_master_id = ${channelMasterId}
-        `,
-      ]);
-
-    const ytdSpend = safeNum(ytdRows[0]?.total) ?? 0;
-    const lastYearSpend = safeNum(lastYearRows[0]?.total) ?? 0;
-    const yoyGrowthPct =
-      lastYearSpend > 0 ? ((ytdSpend - lastYearSpend) / lastYearSpend) * 100 : null;
-
-    const bm = bestMonthRows[0];
-    const bestMonth = bm
-      ? { month: toYearMonth(bm.month), value: safeNum(bm.total) }
-      : null;
-
-    return res.json({
-      channel,
-      ytdSpend,
-      lastYearSpend,
-      yoyGrowthPct: yoyGrowthPct != null ? Number(yoyGrowthPct.toFixed(2)) : null,
-      activeClientsCount: Number(activeClientsRows[0]?.cnt ?? 0),
-      bestMonth,
-      totalEntries: Number(totalRows[0]?.cnt ?? 0),
-    });
-  } catch (error) {
-    console.error('getChannelSummary error:', error);
-    return res.status(500).json({ error: 'Failed to get channel summary', detail: error.message });
-  }
+function currentYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/**
- * GET /analytics/channel/:channelMasterId/monthly-spend
- * Query: ?agencyId=&clientId=&yearFrom=&yearTo=
- */
-export async function getChannelMonthlySpend(req, res) {
-  try {
-    const channelMasterId = parseInt(req.params.channelMasterId);
-    const { agencyId, clientId, yearFrom, yearTo } = req.query;
-
-    let dateFilter = EMPTY;
-    if (yearFrom) dateFilter = Prisma.sql`AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
-    if (yearTo)   dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) <= ${parseInt(yearTo)}`;
-
-    let clientFilter = EMPTY;
-    if (clientId) {
-      clientFilter = Prisma.sql`AND sl.client_id = ${parseInt(clientId)}`;
-    } else if (agencyId) {
-      clientFilter = Prisma.sql`AND sl.client_id IN (SELECT id FROM clients WHERE agency_id = ${parseInt(agencyId)})`;
-    } else if (req.user.role === 'MANAGER') {
-      clientFilter = Prisma.sql`AND sl.client_id IN (
-        SELECT id FROM clients WHERE agency_id IN (
-          SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-        )
-      )`;
-    }
-
-    const rows = await prisma.$queryRaw`
-      SELECT DATE_TRUNC('month', sl.schedule_month)    AS month,
-             COALESCE(SUM(sl.invoice_value), 0)        AS invoice_value,
-             COALESCE(SUM(sl.schedule_value), 0)       AS schedule_value
-      FROM schedule_logs sl
-      WHERE sl.channel_master_id = ${channelMasterId}
-        ${dateFilter}
-        ${clientFilter}
-      GROUP BY DATE_TRUNC('month', sl.schedule_month)
-      ORDER BY month ASC
-    `;
-
-    // Compute 12-month rolling average for invoice_value
-    const values = rows.map(r => Number(r.invoice_value));
-    const result = rows.map((r, i) => {
-      const windowStart = Math.max(0, i - 11);
-      const window = values.slice(windowStart, i + 1);
-      const avg = window.reduce((a, b) => a + b, 0) / window.length;
-      const iv = Number(r.invoice_value);
-      return {
-        month: toYearMonth(r.month),
-        invoiceValue: iv,
-        scheduleValue: Number(r.schedule_value),
-        isAboveAverage: iv > avg * 1.2,
-        isBelowAverage: iv < avg * 0.8,
-      };
-    });
-
-    return res.json(result);
-  } catch (error) {
-    console.error('getChannelMonthlySpend error:', error);
-    return res.status(500).json({ error: 'Failed to get monthly spend', detail: error.message });
-  }
+function yearStart() {
+  return `${new Date().getFullYear()}-01`;
 }
 
-/**
- * GET /analytics/channel/:channelMasterId/clients
- * Query: ?yearFrom=&yearTo=
- */
-export async function getChannelClients(req, res) {
-  try {
-    const channelMasterId = parseInt(req.params.channelMasterId);
-    const { yearFrom, yearTo } = req.query;
-
-    let dateFilter = EMPTY;
-    if (yearFrom) dateFilter = Prisma.sql`AND EXTRACT(year FROM sl.schedule_month) >= ${parseInt(yearFrom)}`;
-    if (yearTo)   dateFilter = Prisma.sql`${dateFilter} AND EXTRACT(year FROM sl.schedule_month) <= ${parseInt(yearTo)}`;
-
-    let managerFilter = EMPTY;
-    if (req.user.role === 'MANAGER') {
-      managerFilter = Prisma.sql`AND sl.client_id IN (
-        SELECT id FROM clients WHERE agency_id IN (
-          SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-        )
-      )`;
-    }
-
-    const rows = await prisma.$queryRaw`
-      SELECT sl.client_id                                         AS "clientId",
-             cl.name                                             AS "clientName",
-             cl.agency_id                                        AS "agencyId",
-             a.name                                              AS "agencyName",
-             COALESCE(SUM(sl.schedule_value), 0)                 AS "totalScheduleValue",
-             COALESCE(SUM(sl.invoice_value), 0)                  AS "totalInvoiceValue",
-             COUNT(DISTINCT DATE_TRUNC('month', sl.schedule_month)) AS "monthsActive",
-             MAX(DATE_TRUNC('month', sl.schedule_month))          AS "lastActive"
-      FROM schedule_logs sl
-      JOIN clients cl ON cl.id = sl.client_id
-      JOIN agencies a ON a.id = cl.agency_id
-      WHERE sl.channel_master_id = ${channelMasterId}
-        ${dateFilter}
-        ${managerFilter}
-      GROUP BY sl.client_id, cl.name, cl.agency_id, a.name
-      ORDER BY SUM(sl.invoice_value) DESC NULLS LAST
-    `;
-
-    const result = rows.map(r => ({
-      clientId: Number(r.clientId),
-      clientName: r.clientName,
-      agencyId: Number(r.agencyId),
-      agencyName: r.agencyName,
-      totalScheduleValue: Number(r.totalScheduleValue),
-      totalInvoiceValue: Number(r.totalInvoiceValue),
-      monthsActive: Number(r.monthsActive),
-      lastActive: toYearMonth(r.lastActive),
-    }));
-
-    return res.json(result);
-  } catch (error) {
-    console.error('getChannelClients error:', error);
-    return res.status(500).json({ error: 'Failed to get channel clients', detail: error.message });
-  }
+function lastYearStart() {
+  return `${new Date().getFullYear() - 1}-01`;
 }
 
-/**
- * GET /analytics/channel/:channelMasterId/property-history
- * Query: ?propertyName=&clientId=&yearFrom=&yearTo=
- */
-export async function getChannelPropertyHistory(req, res) {
-  try {
-    const channelMasterId = parseInt(req.params.channelMasterId);
-    const { propertyName, clientId, yearFrom, yearTo } = req.query;
+function lastYearCurrentMonth() {
+  const d = new Date();
+  return `${d.getFullYear() - 1}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-    let filters = EMPTY;
-    if (clientId)      filters = Prisma.sql`${filters} AND cl.id = ${parseInt(clientId)}`;
-    if (propertyName)  filters = Prisma.sql`${filters} AND p.name ILIKE ${'%' + propertyName + '%'}`;
-    if (yearFrom)      filters = Prisma.sql`${filters} AND EXTRACT(year FROM p.created_at) >= ${parseInt(yearFrom)}`;
-    if (yearTo)        filters = Prisma.sql`${filters} AND EXTRACT(year FROM p.created_at) <= ${parseInt(yearTo)}`;
+function prevMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-    const rows = await prisma.$queryRaw`
-      SELECT
-        p.id,
-        p.name                                  AS "propertyName",
-        p.type,
-        p.cost,
-        p.bonus_pct                             AS "bonusPct",
-        p.sponsorship_details                   AS "sponsorshipDetails",
-        p.notes,
-        p.created_at                            AS "createdAt",
-        EXTRACT(year FROM p.created_at)::int    AS year,
-        cl.name                                 AS "clientName",
-        a.name                                  AS "agencyName",
-        u.name                                  AS "creatorName",
-        ch.name                                 AS "channelName"
-      FROM properties p
-      JOIN channels ch ON ch.id = p.channel_id
-      JOIN clients cl ON cl.id = ch.client_id
-      JOIN agencies a ON a.id = cl.agency_id
-      JOIN users u ON u.id = p.created_by
-      WHERE ch.channel_master_id = ${channelMasterId}
-        ${filters}
-      ORDER BY p.name ASC, p.created_at ASC
-    `;
+function monthsAgo(n) {
+  const d = new Date();
+  d.setMonth(d.getMonth() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
-    // Group by property name and compute % change from previous year entry
-    const grouped = {};
-    for (const r of rows) {
-      const key = r.propertyName;
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push({
-        id: Number(r.id),
-        year: r.year,
-        clientName: r.clientName,
-        agencyName: r.agencyName,
-        type: r.type,
-        cost: Number(r.cost),
-        bonusPct: r.bonusPct != null ? Number(r.bonusPct) : null,
-        sponsorshipDetails: r.sponsorshipDetails ?? null,
-        notes: r.notes ?? null,
-        creatorName: r.creatorName,
-        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
-        changeFromPrev: null,
-        changeDirection: null,
-      });
-    }
-
-    // Compute year-over-year change within each property group
-    const result = Object.entries(grouped).map(([name, entries]) => {
-      // Sort by year
-      entries.sort((a, b) => a.year - b.year);
-      for (let i = 1; i < entries.length; i++) {
-        const prev = entries[i - 1].cost;
-        const curr = entries[i].cost;
-        if (prev !== 0) {
-          const pct = ((curr - prev) / prev) * 100;
-          entries[i].changeFromPrev = Number(pct.toFixed(2));
-          entries[i].changeDirection = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
-        } else {
-          entries[i].changeFromPrev = null;
-          entries[i].changeDirection = null;
-        }
-      }
-      return { propertyName: name, entries };
-    });
-
-    return res.json(result);
-  } catch (error) {
-    console.error('getChannelPropertyHistory error:', error);
-    return res.status(500).json({ error: 'Failed to get property history', detail: error.message });
+function baseWhere(user) {
+  const w = { isDeleted: false };
+  if (user.role === 'MANAGER') {
+    return { ...w, agency: { users: { some: { userId: user.id } } } };
   }
+  return w;
+}
+
+async function agencyIdsForUser(user) {
+  if (user.role !== 'MANAGER') return null;
+  const access = await prisma.userAgencyAccess.findMany({
+    where: { userId: user.id },
+    select: { agencyId: true },
+  });
+  return access.map(a => a.agencyId);
 }
 
 // ── Executive Dashboard ───────────────────────────────────────────────────────
 
-/**
- * GET /analytics/dashboard/summary
- * Access: SUPER_ADMIN, MANAGER
- */
 export async function getDashboardSummary(req, res) {
   try {
+    const user = req.user;
     const { agencyId } = req.query;
-    const agencyFilter = buildAgencyFilter(req.user, agencyId);
+    const ym = currentYM();
+    const ys = yearStart();
+    const lys = lastYearStart();
+    const lycm = lastYearCurrentMonth();
 
-    const [thisMonthRows, ytdRows, lastYearYtdRows, activeClientsRows, logsThisMonthRows, activeChannelsRows] =
+    const where = { isDeleted: false };
+    if (agencyId) where.agencyId = parseInt(agencyId);
+    else {
+      const ids = await agencyIdsForUser(user);
+      if (ids) where.agencyId = { in: ids };
+    }
+
+    const [billingsThisMonth, billingsYTD, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth] =
       await Promise.all([
-        prisma.$queryRaw`
-          SELECT COALESCE(SUM(sl.invoice_value), 0) AS total
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW())
-            ${agencyFilter}
-        `,
-        prisma.$queryRaw`
-          SELECT COALESCE(SUM(sl.invoice_value), 0) AS total
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW())
-            ${agencyFilter}
-        `,
-        prisma.$queryRaw`
-          SELECT COALESCE(SUM(sl.invoice_value), 0) AS total
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW()) - 1
-            AND EXTRACT(month FROM sl.schedule_month) <= EXTRACT(month FROM NOW())
-            ${agencyFilter}
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(DISTINCT sl.client_id) AS cnt
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW())
-            ${agencyFilter}
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(*) AS cnt
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW())
-            ${agencyFilter}
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(DISTINCT sl.channel_master_id) AS cnt
-          FROM schedule_logs sl
-          JOIN clients c ON c.id = sl.client_id
-          WHERE DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW())
-            ${agencyFilter}
-        `,
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.findMany({ where: { ...where, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
+        prisma.scheduleLog.count({ where: { ...where, scheduleMonth: ym } }),
+        prisma.scheduleLog.findMany({ where: { ...where, scheduleMonth: ym }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
+        prisma.uploadBatch.count({ where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
+        prisma.scheduleLog.count({ where: { ...where, scheduleMonth: ym, uploadBatchId: null } }),
       ]);
 
-    const billingsYTD = Number(ytdRows[0]?.total ?? 0);
-    const lastYearYTD = Number(lastYearYtdRows[0]?.total ?? 0);
-    const yoyGrowthPct = lastYearYTD > 0
-      ? Number(((billingsYTD - lastYearYTD) / lastYearYTD * 100).toFixed(2))
-      : null;
+    const ytd = safeNum(billingsYTD._sum.scheduleValue) || 0;
+    const ly = safeNum(lastYearYTD._sum.scheduleValue) || 0;
+    const yoy = ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null;
 
     return res.json({
-      billingsThisMonth: Number(thisMonthRows[0]?.total ?? 0),
-      billingsYTD,
-      yoyGrowthPct,
-      activeClients: Number(activeClientsRows[0]?.cnt ?? 0),
-      logsThisMonth: Number(logsThisMonthRows[0]?.cnt ?? 0),
-      activeChannelsThisMonth: Number(activeChannelsRows[0]?.cnt ?? 0),
+      billingsThisMonth: safeNum(billingsThisMonth._sum.scheduleValue) || 0,
+      billingsYTD: ytd,
+      yoyGrowthPct: yoy,
+      activeClients: activeClients.length,
+      logsThisMonth,
+      activeChannelsThisMonth: activeChannels.length,
+      uploadsThisMonth,
+      manualEntriesThisMonth: manualThisMonth,
     });
   } catch (error) {
     console.error('getDashboardSummary error:', error);
@@ -394,83 +104,37 @@ export async function getDashboardSummary(req, res) {
   }
 }
 
-/**
- * GET /analytics/dashboard/agency-comparison
- * Access: SUPER_ADMIN, MANAGER
- */
 export async function getAgencyComparison(req, res) {
   try {
-    let agencyWhere = EMPTY;
-    if (req.user.role === 'MANAGER') {
-      agencyWhere = Prisma.sql`WHERE a.id IN (
-        SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-      )`;
-    }
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const agencyWhere = ids ? { id: { in: ids } } : {};
 
-    const agencies = await prisma.$queryRaw`
-      SELECT a.id, a.name FROM agencies a ${agencyWhere} ORDER BY a.name
-    `;
+    const agencies = await prisma.agency.findMany({ where: agencyWhere, orderBy: { name: 'asc' } });
+    const ym = currentYM();
+    const ys = yearStart();
+    const lys = lastYearStart();
+    const lycm = lastYearCurrentMonth();
 
-    const result = await Promise.all(agencies.map(async agency => {
-      const agencyId = Number(agency.id);
-
-      const [ytdRows, activeClientsRows, activeChannelsRows, lastYearRows, monthlyRows] =
-        await Promise.all([
-          prisma.$queryRaw`
-            SELECT COALESCE(SUM(invoice_value), 0) AS total
-            FROM schedule_logs
-            WHERE client_id IN (SELECT id FROM clients WHERE agency_id = ${agencyId})
-              AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW())
-          `,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT client_id) AS cnt
-            FROM schedule_logs
-            WHERE client_id IN (SELECT id FROM clients WHERE agency_id = ${agencyId})
-              AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW())
-          `,
-          prisma.$queryRaw`
-            SELECT COUNT(DISTINCT channel_master_id) AS cnt
-            FROM schedule_logs
-            WHERE client_id IN (SELECT id FROM clients WHERE agency_id = ${agencyId})
-              AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW())
-          `,
-          prisma.$queryRaw`
-            SELECT COALESCE(SUM(invoice_value), 0) AS total
-            FROM schedule_logs
-            WHERE client_id IN (SELECT id FROM clients WHERE agency_id = ${agencyId})
-              AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW()) - 1
-              AND EXTRACT(month FROM schedule_month) <= EXTRACT(month FROM NOW())
-          `,
-          prisma.$queryRaw`
-            SELECT DATE_TRUNC('month', schedule_month)    AS month,
-                   COALESCE(SUM(invoice_value), 0)        AS invoice_value,
-                   COALESCE(SUM(schedule_value), 0)       AS schedule_value
-            FROM schedule_logs
-            WHERE client_id IN (SELECT id FROM clients WHERE agency_id = ${agencyId})
-              AND schedule_month >= NOW() - INTERVAL '12 months'
-            GROUP BY DATE_TRUNC('month', schedule_month)
-            ORDER BY month ASC
-          `,
-        ]);
-
-      const ytdBillings = Number(ytdRows[0]?.total ?? 0);
-      const lastYearBillings = Number(lastYearRows[0]?.total ?? 0);
-      const ytdGrowthPct = lastYearBillings > 0
-        ? Number(((ytdBillings - lastYearBillings) / lastYearBillings * 100).toFixed(2))
-        : null;
-
+    const result = await Promise.all(agencies.map(async (agency) => {
+      const base = { isDeleted: false, agencyId: agency.id };
+      const [ytdAgg, activeClients, activeChannels, lastYearAgg, uploads] = await Promise.all([
+        prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
+        prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
+        prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+        prisma.uploadBatch.count({ where: { agencyId: agency.id, createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
+      ]);
+      const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
+      const ly = safeNum(lastYearAgg._sum.scheduleValue) || 0;
       return {
-        agencyId,
+        agencyId: agency.id,
         agencyName: agency.name,
-        ytdBillings,
-        activeClients: Number(activeClientsRows[0]?.cnt ?? 0),
-        activeChannels: Number(activeChannelsRows[0]?.cnt ?? 0),
-        ytdGrowthPct,
-        monthly: monthlyRows.map(r => ({
-          month: toYearMonth(r.month),
-          invoiceValue: Number(r.invoice_value),
-          scheduleValue: Number(r.schedule_value),
-        })),
+        ytdBillings: ytd,
+        activeClients: activeClients.length,
+        activeChannels: activeChannels.length,
+        ytdGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
+        uploadsThisMonth: uploads,
       };
     }));
 
@@ -481,59 +145,44 @@ export async function getAgencyComparison(req, res) {
   }
 }
 
-/**
- * GET /analytics/dashboard/top-clients
- * Access: SUPER_ADMIN, MANAGER
- */
 export async function getTopClients(req, res) {
   try {
-    let agencyFilter = EMPTY;
-    if (req.user.role === 'MANAGER') {
-      agencyFilter = Prisma.sql`AND c.agency_id IN (
-        SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-      )`;
-    }
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const base = { isDeleted: false, scheduleMonth: { gte: yearStart() } };
+    if (ids) base.agencyId = { in: ids };
+    const ym = currentYM();
+    const pm = prevMonth(ym);
 
-    const rows = await prisma.$queryRaw`
-      SELECT sl.client_id                               AS "clientId",
-             c.name                                     AS "clientName",
-             c.agency_id                                AS "agencyId",
-             a.name                                     AS "agencyName",
-             COALESCE(SUM(sl.invoice_value), 0)         AS "ytdBilling",
-             SUM(CASE WHEN DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW())
-                      THEN COALESCE(sl.invoice_value, 0) ELSE 0 END) AS "currentMonth",
-             SUM(CASE WHEN DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW() - INTERVAL '1 month')
-                      THEN COALESCE(sl.invoice_value, 0) ELSE 0 END) AS "prevMonth"
-      FROM schedule_logs sl
-      JOIN clients c ON c.id = sl.client_id
-      JOIN agencies a ON a.id = c.agency_id
-      WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW())
-        ${agencyFilter}
-      GROUP BY sl.client_id, c.name, c.agency_id, a.name
-      ORDER BY "ytdBilling" DESC NULLS LAST
-      LIMIT 10
-    `;
+    const grouped = await prisma.scheduleLog.groupBy({
+      by: ['clientId'],
+      where: base,
+      _sum: { scheduleValue: true },
+      orderBy: { _sum: { scheduleValue: 'desc' } },
+      take: 10,
+    });
 
-    const result = rows.map((r, idx) => {
-      const curr = Number(r.currentMonth);
-      const prev = Number(r.prevMonth);
-      let momTrend = null;
-      let momDirection = 'same';
-      if (prev > 0) {
-        momTrend = Number(((curr - prev) / prev * 100).toFixed(2));
-        momDirection = momTrend > 0 ? 'up' : momTrend < 0 ? 'down' : 'same';
-      }
+    const result = await Promise.all(grouped.map(async (g, idx) => {
+      const client = await prisma.client.findUnique({ where: { id: g.clientId }, include: { agency: { select: { id: true, name: true } } } });
+      const [currAgg, prevAgg] = await Promise.all([
+        prisma.scheduleLog.aggregate({ where: { clientId: g.clientId, isDeleted: false, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { clientId: g.clientId, isDeleted: false, scheduleMonth: pm }, _sum: { scheduleValue: true } }),
+      ]);
+      const curr = safeNum(currAgg._sum.scheduleValue) || 0;
+      const prev = safeNum(prevAgg._sum.scheduleValue) || 0;
+      let momTrend = null, momDirection = 'same';
+      if (prev > 0) { momTrend = Number(((curr - prev) / prev * 100).toFixed(2)); momDirection = momTrend > 0 ? 'up' : momTrend < 0 ? 'down' : 'same'; }
       return {
         rank: idx + 1,
-        clientId: Number(r.clientId),
-        clientName: r.clientName,
-        agencyId: Number(r.agencyId),
-        agencyName: r.agencyName,
-        ytdBilling: Number(r.ytdBilling),
+        clientId: g.clientId,
+        clientName: client?.name || 'Unknown',
+        agencyId: client?.agency?.id,
+        agencyName: client?.agency?.name || 'Unknown',
+        ytdBilling: safeNum(g._sum.scheduleValue) || 0,
         momTrend,
         momDirection,
       };
-    });
+    }));
 
     return res.json(result);
   } catch (error) {
@@ -542,58 +191,32 @@ export async function getTopClients(req, res) {
   }
 }
 
-/**
- * GET /analytics/dashboard/top-channels
- * Access: SUPER_ADMIN, MANAGER
- */
 export async function getTopChannels(req, res) {
   try {
-    let agencyFilter = EMPTY;
-    if (req.user.role === 'MANAGER') {
-      agencyFilter = Prisma.sql`AND sl.client_id IN (
-        SELECT id FROM clients WHERE agency_id IN (
-          SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-        )
-      )`;
-    }
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const base = { isDeleted: false, scheduleMonth: { gte: yearStart() } };
+    if (ids) base.agencyId = { in: ids };
 
-    const rows = await prisma.$queryRaw`
-      SELECT sl.channel_master_id                              AS "channelMasterId",
-             cm.name                                          AS "channelName",
-             cm.medium,
-             COALESCE(SUM(sl.invoice_value), 0)               AS "ytdSpend",
-             COUNT(DISTINCT sl.client_id)                     AS "clientCount"
-      FROM schedule_logs sl
-      JOIN channel_masters cm ON cm.id = sl.channel_master_id
-      WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW())
-        ${agencyFilter}
-      GROUP BY sl.channel_master_id, cm.name, cm.medium
-      ORDER BY "ytdSpend" DESC NULLS LAST
-      LIMIT 10
-    `;
+    const grouped = await prisma.scheduleLog.groupBy({
+      by: ['channelMasterId'],
+      where: base,
+      _sum: { scheduleValue: true },
+      orderBy: { _sum: { scheduleValue: 'desc' } },
+      take: 10,
+    });
 
-    // Get last-year spend for YoY
-    const result = await Promise.all(rows.map(async (r, idx) => {
-      const cmId = Number(r.channelMasterId);
-      const lastYearRows = await prisma.$queryRaw`
-        SELECT COALESCE(SUM(invoice_value), 0) AS total
-        FROM schedule_logs
-        WHERE channel_master_id = ${cmId}
-          AND EXTRACT(year FROM schedule_month) = EXTRACT(year FROM NOW()) - 1
-      `;
-      const ytdSpend = Number(r.ytdSpend);
-      const lastYear = Number(lastYearRows[0]?.total ?? 0);
-      const yoyChange = lastYear > 0
-        ? Number(((ytdSpend - lastYear) / lastYear * 100).toFixed(2))
-        : null;
+    const result = await Promise.all(grouped.map(async (g, idx) => {
+      const cm = await prisma.channelMaster.findUnique({ where: { id: g.channelMasterId }, include: { mediaGroup: { select: { name: true } } } });
+      const clients = await prisma.scheduleLog.findMany({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: yearStart() } }, select: { clientId: true }, distinct: ['clientId'] });
       return {
         rank: idx + 1,
-        channelMasterId: cmId,
-        channelName: r.channelName,
-        medium: r.medium,
-        ytdSpend,
-        clientCount: Number(r.clientCount),
-        yoyChange,
+        channelMasterId: g.channelMasterId,
+        channelName: cm?.name || 'Unknown',
+        medium: cm?.medium || '',
+        mediaGroup: cm?.mediaGroup?.name || '',
+        ytdSpend: safeNum(g._sum.scheduleValue) || 0,
+        clientCount: clients.length,
       };
     }));
 
@@ -604,136 +227,72 @@ export async function getTopChannels(req, res) {
   }
 }
 
-/**
- * GET /analytics/dashboard/medium-split
- * Access: SUPER_ADMIN, MANAGER
- * Query: ?agencyId=
- */
 export async function getMediumSplit(req, res) {
   try {
+    const user = req.user;
     const { agencyId } = req.query;
-    const agencyFilter = buildAgencyFilter(req.user, agencyId);
+    const base = { isDeleted: false };
+    if (agencyId) base.agencyId = parseInt(agencyId);
+    else { const ids = await agencyIdsForUser(user); if (ids) base.agencyId = { in: ids }; }
 
-    const [currentMonthRows, ytdRows, lastYearYtdRows] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT cm.medium,
-               COALESCE(SUM(sl.invoice_value), 0) AS value
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        JOIN channel_masters cm ON cm.id = sl.channel_master_id
-        WHERE DATE_TRUNC('month', sl.schedule_month) = DATE_TRUNC('month', NOW())
-          ${agencyFilter}
-        GROUP BY cm.medium
-      `,
-      prisma.$queryRaw`
-        SELECT cm.medium,
-               COALESCE(SUM(sl.invoice_value), 0) AS value
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        JOIN channel_masters cm ON cm.id = sl.channel_master_id
-        WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW())
-          ${agencyFilter}
-        GROUP BY cm.medium
-      `,
-      prisma.$queryRaw`
-        SELECT cm.medium,
-               COALESCE(SUM(sl.invoice_value), 0) AS value
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        JOIN channel_masters cm ON cm.id = sl.channel_master_id
-        WHERE EXTRACT(year FROM sl.schedule_month) = EXTRACT(year FROM NOW()) - 1
-          AND EXTRACT(month FROM sl.schedule_month) <= EXTRACT(month FROM NOW())
-          ${agencyFilter}
-        GROUP BY cm.medium
-      `,
+    const ym = currentYM();
+    const ys = yearStart();
+    const lys = lastYearStart();
+    const lycm = lastYearCurrentMonth();
+
+    const [cm, ytd, ly] = await Promise.all([
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
     ]);
 
     function toSplit(rows) {
-      const total = rows.reduce((s, r) => s + Number(r.value), 0);
-      return rows.map(r => ({
-        medium: r.medium,
-        value: Number(r.value),
-        pct: total > 0 ? Number(((Number(r.value) / total) * 100).toFixed(2)) : 0,
-      }));
+      const total = rows.reduce((s, r) => s + (safeNum(r._sum.scheduleValue) || 0), 0);
+      return rows.map(r => ({ medium: r.medium, value: safeNum(r._sum.scheduleValue) || 0, pct: total > 0 ? Number(((safeNum(r._sum.scheduleValue) || 0) / total * 100).toFixed(2)) : 0 }));
     }
 
-    return res.json({
-      currentMonth: toSplit(currentMonthRows),
-      ytd: toSplit(ytdRows),
-      lastYearYtd: toSplit(lastYearYtdRows),
-    });
+    return res.json({ currentMonth: toSplit(cm), ytd: toSplit(ytd), lastYearYtd: toSplit(ly) });
   } catch (error) {
     console.error('getMediumSplit error:', error);
     return res.status(500).json({ error: 'Failed to get medium split', detail: error.message });
   }
 }
 
-/**
- * GET /analytics/dashboard/monthly-trend
- * Access: SUPER_ADMIN, MANAGER
- */
 export async function getMonthlyTrend(req, res) {
   try {
-    let agencyFilter = EMPTY;
-    if (req.user.role === 'MANAGER') {
-      agencyFilter = Prisma.sql`AND c.agency_id IN (
-        SELECT agency_id FROM user_agency_access WHERE user_id = ${req.user.id}
-      )`;
-    }
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const base = { isDeleted: false, scheduleMonth: { gte: monthsAgo(24) } };
+    if (ids) base.agencyId = { in: ids };
 
-    const [combinedRows, agencyRows, agencyList] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT DATE_TRUNC('month', sl.schedule_month)   AS month,
-               COALESCE(SUM(sl.invoice_value), 0)       AS invoice_value
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        WHERE sl.schedule_month >= NOW() - INTERVAL '24 months'
-          ${agencyFilter}
-        GROUP BY DATE_TRUNC('month', sl.schedule_month)
-        ORDER BY month ASC
-      `,
-      prisma.$queryRaw`
-        SELECT c.agency_id                                  AS "agencyId",
-               DATE_TRUNC('month', sl.schedule_month)       AS month,
-               COALESCE(SUM(sl.invoice_value), 0)           AS invoice_value
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        WHERE sl.schedule_month >= NOW() - INTERVAL '24 months'
-          ${agencyFilter}
-        GROUP BY c.agency_id, DATE_TRUNC('month', sl.schedule_month)
-        ORDER BY "agencyId", month ASC
-      `,
-      prisma.$queryRaw`
-        SELECT DISTINCT a.id, a.name
-        FROM agencies a
-        JOIN clients c ON c.agency_id = a.id
-        JOIN schedule_logs sl ON sl.client_id = c.id
-        WHERE sl.schedule_month >= NOW() - INTERVAL '24 months'
-          ${agencyFilter}
-        ORDER BY a.name
-      `,
-    ]);
+    const combined = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: base,
+      _sum: { scheduleValue: true },
+      orderBy: { scheduleMonth: 'asc' },
+    });
 
-    // Group agency monthly data
+    const agencyBreakdown = await prisma.scheduleLog.groupBy({
+      by: ['agencyId', 'scheduleMonth'],
+      where: base,
+      _sum: { scheduleValue: true },
+      orderBy: { scheduleMonth: 'asc' },
+    });
+
+    const agencyList = await prisma.agency.findMany({
+      where: ids ? { id: { in: ids } } : {},
+      orderBy: { name: 'asc' },
+    });
+
     const agencyMap = {};
-    for (const r of agencyRows) {
-      const id = Number(r.agencyId);
-      if (!agencyMap[id]) agencyMap[id] = [];
-      agencyMap[id].push({ month: toYearMonth(r.month), invoiceValue: Number(r.invoice_value) });
+    for (const r of agencyBreakdown) {
+      if (!agencyMap[r.agencyId]) agencyMap[r.agencyId] = [];
+      agencyMap[r.agencyId].push({ month: r.scheduleMonth, scheduleValue: safeNum(r._sum.scheduleValue) || 0 });
     }
-
-    const byAgency = agencyList.map(a => ({
-      agencyId: Number(a.id),
-      agencyName: a.name,
-      data: agencyMap[Number(a.id)] ?? [],
-    }));
 
     return res.json({
-      combined: combinedRows.map(r => ({
-        month: toYearMonth(r.month),
-        invoiceValue: Number(r.invoice_value),
-      })),
-      byAgency,
+      combined: combined.map(r => ({ month: r.scheduleMonth, scheduleValue: safeNum(r._sum.scheduleValue) || 0 })),
+      byAgency: agencyList.map(a => ({ agencyId: a.id, agencyName: a.name, data: agencyMap[a.id] || [] })),
     });
   } catch (error) {
     console.error('getMonthlyTrend error:', error);
@@ -741,107 +300,194 @@ export async function getMonthlyTrend(req, res) {
   }
 }
 
-/**
- * GET /analytics/dashboard/activity-log
- * Access: SUPER_ADMIN only
- * Query: ?agencyId=&userId=&page=1&limit=50
- */
 export async function getActivityLog(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page ?? '1'));
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit ?? '50')));
-    const { agencyId, userId } = req.query;
 
-    let slAgencyFilter = EMPTY;
-    if (agencyId) slAgencyFilter = Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
-    let slUserFilter = EMPTY;
-    if (userId) slUserFilter = Prisma.sql`AND sl.created_by = ${parseInt(userId)}`;
+    const logs = await prisma.scheduleLog.findMany({
+      where: { isDeleted: false },
+      include: {
+        uploader: { select: { name: true } },
+        client: { select: { name: true } },
+        agency: { select: { name: true } },
+        channelMaster: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
 
-    let phAgencyFilter = EMPTY;
-    if (agencyId) phAgencyFilter = Prisma.sql`AND c.agency_id = ${parseInt(agencyId)}`;
-    let phUserFilter = EMPTY;
-    if (userId) phUserFilter = Prisma.sql`AND ph.changed_by = ${parseInt(userId)}`;
+    const total = await prisma.scheduleLog.count({ where: { isDeleted: false } });
 
-    const halfLimit = Math.ceil(limit / 2);
-    const limitSql = Prisma.raw(String(halfLimit));
+    const items = logs.map(r => ({
+      type: 'schedule_log',
+      userName: r.uploader?.name || 'Unknown',
+      agencyName: r.agency?.name || '',
+      clientName: r.client?.name || '',
+      action: r.uploadBatchId ? 'uploaded' : 'created',
+      timestamp: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+      detail: `Schedule log for ${r.channelMaster?.name || '—'} — ${r.scheduleMonth} — LKR ${safeNum(r.scheduleValue)?.toLocaleString() || 0}`,
+    }));
 
-    const [slRows, phRows] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT
-          sl.id,
-          sl.created_by                 AS "userId",
-          u.name                        AS "userName",
-          a.name                        AS "agencyName",
-          c.name                        AS "clientName",
-          sl.created_at                 AS "timestamp",
-          sl.schedule_month             AS "scheduleMonth",
-          sl.schedule_value             AS "scheduleValue",
-          cm.name                       AS "channelName"
-        FROM schedule_logs sl
-        JOIN clients c ON c.id = sl.client_id
-        JOIN agencies a ON a.id = c.agency_id
-        JOIN users u ON u.id = sl.created_by
-        JOIN channel_masters cm ON cm.id = sl.channel_master_id
-        WHERE 1=1
-          ${slAgencyFilter}
-          ${slUserFilter}
-        ORDER BY sl.created_at DESC
-        LIMIT ${limitSql}
-      `,
-      prisma.$queryRaw`
-        SELECT
-          ph.id,
-          ph.changed_by                 AS "userId",
-          u.name                        AS "userName",
-          a.name                        AS "agencyName",
-          c.name                        AS "clientName",
-          ph.changed_at                 AS "timestamp",
-          p.name                        AS "propertyName",
-          ph.change_note                AS "changeNote"
-        FROM property_history ph
-        JOIN properties p ON p.id = ph.property_id
-        JOIN channels ch ON ch.id = p.channel_id
-        JOIN clients c ON c.id = ch.client_id
-        JOIN agencies a ON a.id = c.agency_id
-        JOIN users u ON u.id = ph.changed_by
-        WHERE 1=1
-          ${phAgencyFilter}
-          ${phUserFilter}
-        ORDER BY ph.changed_at DESC
-        LIMIT ${limitSql}
-      `,
-    ]);
-
-    const items = [
-      ...slRows.map(r => ({
-        type: 'schedule_log',
-        userId: Number(r.userId),
-        userName: r.userName,
-        agencyName: r.agencyName,
-        clientName: r.clientName,
-        action: 'created',
-        timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
-        detail: `Schedule log for ${r.channelName} — ${toYearMonth(r.scheduleMonth)} — LKR ${Number(r.scheduleValue).toLocaleString()}`,
-      })),
-      ...phRows.map(r => ({
-        type: 'property_edit',
-        userId: Number(r.userId),
-        userName: r.userName,
-        agencyName: r.agencyName,
-        clientName: r.clientName,
-        action: 'edited',
-        timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
-        detail: `Property "${r.propertyName}" updated — ${r.changeNote || 'no note'}`,
-      })),
-    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    const total = items.length;
-    const offset = (page - 1) * limit;
-    const paged = items.slice(offset, offset + limit);
-
-    return res.json({ items: paged, total, page });
+    return res.json({ items, total, page });
   } catch (error) {
     console.error('getActivityLog error:', error);
     return res.status(500).json({ error: 'Failed to get activity log', detail: error.message });
+  }
+}
+
+export async function getRecentUploads(req, res) {
+  try {
+    const batches = await prisma.uploadBatch.findMany({
+      include: {
+        uploader: { select: { name: true } },
+        agency: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    return res.json(batches.map(b => ({
+      id: b.id,
+      uploadedBy: b.uploader?.name || 'Unknown',
+      agencyName: b.agency?.name || '',
+      scheduleMonth: b.scheduleMonth,
+      fileName: b.fileName,
+      totalRows: b.totalRows,
+      successfulRows: b.successfulRows,
+      failedRows: b.failedRows,
+      status: b.status,
+      createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt,
+    })));
+  } catch (error) {
+    console.error('getRecentUploads error:', error);
+    return res.status(500).json({ error: 'Failed to get recent uploads', detail: error.message });
+  }
+}
+
+// ── Channel Intelligence ──────────────────────────────────────────────────────
+
+export async function getChannelSummary(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const channel = await prisma.channelMaster.findUnique({ where: { id: channelMasterId }, include: { mediaGroup: { select: { name: true } } } });
+    if (!channel) return res.status(404).json({ error: 'Channel master not found' });
+
+    const ys = yearStart();
+    const lys = lastYearStart();
+    const lycm = lastYearCurrentMonth();
+    const base = { channelMasterId, isDeleted: false };
+
+    const [ytdAgg, lyAgg, activeClients, totalEntries] = await Promise.all([
+      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
+      prisma.scheduleLog.count({ where: base }),
+    ]);
+
+    const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
+    const ly = safeNum(lyAgg._sum.scheduleValue) || 0;
+
+    return res.json({
+      channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
+      ytdSpend: ytd,
+      lastYearSpend: ly,
+      yoyGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
+      activeClientsCount: activeClients.length,
+      totalEntries,
+    });
+  } catch (error) {
+    console.error('getChannelSummary error:', error);
+    return res.status(500).json({ error: 'Failed to get channel summary', detail: error.message });
+  }
+}
+
+export async function getChannelMonthlySpend(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const base = { channelMasterId, isDeleted: false };
+
+    const rows = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: base,
+      _sum: { scheduleValue: true, scheduleValueWithVat: true },
+      orderBy: { scheduleMonth: 'asc' },
+    });
+
+    return res.json(rows.map(r => ({
+      month: r.scheduleMonth,
+      scheduleValue: safeNum(r._sum.scheduleValue) || 0,
+      scheduleValueWithVat: safeNum(r._sum.scheduleValueWithVat) || 0,
+    })));
+  } catch (error) {
+    console.error('getChannelMonthlySpend error:', error);
+    return res.status(500).json({ error: 'Failed to get monthly spend', detail: error.message });
+  }
+}
+
+export async function getChannelClients(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+
+    const grouped = await prisma.scheduleLog.groupBy({
+      by: ['clientId'],
+      where: { channelMasterId, isDeleted: false },
+      _sum: { scheduleValue: true, scheduleValueWithVat: true },
+      _count: true,
+    });
+
+    const result = await Promise.all(grouped.map(async (g) => {
+      const client = await prisma.client.findUnique({ where: { id: g.clientId }, include: { agency: { select: { id: true, name: true } } } });
+      return {
+        clientId: g.clientId,
+        clientName: client?.name || 'Unknown',
+        agencyId: client?.agency?.id,
+        agencyName: client?.agency?.name || 'Unknown',
+        totalScheduleValue: safeNum(g._sum.scheduleValue) || 0,
+        totalScheduleValueWithVat: safeNum(g._sum.scheduleValueWithVat) || 0,
+        entryCount: g._count,
+      };
+    }));
+
+    result.sort((a, b) => b.totalScheduleValue - a.totalScheduleValue);
+    return res.json(result);
+  } catch (error) {
+    console.error('getChannelClients error:', error);
+    return res.status(500).json({ error: 'Failed to get channel clients', detail: error.message });
+  }
+}
+
+export async function getChannelPropertyHistory(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const properties = await prisma.property.findMany({
+      where: { channel: { channelMasterId } },
+      include: {
+        channel: { select: { name: true, client: { select: { name: true, agency: { select: { name: true } } } } } },
+        creator: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const grouped = {};
+    for (const p of properties) {
+      const key = p.name;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push({
+        id: p.id,
+        type: p.type,
+        cost: safeNum(p.cost) || 0,
+        clientName: p.channel?.client?.name || '',
+        agencyName: p.channel?.client?.agency?.name || '',
+        creatorName: p.creator?.name || '',
+        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+      });
+    }
+
+    return res.json(Object.entries(grouped).map(([name, entries]) => ({ propertyName: name, entries })));
+  } catch (error) {
+    console.error('getChannelPropertyHistory error:', error);
+    return res.status(500).json({ error: 'Failed to get property history', detail: error.message });
   }
 }

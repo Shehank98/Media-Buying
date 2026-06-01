@@ -4,6 +4,7 @@ import Icon, { Avatar, RoleBadge } from './Icon';
 
 const NAV = [
   { key: '/', label: 'Dashboard', icon: 'grid' },
+  { key: '/database', label: 'Database', icon: 'database' },
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/clients', label: 'Clients', icon: 'folder' },
@@ -22,6 +23,7 @@ function Breadcrumbs({ go }) {
   const sep = <Icon name="chevR" size={14} />;
 
   if (path === '/') return <><b>Dashboard</b></>;
+  if (path === '/database') return <>{home}{sep}<b>Database</b></>;
   if (path === '/agencies') return <>{home}{sep}<b>Agencies</b></>;
   if (path === '/clients') return <>{home}{sep}<b>Clients</b></>;
   if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
