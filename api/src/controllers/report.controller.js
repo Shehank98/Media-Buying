@@ -230,6 +230,227 @@ export async function byAgency(req, res) {
   }
 }
 
+// ─── Property Export ─────────────────────────────────────────────────────────
+
+export async function exportProperties(req, res) {
+  try {
+    const {
+      groupBy,
+      agencyId,
+      clientId,
+      channelType,
+      propertyType,
+      format = 'json',
+    } = req.query;
+
+    if (!groupBy || !['channel', 'client', 'agency', 'all'].includes(groupBy)) {
+      return res.status(400).json({ error: "groupBy is required and must be one of: 'channel', 'client', 'agency', 'all'" });
+    }
+
+    const channelWhere = {};
+    const clientWhere = {};
+
+    if (req.user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({
+        where: { userId: req.user.id },
+        select: { agencyId: true },
+      });
+      clientWhere.agencyId = { in: access.map((a) => a.agencyId) };
+    }
+
+    if (agencyId) {
+      if (clientWhere.agencyId?.in) {
+        const requestedId = parseInt(agencyId);
+        if (!clientWhere.agencyId.in.includes(requestedId)) {
+          return res.status(403).json({ error: 'Access denied to this agency' });
+        }
+        clientWhere.agencyId = requestedId;
+      } else {
+        clientWhere.agencyId = parseInt(agencyId);
+      }
+    }
+    if (clientId) channelWhere.clientId = parseInt(clientId);
+    if (channelType) channelWhere.type = channelType;
+
+    const propertyWhere = {};
+    if (propertyType) propertyWhere.type = propertyType;
+
+    const properties = await prisma.property.findMany({
+      where: {
+        ...propertyWhere,
+        channel: {
+          ...channelWhere,
+          client: Object.keys(clientWhere).length > 0 ? clientWhere : undefined,
+        },
+      },
+      include: {
+        channel: {
+          include: {
+            client: {
+              include: {
+                agency: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+        creator: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (format !== 'excel') {
+      const rows = properties.map((p) => ({
+        agencyName: p.channel.client.agency.name,
+        clientName: p.channel.client.name,
+        channelName: p.channel.name,
+        channelType: p.channel.type,
+        propertyName: p.name,
+        propertyType: p.type,
+        cost: Number(p.cost),
+        bonusPct: p.bonusPct ? Number(p.bonusPct) : null,
+        notes: p.notes || '',
+        createdBy: p.creator.name,
+        createdAt: p.createdAt.toISOString().split('T')[0],
+      }));
+
+      const summary = {
+        totalCost: rows.reduce((sum, r) => sum + r.cost, 0),
+        totalEntries: rows.length,
+        addedValue: rows.filter((r) => r.cost === 0).length,
+      };
+
+      return res.json({ rows, summary });
+    }
+
+    // Excel export
+    const rows = properties.map((p) => ({
+      Agency: p.channel.client.agency.name,
+      Client: p.channel.client.name,
+      Channel: p.channel.name,
+      'Channel Type': p.channel.type,
+      'Property Name': p.name,
+      'Property Type': p.type,
+      'Cost (LKR)': Number(p.cost),
+      'Bonus %': p.bonusPct ? Number(p.bonusPct) : '',
+      Notes: p.notes || '',
+      'Created By': p.creator.name,
+      'Created At': p.createdAt.toISOString().split('T')[0],
+    }));
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Media Buying System';
+    workbook.created = new Date();
+
+    const HEADER_COLUMNS = [
+      { header: 'Agency', key: 'Agency', width: 20 },
+      { header: 'Client', key: 'Client', width: 20 },
+      { header: 'Channel', key: 'Channel', width: 22 },
+      { header: 'Channel Type', key: 'Channel Type', width: 14 },
+      { header: 'Property Name', key: 'Property Name', width: 24 },
+      { header: 'Property Type', key: 'Property Type', width: 18 },
+      { header: 'Cost (LKR)', key: 'Cost (LKR)', width: 20 },
+      { header: 'Bonus %', key: 'Bonus %', width: 12 },
+      { header: 'Notes', key: 'Notes', width: 30 },
+      { header: 'Created By', key: 'Created By', width: 18 },
+      { header: 'Created At', key: 'Created At', width: 14 },
+    ];
+
+    const NAVY_BG = '0A1729';
+
+    function styleSheet(sheet) {
+      const headerRow = sheet.getRow(1);
+      headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      });
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: HEADER_COLUMNS.length },
+      };
+    }
+
+    function addSheet(name, sheetRows) {
+      const safeName = name.replace(/[\\/*?:\[\]]/g, '').substring(0, 31);
+      const sheet = workbook.addWorksheet(safeName);
+      sheet.columns = HEADER_COLUMNS.map((c) => ({ ...c }));
+      for (const row of sheetRows) sheet.addRow(row);
+      sheet.getColumn(7).numFmt = '#,##0.00';
+      sheet.getColumn(8).numFmt = '0.000';
+      styleSheet(sheet);
+
+      if (sheetRows.length > 0) {
+        const totalsRowNum = sheetRows.length + 2;
+        const totalsRow = sheet.getRow(totalsRowNum);
+        totalsRow.getCell(1).value = 'TOTAL';
+        totalsRow.getCell(7).value = { formula: `SUM(G2:G${totalsRowNum - 1})` };
+        totalsRow.getCell(7).numFmt = '#,##0.00';
+        totalsRow.eachCell((cell) => { cell.font = { bold: true }; });
+      }
+
+      sheet.columns.forEach((column) => {
+        let maxLength = column.header ? column.header.length : 10;
+        column.eachCell({ includeEmpty: false }, (cell) => {
+          const len = cell.value ? String(cell.value).length : 0;
+          if (len > maxLength) maxLength = len;
+        });
+        column.width = Math.min(maxLength + 4, 50);
+      });
+
+      return sheet;
+    }
+
+    if (groupBy === 'all') {
+      addSheet('All Properties', rows);
+    } else {
+      const keyMap = { agency: 'Agency', client: 'Client', channel: 'Channel' };
+      const groupKey = keyMap[groupBy];
+      const grouped = {};
+      for (const row of rows) {
+        const key = row[groupKey];
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(row);
+      }
+
+      const summaryGroups = [];
+      for (const [name, groupRows] of Object.entries(grouped)) {
+        addSheet(name, groupRows);
+        summaryGroups.push({
+          name,
+          entries: groupRows.length,
+          totalCost: groupRows.reduce((s, r) => s + r['Cost (LKR)'], 0),
+        });
+      }
+
+      summaryGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+      const summSheet = workbook.addWorksheet('Summary');
+      summSheet.columns = [
+        { header: 'Group Name', key: 'name', width: 30 },
+        { header: 'Total Entries', key: 'entries', width: 16 },
+        { header: 'Total Cost (LKR)', key: 'totalCost', width: 24 },
+      ];
+      for (const g of summaryGroups) summSheet.addRow(g);
+      summSheet.getColumn(3).numFmt = '#,##0.00';
+      const hdr = summSheet.getRow(1);
+      hdr.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      });
+      summSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 3 } };
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="properties-${groupBy}-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    return res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Property export error:', error);
+    return res.status(500).json({ error: 'Failed to export properties' });
+  }
+}
+
 // ─── Schedule Log Export ──────────────────────────────────────────────────────
 
 export async function exportScheduleLogs(req, res) {
