@@ -172,7 +172,7 @@ export default function ReportsPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Buying Manager Report</h1>
-          <p className="page-sub">Cross-client buying summary &mdash; read-only view for managers</p>
+          <p className="page-sub">Cross-client buying summary - read-only view for managers</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => handleExport('excel')} disabled={!selectedAgency || loading}>
@@ -291,7 +291,7 @@ export default function ReportsPage() {
             <tfoot>
               <tr>
                 <td className="strong" colSpan={4}>
-                  Total &mdash; {filtered.length} propert{filtered.length !== 1 ? 'ies' : 'y'}
+                  Total - {filtered.length} propert{filtered.length !== 1 ? 'ies' : 'y'}
                 </td>
                 <td className="num mono">{fmtLKR(totalCost)}</td>
                 <td colSpan={2} />

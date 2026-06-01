@@ -15,11 +15,11 @@ const TAB_COLORS = {
   PRINT: { bg: 'var(--green-50,#ECFDF5)', fg: 'var(--green-600,#059669)' },
 };
 
-const fmtLKR = v => v == null ? '—' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
+const fmtLKR = v => v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 const fmtMonth = ym => {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const s = typeof ym === 'string' ? ym.slice(0, 7) : '';
-  if (!s) return '—';
+  if (!s) return '-';
   const [y, m] = s.split('-');
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
@@ -357,13 +357,13 @@ export default function ClientDetailPage() {
                   {logs.map(l => (
                     <tr key={l.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(l.scheduleMonth)}</td>
-                      <td className="strong">{l.channelMaster?.name || '—'}</td>
-                      <td>{l.brand?.name || '—'}</td>
-                      <td>{l.campaign?.name || '—'}</td>
+                      <td className="strong">{l.channelMaster?.name || '-'}</td>
+                      <td>{l.brand?.name || '-'}</td>
+                      <td>{l.campaign?.name || '-'}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValue)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValueWithVat)}</td>
-                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{l.roNumber || '—'}</td>
-                      <td style={{ fontSize: 12 }}>{l.medium || l.channelMaster?.medium || '—'}</td>
+                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{l.roNumber || '-'}</td>
+                      <td style={{ fontSize: 12 }}>{l.medium || l.channelMaster?.medium || '-'}</td>
                       {canWrite(user?.role) && (
                         <td>
                           <div className="row-actions">

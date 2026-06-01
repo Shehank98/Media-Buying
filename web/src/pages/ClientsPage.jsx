@@ -152,7 +152,7 @@ export default function ClientsPage() {
                       <span className="strong">{c.name}</span>
                     </div>
                   </td>
-                  <td style={{ color: 'var(--muted)' }}>{c.agencyName || '—'}</td>
+                  <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
                   <td style={{ textAlign: 'center' }}><span className="count-badge">{c._count?.channels || c.channelCount || 0}</span></td>
                   {canManage && (
                     <td style={{ textAlign: 'right' }}>

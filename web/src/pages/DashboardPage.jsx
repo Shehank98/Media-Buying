@@ -51,7 +51,7 @@ export default function DashboardPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">{greeting}, {firstName}</h1>
-          <p className="page-sub">Here's what's moving across Ogilvy Media today — {dateStr}.</p>
+          <p className="page-sub">Here's what's moving across Ogilvy Media today - {dateStr}.</p>
         </div>
         <button className="btn btn-primary" onClick={() => go('/reports')}>
           <Icon name="chart" size={16} />New report
@@ -62,7 +62,7 @@ export default function DashboardPage() {
         <Stat
           icon="building" ig="var(--navy-900)" ifg="#fff"
           label="My Agencies" val={String(stats.agencies)}
-          meta={agencies.map(a => a.name).join(' · ') || '—'}
+          meta={agencies.map(a => a.name).join(' · ') || '-'}
           trend="Full access" trendCls="trend-flat"
         />
         <Stat
@@ -73,7 +73,7 @@ export default function DashboardPage() {
         />
         <Stat
           icon="sparkle" ig="var(--green-50)" ifg="var(--green-600)"
-          label="Properties This Month" val="—"
+          label="Properties This Month" val="-"
           meta="vs last month"
         />
       </div>

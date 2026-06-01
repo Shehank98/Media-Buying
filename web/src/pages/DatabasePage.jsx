@@ -4,14 +4,14 @@ import Icon from '../components/Icon';
 import api from '../lib/api';
 
 const fmtLKR = (v) => {
-  if (v == null) return '—';
+  if (v == null) return '-';
   return 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function monthLabel(ym) {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const [y, m] = ym.split('-');
   return `${MONTHS[parseInt(m) - 1]} ${y}`;
 }
@@ -289,7 +289,7 @@ export default function DatabasePage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Database — Schedule Logs</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700 }}>Database - Schedule Logs</h1>
       </div>
 
       {/* Filter Bar */}
@@ -384,14 +384,14 @@ export default function DatabasePage() {
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{log.roNumber}</td>
                     <td>{monthLabel(log.scheduleMonth)}</td>
                     <td>{monthLabel(log.invoiceMonth)}</td>
-                    <td>{log.brand?.name || '—'}</td>
-                    <td>{log.campaign?.name || '—'}</td>
-                    <td>{log.channelMaster?.name || '—'}</td>
+                    <td>{log.brand?.name || '-'}</td>
+                    <td>{log.campaign?.name || '-'}</td>
+                    <td>{log.channelMaster?.name || '-'}</td>
                     <td><MediumBadge medium={log.medium} /></td>
                     <td style={{ fontSize: 12 }}>{log.mediaGroup}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{fmtLKR(log.scheduleValue)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--muted)' }}>{fmtLKR(log.scheduleValueWithVat)}</td>
-                    <td style={{ fontSize: 12 }}>{log.uploader?.name?.split(' ')[0] || '—'}</td>
+                    <td style={{ fontSize: 12 }}>{log.uploader?.name?.split(' ')[0] || '-'}</td>
                     <td><span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 4, background: log.uploadBatchId ? '#f0f4ff' : '#f0fdf4', color: log.uploadBatchId ? '#3b82f6' : '#059669' }}>{log.uploadBatchId ? 'Upload' : 'Manual'}</span></td>
                     <td>
                       {!log.isDeleted && (
@@ -433,7 +433,7 @@ export default function DatabasePage() {
                 <div style={{ display: 'flex', gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <label className="label">Client</label>
-                    <div className="input" style={{ background: 'var(--bg-sunken)' }}>{clients.find(c => String(c.id) === selectedClientId)?.name || '—'}</div>
+                    <div className="input" style={{ background: 'var(--bg-sunken)' }}>{clients.find(c => String(c.id) === selectedClientId)?.name || '-'}</div>
                   </div>
                   <div style={{ flex: 1 }}>
                     <label className="label">Year</label>

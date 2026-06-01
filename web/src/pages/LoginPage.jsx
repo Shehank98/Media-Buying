@@ -64,10 +64,10 @@ export default function LoginPage() {
 
         <div style={{ marginTop: 'auto', position: 'relative', zIndex: 1 }}>
           <div style={{ fontSize: 32, fontWeight: 770, letterSpacing: '-1px', lineHeight: 1.15, maxWidth: 420 }}>
-            Every buy, every channel, every change — on the record.
+            Every buy, every channel, every change - on the record.
           </div>
           <p style={{ color: 'var(--navy-300)', fontSize: 15, lineHeight: 1.6, marginTop: 18, maxWidth: 420 }}>
-            Plan, track and audit airtime, sponsorships and print across agencies and clients — with a full change history behind every property.
+            Plan, track and audit airtime, sponsorships and print across agencies and clients - with a full change history behind every property.
           </p>
           <div style={{ display: 'flex', gap: 28, marginTop: 36 }}>
             {['3 agencies', '240+ properties', 'Full audit trail'].map((s, i) => (

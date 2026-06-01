@@ -726,7 +726,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700,
                     }}>{cm.medium}</span>
                   </td>
-                  <td style={{ color: 'var(--muted)', fontSize: 13 }}>{cm.mediaGroup?.name || '—'}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 13 }}>{cm.mediaGroup?.name || '-'}</td>
                   <td>
                     <span style={{
                       background: cm.isActive !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
@@ -736,7 +736,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </td>
                   <td>{cm._count?.scheduleLogs || 0}</td>
                   <td style={{ color: 'var(--muted)', fontSize: 12 }}>
-                    {Array.isArray(cm.aliases) && cm.aliases.length > 0 ? cm.aliases.join(', ') : '—'}
+                    {Array.isArray(cm.aliases) && cm.aliases.length > 0 ? cm.aliases.join(', ') : '-'}
                   </td>
                   <td>
                     <div className="row-actions">
@@ -818,7 +818,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               {filteredBrands.map(b => (
                 <tr key={b.id}>
                   <td className="strong">{b.name}</td>
-                  <td style={{ color: 'var(--muted)' }}>{b.client?.name || '—'}</td>
+                  <td style={{ color: 'var(--muted)' }}>{b.client?.name || '-'}</td>
                   <td>{b._count?.campaigns || 0}</td>
                   <td>{b._count?.scheduleLogs || 0}</td>
                   <td>
@@ -863,8 +863,8 @@ export default function AdminPage({ initialTab = 'users' }) {
               {filteredCampaigns.map(c => (
                 <tr key={c.id}>
                   <td className="strong">{c.name}</td>
-                  <td style={{ color: 'var(--muted)' }}>{c.brand?.name || '—'}</td>
-                  <td style={{ color: 'var(--muted)' }}>{c.client?.name || '—'}</td>
+                  <td style={{ color: 'var(--muted)' }}>{c.brand?.name || '-'}</td>
+                  <td style={{ color: 'var(--muted)' }}>{c.client?.name || '-'}</td>
                   <td>{c._count?.scheduleLogs || 0}</td>
                   <td>
                     <span style={{

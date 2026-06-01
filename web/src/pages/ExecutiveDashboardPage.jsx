@@ -10,7 +10,7 @@ import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const fmtLKR = (v) => {
-  if (v == null) return '—';
+  if (v == null) return '-';
   return 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 };
 
@@ -22,7 +22,7 @@ const fmtShort = (v) => {
 };
 
 const fmtMonth = (ym) => {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const [y, m] = ym.split('-');
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
@@ -295,7 +295,7 @@ export default function ExecutiveDashboardPage() {
                 <div className="stat-val" style={{ color: yoyColor(summary.yoyGrowthPct) }}>
                   {summary.yoyGrowthPct != null
                     ? (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%'
-                    : '—'}
+                    : '-'}
                 </div>
               </div>
               <div className="stat">
@@ -303,35 +303,35 @@ export default function ExecutiveDashboardPage() {
                   <span className="stat-label">Active Clients</span>
                   <span className="stat-ico"><Icon name="users" size={17} /></span>
                 </div>
-                <div className="stat-val">{summary.activeClients ?? '—'}</div>
+                <div className="stat-val">{summary.activeClients ?? '-'}</div>
               </div>
               <div className="stat">
                 <div className="stat-top">
                   <span className="stat-label">Logs this month</span>
                   <span className="stat-ico"><Icon name="calendar" size={17} /></span>
                 </div>
-                <div className="stat-val">{summary.logsThisMonth ?? '—'}</div>
+                <div className="stat-val">{summary.logsThisMonth ?? '-'}</div>
               </div>
               <div className="stat">
                 <div className="stat-top">
                   <span className="stat-label">Active Channels</span>
                   <span className="stat-ico"><Icon name="tv" size={17} /></span>
                 </div>
-                <div className="stat-val">{summary.activeChannelsThisMonth ?? '—'}</div>
+                <div className="stat-val">{summary.activeChannelsThisMonth ?? '-'}</div>
               </div>
               <div className="stat">
                 <div className="stat-top">
                   <span className="stat-label">Uploads this month</span>
                   <span className="stat-ico"><Icon name="upload" size={17} /></span>
                 </div>
-                <div className="stat-val">{summary.uploadsThisMonth ?? '—'}</div>
+                <div className="stat-val">{summary.uploadsThisMonth ?? '-'}</div>
               </div>
               <div className="stat">
                 <div className="stat-top">
                   <span className="stat-label">Manual entries</span>
                   <span className="stat-ico"><Icon name="edit" size={17} /></span>
                 </div>
-                <div className="stat-val">{summary.manualEntriesThisMonth ?? '—'}</div>
+                <div className="stat-val">{summary.manualEntriesThisMonth ?? '-'}</div>
               </div>
             </>
           ) : (
@@ -348,7 +348,7 @@ export default function ExecutiveDashboardPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
               <div className="chart-card-title">Monthly Billing Trend</div>
-              <div className="chart-card-sub">Last 24 months — invoice value</div>
+              <div className="chart-card-sub">Last 24 months - invoice value</div>
             </div>
             <div className="toggle-group">
               <button className={`toggle-btn${trendView === 'combined' ? ' active' : ''}`} onClick={() => setTrendView('combined')}>Combined</button>
@@ -452,7 +452,7 @@ export default function ExecutiveDashboardPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                           {trendIcon(c.momDirection)}
                           <span style={{ color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? 'var(--red-600)' : 'var(--muted)' }}>
-                            {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '—'}
+                            {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '-'}
                           </span>
                         </div>
                       </td>
@@ -498,7 +498,7 @@ export default function ExecutiveDashboardPage() {
                       </td>
                       <td className="mono" style={{ fontSize: 12 }}>{fmtLKR(c.ytdSpend)}</td>
                       <td style={{ fontSize: 12, color: c.yoyChange >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>
-                        {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '%' : '—'}
+                        {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '%' : '-'}
                       </td>
                     </tr>
                   ))}
@@ -515,7 +515,7 @@ export default function ExecutiveDashboardPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
               <div className="chart-card-title">Agency Comparison</div>
-              <div className="chart-card-sub">Monthly billings per agency — last 12 months</div>
+              <div className="chart-card-sub">Monthly billings per agency - last 12 months</div>
             </div>
             <div className="toggle-group">
               <button className="toggle-btn active">Schedule Value</button>
@@ -545,7 +545,7 @@ export default function ExecutiveDashboardPage() {
                   <div className="agency-sum-row"><span>Active channels</span><span>{ag.activeChannels}</span></div>
                   <div className="agency-sum-row"><span>YTD Growth</span>
                     <span style={{ color: (ag.ytdGrowthPct || 0) >= 0 ? 'var(--green-600)' : 'var(--red-600)', fontWeight: 700 }}>
-                      {ag.ytdGrowthPct != null ? (ag.ytdGrowthPct >= 0 ? '+' : '') + ag.ytdGrowthPct.toFixed(1) + '%' : '—'}
+                      {ag.ytdGrowthPct != null ? (ag.ytdGrowthPct >= 0 ? '+' : '') + ag.ytdGrowthPct.toFixed(1) + '%' : '-'}
                     </span>
                   </div>
                 </div>
@@ -632,8 +632,8 @@ export default function ExecutiveDashboardPage() {
                       {activityLog.map((item, i) => (
                         <tr key={i}>
                           <td className="strong">{item.userName}</td>
-                          <td style={{ color: 'var(--muted)' }}>{item.agencyName || '—'}</td>
-                          <td style={{ color: 'var(--muted)' }}>{item.clientName || '—'}</td>
+                          <td style={{ color: 'var(--muted)' }}>{item.agencyName || '-'}</td>
+                          <td style={{ color: 'var(--muted)' }}>{item.clientName || '-'}</td>
                           <td>
                             <span style={{
                               fontSize: 11, fontWeight: 700,
@@ -644,7 +644,7 @@ export default function ExecutiveDashboardPage() {
                             {item.detail && <span style={{ color: 'var(--muted)', fontSize: 12 }}>{item.detail}</span>}
                           </td>
                           <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                            {item.timestamp ? new Date(item.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                            {item.timestamp ? new Date(item.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
                           </td>
                         </tr>
                       ))}

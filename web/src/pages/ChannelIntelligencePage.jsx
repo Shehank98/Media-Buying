@@ -8,14 +8,14 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts';
 
-const fmtLKR = v => v == null ? '—' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
+const fmtLKR = v => v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 const fmtShort = v => {
   if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
   if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
   return v;
 };
 const fmtMonth = ym => {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const [y, m] = ym.split('-');
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
@@ -125,7 +125,7 @@ export default function ChannelIntelligencePage() {
   const statCards = [
     { label: 'YTD Spend', value: fmtLKR(summary?.ytdSpend), icon: 'dollar' },
     { label: 'Last Year', value: fmtLKR(summary?.lastYearSpend), icon: 'calendar' },
-    { label: 'YoY Growth', value: summary?.yoyGrowthPct != null ? `${summary.yoyGrowthPct >= 0 ? '+' : ''}${summary.yoyGrowthPct.toFixed(1)}%` : '—', icon: summary?.yoyGrowthPct >= 0 ? 'trending-up' : 'trending-down', color: summary?.yoyGrowthPct >= 0 ? 'var(--green-600)' : 'var(--red-600)' },
+    { label: 'YoY Growth', value: summary?.yoyGrowthPct != null ? `${summary.yoyGrowthPct >= 0 ? '+' : ''}${summary.yoyGrowthPct.toFixed(1)}%` : '-', icon: summary?.yoyGrowthPct >= 0 ? 'trending-up' : 'trending-down', color: summary?.yoyGrowthPct >= 0 ? 'var(--green-600)' : 'var(--red-600)' },
     { label: 'Active Clients', value: summary?.activeClientsCount ?? 0, icon: 'users' },
   ];
 
@@ -245,7 +245,7 @@ export default function ChannelIntelligencePage() {
                 onClick={() => toggleProp(group.propertyName)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'var(--bg-sunken)', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'var(--ink)', fontSize: 14 }}
               >
-                <span>{group.propertyName} — {ch.name}</span>
+                <span>{group.propertyName} - {ch.name}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 12 }}>
                   {group.entries.length} entries
                   <Icon name={expandedProps[group.propertyName] ? 'chevDown' : 'chevR'} size={14} />

@@ -2,14 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar } from '../components/Icon';
 import api from '../lib/api';
 
-const fmtLKR = v => v == null ? '—' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
+const fmtLKR = v => v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 const fmtMonth = ym => {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const [y, m] = ym.split('-');
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
 const fmtMonthLong = ym => {
-  if (!ym) return '—';
+  if (!ym) return '-';
   const [y, m] = ym.split('-');
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 };

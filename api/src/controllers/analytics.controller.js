@@ -334,7 +334,7 @@ export async function getActivityLog(req, res) {
       clientName: r.client?.name || '',
       action: r.uploadBatchId ? 'uploaded' : 'created',
       timestamp: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
-      detail: `Schedule log for ${r.channelMaster?.name || '—'} — ${r.scheduleMonth} — LKR ${safeNum(r.scheduleValue)?.toLocaleString() || 0}`,
+      detail: `Schedule log for ${r.channelMaster?.name || '-'} - ${r.scheduleMonth} - LKR ${safeNum(r.scheduleValue)?.toLocaleString() || 0}`,
     }));
 
     return res.json({ items, total, page });
