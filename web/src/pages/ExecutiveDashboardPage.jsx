@@ -92,7 +92,7 @@ export default function ExecutiveDashboardPage() {
 
   const [agencyComparison, setAgencyComparison] = useState([]);
   const [agencyCompLoading, setAgencyCompLoading] = useState(true);
-  const [agencyCompValueType, setAgencyCompValueType] = useState('invoiceValue');
+  const [agencyCompValueType, setAgencyCompValueType] = useState('scheduleValue');
 
   const [mediumSplit, setMediumSplit] = useState(null);
   const [mediumLoading, setMediumLoading] = useState(true);
@@ -319,6 +319,20 @@ export default function ExecutiveDashboardPage() {
                 </div>
                 <div className="stat-val">{summary.activeChannelsThisMonth ?? '—'}</div>
               </div>
+              <div className="stat">
+                <div className="stat-top">
+                  <span className="stat-label">Uploads this month</span>
+                  <span className="stat-ico"><Icon name="upload" size={17} /></span>
+                </div>
+                <div className="stat-val">{summary.uploadsThisMonth ?? '—'}</div>
+              </div>
+              <div className="stat">
+                <div className="stat-top">
+                  <span className="stat-label">Manual entries</span>
+                  <span className="stat-ico"><Icon name="edit" size={17} /></span>
+                </div>
+                <div className="stat-val">{summary.manualEntriesThisMonth ?? '—'}</div>
+              </div>
             </>
           ) : (
             <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px 0', color: 'var(--muted)' }}>
@@ -346,7 +360,7 @@ export default function ExecutiveDashboardPage() {
               (() => {
                 const data = (trendData.combined || []).slice(-24).map(d => ({
                   month: fmtMonth(d.month),
-                  invoiceValue: d.invoiceValue || 0,
+                  scheduleValue: d.scheduleValue || 0,
                 }));
                 if (!data.length) return <ChartEmpty />;
                 return (
@@ -362,7 +376,7 @@ export default function ExecutiveDashboardPage() {
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                       <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
                       <Tooltip content={<CustomTooltipLKR />} />
-                      <Area type="monotone" dataKey="invoiceValue" name="Invoice Value" stroke="#0A1729" strokeWidth={2} fill="url(#gradNav)" />
+                      <Area type="monotone" dataKey="scheduleValue" name="Schedule Value" stroke="#0A1729" strokeWidth={2} fill="url(#gradNav)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 );
@@ -377,7 +391,7 @@ export default function ExecutiveDashboardPage() {
                   const row = { month: fmtMonth(m) };
                   agencyLines.forEach(ag => {
                     const d = (ag.data || []).find(x => x.month === m);
-                    row[ag.agencyName] = d ? d.invoiceValue : 0;
+                    row[ag.agencyName] = d ? d.scheduleValue : 0;
                   });
                   return row;
                 });
@@ -504,8 +518,7 @@ export default function ExecutiveDashboardPage() {
               <div className="chart-card-sub">Monthly billings per agency — last 12 months</div>
             </div>
             <div className="toggle-group">
-              <button className={`toggle-btn${agencyCompValueType === 'invoiceValue' ? ' active' : ''}`} onClick={() => setAgencyCompValueType('invoiceValue')}>Invoice</button>
-              <button className={`toggle-btn${agencyCompValueType === 'scheduleValue' ? ' active' : ''}`} onClick={() => setAgencyCompValueType('scheduleValue')}>Schedule</button>
+              <button className="toggle-btn active">Schedule Value</button>
             </div>
           </div>
           {agencyCompLoading ? <Skeleton h={260} /> : !agencyCompChartData.length ? <ChartEmpty /> : (
