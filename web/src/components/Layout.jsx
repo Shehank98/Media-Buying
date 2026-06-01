@@ -48,19 +48,22 @@ export default function Layout() {
   const [showNotifs, setShowNotifs] = useState(false);
 
   const fetchNotifications = useCallback(() => {
+    if (!user) return;
     api.get('/notifications', { params: { unreadOnly: 'false' } })
       .then(r => {
-        setNotifications(r.data.notifications || []);
-        setUnreadCount(r.data.unreadCount || 0);
+        const n = r.data?.notifications;
+        setNotifications(Array.isArray(n) ? n : []);
+        setUnreadCount(r.data?.unreadCount || 0);
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
   useEffect(() => {
+    if (!user) return;
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, user]);
 
   const markRead = async (id) => {
     try {
