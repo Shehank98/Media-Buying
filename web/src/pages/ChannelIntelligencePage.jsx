@@ -49,7 +49,7 @@ export default function ChannelIntelligencePage() {
   const [propClientFilter, setPropClientFilter] = useState('');
   const [expandedProps, setExpandedProps] = useState({});
 
-  const [clientSort, setClientSort] = useState({ field: 'totalInvoiceValue', dir: 'desc' });
+  const [clientSort, setClientSort] = useState({ field: 'totalScheduleValueWithVat', dir: 'desc' });
 
   useEffect(() => {
     const load = async () => {
@@ -118,8 +118,8 @@ export default function ChannelIntelligencePage() {
   const chartData = monthly.map(m => ({
     ...m,
     label: fmtMonth(m.month),
-    invoiceValue: Number(m.invoiceValue || 0),
     scheduleValue: Number(m.scheduleValue || 0),
+    withVat: Number(m.scheduleValueWithVat || 0),
   }));
 
   const statCards = [
@@ -174,8 +174,8 @@ export default function ChannelIntelligencePage() {
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v) => fmtLKR(v)} labelFormatter={l => l} />
-              <Bar dataKey="invoiceValue" name="Invoice Value" fill="#0A1729" radius={[4, 4, 0, 0]} />
-              <Line dataKey="scheduleValue" name="Schedule Value" stroke="#E85D24" strokeWidth={2} dot={false} strokeDasharray="5 3" />
+              <Bar dataKey="scheduleValue" name="Schedule Value" fill="#0A1729" radius={[4, 4, 0, 0]} />
+              <Line dataKey="withVat" name="With VAT (18%)" stroke="#E85D24" strokeWidth={2} dot={false} strokeDasharray="5 3" />
             </ComposedChart>
           </ResponsiveContainer>
         )}
@@ -194,7 +194,7 @@ export default function ChannelIntelligencePage() {
                   { key: 'clientName', label: 'Client' },
                   { key: 'agencyName', label: 'Agency' },
                   { key: 'totalScheduleValue', label: 'Schedule Value' },
-                  { key: 'totalInvoiceValue', label: 'Invoice Value' },
+                  { key: 'totalScheduleValueWithVat', label: 'With VAT' },
                   { key: 'monthsActive', label: 'Months Active' },
                   { key: 'lastActive', label: 'Last Active' },
                 ].map(col => (
@@ -209,7 +209,7 @@ export default function ChannelIntelligencePage() {
                     <td className="strong">{c.clientName}</td>
                     <td style={{ color: 'var(--muted)' }}>{c.agencyName}</td>
                     <td className="mono">{fmtLKR(c.totalScheduleValue)}</td>
-                    <td className="mono">{fmtLKR(c.totalInvoiceValue)}</td>
+                    <td className="mono">{fmtLKR(c.totalScheduleValueWithVat)}</td>
                     <td style={{ textAlign: 'center' }}>{c.monthsActive}</td>
                     <td style={{ color: 'var(--muted)' }}>{fmtMonth(c.lastActive)}</td>
                   </tr>

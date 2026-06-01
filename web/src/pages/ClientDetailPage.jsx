@@ -57,8 +57,7 @@ export default function ClientDetailPage() {
   const [editingLog, setEditingLog] = useState(null);
   const [logForm, setLogForm] = useState({
     channelMasterId: '', brandId: '', campaignId: '', scheduleMonth: '',
-    invoiceMonth: '', scheduleValue: '', invoiceValue: '', roNumber: '',
-    cagPct: '', cagAmount: '', aorPct: '', aorRevenue: '', mediaGroup: '', notes: '',
+    scheduleValue: '', roNumber: '',
   });
   const [logSubmitting, setLogSubmitting] = useState(false);
   const [logError, setLogError] = useState('');
@@ -129,23 +128,6 @@ export default function ClientDetailPage() {
     }).catch(() => setCampaigns([]));
   }, [logForm.brandId, brands]);
 
-  // Auto compute cagAmount and aorRevenue
-  useEffect(() => {
-    const sv = parseFloat(logForm.scheduleValue);
-    const cp = parseFloat(logForm.cagPct);
-    if (!isNaN(sv) && !isNaN(cp)) {
-      setLogForm(p => ({ ...p, cagAmount: (sv * cp / 100).toFixed(2) }));
-    }
-  }, [logForm.scheduleValue, logForm.cagPct]);
-
-  useEffect(() => {
-    const iv = parseFloat(logForm.invoiceValue || logForm.scheduleValue);
-    const ap = parseFloat(logForm.aorPct);
-    if (!isNaN(iv) && !isNaN(ap)) {
-      setLogForm(p => ({ ...p, aorRevenue: (iv * ap / 100).toFixed(2) }));
-    }
-  }, [logForm.invoiceValue, logForm.scheduleValue, logForm.aorPct]);
-
   const filteredChannels = channels.filter(c => c.type === activeTab);
 
   const handleAddChannel = async () => {
@@ -167,8 +149,7 @@ export default function ClientDetailPage() {
     setLogForm({
       channelMasterId: '', brandId: '', campaignId: '',
       scheduleMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-      invoiceMonth: '', scheduleValue: '', invoiceValue: '', roNumber: '',
-      cagPct: '', cagAmount: '', aorPct: '', aorRevenue: '', mediaGroup: '', notes: '',
+      scheduleValue: '', roNumber: '',
     });
     setLogError('');
     setNewBrandName('');
@@ -184,16 +165,8 @@ export default function ClientDetailPage() {
       brandId: String(log.brandId || log.brand?.id || ''),
       campaignId: String(log.campaignId || log.campaign?.id || ''),
       scheduleMonth: log.scheduleMonth ? log.scheduleMonth.slice(0, 7) : '',
-      invoiceMonth: log.invoiceMonth ? log.invoiceMonth.slice(0, 7) : '',
       scheduleValue: log.scheduleValue != null ? String(Number(log.scheduleValue)) : '',
-      invoiceValue: log.invoiceValue != null ? String(Number(log.invoiceValue)) : '',
       roNumber: log.roNumber || '',
-      cagPct: log.cagPct != null ? String(Number(log.cagPct)) : '',
-      cagAmount: log.cagAmount != null ? String(Number(log.cagAmount)) : '',
-      aorPct: log.aorPct != null ? String(Number(log.aorPct)) : '',
-      aorRevenue: log.aorRevenue != null ? String(Number(log.aorRevenue)) : '',
-      mediaGroup: log.mediaGroup || '',
-      notes: log.notes || '',
     });
     setLogError('');
     setShowLogModal(true);
@@ -228,17 +201,9 @@ export default function ClientDetailPage() {
         channelMasterId: parseInt(logForm.channelMasterId),
         brandId: brandId || undefined,
         campaignId: campaignId || undefined,
-        scheduleMonth: new Date(logForm.scheduleMonth + '-01').toISOString(),
-        invoiceMonth: logForm.invoiceMonth ? new Date(logForm.invoiceMonth + '-01').toISOString() : undefined,
+        scheduleMonth: logForm.scheduleMonth,
         scheduleValue: parseFloat(logForm.scheduleValue),
-        invoiceValue: logForm.invoiceValue ? parseFloat(logForm.invoiceValue) : undefined,
         roNumber: logForm.roNumber || undefined,
-        cagPct: logForm.cagPct ? parseFloat(logForm.cagPct) : undefined,
-        cagAmount: logForm.cagAmount ? parseFloat(logForm.cagAmount) : undefined,
-        aorPct: logForm.aorPct ? parseFloat(logForm.aorPct) : undefined,
-        aorRevenue: logForm.aorRevenue ? parseFloat(logForm.aorRevenue) : undefined,
-        mediaGroup: logForm.mediaGroup || undefined,
-        notes: logForm.notes || undefined,
       };
 
       if (editingLog) {
@@ -267,8 +232,8 @@ export default function ClientDetailPage() {
   const logTotals = useMemo(() => {
     return logs.reduce((acc, l) => ({
       scheduleValue: acc.scheduleValue + Number(l.scheduleValue || 0),
-      invoiceValue: acc.invoiceValue + Number(l.invoiceValue || 0),
-    }), { scheduleValue: 0, invoiceValue: 0 });
+      scheduleValueWithVat: acc.scheduleValueWithVat + Number(l.scheduleValueWithVat || 0),
+    }), { scheduleValue: 0, scheduleValueWithVat: 0 });
   }, [logs]);
 
   const years = useMemo(() => {
@@ -384,8 +349,8 @@ export default function ClientDetailPage() {
                 <thead><tr>
                   <th>Month</th><th>Channel</th><th>Brand</th><th>Campaign</th>
                   <th style={{ textAlign: 'right' }}>Schedule Val</th>
-                  <th style={{ textAlign: 'right' }}>Invoice Val</th>
-                  <th>RO#</th><th>CAG%</th><th>AOR%</th>
+                  <th style={{ textAlign: 'right' }}>With VAT</th>
+                  <th>RO#</th><th>Medium</th>
                   {canWrite(user?.role) && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
                 </tr></thead>
                 <tbody>
@@ -396,10 +361,9 @@ export default function ClientDetailPage() {
                       <td>{l.brand?.name || '—'}</td>
                       <td>{l.campaign?.name || '—'}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValue)}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.invoiceValue)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValueWithVat)}</td>
                       <td style={{ color: 'var(--muted)', fontSize: 12 }}>{l.roNumber || '—'}</td>
-                      <td style={{ fontSize: 12 }}>{l.cagPct != null ? `${Number(l.cagPct)}%` : '—'}</td>
-                      <td style={{ fontSize: 12 }}>{l.aorPct != null ? `${Number(l.aorPct)}%` : '—'}</td>
+                      <td style={{ fontSize: 12 }}>{l.medium || l.channelMaster?.medium || '—'}</td>
                       {canWrite(user?.role) && (
                         <td>
                           <div className="row-actions">
@@ -417,8 +381,8 @@ export default function ClientDetailPage() {
                   <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border-strong)' }}>
                     <td colSpan={4}>Total ({logs.length} entries)</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(logTotals.scheduleValue)}</td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(logTotals.invoiceValue)}</td>
-                    <td colSpan={canWrite(user?.role) ? 4 : 3}></td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(logTotals.scheduleValueWithVat)}</td>
+                    <td colSpan={canWrite(user?.role) ? 3 : 2}></td>
                   </tr>
                 </tfoot>
               </table>
@@ -516,55 +480,20 @@ export default function ClientDetailPage() {
                   <div className="field">
                     <label className="field-label">Schedule Month <span className="req">*</span></label>
                     <input className="input" type="month" value={logForm.scheduleMonth} onChange={e => setLogForm(p => ({ ...p, scheduleMonth: e.target.value }))} />
+                    {logForm.scheduleMonth && (() => {
+                      const [y, m] = logForm.scheduleMonth.split('-').map(Number);
+                      const d = new Date(y, m, 1);
+                      const inv = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                      return <span className="field-hint">Invoice month: {inv}</span>;
+                    })()}
                   </div>
-                  <div className="field">
-                    <label className="field-label">Invoice Month</label>
-                    <input className="input" type="month" value={logForm.invoiceMonth} onChange={e => setLogForm(p => ({ ...p, invoiceMonth: e.target.value }))} />
-                  </div>
-                </div>
-
-                <div className="field-grid2">
                   <div className="field">
                     <label className="field-label">Schedule Value <span className="req">*</span></label>
                     <input className="input" type="number" step="0.01" value={logForm.scheduleValue} onChange={e => setLogForm(p => ({ ...p, scheduleValue: e.target.value }))} placeholder="0.00" />
+                    {logForm.scheduleValue && (
+                      <span className="field-hint">With VAT (18%): LKR {(parseFloat(logForm.scheduleValue) * 1.18).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    )}
                   </div>
-                  <div className="field">
-                    <label className="field-label">Invoice Value</label>
-                    <input className="input" type="number" step="0.01" value={logForm.invoiceValue} onChange={e => setLogForm(p => ({ ...p, invoiceValue: e.target.value }))} placeholder="0.00" />
-                  </div>
-                </div>
-
-                <div className="field-grid2">
-                  <div className="field">
-                    <label className="field-label">CAG %</label>
-                    <input className="input" type="number" step="0.001" value={logForm.cagPct} onChange={e => setLogForm(p => ({ ...p, cagPct: e.target.value }))} placeholder="0" />
-                  </div>
-                  <div className="field">
-                    <label className="field-label">CAG Amount</label>
-                    <input className="input" type="number" step="0.01" value={logForm.cagAmount} onChange={e => setLogForm(p => ({ ...p, cagAmount: e.target.value }))} placeholder="Auto-computed" />
-                    <span className="field-hint">Auto-computed from Schedule Value × CAG%</span>
-                  </div>
-                </div>
-
-                <div className="field-grid2">
-                  <div className="field">
-                    <label className="field-label">AOR %</label>
-                    <input className="input" type="number" step="0.001" value={logForm.aorPct} onChange={e => setLogForm(p => ({ ...p, aorPct: e.target.value }))} placeholder="0" />
-                  </div>
-                  <div className="field">
-                    <label className="field-label">AOR Revenue</label>
-                    <input className="input" type="number" step="0.01" value={logForm.aorRevenue} onChange={e => setLogForm(p => ({ ...p, aorRevenue: e.target.value }))} placeholder="Auto-computed" />
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label className="field-label">Media Group</label>
-                  <input className="input" value={logForm.mediaGroup} onChange={e => setLogForm(p => ({ ...p, mediaGroup: e.target.value }))} placeholder="e.g. MTV / MBC" />
-                </div>
-
-                <div className="field">
-                  <label className="field-label">Notes</label>
-                  <textarea className="input" rows={2} value={logForm.notes} onChange={e => setLogForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes…" style={{ resize: 'vertical' }} />
                 </div>
               </div>
               <div className="modal-foot">
