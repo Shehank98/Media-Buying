@@ -58,10 +58,32 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [channelMasters, setChannelMasters] = useState([]);
   const [showChMasterModal, setShowChMasterModal] = useState(false);
   const [editingChMaster, setEditingChMaster] = useState(null);
-  const [chMasterForm, setChMasterForm] = useState({ name: '', medium: 'TV', aliases: '', isActive: true });
+  const [chMasterForm, setChMasterForm] = useState({ name: '', medium: 'TV', mediaGroupId: '', aliases: '', isActive: true });
   const [chMasterSubmitting, setChMasterSubmitting] = useState(false);
   const [chMasterError, setChMasterError] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+
+  /* ---- media groups ---- */
+  const [mediaGroups, setMediaGroups] = useState([]);
+  const [showMgModal, setShowMgModal] = useState(false);
+  const [editingMg, setEditingMg] = useState(null);
+  const [mgForm, setMgForm] = useState({ name: '' });
+  const [mgSubmitting, setMgSubmitting] = useState(false);
+  const [mgError, setMgError] = useState('');
+
+  /* ---- brands ---- */
+  const [brands, setBrands] = useState([]);
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [brandForm, setBrandForm] = useState({ clientId: '', name: '' });
+  const [brandSubmitting, setBrandSubmitting] = useState(false);
+  const [brandError, setBrandError] = useState('');
+
+  /* ---- campaigns ---- */
+  const [campaigns, setCampaigns] = useState([]);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+  const [campaignForm, setCampaignForm] = useState({ brandId: '', name: '' });
+  const [campaignSubmitting, setCampaignSubmitting] = useState(false);
+  const [campaignError, setCampaignError] = useState('');
 
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -73,11 +95,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes, chMasterRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, chMasterRes, mgRes, brandsRes, campaignsRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
-        api.get('/admin/channel-masters?includeInactive=true'),
+        api.get('/masterdata/channel-masters?includeInactive=true'),
+        api.get('/masterdata/media-groups'),
+        api.get('/masterdata/brands'),
+        api.get('/masterdata/campaigns'),
       ]);
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
@@ -99,6 +124,18 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (chMasterRes.status === 'fulfilled') {
         const rawCm = chMasterRes.value.data.channelMasters || chMasterRes.value.data;
         setChannelMasters(Array.isArray(rawCm) ? rawCm : []);
+      }
+      if (mgRes.status === 'fulfilled') {
+        const rawMg = mgRes.value.data.mediaGroups || mgRes.value.data;
+        setMediaGroups(Array.isArray(rawMg) ? rawMg : []);
+      }
+      if (brandsRes.status === 'fulfilled') {
+        const rawBrands = brandsRes.value.data.brands || brandsRes.value.data;
+        setBrands(Array.isArray(rawBrands) ? rawBrands : []);
+      }
+      if (campaignsRes.status === 'fulfilled') {
+        const rawCamp = campaignsRes.value.data.campaigns || campaignsRes.value.data;
+        setCampaigns(Array.isArray(rawCamp) ? rawCamp : []);
       }
     } catch {
       setError('Failed to load admin data.');
@@ -233,7 +270,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- Channel Master CRUD ---- */
   const openAddChMaster = () => {
     setEditingChMaster(null);
-    setChMasterForm({ name: '', medium: 'TV', aliases: '', isActive: true });
+    setChMasterForm({ name: '', medium: 'TV', mediaGroupId: '', aliases: '', isActive: true });
     setChMasterError('');
     setShowChMasterModal(true);
   };
@@ -242,6 +279,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     setChMasterForm({
       name: cm.name,
       medium: cm.medium,
+      mediaGroupId: cm.mediaGroupId || cm.mediaGroup?.id || '',
       aliases: Array.isArray(cm.aliases) ? cm.aliases.join(', ') : '',
       isActive: cm.isActive !== false,
     });
@@ -252,16 +290,17 @@ export default function AdminPage({ initialTab = 'users' }) {
     e.preventDefault();
     setChMasterError('');
     if (!chMasterForm.name.trim()) { setChMasterError('Name is required.'); return; }
+    if (!chMasterForm.mediaGroupId) { setChMasterError('Media group is required.'); return; }
     setChMasterSubmitting(true);
     try {
       const payload = {
         name: chMasterForm.name,
         medium: chMasterForm.medium,
+        mediaGroupId: parseInt(chMasterForm.mediaGroupId),
         aliases: chMasterForm.aliases ? chMasterForm.aliases.split(',').map(s => s.trim()).filter(Boolean) : [],
-        isActive: chMasterForm.isActive,
       };
-      if (editingChMaster) await api.put(`/admin/channel-masters/${editingChMaster.id}`, payload);
-      else await api.post('/admin/channel-masters', payload);
+      if (editingChMaster) await api.put(`/masterdata/channel-masters/${editingChMaster.id}`, payload);
+      else await api.post('/masterdata/channel-masters', payload);
       setShowChMasterModal(false);
       await fetchData();
     } catch (err) {
@@ -270,21 +309,83 @@ export default function AdminPage({ initialTab = 'users' }) {
       setChMasterSubmitting(false);
     }
   };
-  const handleDeactivateChMaster = async cm => {
+  const handleToggleChMaster = async cm => {
     try {
-      await api.delete(`/admin/channel-masters/${cm.id}`);
+      await api.patch(`/masterdata/channel-masters/${cm.id}/toggle`);
       await fetchData();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to deactivate channel.');
+      setError(err.response?.data?.error || 'Failed to toggle channel status.');
     }
   };
-  const handleReactivateChMaster = async cm => {
+
+  /* ---- Media Group CRUD ---- */
+  const openAddMg = () => { setEditingMg(null); setMgForm({ name: '' }); setMgError(''); setShowMgModal(true); };
+  const openEditMg = mg => { setEditingMg(mg); setMgForm({ name: mg.name }); setMgError(''); setShowMgModal(true); };
+  const handleMgSubmit = async e => {
+    e.preventDefault();
+    setMgError('');
+    if (!mgForm.name.trim()) { setMgError('Name is required.'); return; }
+    setMgSubmitting(true);
     try {
-      await api.put(`/admin/channel-masters/${cm.id}`, { isActive: true });
+      if (editingMg) await api.put(`/masterdata/media-groups/${editingMg.id}`, mgForm);
+      else await api.post('/masterdata/media-groups', mgForm);
+      setShowMgModal(false);
       await fetchData();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to reactivate channel.');
-    }
+      setMgError(err.response?.data?.error || 'Failed to save media group.');
+    } finally { setMgSubmitting(false); }
+  };
+  const handleToggleMg = async mg => {
+    try {
+      await api.patch(`/masterdata/media-groups/${mg.id}/toggle`);
+      await fetchData();
+    } catch (err) { setError(err.response?.data?.error || 'Failed to toggle media group.'); }
+  };
+
+  /* ---- Brand CRUD ---- */
+  const openAddBrand = () => { setBrandForm({ clientId: '', name: '' }); setBrandError(''); setShowBrandModal(true); };
+  const handleBrandSubmit = async e => {
+    e.preventDefault();
+    setBrandError('');
+    if (!brandForm.name.trim()) { setBrandError('Name is required.'); return; }
+    if (!brandForm.clientId) { setBrandError('Client is required.'); return; }
+    setBrandSubmitting(true);
+    try {
+      await api.post('/masterdata/brands', brandForm);
+      setShowBrandModal(false);
+      await fetchData();
+    } catch (err) {
+      setBrandError(err.response?.data?.error || 'Failed to create brand.');
+    } finally { setBrandSubmitting(false); }
+  };
+  const handleToggleBrand = async b => {
+    try {
+      await api.patch(`/masterdata/brands/${b.id}/toggle`);
+      await fetchData();
+    } catch (err) { setError(err.response?.data?.error || 'Failed to toggle brand.'); }
+  };
+
+  /* ---- Campaign CRUD ---- */
+  const openAddCampaign = () => { setCampaignForm({ brandId: '', name: '' }); setCampaignError(''); setShowCampaignModal(true); };
+  const handleCampaignSubmit = async e => {
+    e.preventDefault();
+    setCampaignError('');
+    if (!campaignForm.name.trim()) { setCampaignError('Name is required.'); return; }
+    if (!campaignForm.brandId) { setCampaignError('Brand is required.'); return; }
+    setCampaignSubmitting(true);
+    try {
+      await api.post('/masterdata/campaigns', campaignForm);
+      setShowCampaignModal(false);
+      await fetchData();
+    } catch (err) {
+      setCampaignError(err.response?.data?.error || 'Failed to create campaign.');
+    } finally { setCampaignSubmitting(false); }
+  };
+  const handleToggleCampaign = async c => {
+    try {
+      await api.patch(`/masterdata/campaigns/${c.id}/toggle`);
+      await fetchData();
+    } catch (err) { setError(err.response?.data?.error || 'Failed to toggle campaign.'); }
   };
 
   /* ---- Delete ---- */
@@ -332,6 +433,18 @@ export default function AdminPage({ initialTab = 'users' }) {
       .filter(cm => cm.name.toLowerCase().includes(search.toLowerCase())),
     [channelMasters, search, showInactive]);
 
+  const filteredMgs = useMemo(() =>
+    mediaGroups.filter(mg => mg.name.toLowerCase().includes(search.toLowerCase())),
+    [mediaGroups, search]);
+
+  const filteredBrands = useMemo(() =>
+    brands.filter(b => b.name.toLowerCase().includes(search.toLowerCase()) || b.client?.name?.toLowerCase().includes(search.toLowerCase())),
+    [brands, search]);
+
+  const filteredCampaigns = useMemo(() =>
+    campaigns.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.brand?.name?.toLowerCase().includes(search.toLowerCase())),
+    [campaigns, search]);
+
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   if (loading) {
@@ -347,6 +460,9 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'agencies', label: 'Agencies', count: agencies.length },
     { key: 'teams', label: 'Teams', count: teams.length },
     { key: 'channels', label: 'Channels', count: channelMasters.length },
+    { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
+    { key: 'brands', label: 'Brands', count: brands.length },
+    { key: 'campaigns', label: 'Campaigns', count: campaigns.length },
   ];
 
   return (
@@ -415,6 +531,21 @@ export default function AdminPage({ initialTab = 'users' }) {
               <Icon name="plus" size={16} /> Add Channel
             </button>
           </>
+        )}
+        {activeTab === 'media-groups' && (
+          <button className="btn btn-primary" onClick={openAddMg} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Media Group
+          </button>
+        )}
+        {activeTab === 'brands' && (
+          <button className="btn btn-primary" onClick={openAddBrand} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Brand
+          </button>
+        )}
+        {activeTab === 'campaigns' && (
+          <button className="btn btn-primary" onClick={openAddCampaign} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Campaign
+          </button>
         )}
       </div>
 
@@ -577,6 +708,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <tr>
                 <th>Name</th>
                 <th>Medium</th>
+                <th>Media Group</th>
                 <th>Status</th>
                 <th>Schedule Logs</th>
                 <th>Aliases</th>
@@ -594,6 +726,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700,
                     }}>{cm.medium}</span>
                   </td>
+                  <td style={{ color: 'var(--muted)', fontSize: 13 }}>{cm.mediaGroup?.name || '—'}</td>
                   <td>
                     <span style={{
                       background: cm.isActive !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
@@ -610,15 +743,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <button className="act-btn" onClick={() => openEditChMaster(cm)} title="Edit">
                         <Icon name="edit" size={15} />
                       </button>
-                      {cm.isActive !== false ? (
-                        <button className="act-btn" onClick={() => handleDeactivateChMaster(cm)} title="Deactivate" style={{ color: 'var(--red-600)' }}>
-                          <Icon name="x" size={15} />
-                        </button>
-                      ) : (
-                        <button className="act-btn" onClick={() => handleReactivateChMaster(cm)} title="Reactivate" style={{ color: 'var(--green-600)' }}>
-                          <Icon name="check" size={15} />
-                        </button>
-                      )}
+                      <button className="act-btn" onClick={() => handleToggleChMaster(cm)} title={cm.isActive !== false ? 'Deactivate' : 'Reactivate'} style={{ color: cm.isActive !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
+                        <Icon name={cm.isActive !== false ? 'x' : 'check'} size={15} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -627,6 +754,138 @@ export default function AdminPage({ initialTab = 'users' }) {
           </table>
           {filteredChMasters.length === 0 && (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No channels found</div>
+          )}
+        </div>
+      )}
+
+      {/* ============ MEDIA GROUPS TABLE ============ */}
+      {activeTab === 'media-groups' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Channels</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMgs.map(mg => (
+                <tr key={mg.id}>
+                  <td className="strong">{mg.name}</td>
+                  <td>{mg._count?.channelMasters || 0}</td>
+                  <td>
+                    <span style={{
+                      background: mg.active !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
+                      color: mg.active !== false ? 'var(--green-600)' : 'var(--red-600)',
+                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
+                    }}>{mg.active !== false ? 'Active' : 'Inactive'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditMg(mg)} title="Edit"><Icon name="edit" size={15} /></button>
+                      <button className="act-btn" onClick={() => handleToggleMg(mg)} title={mg.active !== false ? 'Deactivate' : 'Reactivate'} style={{ color: mg.active !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
+                        <Icon name={mg.active !== false ? 'x' : 'check'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredMgs.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No media groups found</div>
+          )}
+        </div>
+      )}
+
+      {/* ============ BRANDS TABLE ============ */}
+      {activeTab === 'brands' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th>Client</th>
+                <th>Campaigns</th>
+                <th>Schedule Logs</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredBrands.map(b => (
+                <tr key={b.id}>
+                  <td className="strong">{b.name}</td>
+                  <td style={{ color: 'var(--muted)' }}>{b.client?.name || '—'}</td>
+                  <td>{b._count?.campaigns || 0}</td>
+                  <td>{b._count?.scheduleLogs || 0}</td>
+                  <td>
+                    <span style={{
+                      background: b.active !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
+                      color: b.active !== false ? 'var(--green-600)' : 'var(--red-600)',
+                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
+                    }}>{b.active !== false ? 'Active' : 'Inactive'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => handleToggleBrand(b)} title={b.active !== false ? 'Deactivate' : 'Reactivate'} style={{ color: b.active !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
+                        <Icon name={b.active !== false ? 'x' : 'check'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredBrands.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No brands found</div>
+          )}
+        </div>
+      )}
+
+      {/* ============ CAMPAIGNS TABLE ============ */}
+      {activeTab === 'campaigns' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Brand</th>
+                <th>Client</th>
+                <th>Schedule Logs</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCampaigns.map(c => (
+                <tr key={c.id}>
+                  <td className="strong">{c.name}</td>
+                  <td style={{ color: 'var(--muted)' }}>{c.brand?.name || '—'}</td>
+                  <td style={{ color: 'var(--muted)' }}>{c.client?.name || '—'}</td>
+                  <td>{c._count?.scheduleLogs || 0}</td>
+                  <td>
+                    <span style={{
+                      background: c.active !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
+                      color: c.active !== false ? 'var(--green-600)' : 'var(--red-600)',
+                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
+                    }}>{c.active !== false ? 'Active' : 'Inactive'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => handleToggleCampaign(c)} title={c.active !== false ? 'Deactivate' : 'Reactivate'} style={{ color: c.active !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
+                        <Icon name={c.active !== false ? 'x' : 'check'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredCampaigns.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No campaigns found</div>
           )}
         </div>
       )}
@@ -656,6 +915,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <option value="TV">TV</option>
                     <option value="RADIO">Radio</option>
                     <option value="PRINT">Print</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">Media Group <span className="req">*</span></label>
+                  <select className="select" value={chMasterForm.mediaGroupId} onChange={e => setChMasterForm(p => ({ ...p, mediaGroupId: e.target.value }))}>
+                    <option value="">Select media group...</option>
+                    {mediaGroups.filter(mg => mg.active !== false).map(mg => (
+                      <option key={mg.id} value={mg.id}>{mg.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="field">
@@ -970,6 +1238,107 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <button type="button" className="btn btn-ghost" onClick={() => setShowTeamModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={teamSubmitting}>
                   {teamSubmitting ? 'Saving...' : editingTeam ? 'Save Changes' : 'Add Team'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MEDIA GROUP MODAL ============ */}
+      {showMgModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowMgModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingMg ? 'Edit Media Group' : 'Add Media Group'}</h2>
+              <button className="act-btn" onClick={() => setShowMgModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleMgSubmit}>
+              <div className="modal-body">
+                {mgError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>{mgError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Name <span className="req">*</span></label>
+                  <input className="input" value={mgForm.name} onChange={e => setMgForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Maharaja Group" />
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowMgModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={mgSubmitting}>
+                  {mgSubmitting ? 'Saving...' : editingMg ? 'Save Changes' : 'Add Media Group'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ BRAND MODAL ============ */}
+      {showBrandModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowBrandModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Add Brand</h2>
+              <button className="act-btn" onClick={() => setShowBrandModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleBrandSubmit}>
+              <div className="modal-body">
+                {brandError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>{brandError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Client <span className="req">*</span></label>
+                  <select className="select" value={brandForm.clientId} onChange={e => setBrandForm(p => ({ ...p, clientId: e.target.value }))}>
+                    <option value="">Select client...</option>
+                    {allClients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.agencyName})</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">Brand Name <span className="req">*</span></label>
+                  <input className="input" value={brandForm.name} onChange={e => setBrandForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Maggi" />
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowBrandModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={brandSubmitting}>
+                  {brandSubmitting ? 'Saving...' : 'Add Brand'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ CAMPAIGN MODAL ============ */}
+      {showCampaignModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowCampaignModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Add Campaign</h2>
+              <button className="act-btn" onClick={() => setShowCampaignModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleCampaignSubmit}>
+              <div className="modal-body">
+                {campaignError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>{campaignError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Brand <span className="req">*</span></label>
+                  <select className="select" value={campaignForm.brandId} onChange={e => setCampaignForm(p => ({ ...p, brandId: e.target.value }))}>
+                    <option value="">Select brand...</option>
+                    {brands.filter(b => b.active !== false).map(b => <option key={b.id} value={b.id}>{b.name} ({b.client?.name})</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">Campaign Name <span className="req">*</span></label>
+                  <input className="input" value={campaignForm.name} onChange={e => setCampaignForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Summer Campaign 2026" />
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCampaignModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={campaignSubmitting}>
+                  {campaignSubmitting ? 'Saving...' : 'Add Campaign'}
                 </button>
               </div>
             </form>
