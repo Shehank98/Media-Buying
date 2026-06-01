@@ -1,6 +1,8 @@
+import { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge } from './Icon';
+import api from '../lib/api';
 
 const NAV = [
   { key: '/', label: 'Dashboard', icon: 'grid' },
@@ -11,6 +13,7 @@ const NAV = [
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [
+  { key: '/upload-tracker', label: 'Upload Tracker', icon: 'upload', roles: ['SUPER_ADMIN'] },
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
   { key: '/profile', label: 'Profile', icon: 'user' },
 ];
@@ -29,6 +32,7 @@ function Breadcrumbs({ go }) {
   if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
   if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Channel</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
+  if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
   if (path === '/profile') return <>{home}{sep}<b>Profile</b></>;
   return <>{home}</>;
@@ -39,7 +43,40 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); };
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifs, setShowNotifs] = useState(false);
+
+  const fetchNotifications = useCallback(() => {
+    api.get('/notifications', { params: { unreadOnly: 'false' } })
+      .then(r => {
+        setNotifications(r.data.notifications || []);
+        setUnreadCount(r.data.unreadCount || 0);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+  useEffect(() => {
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const markRead = async (id) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      fetchNotifications();
+    } catch {}
+  };
+
+  const markAllRead = async () => {
+    try {
+      await api.patch('/notifications/read-all');
+      fetchNotifications();
+    } catch {}
+  };
+
+  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); setShowNotifs(false); };
 
   const activeKey = (key) => {
     if (key === '/') return location.pathname === '/';
@@ -121,10 +158,51 @@ export default function Layout() {
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted-2)', border: '1px solid var(--border-strong)', borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
           </div>
           <div className="topbar-spacer" />
-          <button className="icon-btn">
-            <Icon name="bell" size={18} />
-            <span className="dot" />
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button className="icon-btn" onClick={() => setShowNotifs(p => !p)}>
+              <Icon name="bell" size={18} />
+              {unreadCount > 0 && <span className="dot" />}
+            </button>
+            {showNotifs && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowNotifs(false)} />
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 8, width: 360,
+                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12,
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 14, fontWeight: 720, color: 'var(--ink)' }}>Notifications</span>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} style={{ fontSize: 12, fontWeight: 600, color: 'var(--coral-600)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '30px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No notifications</div>
+                    ) : notifications.slice(0, 20).map(n => (
+                      <div
+                        key={n.id}
+                        onClick={() => { if (!n.isRead) markRead(n.id); }}
+                        style={{
+                          padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                          background: n.isRead ? 'transparent' : 'var(--coral-50, #fff7ed)',
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: n.isRead ? 500 : 650, color: 'var(--ink)', marginBottom: 2 }}>{n.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>{n.message}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 4 }}>
+                          {new Date(n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 6 }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.1, whiteSpace: 'nowrap' }}>{userName}</div>

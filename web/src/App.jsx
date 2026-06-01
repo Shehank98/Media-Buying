@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage';
 import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
+import UploadTrackerPage from './pages/UploadTrackerPage';
 
 export default function App() {
   return (
@@ -78,6 +79,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
                   <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/upload-tracker"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
+                  <UploadTrackerPage />
                 </ProtectedRoute>
               }
             />

@@ -65,6 +65,7 @@ model User {
   deletedScheduleLogs   ScheduleLog[]        @relation("ScheduleLogDeleter")
   uploadBatches         UploadBatch[]        @relation("UploadBatchUploader")
   scheduleLogEdits      ScheduleLogEdit[]    @relation("ScheduleLogEditor")
+  notifications         Notification[]
 
   @@map("users")
 }
@@ -379,6 +380,23 @@ model ScheduleLogEdit {
   editor      User        @relation("ScheduleLogEditor", fields: [editedById], references: [id])
 
   @@map("schedule_log_edits")
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String
+  title     String
+  message   String
+  month     String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
