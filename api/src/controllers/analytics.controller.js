@@ -118,12 +118,18 @@ export async function getAgencyComparison(req, res) {
 
     const result = await Promise.all(agencies.map(async (agency) => {
       const base = { isDeleted: false, agencyId: agency.id };
-      const [ytdAgg, activeClients, activeChannels, lastYearAgg, uploads] = await Promise.all([
+      const [ytdAgg, activeClients, activeChannels, lastYearAgg, uploads, monthlyData] = await Promise.all([
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
         prisma.uploadBatch.count({ where: { agencyId: agency.id, createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
+        prisma.scheduleLog.groupBy({
+          by: ['scheduleMonth'],
+          where: { ...base, scheduleMonth: { gte: monthsAgo(12) } },
+          _sum: { scheduleValue: true },
+          orderBy: { scheduleMonth: 'asc' },
+        }),
       ]);
       const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
       const ly = safeNum(lastYearAgg._sum.scheduleValue) || 0;
@@ -135,6 +141,7 @@ export async function getAgencyComparison(req, res) {
         activeChannels: activeChannels.length,
         ytdGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
         uploadsThisMonth: uploads,
+        monthly: monthlyData.map(m => ({ month: m.scheduleMonth, scheduleValue: safeNum(m._sum.scheduleValue) || 0 })),
       };
     }));
 
@@ -439,6 +446,15 @@ export async function getChannelClients(req, res) {
 
     const result = await Promise.all(grouped.map(async (g) => {
       const client = await prisma.client.findUnique({ where: { id: g.clientId }, include: { agency: { select: { id: true, name: true } } } });
+      const months = await prisma.scheduleLog.groupBy({
+        by: ['scheduleMonth'],
+        where: { channelMasterId, clientId: g.clientId, isDeleted: false },
+      });
+      const lastLog = await prisma.scheduleLog.findFirst({
+        where: { channelMasterId, clientId: g.clientId, isDeleted: false },
+        orderBy: { scheduleMonth: 'desc' },
+        select: { scheduleMonth: true },
+      });
       return {
         clientId: g.clientId,
         clientName: client?.name || 'Unknown',
@@ -447,6 +463,8 @@ export async function getChannelClients(req, res) {
         totalScheduleValue: safeNum(g._sum.scheduleValue) || 0,
         totalScheduleValueWithVat: safeNum(g._sum.scheduleValueWithVat) || 0,
         entryCount: g._count,
+        monthsActive: months.length,
+        lastActive: lastLog?.scheduleMonth || null,
       };
     }));
 
@@ -478,6 +496,9 @@ export async function getChannelPropertyHistory(req, res) {
         id: p.id,
         type: p.type,
         cost: safeNum(p.cost) || 0,
+        bonusPct: safeNum(p.bonusPct),
+        notes: p.notes || null,
+        year: p.createdAt instanceof Date ? p.createdAt.getFullYear() : new Date(p.createdAt).getFullYear(),
         clientName: p.channel?.client?.name || '',
         agencyName: p.channel?.client?.agency?.name || '',
         creatorName: p.creator?.name || '',
@@ -485,7 +506,21 @@ export async function getChannelPropertyHistory(req, res) {
       });
     }
 
-    return res.json(Object.entries(grouped).map(([name, entries]) => ({ propertyName: name, entries })));
+    const result = Object.entries(grouped).map(([name, entries]) => {
+      entries.sort((a, b) => a.year - b.year);
+      for (let i = 1; i < entries.length; i++) {
+        const prev = entries[i - 1].cost;
+        const curr = entries[i].cost;
+        if (prev > 0) {
+          const pct = ((curr - prev) / prev) * 100;
+          entries[i].changeFromPrev = Number(pct.toFixed(2));
+          entries[i].changeDirection = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
+        }
+      }
+      return { propertyName: name, entries };
+    });
+
+    return res.json(result);
   } catch (error) {
     console.error('getChannelPropertyHistory error:', error);
     return res.status(500).json({ error: 'Failed to get property history', detail: error.message });

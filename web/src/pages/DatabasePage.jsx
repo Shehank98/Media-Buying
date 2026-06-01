@@ -108,7 +108,8 @@ export default function DatabasePage() {
   useEffect(() => {
     if (!selectedClientId) { setBrands([]); setCampaigns([]); return; }
     api.get(`/brands/client/${selectedClientId}`).then(r => {
-      setBrands(r.data || []);
+      const list = r.data.brands || r.data || [];
+      setBrands(Array.isArray(list) ? list : []);
     }).catch(() => setBrands([]));
   }, [selectedClientId]);
 
@@ -116,7 +117,8 @@ export default function DatabasePage() {
   useEffect(() => {
     if (!filterBrand) { setCampaigns([]); return; }
     api.get(`/brands/${filterBrand}/campaigns`).then(r => {
-      setCampaigns(r.data || []);
+      const list = r.data.campaigns || r.data || [];
+      setCampaigns(Array.isArray(list) ? list : []);
     }).catch(() => setCampaigns([]));
   }, [filterBrand]);
 
@@ -199,7 +201,8 @@ export default function DatabasePage() {
   useEffect(() => {
     if (!form.brandId) { setFormCampaigns([]); return; }
     api.get(`/brands/${form.brandId}/campaigns`).then(r => {
-      setFormCampaigns(r.data || []);
+      const list = r.data.campaigns || r.data || [];
+      setFormCampaigns(Array.isArray(list) ? list : []);
     }).catch(() => setFormCampaigns([]));
   }, [form.brandId]);
 

@@ -28,7 +28,7 @@ export async function createBrand(req, res) {
     if (!name) return res.status(400).json({ error: 'Brand name is required' });
 
     const brand = await prisma.brand.create({
-      data: { clientId, name },
+      data: { clientId, name, createdById: req.user.id },
       include: { campaigns: true },
     });
     return res.status(201).json({ brand });
@@ -98,7 +98,7 @@ export async function createCampaign(req, res) {
     if (!brand) return res.status(404).json({ error: 'Brand not found' });
 
     const campaign = await prisma.campaign.create({
-      data: { brandId, clientId: brand.clientId, name },
+      data: { brandId, clientId: brand.clientId, name, createdById: req.user.id },
     });
     return res.status(201).json({ campaign });
   } catch (error) {

@@ -90,7 +90,7 @@ export default function ClientDetailPage() {
       try {
         const [bRes, cmRes] = await Promise.all([
           api.get(`/brands/client/${clientId}`),
-          api.get('/admin/channel-masters'),
+          api.get('/masterdata/channel-masters'),
         ]);
         setBrands(Array.isArray(bRes.data.brands) ? bRes.data.brands : Array.isArray(bRes.data) ? bRes.data : []);
         setChannelMasters(Array.isArray(cmRes.data.channelMasters) ? cmRes.data.channelMasters : Array.isArray(cmRes.data) ? cmRes.data : []);
