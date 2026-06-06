@@ -11,8 +11,6 @@ function serializeLog(log) {
 }
 
 const logIncludes = {
-  brand: { select: { id: true, name: true } },
-  campaign: { select: { id: true, name: true } },
   channelMaster: { select: { id: true, name: true, medium: true } },
   uploader: { select: { id: true, name: true } },
   deletedBy: { select: { id: true, name: true } },
@@ -89,8 +87,6 @@ export async function getScheduleLogs(req, res) {
       search,
       monthFrom,
       monthTo,
-      brandId,
-      campaignId,
       channelMasterId,
       medium,
       showDeleted,
@@ -124,8 +120,6 @@ export async function getScheduleLogs(req, res) {
 
     if (monthFrom) where.scheduleMonth = { ...where.scheduleMonth, gte: monthFrom };
     if (monthTo) where.scheduleMonth = { ...where.scheduleMonth, lte: monthTo };
-    if (brandId) where.brandId = parseInt(brandId);
-    if (campaignId) where.campaignId = parseInt(campaignId);
     if (channelMasterId) where.channelMasterId = parseInt(channelMasterId);
     if (medium) where.medium = medium;
 
@@ -171,17 +165,15 @@ export async function createScheduleLog(req, res) {
   try {
     const {
       clientId,
-      brandId,
-      campaignId,
       channelMasterId,
       roNumber,
       scheduleMonth,
       scheduleValue,
     } = req.body;
 
-    if (!clientId || !brandId || !campaignId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
+    if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
       return res.status(400).json({
-        error: 'clientId, brandId, campaignId, channelMasterId, roNumber, scheduleMonth, and scheduleValue are required',
+        error: 'clientId, channelMasterId, roNumber, scheduleMonth, and scheduleValue are required',
       });
     }
 
@@ -228,8 +220,6 @@ export async function createScheduleLog(req, res) {
       data: {
         agencyId: client.agencyId,
         clientId: cid,
-        brandId: parseInt(brandId),
-        campaignId: parseInt(campaignId),
         channelMasterId: parseInt(channelMasterId),
         uploadedById: user.id,
         uploadBatchId: null,
@@ -300,7 +290,7 @@ export async function updateScheduleLog(req, res) {
     const updateData = {};
     const editableFields = [
       'roNumber', 'scheduleMonth', 'invoiceMonth', 'scheduleValue',
-      'brandId', 'campaignId', 'channelMasterId',
+      'channelMasterId',
     ];
 
     for (const field of editableFields) {

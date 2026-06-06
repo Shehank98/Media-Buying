@@ -239,8 +239,6 @@ export default function ReportsPage() {
   const LOG_COLUMNS = [
     { key: 'agencyName', label: 'Agency' },
     { key: 'clientName', label: 'Client' },
-    { key: 'brandName', label: 'Brand' },
-    { key: 'campaignName', label: 'Campaign' },
     { key: 'channelName', label: 'Channel' },
     { key: 'medium', label: 'Medium' },
     { key: 'roNumber', label: 'RO #' },
@@ -587,7 +585,7 @@ export default function ReportsPage() {
                   </>
                 ) : (
                   <>
-                    <td className="strong" colSpan={8}>Total - {rows.length} {rows.length === 1 ? 'entry' : 'entries'}</td>
+                    <td className="strong" colSpan={6}>Total - {rows.length} {rows.length === 1 ? 'entry' : 'entries'}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(computedTotals.value)}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(computedTotals.vat)}</td>
                     <td />

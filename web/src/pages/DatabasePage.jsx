@@ -40,7 +40,6 @@ export default function DatabasePage() {
   const [clients, setClients] = useState([]);
   const [selectedAgencyId, setSelectedAgencyId] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [brands, setBrands] = useState([]);
   const [channelMasters, setChannelMasters] = useState([]);
 
   // Table state
@@ -53,7 +52,6 @@ export default function DatabasePage() {
   const [sortField, setSortField] = useState('scheduleMonth');
   const [sortOrder, setSortOrder] = useState('desc');
   const [filterMonth, setFilterMonth] = useState('');
-  const [filterBrand, setFilterBrand] = useState('');
   const [filterMedium, setFilterMedium] = useState('');
   const [filterMediaGroup, setFilterMediaGroup] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
@@ -105,15 +103,6 @@ export default function DatabasePage() {
     }).catch(() => {});
   }, []);
 
-  // Load brands when client changes
-  useEffect(() => {
-    if (!selectedClientId) { setBrands([]); return; }
-    api.get(`/brands/client/${selectedClientId}`).then(r => {
-      const list = r.data.brands || r.data || [];
-      setBrands(Array.isArray(list) ? list : []);
-    }).catch(() => setBrands([]));
-  }, [selectedClientId]);
-
   // Fetch schedule logs
   const fetchLogs = useCallback(async () => {
     if (!selectedClientId) return;
@@ -122,7 +111,6 @@ export default function DatabasePage() {
       const params = { clientId: selectedClientId, page, limit, sort: sortField, order: sortOrder };
       if (search) params.search = search;
       if (filterMonth) params.monthFrom = filterMonth;
-      if (filterBrand) params.brandId = filterBrand;
       if (filterMedium) params.medium = filterMedium;
       if (showDeleted && isSuperAdmin) params.showDeleted = 'true';
       const { data } = await api.get('/database', { params });
@@ -130,7 +118,7 @@ export default function DatabasePage() {
       setTotal(data.total || 0);
     } catch { setLogs([]); setTotal(0); }
     setLoading(false);
-  }, [selectedClientId, page, limit, sortField, sortOrder, search, filterMonth, filterBrand, filterMedium, showDeleted, isSuperAdmin]);
+  }, [selectedClientId, page, limit, sortField, sortOrder, search, filterMonth, filterMedium, showDeleted, isSuperAdmin]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -206,7 +194,7 @@ export default function DatabasePage() {
   // Open add form
   const openAdd = () => {
     setEditing(null);
-    setForm({ roNumber: '', scheduleMonth: '', brandId: '', campaignId: '', channelMasterId: '', scheduleValue: '' });
+    setForm({ roNumber: '', scheduleMonth: '', channelMasterId: '', scheduleValue: '' });
     setEditNote('');
     setFormError('');
     setDupWarning('');
@@ -219,8 +207,6 @@ export default function DatabasePage() {
     setForm({
       roNumber: log.roNumber,
       scheduleMonth: log.scheduleMonth,
-      brandId: String(log.brandId),
-      campaignId: String(log.campaignId),
       channelMasterId: String(log.channelMasterId),
       scheduleValue: String(log.scheduleValue),
     });
@@ -229,16 +215,6 @@ export default function DatabasePage() {
     setDupWarning('');
     setShowForm(true);
   };
-
-  // Form brand campaigns
-  const [formCampaigns, setFormCampaigns] = useState([]);
-  useEffect(() => {
-    if (!form.brandId) { setFormCampaigns([]); return; }
-    api.get(`/brands/${form.brandId}/campaigns`).then(r => {
-      const list = r.data.campaigns || r.data || [];
-      setFormCampaigns(Array.isArray(list) ? list : []);
-    }).catch(() => setFormCampaigns([]));
-  }, [form.brandId]);
 
   // Check duplicate RO
   useEffect(() => {
@@ -251,7 +227,7 @@ export default function DatabasePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
-    if (!form.roNumber || !form.scheduleMonth || !form.brandId || !form.campaignId || !form.channelMasterId || !form.scheduleValue) {
+    if (!form.roNumber || !form.scheduleMonth || !form.channelMasterId || !form.scheduleValue) {
       setFormError('All fields are required');
       return;
     }
@@ -268,8 +244,6 @@ export default function DatabasePage() {
       if (editing) {
         await api.put(`/database/${editing.id}`, {
           ...form,
-          brandId: parseInt(form.brandId),
-          campaignId: parseInt(form.campaignId),
           channelMasterId: parseInt(form.channelMasterId),
           scheduleValue: parseFloat(form.scheduleValue),
           editNote: editNote.trim(),
@@ -278,8 +252,6 @@ export default function DatabasePage() {
         await api.post('/database', {
           clientId: parseInt(selectedClientId),
           ...form,
-          brandId: parseInt(form.brandId),
-          campaignId: parseInt(form.campaignId),
           channelMasterId: parseInt(form.channelMasterId),
           scheduleValue: parseFloat(form.scheduleValue),
         });
@@ -694,22 +666,6 @@ export default function DatabasePage() {
                   <label className="field-label">Schedule Month <span className="req">*</span></label>
                   <input className="input" type="month" value={form.scheduleMonth} onChange={e => setForm(f => ({ ...f, scheduleMonth: e.target.value }))} />
                   {invoiceMonthPreview && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Invoice Month: {monthLabel(invoiceMonthPreview)}</div>}
-                </div>
-
-                <div>
-                  <label className="field-label">Brand <span className="req">*</span></label>
-                  <select className="select" value={form.brandId} onChange={e => setForm(f => ({ ...f, brandId: e.target.value, campaignId: '' }))}>
-                    <option value="">Select brand</option>
-                    {brands.filter(b => b.active !== false).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="field-label">Campaign <span className="req">*</span></label>
-                  <select className="select" value={form.campaignId} onChange={e => setForm(f => ({ ...f, campaignId: e.target.value }))} disabled={!form.brandId}>
-                    <option value="">Select campaign</option>
-                    {formCampaigns.filter(c => c.active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
                 </div>
 
                 <div>

@@ -45,27 +45,20 @@ export default function ClientDetailPage() {
   // Schedule log state
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
-  const [brands, setBrands] = useState([]);
   const [channelMasters, setChannelMasters] = useState([]);
   const [logYear, setLogYear] = useState(String(new Date().getFullYear()));
   const [logMonth, setLogMonth] = useState('');
-  const [logBrandFilter, setLogBrandFilter] = useState('');
   const [logChannelFilter, setLogChannelFilter] = useState('');
 
   // Add/Edit log modal
   const [showLogModal, setShowLogModal] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
   const [logForm, setLogForm] = useState({
-    channelMasterId: '', brandId: '', campaignId: '', scheduleMonth: '',
+    channelMasterId: '', scheduleMonth: '',
     scheduleValue: '', roNumber: '',
   });
   const [logSubmitting, setLogSubmitting] = useState(false);
   const [logError, setLogError] = useState('');
-  const [campaigns, setCampaigns] = useState([]);
-
-  // New brand/campaign inline creation
-  const [newBrandName, setNewBrandName] = useState('');
-  const [newCampName, setNewCampName] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -83,16 +76,12 @@ export default function ClientDetailPage() {
     fetchData();
   }, [clientId, refreshKey]);
 
-  // Load brands + channel masters when schedule tab active
+  // Load channel masters when schedule tab active
   useEffect(() => {
     if (activeTab !== 'SCHEDULE') return;
     const load = async () => {
       try {
-        const [bRes, cmRes] = await Promise.all([
-          api.get(`/brands/client/${clientId}`),
-          api.get('/masterdata/channel-masters'),
-        ]);
-        setBrands(Array.isArray(bRes.data.brands) ? bRes.data.brands : Array.isArray(bRes.data) ? bRes.data : []);
+        const cmRes = await api.get('/masterdata/channel-masters');
         setChannelMasters(Array.isArray(cmRes.data.channelMasters) ? cmRes.data.channelMasters : Array.isArray(cmRes.data) ? cmRes.data : []);
       } catch { /* ignore */ }
     };
@@ -108,7 +97,6 @@ export default function ClientDetailPage() {
         const params = new URLSearchParams();
         if (logYear) params.set('year', logYear);
         if (logMonth) params.set('month', logMonth);
-        if (logBrandFilter) params.set('brandId', logBrandFilter);
         if (logChannelFilter) params.set('channelMasterId', logChannelFilter);
         const { data } = await api.get(`/schedule-logs/client/${clientId}?${params}`);
         setLogs(Array.isArray(data.logs) ? data.logs : Array.isArray(data) ? data : []);
@@ -116,17 +104,7 @@ export default function ClientDetailPage() {
       finally { setLogsLoading(false); }
     };
     load();
-  }, [activeTab, clientId, logYear, logMonth, logBrandFilter, logChannelFilter, refreshKey]);
-
-  // Load campaigns when brand changes in form
-  useEffect(() => {
-    if (!logForm.brandId) { setCampaigns([]); return; }
-    const b = brands.find(b => b.id === parseInt(logForm.brandId));
-    if (b && b.campaigns) { setCampaigns(b.campaigns); return; }
-    api.get(`/brands/${logForm.brandId}/campaigns`).then(r => {
-      setCampaigns(Array.isArray(r.data.campaigns) ? r.data.campaigns : Array.isArray(r.data) ? r.data : []);
-    }).catch(() => setCampaigns([]));
-  }, [logForm.brandId, brands]);
+  }, [activeTab, clientId, logYear, logMonth, logChannelFilter, refreshKey]);
 
   const filteredChannels = channels.filter(c => c.type === activeTab);
 
@@ -147,13 +125,11 @@ export default function ClientDetailPage() {
     setEditingLog(null);
     const now = new Date();
     setLogForm({
-      channelMasterId: '', brandId: '', campaignId: '',
+      channelMasterId: '',
       scheduleMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
       scheduleValue: '', roNumber: '',
     });
     setLogError('');
-    setNewBrandName('');
-    setNewCampName('');
     setShowLogModal(true);
   };
 
@@ -162,8 +138,6 @@ export default function ClientDetailPage() {
     setEditingLog(log);
     setLogForm({
       channelMasterId: String(log.channelMasterId || log.channelMaster?.id || ''),
-      brandId: String(log.brandId || log.brand?.id || ''),
-      campaignId: String(log.campaignId || log.campaign?.id || ''),
       scheduleMonth: log.scheduleMonth ? log.scheduleMonth.slice(0, 7) : '',
       scheduleValue: log.scheduleValue != null ? String(Number(log.scheduleValue)) : '',
       roNumber: log.roNumber || '',
@@ -181,26 +155,8 @@ export default function ClientDetailPage() {
 
     setLogSubmitting(true);
     try {
-      let brandId = logForm.brandId ? parseInt(logForm.brandId) : undefined;
-      let campaignId = logForm.campaignId ? parseInt(logForm.campaignId) : undefined;
-
-      // Create new brand if needed
-      if (newBrandName && !brandId) {
-        const { data } = await api.post(`/brands/client/${clientId}`, { name: newBrandName });
-        brandId = data.brand?.id || data.id;
-        setNewBrandName('');
-      }
-      // Create new campaign if needed
-      if (newCampName && brandId && !campaignId) {
-        const { data } = await api.post(`/brands/${brandId}/campaigns`, { name: newCampName });
-        campaignId = data.campaign?.id || data.id;
-        setNewCampName('');
-      }
-
       const payload = {
         channelMasterId: parseInt(logForm.channelMasterId),
-        brandId: brandId || undefined,
-        campaignId: campaignId || undefined,
         scheduleMonth: logForm.scheduleMonth,
         scheduleValue: parseFloat(logForm.scheduleValue),
         roNumber: logForm.roNumber || undefined,
@@ -213,9 +169,6 @@ export default function ClientDetailPage() {
       }
       setShowLogModal(false);
       setRefreshKey(k => k + 1);
-      // Reload brands so new ones show up
-      const bRes = await api.get(`/brands/client/${clientId}`);
-      setBrands(Array.isArray(bRes.data.brands) ? bRes.data.brands : []);
     } catch (err) { setLogError(err.response?.data?.error || 'Failed to save log entry.'); }
     finally { setLogSubmitting(false); }
   };
@@ -329,10 +282,6 @@ export default function ClientDetailPage() {
               <option value="">All channels</option>
               {channelMasters.filter(cm => cm.isActive !== false).map(cm => <option key={cm.id} value={cm.id}>{cm.name}</option>)}
             </select>
-            <select className="select" value={logBrandFilter} onChange={e => setLogBrandFilter(e.target.value)} style={{ flex: '0 0 140px' }}>
-              <option value="">All brands</option>
-              {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
           </div>
 
           {logsLoading ? (
@@ -347,7 +296,7 @@ export default function ClientDetailPage() {
             <div className="tbl-wrap">
               <table className="tbl">
                 <thead><tr>
-                  <th>Month</th><th>Channel</th><th>Brand</th><th>Campaign</th>
+                  <th>Month</th><th>Channel</th>
                   <th style={{ textAlign: 'right' }}>Schedule Val</th>
                   <th style={{ textAlign: 'right' }}>With VAT</th>
                   <th>RO#</th><th>Medium</th>
@@ -358,8 +307,6 @@ export default function ClientDetailPage() {
                     <tr key={l.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>{fmtMonth(l.scheduleMonth)}</td>
                       <td className="strong">{l.channelMaster?.name || '-'}</td>
-                      <td>{l.brand?.name || '-'}</td>
-                      <td>{l.campaign?.name || '-'}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValue)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(l.scheduleValueWithVat)}</td>
                       <td style={{ color: 'var(--muted)', fontSize: 12 }}>{l.roNumber || '-'}</td>
@@ -379,7 +326,7 @@ export default function ClientDetailPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border-strong)' }}>
-                    <td colSpan={4}>Total ({logs.length} entries)</td>
+                    <td colSpan={2}>Total ({logs.length} entries)</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(logTotals.scheduleValue)}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(logTotals.scheduleValueWithVat)}</td>
                     <td colSpan={canWrite(user?.role) ? 3 : 2}></td>
@@ -450,29 +397,6 @@ export default function ClientDetailPage() {
                   <div className="field">
                     <label className="field-label">RO Number</label>
                     <input className="input" value={logForm.roNumber} onChange={e => setLogForm(p => ({ ...p, roNumber: e.target.value }))} placeholder="RO-2024-001" />
-                  </div>
-                </div>
-
-                <div className="field-grid2">
-                  <div className="field">
-                    <label className="field-label">Brand</label>
-                    <select className="select" value={logForm.brandId} onChange={e => { setLogForm(p => ({ ...p, brandId: e.target.value, campaignId: '' })); setNewBrandName(''); }}>
-                      <option value="">Select brand…</option>
-                      {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                    {!logForm.brandId && (
-                      <input className="input" style={{ marginTop: 6, fontSize: 12 }} placeholder="Or type new brand name…" value={newBrandName} onChange={e => setNewBrandName(e.target.value)} />
-                    )}
-                  </div>
-                  <div className="field">
-                    <label className="field-label">Campaign</label>
-                    <select className="select" value={logForm.campaignId} onChange={e => { setLogForm(p => ({ ...p, campaignId: e.target.value })); setNewCampName(''); }} disabled={!logForm.brandId && !newBrandName}>
-                      <option value="">Select campaign…</option>
-                      {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    {(logForm.brandId || newBrandName) && !logForm.campaignId && (
-                      <input className="input" style={{ marginTop: 6, fontSize: 12 }} placeholder="Or type new campaign…" value={newCampName} onChange={e => setNewCampName(e.target.value)} />
-                    )}
                   </div>
                 </div>
 

@@ -460,7 +460,6 @@ export async function exportScheduleLogs(req, res) {
       agencyId,
       clientId,
       channelMasterId,
-      brandId,
       medium,
       monthFrom,
       monthTo,
@@ -498,7 +497,6 @@ export async function exportScheduleLogs(req, res) {
     }
     if (clientId) where.clientId = parseInt(clientId);
     if (channelMasterId) where.channelMasterId = parseInt(channelMasterId);
-    if (brandId) where.brandId = parseInt(brandId);
     if (medium) where.medium = medium;
 
     if (monthFrom || monthTo) {
@@ -513,8 +511,6 @@ export async function exportScheduleLogs(req, res) {
       include: {
         agency: { select: { id: true, name: true } },
         client: { select: { id: true, name: true } },
-        brand: { select: { id: true, name: true } },
-        campaign: { select: { id: true, name: true } },
         channelMaster: { select: { id: true, name: true } },
         uploader: { select: { id: true, name: true } },
       },
@@ -526,8 +522,6 @@ export async function exportScheduleLogs(req, res) {
       const rows = logs.map((log) => ({
         agencyName: log.agency.name,
         clientName: log.client.name,
-        brandName: log.brand.name,
-        campaignName: log.campaign.name,
         channelName: log.channelMaster.name,
         medium: log.medium,
         mediaGroup: log.mediaGroup,
@@ -552,8 +546,6 @@ export async function exportScheduleLogs(req, res) {
     const rows = logs.map((log) => ({
       Agency: log.agency.name,
       Client: log.client.name,
-      Brand: log.brand.name,
-      Campaign: log.campaign.name,
       Channel: log.channelMaster.name,
       Medium: log.medium,
       'Media Group': log.mediaGroup,
@@ -574,8 +566,6 @@ export async function exportScheduleLogs(req, res) {
     const HEADER_COLUMNS = [
       { header: 'Agency', key: 'Agency', width: 20 },
       { header: 'Client', key: 'Client', width: 20 },
-      { header: 'Brand', key: 'Brand', width: 20 },
-      { header: 'Campaign', key: 'Campaign', width: 22 },
       { header: 'Channel', key: 'Channel', width: 22 },
       { header: 'Medium', key: 'Medium', width: 12 },
       { header: 'Media Group', key: 'Media Group', width: 16 },
@@ -613,8 +603,8 @@ export async function exportScheduleLogs(req, res) {
       }
 
       // Number format for value columns
-      const scheduleValCol = 11; // Schedule Value
-      const withVatCol = 12; // With VAT
+      const scheduleValCol = 9; // Schedule Value
+      const withVatCol = 10; // With VAT
       sheet.getColumn(scheduleValCol).numFmt = '#,##0.00';
       sheet.getColumn(withVatCol).numFmt = '#,##0.00';
 
@@ -627,10 +617,10 @@ export async function exportScheduleLogs(req, res) {
         const totalsRow = sheet.getRow(totalsRowNum);
         totalsRow.getCell(1).value = 'TOTAL';
         totalsRow.getCell(scheduleValCol).value = {
-          formula: `SUM(K2:K${totalsRowNum - 1})`,
+          formula: `SUM(I2:I${totalsRowNum - 1})`,
         };
         totalsRow.getCell(withVatCol).value = {
-          formula: `SUM(L2:L${totalsRowNum - 1})`,
+          formula: `SUM(J2:J${totalsRowNum - 1})`,
         };
         totalsRow.getCell(scheduleValCol).numFmt = '#,##0.00';
         totalsRow.getCell(withVatCol).numFmt = '#,##0.00';
