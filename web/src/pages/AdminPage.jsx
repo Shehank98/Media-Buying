@@ -54,23 +54,6 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamError, setTeamError] = useState('');
 
-  /* ---- channel master modal ---- */
-  const [channelMasters, setChannelMasters] = useState([]);
-  const [showChMasterModal, setShowChMasterModal] = useState(false);
-  const [editingChMaster, setEditingChMaster] = useState(null);
-  const [chMasterForm, setChMasterForm] = useState({ name: '', medium: 'TV', mediaGroupId: '', aliases: '', isActive: true });
-  const [chMasterSubmitting, setChMasterSubmitting] = useState(false);
-  const [chMasterError, setChMasterError] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
-
-  /* ---- media groups ---- */
-  const [mediaGroups, setMediaGroups] = useState([]);
-  const [showMgModal, setShowMgModal] = useState(false);
-  const [editingMg, setEditingMg] = useState(null);
-  const [mgForm, setMgForm] = useState({ name: '' });
-  const [mgSubmitting, setMgSubmitting] = useState(false);
-  const [mgError, setMgError] = useState('');
-
   /* ---- brands ---- */
   const [brands, setBrands] = useState([]);
   const [showBrandModal, setShowBrandModal] = useState(false);
@@ -95,12 +78,10 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes, chMasterRes, mgRes, brandsRes, campaignsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, brandsRes, campaignsRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
-        api.get('/masterdata/channel-masters?includeInactive=true'),
-        api.get('/masterdata/media-groups'),
         api.get('/masterdata/brands'),
         api.get('/masterdata/campaigns'),
       ]);
@@ -120,14 +101,6 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (teamsRes.status === 'fulfilled') {
         const rawTeams = teamsRes.value.data.teams || teamsRes.value.data;
         setTeams(Array.isArray(rawTeams) ? rawTeams : []);
-      }
-      if (chMasterRes.status === 'fulfilled') {
-        const rawCm = chMasterRes.value.data.channelMasters || chMasterRes.value.data;
-        setChannelMasters(Array.isArray(rawCm) ? rawCm : []);
-      }
-      if (mgRes.status === 'fulfilled') {
-        const rawMg = mgRes.value.data.mediaGroups || mgRes.value.data;
-        setMediaGroups(Array.isArray(rawMg) ? rawMg : []);
       }
       if (brandsRes.status === 'fulfilled') {
         const rawBrands = brandsRes.value.data.brands || brandsRes.value.data;
@@ -267,81 +240,6 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
-  /* ---- Channel Master CRUD ---- */
-  const openAddChMaster = () => {
-    setEditingChMaster(null);
-    setChMasterForm({ name: '', medium: 'TV', mediaGroupId: '', aliases: '', isActive: true });
-    setChMasterError('');
-    setShowChMasterModal(true);
-  };
-  const openEditChMaster = cm => {
-    setEditingChMaster(cm);
-    setChMasterForm({
-      name: cm.name,
-      medium: cm.medium,
-      mediaGroupId: cm.mediaGroupId || cm.mediaGroup?.id || '',
-      aliases: Array.isArray(cm.aliases) ? cm.aliases.join(', ') : '',
-      isActive: cm.isActive !== false,
-    });
-    setChMasterError('');
-    setShowChMasterModal(true);
-  };
-  const handleChMasterSubmit = async e => {
-    e.preventDefault();
-    setChMasterError('');
-    if (!chMasterForm.name.trim()) { setChMasterError('Name is required.'); return; }
-    if (!chMasterForm.mediaGroupId) { setChMasterError('Media group is required.'); return; }
-    setChMasterSubmitting(true);
-    try {
-      const payload = {
-        name: chMasterForm.name,
-        medium: chMasterForm.medium,
-        mediaGroupId: parseInt(chMasterForm.mediaGroupId),
-        aliases: chMasterForm.aliases ? chMasterForm.aliases.split(',').map(s => s.trim()).filter(Boolean) : [],
-      };
-      if (editingChMaster) await api.put(`/masterdata/channel-masters/${editingChMaster.id}`, payload);
-      else await api.post('/masterdata/channel-masters', payload);
-      setShowChMasterModal(false);
-      await fetchData();
-    } catch (err) {
-      setChMasterError(err.response?.data?.error || 'Failed to save channel master.');
-    } finally {
-      setChMasterSubmitting(false);
-    }
-  };
-  const handleToggleChMaster = async cm => {
-    try {
-      await api.patch(`/masterdata/channel-masters/${cm.id}/toggle`);
-      await fetchData();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to toggle channel status.');
-    }
-  };
-
-  /* ---- Media Group CRUD ---- */
-  const openAddMg = () => { setEditingMg(null); setMgForm({ name: '' }); setMgError(''); setShowMgModal(true); };
-  const openEditMg = mg => { setEditingMg(mg); setMgForm({ name: mg.name }); setMgError(''); setShowMgModal(true); };
-  const handleMgSubmit = async e => {
-    e.preventDefault();
-    setMgError('');
-    if (!mgForm.name.trim()) { setMgError('Name is required.'); return; }
-    setMgSubmitting(true);
-    try {
-      if (editingMg) await api.put(`/masterdata/media-groups/${editingMg.id}`, mgForm);
-      else await api.post('/masterdata/media-groups', mgForm);
-      setShowMgModal(false);
-      await fetchData();
-    } catch (err) {
-      setMgError(err.response?.data?.error || 'Failed to save media group.');
-    } finally { setMgSubmitting(false); }
-  };
-  const handleToggleMg = async mg => {
-    try {
-      await api.patch(`/masterdata/media-groups/${mg.id}/toggle`);
-      await fetchData();
-    } catch (err) { setError(err.response?.data?.error || 'Failed to toggle media group.'); }
-  };
-
   /* ---- Brand CRUD ---- */
   const openAddBrand = () => { setBrandForm({ clientId: '', name: '' }); setBrandError(''); setShowBrandModal(true); };
   const handleBrandSubmit = async e => {
@@ -427,16 +325,6 @@ export default function AdminPage({ initialTab = 'users' }) {
     teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
     [teams, search]);
 
-  const filteredChMasters = useMemo(() =>
-    channelMasters
-      .filter(cm => showInactive || cm.isActive !== false)
-      .filter(cm => cm.name.toLowerCase().includes(search.toLowerCase())),
-    [channelMasters, search, showInactive]);
-
-  const filteredMgs = useMemo(() =>
-    mediaGroups.filter(mg => mg.name.toLowerCase().includes(search.toLowerCase())),
-    [mediaGroups, search]);
-
   const filteredBrands = useMemo(() =>
     brands.filter(b => b.name.toLowerCase().includes(search.toLowerCase()) || b.client?.name?.toLowerCase().includes(search.toLowerCase())),
     [brands, search]);
@@ -459,8 +347,6 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'users', label: 'Users', count: users.length },
     { key: 'agencies', label: 'Agencies', count: agencies.length },
     { key: 'teams', label: 'Teams', count: teams.length },
-    { key: 'channels', label: 'Channels', count: channelMasters.length },
-    { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
     { key: 'brands', label: 'Brands', count: brands.length },
     { key: 'campaigns', label: 'Campaigns', count: campaigns.length },
   ];
@@ -520,21 +406,6 @@ export default function AdminPage({ initialTab = 'users' }) {
         {activeTab === 'teams' && (
           <button className="btn btn-primary" onClick={openAddTeam} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Team
-          </button>
-        )}
-        {activeTab === 'channels' && (
-          <>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Show inactive
-            </label>
-            <button className="btn btn-primary" onClick={openAddChMaster} style={{ marginLeft: 'auto' }}>
-              <Icon name="plus" size={16} /> Add Channel
-            </button>
-          </>
-        )}
-        {activeTab === 'media-groups' && (
-          <button className="btn btn-primary" onClick={openAddMg} style={{ marginLeft: 'auto' }}>
-            <Icon name="plus" size={16} /> Add Media Group
           </button>
         )}
         {activeTab === 'brands' && (
@@ -700,106 +571,6 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-      {/* ============ CHANNELS TABLE ============ */}
-      {activeTab === 'channels' && (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Medium</th>
-                <th>Media Group</th>
-                <th>Status</th>
-                <th>Schedule Logs</th>
-                <th>Aliases</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredChMasters.map(cm => (
-                <tr key={cm.id}>
-                  <td className="strong">{cm.name}</td>
-                  <td>
-                    <span style={{
-                      background: cm.medium === 'TV' ? '#dbeafe' : cm.medium === 'RADIO' ? '#fff5f0' : '#ecfdf5',
-                      color: cm.medium === 'TV' ? '#1e3a5f' : cm.medium === 'RADIO' ? '#E85D24' : '#059669',
-                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700,
-                    }}>{cm.medium}</span>
-                  </td>
-                  <td style={{ color: 'var(--muted)', fontSize: 13 }}>{cm.mediaGroup?.name || '-'}</td>
-                  <td>
-                    <span style={{
-                      background: cm.isActive !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
-                      color: cm.isActive !== false ? 'var(--green-600)' : 'var(--red-600)',
-                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
-                    }}>{cm.isActive !== false ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td>{cm._count?.scheduleLogs || 0}</td>
-                  <td style={{ color: 'var(--muted)', fontSize: 12 }}>
-                    {Array.isArray(cm.aliases) && cm.aliases.length > 0 ? cm.aliases.join(', ') : '-'}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="act-btn" onClick={() => openEditChMaster(cm)} title="Edit">
-                        <Icon name="edit" size={15} />
-                      </button>
-                      <button className="act-btn" onClick={() => handleToggleChMaster(cm)} title={cm.isActive !== false ? 'Deactivate' : 'Reactivate'} style={{ color: cm.isActive !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
-                        <Icon name={cm.isActive !== false ? 'x' : 'check'} size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredChMasters.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No channels found</div>
-          )}
-        </div>
-      )}
-
-      {/* ============ MEDIA GROUPS TABLE ============ */}
-      {activeTab === 'media-groups' && (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Channels</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredMgs.map(mg => (
-                <tr key={mg.id}>
-                  <td className="strong">{mg.name}</td>
-                  <td>{mg._count?.channelMasters || 0}</td>
-                  <td>
-                    <span style={{
-                      background: mg.active !== false ? 'var(--green-100,#dcfce7)' : 'var(--red-50,#fef2f2)',
-                      color: mg.active !== false ? 'var(--green-600)' : 'var(--red-600)',
-                      borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 600,
-                    }}>{mg.active !== false ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="act-btn" onClick={() => openEditMg(mg)} title="Edit"><Icon name="edit" size={15} /></button>
-                      <button className="act-btn" onClick={() => handleToggleMg(mg)} title={mg.active !== false ? 'Deactivate' : 'Reactivate'} style={{ color: mg.active !== false ? 'var(--red-600)' : 'var(--green-600)' }}>
-                        <Icon name={mg.active !== false ? 'x' : 'check'} size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredMgs.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No media groups found</div>
-          )}
-        </div>
-      )}
-
       {/* ============ BRANDS TABLE ============ */}
       {activeTab === 'brands' && (
         <div className="tbl-wrap">
@@ -890,67 +661,6 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-      {/* ============ CHANNEL MASTER MODAL ============ */}
-      {showChMasterModal && (
-        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowChMasterModal(false); }}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>{editingChMaster ? 'Edit Channel' : 'Add Channel'}</h2>
-              <button className="act-btn" onClick={() => setShowChMasterModal(false)}><Icon name="x" size={18} /></button>
-            </div>
-            <form onSubmit={handleChMasterSubmit}>
-              <div className="modal-body">
-                {chMasterError && (
-                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>
-                    {chMasterError}
-                  </div>
-                )}
-                <div className="field">
-                  <label className="field-label">Channel Name <span className="req">*</span></label>
-                  <input className="input" value={chMasterForm.name} onChange={e => setChMasterForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. TV Derana" />
-                </div>
-                <div className="field">
-                  <label className="field-label">Medium <span className="req">*</span></label>
-                  <select className="select" value={chMasterForm.medium} onChange={e => setChMasterForm(p => ({ ...p, medium: e.target.value }))}>
-                    <option value="TV">TV</option>
-                    <option value="RADIO">Radio</option>
-                    <option value="PRINT">Print</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label className="field-label">Media Group <span className="req">*</span></label>
-                  <select className="select" value={chMasterForm.mediaGroupId} onChange={e => setChMasterForm(p => ({ ...p, mediaGroupId: e.target.value }))}>
-                    <option value="">Select media group...</option>
-                    {mediaGroups.filter(mg => mg.active !== false).map(mg => (
-                      <option key={mg.id} value={mg.id}>{mg.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label className="field-label">Aliases</label>
-                  <input className="input" value={chMasterForm.aliases} onChange={e => setChMasterForm(p => ({ ...p, aliases: e.target.value }))} placeholder="Comma-separated aliases" />
-                  <span className="field-hint">Alternative names for this channel (e.g. "Derana TV, TV Derana HD")</span>
-                </div>
-                {editingChMaster && (
-                  <div className="field">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={chMasterForm.isActive} onChange={e => setChMasterForm(p => ({ ...p, isActive: e.target.checked }))} />
-                      Active
-                    </label>
-                  </div>
-                )}
-              </div>
-              <div className="modal-foot">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowChMasterModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={chMasterSubmitting}>
-                  {chMasterSubmitting ? 'Saving...' : editingChMaster ? 'Save Changes' : 'Add Channel'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* ============ USER MODAL ============ */}
       {showUserModal && (
         <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowUserModal(false); }}>
@@ -966,148 +676,72 @@ export default function AdminPage({ initialTab = 'users' }) {
                     {userError}
                   </div>
                 )}
-
-                {/* Name + Email */}
                 <div className="field-grid2">
                   <div className="field">
                     <label className="field-label">Full name <span className="req">*</span></label>
-                    <input
-                      className={'input' + (userFieldErrors.name ? ' err' : '')}
-                      type="text"
-                      value={userForm.name}
-                      onChange={e => setUserForm(p => ({ ...p, name: e.target.value }))}
-                      placeholder="Full name"
-                    />
+                    <input className={'input' + (userFieldErrors.name ? ' err' : '')} type="text" value={userForm.name} onChange={e => setUserForm(p => ({ ...p, name: e.target.value }))} placeholder="Full name" />
                     {userFieldErrors.name && <span className="field-err">{userFieldErrors.name}</span>}
                   </div>
                   <div className="field">
                     <label className="field-label">Email {!editingUser && <span className="req">*</span>}</label>
-                    <input
-                      className={'input' + (userFieldErrors.email ? ' err' : '')}
-                      type="email"
-                      disabled={!!editingUser}
-                      value={userForm.email}
-                      onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))}
-                      placeholder="user@example.com"
-                    />
+                    <input className={'input' + (userFieldErrors.email ? ' err' : '')} type="email" disabled={!!editingUser} value={userForm.email} onChange={e => setUserForm(p => ({ ...p, email: e.target.value }))} placeholder="user@example.com" />
                     {userFieldErrors.email && <span className="field-err">{userFieldErrors.email}</span>}
                   </div>
                 </div>
-
-                {/* Temporary password */}
                 {!editingUser && (
                   <div className="field">
                     <label className="field-label">Temporary password <span className="req">*</span></label>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        className={'input' + (userFieldErrors.password ? ' err' : '')}
-                        type="text"
-                        value={userForm.password}
-                        onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))}
-                        placeholder="Temporary password"
-                        style={{ flex: 1 }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setUserForm(p => ({ ...p, password: generateTempPassword() }))}
-                      >
-                        Generate
-                      </button>
+                      <input className={'input' + (userFieldErrors.password ? ' err' : '')} type="text" value={userForm.password} onChange={e => setUserForm(p => ({ ...p, password: e.target.value }))} placeholder="Temporary password" style={{ flex: 1 }} />
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setUserForm(p => ({ ...p, password: generateTempPassword() }))}>Generate</button>
                     </div>
                     {userFieldErrors.password && <span className="field-err">{userFieldErrors.password}</span>}
                     <span className="field-hint">User will be asked to change this on first login</span>
                   </div>
                 )}
-
-                {/* Role selection */}
                 <div className="field">
                   <label className="field-label">Role <span className="req">*</span></label>
                   <div className="role-grid">
                     {ROLES.map(role => (
-                      <label
-                        key={role}
-                        className={'role-opt' + (userForm.role === role ? ' active' : '')}
-                        onClick={() => setUserForm(p => ({ ...p, role }))}
-                      >
-                        <input
-                          type="radio"
-                          name="role"
-                          value={role}
-                          checked={userForm.role === role}
-                          onChange={() => setUserForm(p => ({ ...p, role }))}
-                          style={{ display: 'none' }}
-                        />
+                      <label key={role} className={'role-opt' + (userForm.role === role ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, role }))}>
+                        <input type="radio" name="role" value={role} checked={userForm.role === role} onChange={() => setUserForm(p => ({ ...p, role }))} style={{ display: 'none' }} />
                         <RoleBadge role={role} small />
-                        <span style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                          {ROLE_DESC[role]}
-                        </span>
+                        <span style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{ROLE_DESC[role]}</span>
                       </label>
                     ))}
                   </div>
                 </div>
-
-                {/* Agency multi-select */}
                 <div className="field">
                   <label className="field-label">Agencies</label>
                   <div className="chips">
                     {agencies.map(a => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        className={'chip' + (userForm.agencyIds.includes(a.id) ? ' active' : '')}
-                        onClick={() => setUserForm(p => ({
-                          ...p,
-                          agencyIds: toggleArrayItem(p.agencyIds, a.id),
-                        }))}
-                      >
+                      <button key={a.id} type="button" className={'chip' + (userForm.agencyIds.includes(a.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, agencyIds: toggleArrayItem(p.agencyIds, a.id) }))}>
                         {a.name}
-                        {userForm.agencyIds.includes(a.id)
-                          ? <Icon name="x" size={12} />
-                          : <Icon name="plus" size={12} />}
+                        {userForm.agencyIds.includes(a.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                       </button>
                     ))}
-                    {agencies.length === 0 && (
-                      <span style={{ fontSize: 13, color: 'var(--muted)' }}>No agencies available</span>
-                    )}
+                    {agencies.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No agencies available</span>}
                   </div>
                 </div>
-
-                {/* Client multi-select (hidden for SUPER_ADMIN / MANAGER) */}
                 {!hideClientSelect && (
                   <div className="field">
                     <label className="field-label">Clients</label>
                     <div className="chips">
                       {allClients.map(c => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')}
-                          onClick={() => setUserForm(p => ({
-                            ...p,
-                            clientIds: toggleArrayItem(p.clientIds, c.id),
-                          }))}
-                        >
+                        <button key={c.id} type="button" className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
                           {c.name}
                           {c.agencyName && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>({c.agencyName})</span>}
-                          {userForm.clientIds.includes(c.id)
-                            ? <Icon name="x" size={12} />
-                            : <Icon name="plus" size={12} />}
+                          {userForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                         </button>
                       ))}
-                      {allClients.length === 0 && (
-                        <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients available</span>
-                      )}
+                      {allClients.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients available</span>}
                     </div>
                   </div>
                 )}
               </div>
-
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowUserModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={userSubmitting}>
-                  {userSubmitting ? 'Saving...' : editingUser ? 'Save changes' : 'Create user'}
-                </button>
+                <button type="submit" className="btn btn-primary" disabled={userSubmitting}>{userSubmitting ? 'Saving...' : editingUser ? 'Save changes' : 'Create user'}</button>
               </div>
             </form>
           </div>
@@ -1125,26 +759,16 @@ export default function AdminPage({ initialTab = 'users' }) {
             <form onSubmit={handleAgencySubmit}>
               <div className="modal-body">
                 {agencyError && (
-                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>
-                    {agencyError}
-                  </div>
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{agencyError}</div>
                 )}
                 <div className="field">
                   <label className="field-label">Agency Name <span className="req">*</span></label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={agencyForm.name}
-                    onChange={e => setAgencyForm(p => ({ ...p, name: e.target.value }))}
-                    placeholder="Enter agency name"
-                  />
+                  <input className="input" type="text" value={agencyForm.name} onChange={e => setAgencyForm(p => ({ ...p, name: e.target.value }))} placeholder="Enter agency name" />
                 </div>
               </div>
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAgencyModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={agencySubmitting}>
-                  {agencySubmitting ? 'Saving...' : editingAgency ? 'Save Changes' : 'Add Agency'}
-                </button>
+                <button type="submit" className="btn btn-primary" disabled={agencySubmitting}>{agencySubmitting ? 'Saving...' : editingAgency ? 'Save Changes' : 'Add Agency'}</button>
               </div>
             </form>
           </div>
@@ -1162,28 +786,16 @@ export default function AdminPage({ initialTab = 'users' }) {
             <form onSubmit={handleTeamSubmit}>
               <div className="modal-body">
                 {teamError && (
-                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>
-                    {teamError}
-                  </div>
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{teamError}</div>
                 )}
                 <div className="field-grid2">
                   <div className="field">
                     <label className="field-label">Team Name <span className="req">*</span></label>
-                    <input
-                      className="input"
-                      type="text"
-                      value={teamForm.name}
-                      onChange={e => setTeamForm(p => ({ ...p, name: e.target.value }))}
-                      placeholder="Team name"
-                    />
+                    <input className="input" type="text" value={teamForm.name} onChange={e => setTeamForm(p => ({ ...p, name: e.target.value }))} placeholder="Team name" />
                   </div>
                   <div className="field">
                     <label className="field-label">Agency <span className="req">*</span></label>
-                    <select
-                      className="select"
-                      value={teamForm.agencyId}
-                      onChange={e => setTeamForm(p => ({ ...p, agencyId: e.target.value }))}
-                    >
+                    <select className="select" value={teamForm.agencyId} onChange={e => setTeamForm(p => ({ ...p, agencyId: e.target.value }))}>
                       <option value="">Select agency...</option>
                       {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
@@ -1193,19 +805,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <label className="field-label">Members</label>
                   <div className="chips">
                     {users.map(u => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        className={'chip' + (teamForm.memberIds.includes(u.id) ? ' active' : '')}
-                        onClick={() => setTeamForm(p => ({
-                          ...p,
-                          memberIds: toggleArrayItem(p.memberIds, u.id),
-                        }))}
-                      >
+                      <button key={u.id} type="button" className={'chip' + (teamForm.memberIds.includes(u.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, memberIds: toggleArrayItem(p.memberIds, u.id) }))}>
                         {u.name}
-                        {teamForm.memberIds.includes(u.id)
-                          ? <Icon name="x" size={12} />
-                          : <Icon name="plus" size={12} />}
+                        {teamForm.memberIds.includes(u.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                       </button>
                     ))}
                   </div>
@@ -1216,19 +818,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                     {allClients
                       .filter(c => !teamForm.agencyId || c.agencyId === parseInt(teamForm.agencyId))
                       .map(c => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')}
-                          onClick={() => setTeamForm(p => ({
-                            ...p,
-                            clientIds: toggleArrayItem(p.clientIds, c.id),
-                          }))}
-                        >
+                        <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
                           {c.name}
-                          {teamForm.clientIds.includes(c.id)
-                            ? <Icon name="x" size={12} />
-                            : <Icon name="plus" size={12} />}
+                          {teamForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                         </button>
                       ))}
                   </div>
@@ -1236,38 +828,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowTeamModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={teamSubmitting}>
-                  {teamSubmitting ? 'Saving...' : editingTeam ? 'Save Changes' : 'Add Team'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ============ MEDIA GROUP MODAL ============ */}
-      {showMgModal && (
-        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowMgModal(false); }}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>{editingMg ? 'Edit Media Group' : 'Add Media Group'}</h2>
-              <button className="act-btn" onClick={() => setShowMgModal(false)}><Icon name="x" size={18} /></button>
-            </div>
-            <form onSubmit={handleMgSubmit}>
-              <div className="modal-body">
-                {mgError && (
-                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700)', marginBottom: 16 }}>{mgError}</div>
-                )}
-                <div className="field">
-                  <label className="field-label">Name <span className="req">*</span></label>
-                  <input className="input" value={mgForm.name} onChange={e => setMgForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Maharaja Group" />
-                </div>
-              </div>
-              <div className="modal-foot">
-                <button type="button" className="btn btn-ghost" onClick={() => setShowMgModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={mgSubmitting}>
-                  {mgSubmitting ? 'Saving...' : editingMg ? 'Save Changes' : 'Add Media Group'}
-                </button>
+                <button type="submit" className="btn btn-primary" disabled={teamSubmitting}>{teamSubmitting ? 'Saving...' : editingTeam ? 'Save Changes' : 'Add Team'}</button>
               </div>
             </form>
           </div>
@@ -1301,9 +862,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowBrandModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={brandSubmitting}>
-                  {brandSubmitting ? 'Saving...' : 'Add Brand'}
-                </button>
+                <button type="submit" className="btn btn-primary" disabled={brandSubmitting}>{brandSubmitting ? 'Saving...' : 'Add Brand'}</button>
               </div>
             </form>
           </div>
@@ -1337,9 +896,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCampaignModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={campaignSubmitting}>
-                  {campaignSubmitting ? 'Saving...' : 'Add Campaign'}
-                </button>
+                <button type="submit" className="btn btn-primary" disabled={campaignSubmitting}>{campaignSubmitting ? 'Saving...' : 'Add Campaign'}</button>
               </div>
             </form>
           </div>
@@ -1352,9 +909,7 @@ export default function AdminPage({ initialTab = 'users' }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <h2>Delete {deleteType.slice(0, -1)}</h2>
-              <button className="act-btn" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>
-                <Icon name="x" size={18} />
-              </button>
+              <button className="act-btn" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body">
               <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
@@ -1364,18 +919,8 @@ export default function AdminPage({ initialTab = 'users' }) {
               </p>
             </div>
             <div className="modal-foot">
-              <button type="button" className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn"
-                style={{ background: 'var(--red-600,#dc2626)', color: '#fff' }}
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>Cancel</button>
+              <button type="button" className="btn" style={{ background: 'var(--red-600,#dc2626)', color: '#fff' }} onClick={handleDelete} disabled={deleting}>{deleting ? 'Deleting...' : 'Delete'}</button>
             </div>
           </div>
         </div>
