@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -33,6 +36,7 @@ export default function SpendAnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const [agencies, setAgencies] = useState([]);
   const [clients, setClients] = useState([]);
@@ -40,6 +44,11 @@ export default function SpendAnalyticsPage() {
   const [clientId, setClientId] = useState('');
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
+
+  const chartMonthlyRef = useRef(null);
+  const chartMediumRef = useRef(null);
+  const chartMediaGroupRef = useRef(null);
+  const chartChannelRef = useRef(null);
 
   useEffect(() => {
     api.get('/agencies').then(r => {
@@ -97,7 +106,6 @@ export default function SpendAnalyticsPage() {
       ['Date Range', monthFrom ? `${fmtMonth(monthFrom)} - ${fmtMonth(monthTo || 'Present')}` : 'All Time'],
       ['Total Entries', data.totalEntries],
       ['Total Schedule Value', data.totalValue],
-      ['Total with VAT', data.totalWithVat],
       [],
     ];
     const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
@@ -131,8 +139,8 @@ export default function SpendAnalyticsPage() {
     XLSX.utils.book_append_sheet(wb, chWs, 'By Channel');
 
     // Monthly Trend
-    const moHeaders = ['Month', 'Schedule Value (LKR)', 'With VAT (LKR)', 'Entries'];
-    const moRows = data.byMonth.map(m => [fmtMonth(m.month), Math.round(m.value), Math.round(m.valueWithVat), m.count]);
+    const moHeaders = ['Month', 'Schedule Value (LKR)', 'Entries'];
+    const moRows = data.byMonth.map(m => [fmtMonth(m.month), Math.round(m.value), m.count]);
     const moWs = XLSX.utils.aoa_to_sheet([moHeaders, ...moRows]);
     XLSX.utils.book_append_sheet(wb, moWs, 'Monthly Trend');
 
@@ -158,6 +166,153 @@ export default function SpendAnalyticsPage() {
     XLSX.writeFile(wb, fileName);
   };
 
+  const handlePdfExport = async () => {
+    if (!data || exporting) return;
+    setExporting(true);
+    try {
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      const contentW = pageW - margin * 2;
+      const dateLabel = monthFrom ? `${fmtMonth(monthFrom)} - ${fmtMonth(monthTo || 'Present')}` : 'All Time';
+
+      const addHeader = (title) => {
+        pdf.setFontSize(18);
+        pdf.setTextColor(30, 58, 95);
+        pdf.text(title, margin, 22);
+        pdf.setFontSize(10);
+        pdf.setTextColor(100);
+        pdf.text(`Period: ${dateLabel}  |  Total: LKR ${fmtShort(data.totalValue)}`, margin, 30);
+        pdf.setDrawColor(232, 93, 36);
+        pdf.setLineWidth(0.5);
+        pdf.line(margin, 33, pageW - margin, 33);
+      };
+
+      const captureChart = async (ref) => {
+        if (!ref?.current) return null;
+        const canvas = await html2canvas(ref.current, { scale: 2, backgroundColor: '#ffffff', logging: false });
+        return canvas.toDataURL('image/png');
+      };
+
+      // Page 1: Monthly Spend Trend
+      addHeader('Monthly Spend Trend');
+      const monthlyImg = await captureChart(chartMonthlyRef);
+      if (monthlyImg) {
+        const imgH = contentW * 0.45;
+        pdf.addImage(monthlyImg, 'PNG', margin, 38, contentW, imgH);
+        pdf.autoTable({
+          startY: 38 + imgH + 5,
+          head: [['Month', 'Schedule Value (LKR)', 'Entries']],
+          body: data.byMonth.map(m => [fmtMonth(m.month), fmtLKR(m.value), m.count]),
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Page 2: Spend by Medium
+      pdf.addPage();
+      addHeader('Spend by Medium');
+      const mediumImg = await captureChart(chartMediumRef);
+      if (mediumImg) {
+        const imgH = contentW * 0.5;
+        pdf.addImage(mediumImg, 'PNG', margin, 38, contentW, imgH);
+        pdf.autoTable({
+          startY: 38 + imgH + 5,
+          head: [['Medium', 'Schedule Value (LKR)', 'Entries', '% Share']],
+          body: data.byMedium.map(m => [
+            m.name, fmtLKR(m.value), m.count,
+            data.totalValue > 0 ? ((m.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
+          ]),
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Page 3: Spend by Media Group
+      pdf.addPage();
+      addHeader('Spend by Media Group');
+      const mgImg = await captureChart(chartMediaGroupRef);
+      if (mgImg) {
+        const imgH = contentW * 0.5;
+        pdf.addImage(mgImg, 'PNG', margin, 38, contentW, imgH);
+        pdf.autoTable({
+          startY: 38 + imgH + 5,
+          head: [['Media Group', 'Schedule Value (LKR)', 'Entries', '% Share']],
+          body: data.byMediaGroup.map(mg => [
+            mg.name, fmtLKR(mg.value), mg.count,
+            data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
+          ]),
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Page 4: Spend by Channel
+      pdf.addPage();
+      addHeader('Spend by Channel');
+      const chImg = await captureChart(chartChannelRef);
+      if (chImg) {
+        const imgH = Math.min(contentW * 0.5, 90);
+        pdf.addImage(chImg, 'PNG', margin, 38, contentW, imgH);
+        pdf.autoTable({
+          startY: 38 + imgH + 5,
+          head: [['Channel', 'Medium', 'Media Group', 'Value (LKR)', 'Entries', '%']],
+          body: data.byChannel.map(ch => [
+            ch.name, ch.medium, ch.mediaGroup, fmtLKR(ch.value), ch.count,
+            data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 7, cellPadding: 1.5 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Page 5: By Client
+      if (data.byClient.length > 0) {
+        pdf.addPage();
+        addHeader('Spend by Client');
+        pdf.autoTable({
+          startY: 40,
+          head: [['Client', 'Schedule Value (LKR)', 'Entries', '% Share']],
+          body: data.byClient.map(c => [
+            c.name, fmtLKR(c.value), c.count,
+            data.totalValue > 0 ? ((c.value / data.totalValue) * 100).toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 9, cellPadding: 2.5 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Page 6: By Brand
+      if (data.byBrand.length > 0) {
+        pdf.addPage();
+        addHeader('Spend by Brand');
+        pdf.autoTable({
+          startY: 40,
+          head: [['Brand', 'Schedule Value (LKR)', 'Entries', '% Share']],
+          body: data.byBrand.map(b => [
+            b.name, fmtLKR(b.value), b.count,
+            data.totalValue > 0 ? ((b.value / data.totalValue) * 100).toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 9, cellPadding: 2.5 },
+          headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      const pdfName = `spend-analytics-${monthFrom || 'all'}-to-${monthTo || 'now'}.pdf`;
+      pdf.save(pdfName);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    }
+    setExporting(false);
+  };
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
@@ -177,9 +332,14 @@ export default function SpendAnalyticsPage() {
           <h1 className="page-title">Spend Analytics</h1>
           <p className="page-sub">Budget allocation by media group, medium, and channel</p>
         </div>
-        <button className="btn btn-primary" onClick={handleExport} disabled={!data || loading}>
-          <Icon name="download" size={16} /> Export Report
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={handlePdfExport} disabled={!data || loading || exporting}>
+            <Icon name="download" size={16} /> {exporting ? 'Exporting...' : 'Export PDF'}
+          </button>
+          <button className="btn btn-ghost" onClick={handleExport} disabled={!data || loading}>
+            <Icon name="download" size={16} /> Excel
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -229,7 +389,7 @@ export default function SpendAnalyticsPage() {
       {!loading && data && (
         <>
           {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
             <div className="section-card" style={{ padding: '16px 20px' }}>
               <div className="stat">
                 <div className="stat-top">
@@ -245,16 +405,7 @@ export default function SpendAnalyticsPage() {
                   <span className="stat-label">Total Schedule Value</span>
                   <span className="stat-ico" style={{ color: 'var(--green-600, #059669)' }}><Icon name="bar-chart" size={18} /></span>
                 </div>
-                <div className="stat-val mono">{fmtLKR(data.totalValue)}</div>
-              </div>
-            </div>
-            <div className="section-card" style={{ padding: '16px 20px' }}>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Total with VAT (18%)</span>
-                  <span className="stat-ico" style={{ color: 'var(--coral-600, #D9521C)' }}><Icon name="trending-up" size={18} /></span>
-                </div>
-                <div className="stat-val mono">{fmtLKR(data.totalWithVat)}</div>
+                <div className="stat-val mono">LKR {fmtShort(data.totalValue)}</div>
               </div>
             </div>
             <div className="section-card" style={{ padding: '16px 20px' }}>
@@ -272,15 +423,17 @@ export default function SpendAnalyticsPage() {
           {chartMonthly.length > 0 && (
             <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Monthly Spend Trend</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={chartMonthly} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="value" name="Schedule Value" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div ref={chartMonthlyRef}>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={chartMonthly} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="value" name="Schedule Value" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
 
@@ -289,25 +442,27 @@ export default function SpendAnalyticsPage() {
             {/* By Medium - Pie */}
             <div className="section-card" style={{ padding: '20px' }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Medium</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={data.byMedium}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {data.byMedium.map((entry, idx) => (
-                      <Cell key={idx} fill={MEDIUM_COLORS[entry.name] || COLORS[idx % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val) => fmtLKR(val)} />
-                </PieChart>
-              </ResponsiveContainer>
+              <div ref={chartMediumRef}>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={data.byMedium}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={{ strokeWidth: 1 }}
+                    >
+                      {data.byMedium.map((entry, idx) => (
+                        <Cell key={idx} fill={MEDIUM_COLORS[entry.name] || COLORS[idx % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => fmtLKR(val)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
               <div style={{ marginTop: 10 }}>
                 {data.byMedium.map((m, idx) => (
                   <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
@@ -327,25 +482,27 @@ export default function SpendAnalyticsPage() {
             {/* By Media Group - Pie */}
             <div className="section-card" style={{ padding: '20px' }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Media Group</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie
-                    data={data.byMediaGroup.slice(0, 8)}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    label={({ name, percent }) => percent > 0.05 ? `${name.length > 12 ? name.slice(0, 12) + '...' : name} ${(percent * 100).toFixed(0)}%` : ''}
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {data.byMediaGroup.slice(0, 8).map((_, idx) => (
-                      <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val) => fmtLKR(val)} />
-                </PieChart>
-              </ResponsiveContainer>
+              <div ref={chartMediaGroupRef}>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={data.byMediaGroup.slice(0, 8)}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label={({ name, percent }) => percent > 0.05 ? `${name.length > 12 ? name.slice(0, 12) + '...' : name} ${(percent * 100).toFixed(0)}%` : ''}
+                      labelLine={{ strokeWidth: 1 }}
+                    >
+                      {data.byMediaGroup.slice(0, 8).map((_, idx) => (
+                        <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => fmtLKR(val)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
               <div style={{ maxHeight: 200, overflow: 'auto', marginTop: 10 }}>
                 {data.byMediaGroup.map((mg, idx) => (
                   <div key={mg.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
@@ -367,19 +524,21 @@ export default function SpendAnalyticsPage() {
           {/* By Channel - Full width bar chart + table */}
           <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Channel (Top 15)</h3>
-            <ResponsiveContainer width="100%" height={Math.min(400, data.byChannel.slice(0, 15).length * 32 + 40)}>
-              <BarChart data={data.byChannel.slice(0, 15)} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 120 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
-                <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="value" name="Schedule Value" radius={[0, 4, 4, 0]}>
-                  {data.byChannel.slice(0, 15).map((ch, idx) => (
-                    <Cell key={idx} fill={MEDIUM_COLORS[ch.medium] || COLORS[idx % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div ref={chartChannelRef}>
+              <ResponsiveContainer width="100%" height={Math.min(400, data.byChannel.slice(0, 15).length * 32 + 40)}>
+                <BarChart data={data.byChannel.slice(0, 15)} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 120 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
+                  <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="value" name="Schedule Value" radius={[0, 4, 4, 0]}>
+                    {data.byChannel.slice(0, 15).map((ch, idx) => (
+                      <Cell key={idx} fill={MEDIUM_COLORS[ch.medium] || COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
           {/* Full Channel Table */}
