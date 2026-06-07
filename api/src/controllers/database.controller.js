@@ -223,11 +223,32 @@ export async function getMetadata(req, res) {
 export async function getAnalytics(req, res) {
   try {
     const { monthFrom, monthTo, agencyId, clientId } = req.query;
+    const user = req.user;
 
     const where = { isDeleted: false };
     if (monthFrom) where.scheduleMonth = { ...where.scheduleMonth, gte: monthFrom };
     if (monthTo) where.scheduleMonth = { ...where.scheduleMonth, lte: monthTo };
-    if (agencyId) where.agencyId = parseInt(agencyId);
+
+    // MANAGER: restrict to their assigned agencies
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({
+        where: { userId: user.id },
+        select: { agencyId: true },
+      });
+      const allowedAgencyIds = access.map(a => a.agencyId);
+      if (agencyId) {
+        const requested = parseInt(agencyId);
+        if (!allowedAgencyIds.includes(requested)) {
+          return res.status(403).json({ error: 'Access denied to this agency' });
+        }
+        where.agencyId = requested;
+      } else {
+        where.agencyId = { in: allowedAgencyIds };
+      }
+    } else {
+      if (agencyId) where.agencyId = parseInt(agencyId);
+    }
+
     if (clientId) where.clientId = parseInt(clientId);
 
     const logs = await prisma.scheduleLog.findMany({

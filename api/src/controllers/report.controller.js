@@ -6,6 +6,7 @@ export async function byChannel(req, res) {
   try {
     const { channelId } = req.params;
     const { format } = req.query;
+    const user = req.user;
 
     const channel = await prisma.channel.findUnique({
       where: { id: parseInt(channelId) },
@@ -26,6 +27,14 @@ export async function byChannel(req, res) {
 
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // MANAGER: verify access to this channel's agency
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findUnique({
+        where: { userId_agencyId: { userId: user.id, agencyId: channel.client.agencyId } },
+      });
+      if (!access) return res.status(403).json({ error: 'Access denied' });
     }
 
     const reportData = {
@@ -77,6 +86,7 @@ export async function byClient(req, res) {
   try {
     const { clientId } = req.params;
     const { format } = req.query;
+    const user = req.user;
 
     const client = await prisma.client.findUnique({
       where: { id: parseInt(clientId) },
@@ -98,6 +108,14 @@ export async function byClient(req, res) {
 
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // MANAGER: verify access to this client's agency
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findUnique({
+        where: { userId_agencyId: { userId: user.id, agencyId: client.agencyId } },
+      });
+      if (!access) return res.status(403).json({ error: 'Access denied' });
     }
 
     const reportData = {
@@ -153,6 +171,15 @@ export async function byAgency(req, res) {
   try {
     const { agencyId } = req.params;
     const { format } = req.query;
+    const user = req.user;
+
+    // MANAGER: verify access to this agency
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findUnique({
+        where: { userId_agencyId: { userId: user.id, agencyId: parseInt(agencyId) } },
+      });
+      if (!access) return res.status(403).json({ error: 'Access denied' });
+    }
 
     const agency = await prisma.agency.findUnique({
       where: { id: parseInt(agencyId) },

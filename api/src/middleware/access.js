@@ -1,5 +1,44 @@
 import prisma from '../utils/prisma.js';
 
+export async function checkChannelAccess(req, res, next) {
+  try {
+    const channelId = parseInt(req.params.channelId || req.params.id);
+    const user = req.user;
+
+    if (user.role === 'SUPER_ADMIN') return next();
+
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { clientId: true, client: { select: { agencyId: true } } },
+    });
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findUnique({
+        where: { userId_agencyId: { userId: user.id, agencyId: channel.client.agencyId } },
+      });
+      if (access) return next();
+    }
+
+    if (user.role === 'GROUP_HEAD') {
+      const teams = await prisma.teamMember.findMany({ where: { userId: user.id }, select: { teamId: true } });
+      if (teams.length > 0) {
+        const tc = await prisma.teamClient.findFirst({ where: { teamId: { in: teams.map(t => t.teamId) }, clientId: channel.clientId } });
+        if (tc) return next();
+      }
+    }
+
+    const clientAccess = await prisma.userClientAccess.findUnique({
+      where: { userId_clientId: { userId: user.id, clientId: channel.clientId } },
+    });
+    if (clientAccess) return next();
+
+    return res.status(403).json({ error: 'You do not have access to this channel' });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to check channel access' });
+  }
+}
+
 export async function checkAgencyAccess(req, res, next) {
   try {
     const { agencyId } = req.params;
@@ -37,37 +76,42 @@ export async function checkClientAccess(req, res, next) {
       return next();
     }
 
+    const cid = parseInt(clientId);
     const client = await prisma.client.findUnique({
-      where: { id: parseInt(clientId) },
-      include: { agency: true },
+      where: { id: cid },
+      select: { id: true, agencyId: true },
     });
 
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    if (user.role === 'MANAGER' || user.role === 'GROUP_HEAD') {
+    // MANAGER: check agency-level access
+    if (user.role === 'MANAGER') {
       const agencyAccess = await prisma.userAgencyAccess.findUnique({
-        where: {
-          userId_agencyId: {
-            userId: user.id,
-            agencyId: client.agencyId,
-          },
-        },
+        where: { userId_agencyId: { userId: user.id, agencyId: client.agencyId } },
       });
+      if (agencyAccess) return next();
+    }
 
-      if (agencyAccess) {
-        return next();
+    // GROUP_HEAD: check team-level access (must have team assigned to this client)
+    if (user.role === 'GROUP_HEAD') {
+      const teams = await prisma.teamMember.findMany({
+        where: { userId: user.id },
+        select: { teamId: true },
+      });
+      const teamIds = teams.map(t => t.teamId);
+      if (teamIds.length > 0) {
+        const teamClient = await prisma.teamClient.findFirst({
+          where: { teamId: { in: teamIds }, clientId: cid },
+        });
+        if (teamClient) return next();
       }
     }
 
+    // PLANNER: check direct client access
     const clientAccess = await prisma.userClientAccess.findUnique({
-      where: {
-        userId_clientId: {
-          userId: user.id,
-          clientId: parseInt(clientId),
-        },
-      },
+      where: { userId_clientId: { userId: user.id, clientId: cid } },
     });
 
     if (!clientAccess) {
@@ -100,29 +144,46 @@ export async function getAccessibleClientIds(userId, role) {
     return clients.map((c) => c.id);
   }
 
-  // Get clients from agency access
-  const agencyAccess = await prisma.userAgencyAccess.findMany({
-    where: { userId },
-    select: { agencyId: true },
-  });
+  const allClientIds = new Set();
 
-  const agencyIds = agencyAccess.map((a) => a.agencyId);
+  // MANAGER: gets all clients from assigned agencies
+  if (role === 'MANAGER') {
+    const agencyAccess = await prisma.userAgencyAccess.findMany({
+      where: { userId },
+      select: { agencyId: true },
+    });
+    if (agencyAccess.length > 0) {
+      const clientsFromAgencies = await prisma.client.findMany({
+        where: { agencyId: { in: agencyAccess.map(a => a.agencyId) } },
+        select: { id: true },
+      });
+      clientsFromAgencies.forEach(c => allClientIds.add(c.id));
+    }
+  }
 
-  const clientsFromAgencies = await prisma.client.findMany({
-    where: { agencyId: { in: agencyIds } },
-    select: { id: true },
-  });
+  // GROUP_HEAD: gets clients from their team assignments
+  if (role === 'GROUP_HEAD') {
+    const teams = await prisma.teamMember.findMany({
+      where: { userId },
+      select: { teamId: true },
+    });
+    if (teams.length > 0) {
+      const teamClients = await prisma.teamClient.findMany({
+        where: { teamId: { in: teams.map(t => t.teamId) } },
+        select: { clientId: true },
+      });
+      teamClients.forEach(tc => allClientIds.add(tc.clientId));
+    }
+  }
 
-  // Get clients from direct client access
-  const directAccess = await prisma.userClientAccess.findMany({
-    where: { userId },
-    select: { clientId: true },
-  });
-
-  const allClientIds = new Set([
-    ...clientsFromAgencies.map((c) => c.id),
-    ...directAccess.map((a) => a.clientId),
-  ]);
+  // PLANNER: direct client access only
+  if (role === 'PLANNER') {
+    const directAccess = await prisma.userClientAccess.findMany({
+      where: { userId },
+      select: { clientId: true },
+    });
+    directAccess.forEach(a => allClientIds.add(a.clientId));
+  }
 
   return Array.from(allClientIds);
 }
