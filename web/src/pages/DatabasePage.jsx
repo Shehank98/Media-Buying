@@ -21,7 +21,7 @@ function fmtMonth(ym) {
 
 function fmtLKR(v) {
   if (v == null || v === '') return '';
-  return Math.round(Number(v)).toLocaleString('en-US');
+  return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function normalizeMonth(raw) {
@@ -350,13 +350,13 @@ export default function DatabasePage() {
           const r = createEmptyRow();
           for (const [key, val] of Object.entries(row)) {
             const k = key.toLowerCase().trim();
-            if (k.includes('ro') || k.includes('estimate') || k.includes('channel est')) {
+            if (k.includes('estimate') || k.includes('channel est') || (k.includes('ro') && !k.includes('group') && !k.includes('media'))) {
               r.roNumber = String(val).trim();
-            } else if (k.includes('sch') && k.includes('month') || k === 'month' || k.includes('schedule month')) {
+            } else if ((k.includes('sch') && k.includes('month')) || k === 'month' || k.includes('schedule month')) {
               r.scheduleMonth = normalizeMonth(String(val));
             } else if (k.includes('brand')) {
               r.brandName = String(val).trim();
-            } else if (k.includes('channel') && !k.includes('est')) {
+            } else if (k.includes('channel') && !k.includes('est') && !k.includes('value')) {
               r.channelMasterId = matchChannelByName(String(val)) || '';
               r._channelRaw = String(val).trim();
             } else if (k.includes('value') || k.includes('schedule val') || k.includes('amount')) {
@@ -684,7 +684,7 @@ export default function DatabasePage() {
       {/* Upload Preview Modal */}
       {showUpload && (
         <div className="modal-scrim show" onClick={() => setShowUpload(false)}>
-          <div className="modal" style={{ maxWidth: 900, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 1100, width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <h2>Review Upload</h2>
