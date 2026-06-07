@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import api from '../lib/api';
+import * as XLSX from 'xlsx';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -23,6 +24,24 @@ function fmtLKR(v) {
   return Math.round(Number(v)).toLocaleString('en-US');
 }
 
+function normalizeMonth(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  // Already YYYY-MM
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  // Try "Jan 2025", "January 2025", "2025-01-15", etc.
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  // Try "MM/YYYY" or "M/YYYY"
+  const slashMatch = s.match(/^(\d{1,2})[/\-](\d{4})$/);
+  if (slashMatch) return `${slashMatch[2]}-${slashMatch[1].padStart(2, '0')}`;
+  return s;
+}
+
+const EDITABLE_FIELDS = ['roNumber', 'scheduleMonth', 'brandName', 'channelMasterId', 'scheduleValue'];
+
 const COLUMNS = [
   { key: 'groupHead', label: 'Group', width: 120, readOnly: true },
   { key: 'year', label: 'Year', width: 60, readOnly: true },
@@ -42,7 +61,6 @@ export default function DatabasePage() {
   const role = user?.role;
   const canWrite = ['SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'].includes(role);
 
-  // Data
   const [agencies, setAgencies] = useState([]);
   const [clients, setClients] = useState([]);
   const [selectedAgencyId, setSelectedAgencyId] = useState('');
@@ -50,7 +68,6 @@ export default function DatabasePage() {
   const [channelMasters, setChannelMasters] = useState([]);
   const [metadata, setMetadata] = useState({ groupHeadName: '', brandSuggestions: [], client: null });
 
-  // Table data
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -59,21 +76,24 @@ export default function DatabasePage() {
   const [sortField, setSortField] = useState('scheduleMonth');
   const [sortOrder, setSortOrder] = useState('desc');
 
-  // New rows being entered (Excel-like input rows)
   const [newRows, setNewRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState(null);
 
-  // Editing existing rows inline
-  const [editingCell, setEditingCell] = useState(null); // { rowId, colKey }
+  const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
-  // Refs
-  const tableRef = useRef(null);
-  const inputRefs = useRef({});
+  // Upload modal
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState([]);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const fileInputRef = useRef(null);
 
-  // Load agencies
+  // Focus tracking for column paste
+  const [focusedCol, setFocusedCol] = useState(null);
+  const [focusedRowIdx, setFocusedRowIdx] = useState(null);
+
   useEffect(() => {
     api.get('/agencies').then(r => {
       const list = r.data.agencies || r.data || [];
@@ -81,7 +101,6 @@ export default function DatabasePage() {
     }).catch(() => {});
   }, []);
 
-  // Load clients when agency changes
   useEffect(() => {
     if (!selectedAgencyId) { setClients([]); setSelectedClientId(''); return; }
     api.get(`/agencies/${selectedAgencyId}/clients`).then(r => {
@@ -91,7 +110,6 @@ export default function DatabasePage() {
     }).catch(() => setClients([]));
   }, [selectedAgencyId]);
 
-  // Load channel masters
   useEffect(() => {
     api.get('/masterdata/channel-masters').then(r => {
       const list = r.data.channelMasters || r.data || [];
@@ -99,7 +117,6 @@ export default function DatabasePage() {
     }).catch(() => {});
   }, []);
 
-  // Load metadata (group head, brand suggestions) when client changes
   useEffect(() => {
     if (!selectedClientId) { setMetadata({ groupHeadName: '', brandSuggestions: [], client: null }); return; }
     api.get('/database/metadata', { params: { clientId: selectedClientId } }).then(r => {
@@ -107,7 +124,6 @@ export default function DatabasePage() {
     }).catch(() => {});
   }, [selectedClientId]);
 
-  // Fetch existing schedule logs
   const fetchLogs = useCallback(async () => {
     if (!selectedClientId) return;
     setLoading(true);
@@ -125,21 +141,16 @@ export default function DatabasePage() {
 
   const totalPages = Math.ceil(total / 100);
 
-  // Get channel name by ID
-  const getChannelName = (id) => {
-    const cm = channelMasters.find(c => c.id === parseInt(id));
-    return cm?.name || '';
-  };
-  const getChannelMedium = (id) => {
-    const cm = channelMasters.find(c => c.id === parseInt(id));
-    return cm?.medium || '';
-  };
-  const getChannelMediaGroup = (id) => {
-    const cm = channelMasters.find(c => c.id === parseInt(id));
-    return cm?.mediaGroup?.name || '';
+  const getChannelMedium = (id) => channelMasters.find(c => c.id === parseInt(id))?.medium || '';
+  const getChannelMediaGroup = (id) => channelMasters.find(c => c.id === parseInt(id))?.mediaGroup?.name || '';
+
+  const matchChannelByName = (name) => {
+    if (!name) return '';
+    const lower = name.trim().toLowerCase();
+    const match = channelMasters.find(cm => cm.name.toLowerCase() === lower);
+    return match ? String(match.id) : '';
   };
 
-  // Current month as YYYY-MM
   const currentMonth = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -175,7 +186,6 @@ export default function DatabasePage() {
     setNewRows(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // Save all new rows
   const saveNewRows = async () => {
     const validRows = newRows.filter(r => r.roNumber && r.scheduleMonth && r.channelMasterId && r.scheduleValue);
     if (validRows.length === 0) return;
@@ -198,7 +208,6 @@ export default function DatabasePage() {
       setSaveResult({ created: createdCount, errors: errorCount });
 
       if (createdCount > 0) {
-        // Remove successfully saved rows, keep errored ones
         if (errorCount > 0) {
           const errorIndices = new Set(data.errors.map(e => e.row));
           setNewRows(prev => prev.filter((_, i) => errorIndices.has(i)));
@@ -206,10 +215,7 @@ export default function DatabasePage() {
           setNewRows([]);
         }
         fetchLogs();
-        // Refresh brand suggestions
-        api.get('/database/metadata', { params: { clientId: selectedClientId } }).then(r => {
-          setMetadata(r.data);
-        }).catch(() => {});
+        api.get('/database/metadata', { params: { clientId: selectedClientId } }).then(r => setMetadata(r.data)).catch(() => {});
       }
     } catch (err) {
       setSaveResult({ created: 0, errors: -1, message: err.response?.data?.error || 'Failed to save' });
@@ -225,10 +231,7 @@ export default function DatabasePage() {
     setEditValue(currentValue ?? '');
   };
 
-  const cancelEdit = () => {
-    setEditingCell(null);
-    setEditValue('');
-  };
+  const cancelEdit = () => { setEditingCell(null); setEditValue(''); };
 
   const commitEdit = async () => {
     if (!editingCell) return;
@@ -242,13 +245,9 @@ export default function DatabasePage() {
     setEditSaving(true);
     try {
       const payload = { editNote: `Inline edit: ${colKey}` };
-      if (colKey === 'scheduleValue') {
-        payload.scheduleValue = parseFloat(editValue);
-      } else if (colKey === 'channelMasterId') {
-        payload.channelMasterId = parseInt(editValue);
-      } else {
-        payload[colKey] = editValue;
-      }
+      if (colKey === 'scheduleValue') payload.scheduleValue = parseFloat(editValue);
+      else if (colKey === 'channelMasterId') payload.channelMasterId = parseInt(editValue);
+      else payload[colKey] = editValue;
       await api.put(`/database/${rowId}`, payload);
       fetchLogs();
     } catch (err) {
@@ -264,63 +263,152 @@ export default function DatabasePage() {
     if (e.key === 'Tab') { e.preventDefault(); commitEdit(); }
   };
 
-  // ── Paste handler for new rows ──
+  // ── Paste handler ──
+  // Supports: multi-row paste (creates new rows) OR column paste (fills down a column)
 
   const handlePaste = (e) => {
     const clipboardData = e.clipboardData?.getData('text');
-    if (!clipboardData) return;
+    if (!clipboardData || !selectedClientId || !canWrite) return;
 
     const lines = clipboardData.split('\n').filter(l => l.trim());
-    if (lines.length <= 1) return; // single cell paste, let default handle
+    if (lines.length === 0) return;
 
-    e.preventDefault();
+    // Check if the paste target is inside a cell input (let it handle normally for single values)
+    const activeEl = document.activeElement;
+    const isInCellInput = activeEl?.classList?.contains('cell-input');
 
-    const pastedRows = lines.map(line => {
-      const cols = line.split('\t');
-      // Expected paste order: RO Number, Schedule Month (YYYY-MM), Brand, Channel Name, Schedule Value
-      const row = createEmptyRow();
-      if (cols[0]) row.roNumber = cols[0].trim();
-      if (cols[1]) row.scheduleMonth = cols[1].trim();
-      if (cols[2]) row.brandName = cols[2].trim();
-      if (cols[3]) {
-        // Try to match channel by name
-        const chName = cols[3].trim().toLowerCase();
-        const match = channelMasters.find(cm => cm.name.toLowerCase() === chName);
-        if (match) row.channelMasterId = String(match.id);
+    // Single column paste: if focused on an editable new-row cell and data is single-column
+    const isSingleColumn = lines.every(l => !l.includes('\t'));
+
+    if (isSingleColumn && isInCellInput && focusedCol && focusedRowIdx != null) {
+      e.preventDefault();
+      const values = lines.map(l => l.trim());
+      setNewRows(prev => {
+        const updated = [...prev];
+        // Ensure enough rows exist
+        while (updated.length < focusedRowIdx + values.length) {
+          updated.push({
+            _id: Date.now() + Math.random(),
+            roNumber: '', scheduleMonth: currentMonth, brandName: '', channelMasterId: '', scheduleValue: '',
+          });
+        }
+        // Fill column values starting from focused row
+        for (let i = 0; i < values.length; i++) {
+          const targetIdx = focusedRowIdx + i;
+          let val = values[i];
+          if (focusedCol === 'channelMasterId') {
+            val = matchChannelByName(val) || val;
+          } else if (focusedCol === 'scheduleMonth') {
+            val = normalizeMonth(val) || val;
+          } else if (focusedCol === 'scheduleValue') {
+            val = val.replace(/[^0-9.]/g, '');
+          }
+          updated[targetIdx] = { ...updated[targetIdx], [focusedCol]: val };
+        }
+        return updated;
+      });
+      return;
+    }
+
+    // Multi-column paste: treat as full rows
+    if (!isSingleColumn || !isInCellInput) {
+      // Only intercept if lines > 1 OR it's a multi-column line
+      if (lines.length <= 1 && isSingleColumn && isInCellInput) return; // let default handle single cell
+
+      e.preventDefault();
+      const pastedRows = lines.map(line => {
+        const cols = line.split('\t');
+        const row = createEmptyRow();
+        // Expected: RO Number | Sch Month | Brand | Channel | Schedule Value
+        if (cols[0]) row.roNumber = cols[0].trim();
+        if (cols[1]) row.scheduleMonth = normalizeMonth(cols[1]);
+        if (cols[2]) row.brandName = cols[2].trim();
+        if (cols[3]) row.channelMasterId = matchChannelByName(cols[3]) || '';
+        if (cols[4]) row.scheduleValue = cols[4].trim().replace(/[^0-9.]/g, '');
+        return row;
+      });
+      setNewRows(prev => [...prev, ...pastedRows]);
+    }
+  };
+
+  // ── Excel Upload ──
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        // Map columns - try to match by header name
+        const mapped = jsonData.map(row => {
+          const r = createEmptyRow();
+          for (const [key, val] of Object.entries(row)) {
+            const k = key.toLowerCase().trim();
+            if (k.includes('ro') || k.includes('estimate') || k.includes('channel est')) {
+              r.roNumber = String(val).trim();
+            } else if (k.includes('sch') && k.includes('month') || k === 'month' || k.includes('schedule month')) {
+              r.scheduleMonth = normalizeMonth(String(val));
+            } else if (k.includes('brand')) {
+              r.brandName = String(val).trim();
+            } else if (k.includes('channel') && !k.includes('est')) {
+              r.channelMasterId = matchChannelByName(String(val)) || '';
+              r._channelRaw = String(val).trim();
+            } else if (k.includes('value') || k.includes('schedule val') || k.includes('amount')) {
+              r.scheduleValue = String(val).replace(/[^0-9.]/g, '');
+            }
+          }
+          return r;
+        }).filter(r => r.roNumber || r.scheduleValue || r.channelMasterId);
+
+        setUploadPreview(mapped);
+        setShowUpload(true);
+      } catch {
+        alert('Failed to read Excel file. Please check the format.');
       }
-      if (cols[4]) row.scheduleValue = cols[4].trim().replace(/[^0-9.]/g, '');
-      return row;
-    });
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
 
-    setNewRows(prev => [...prev, ...pastedRows]);
+  const confirmUpload = () => {
+    setNewRows(prev => [...prev, ...uploadPreview]);
+    setShowUpload(false);
+    setUploadPreview([]);
+  };
+
+  const updateUploadRow = (idx, field, value) => {
+    setUploadPreview(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      return updated;
+    });
+  };
+
+  const removeUploadRow = (idx) => {
+    setUploadPreview(prev => prev.filter((_, i) => i !== idx));
   };
 
   // ── Sort ──
   const handleSort = (field) => {
-    if (sortField === field) {
-      setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortOrder('desc');
-    }
+    if (sortField === field) setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortOrder('desc'); }
     setPage(1);
   };
 
   // ── Delete ──
   const handleDelete = async (id) => {
     if (!confirm('Delete this row?')) return;
-    try {
-      await api.delete(`/database/${id}`);
-      fetchLogs();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete');
-    }
+    try { await api.delete(`/database/${id}`); fetchLogs(); }
+    catch (err) { alert(err.response?.data?.error || 'Failed to delete'); }
   };
 
-  // ── Brand suggestions filtered ──
   const brandSuggestions = metadata.brandSuggestions || [];
-
-  // Grand total from visible data
   const grandTotal = useMemo(() => rows.reduce((s, r) => s + (Number(r.scheduleValue) || 0), 0), [rows]);
 
   return (
@@ -328,7 +416,7 @@ export default function DatabasePage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Schedule Database</h1>
-          <p className="page-sub">Enter data like a spreadsheet - paste rows from Excel</p>
+          <p className="page-sub">Enter data like a spreadsheet - paste columns or upload Excel</p>
         </div>
       </div>
 
@@ -375,6 +463,10 @@ export default function DatabasePage() {
             </div>
             {canWrite && (
               <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => fileInputRef.current?.click()}>
+                  <Icon name="upload" size={14} /> Upload Excel
+                </button>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleFileSelect} />
                 <button className="btn btn-ghost btn-sm" onClick={addNewRow}>
                   <Icon name="plus" size={14} /> Add Row
                 </button>
@@ -387,31 +479,31 @@ export default function DatabasePage() {
             )}
           </div>
 
-          {/* Save result message */}
+          {/* Save result */}
           {saveResult && (
             <div style={{
               padding: '8px 12px', marginBottom: 10, borderRadius: 6, fontSize: 13,
-              background: saveResult.errors > 0 ? 'var(--amber-50, #fffbeb)' : 'var(--green-50, #ecfdf5)',
-              color: saveResult.errors > 0 ? 'var(--amber-700, #b45309)' : 'var(--green-700, #15803d)',
-              border: `1px solid ${saveResult.errors > 0 ? 'var(--amber-200)' : 'var(--green-200)'}`,
+              background: saveResult.errors > 0 ? '#fffbeb' : '#ecfdf5',
+              color: saveResult.errors > 0 ? '#b45309' : '#15803d',
+              border: `1px solid ${saveResult.errors > 0 ? '#fcd34d' : '#86efac'}`,
             }}>
-              {saveResult.created > 0 && <span>{saveResult.created} rows saved. </span>}
+              {saveResult.created > 0 && <span>{saveResult.created} rows saved successfully. </span>}
               {saveResult.errors > 0 && <span>{saveResult.errors} rows had errors. </span>}
               {saveResult.message && <span>{saveResult.message}</span>}
               <button onClick={() => setSaveResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: 'inherit' }}>Dismiss</button>
             </div>
           )}
 
-          {/* Paste hint */}
+          {/* Paste/Upload hint */}
           {canWrite && newRows.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="file" size={13} />
-              Paste from Excel: RO Number | Month (YYYY-MM) | Brand | Channel Name | Value (tab-separated)
+              <span>Paste from Excel (RO | Month | Brand | Channel | Value) or copy a column and paste into any column. Or use Upload Excel.</span>
             </div>
           )}
 
           {/* Spreadsheet Table */}
-          <div ref={tableRef} className="tbl-wrap" style={{ overflowX: 'auto' }}>
+          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
             <table className="tbl spreadsheet-tbl" style={{ minWidth: 1200, fontSize: 13 }}>
               <thead>
                 <tr>
@@ -432,59 +524,49 @@ export default function DatabasePage() {
                 {/* New entry rows */}
                 {newRows.map((nRow, idx) => (
                   <tr key={nRow._id} className="new-row">
-                    {/* Group - auto */}
                     <td className="cell cell-readonly">{metadata.groupHeadName || '-'}</td>
-                    {/* Year - auto */}
                     <td className="cell cell-readonly">{currentYear}</td>
-                    {/* RO Number - editable */}
                     <td className="cell cell-editable">
                       <input
                         className="cell-input"
                         value={nRow.roNumber}
                         onChange={e => updateNewRow(idx, 'roNumber', e.target.value)}
+                        onFocus={() => { setFocusedCol('roNumber'); setFocusedRowIdx(idx); }}
                         placeholder="RO-001"
-                        tabIndex={0}
                       />
                     </td>
-                    {/* Sch Month - editable */}
                     <td className="cell cell-editable">
                       <input
                         className="cell-input"
                         type="month"
                         value={nRow.scheduleMonth}
                         onChange={e => updateNewRow(idx, 'scheduleMonth', e.target.value)}
-                        tabIndex={0}
+                        onFocus={() => { setFocusedCol('scheduleMonth'); setFocusedRowIdx(idx); }}
                       />
                     </td>
-                    {/* Invoice Month - auto */}
                     <td className="cell cell-readonly">{nRow.scheduleMonth ? fmtMonth(computeInvoiceMonth(nRow.scheduleMonth)) : ''}</td>
-                    {/* Client - auto */}
                     <td className="cell cell-readonly">{clientName}</td>
-                    {/* Brand - editable with suggestions */}
                     <td className="cell cell-editable">
                       <input
                         className="cell-input"
                         list={`brand-list-${idx}`}
                         value={nRow.brandName}
                         onChange={e => updateNewRow(idx, 'brandName', e.target.value)}
+                        onFocus={() => { setFocusedCol('brandName'); setFocusedRowIdx(idx); }}
                         placeholder="Brand"
-                        tabIndex={0}
                       />
                       <datalist id={`brand-list-${idx}`}>
                         {brandSuggestions.map(b => <option key={b} value={b} />)}
                       </datalist>
                     </td>
-                    {/* Medium - auto from channel */}
                     <td className="cell cell-readonly">{nRow.channelMasterId ? getChannelMedium(nRow.channelMasterId) : ''}</td>
-                    {/* Media Group - auto from channel */}
                     <td className="cell cell-readonly">{nRow.channelMasterId ? getChannelMediaGroup(nRow.channelMasterId) : ''}</td>
-                    {/* Channel - select */}
                     <td className="cell cell-editable">
                       <select
                         className="cell-input cell-select"
                         value={nRow.channelMasterId}
                         onChange={e => updateNewRow(idx, 'channelMasterId', e.target.value)}
-                        tabIndex={0}
+                        onFocus={() => { setFocusedCol('channelMasterId'); setFocusedRowIdx(idx); }}
                       >
                         <option value="">Select...</option>
                         {channelMasters.filter(c => c.isActive !== false).map(cm => (
@@ -492,7 +574,6 @@ export default function DatabasePage() {
                         ))}
                       </select>
                     </td>
-                    {/* Schedule Value - editable */}
                     <td className="cell cell-editable" style={{ textAlign: 'right' }}>
                       <input
                         className="cell-input"
@@ -501,96 +582,69 @@ export default function DatabasePage() {
                         min="0"
                         value={nRow.scheduleValue}
                         onChange={e => updateNewRow(idx, 'scheduleValue', e.target.value)}
+                        onFocus={() => { setFocusedCol('scheduleValue'); setFocusedRowIdx(idx); }}
                         placeholder="0.00"
                         style={{ textAlign: 'right' }}
-                        tabIndex={0}
                       />
                     </td>
-                    {/* Remove button */}
                     <td className="cell" style={{ textAlign: 'center' }}>
-                      <button className="icon-btn" onClick={() => removeNewRow(idx)} title="Remove row">
+                      <button className="icon-btn" onClick={() => removeNewRow(idx)} title="Remove">
                         <Icon name="x" size={14} style={{ color: '#ef4444' }} />
                       </button>
                     </td>
                   </tr>
                 ))}
 
-                {/* Existing data rows */}
+                {/* Existing rows */}
                 {loading ? (
                   <tr><td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>Loading...</td></tr>
                 ) : rows.length === 0 && newRows.length === 0 ? (
-                  <tr><td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No entries. Click "Add Row" or paste from Excel.</td></tr>
+                  <tr><td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No entries. Click "Add Row", paste from Excel, or use Upload Excel.</td></tr>
                 ) : rows.map(row => {
                   const isEditing = (colKey) => editingCell?.rowId === row.id && editingCell?.colKey === colKey;
                   const [yr] = (row.scheduleMonth || '').split('-');
 
                   return (
                     <tr key={row.id} className={row.isDeleted ? 'deleted-row' : ''}>
-                      {/* Group */}
                       <td className="cell cell-readonly">{metadata.groupHeadName || '-'}</td>
-                      {/* Year */}
                       <td className="cell cell-readonly">{yr || '-'}</td>
-                      {/* RO Number */}
                       <td className="cell cell-click" onDoubleClick={() => startEdit(row.id, 'roNumber', row.roNumber)}>
                         {isEditing('roNumber') ? (
                           <input className="cell-input" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} />
-                        ) : (
-                          <span>{row.roNumber || '-'}</span>
-                        )}
+                        ) : <span>{row.roNumber || '-'}</span>}
                       </td>
-                      {/* Schedule Month */}
                       <td className="cell cell-click" onDoubleClick={() => startEdit(row.id, 'scheduleMonth', row.scheduleMonth)}>
                         {isEditing('scheduleMonth') ? (
                           <input className="cell-input" type="month" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} />
-                        ) : (
-                          <span>{fmtMonth(row.scheduleMonth)}</span>
-                        )}
+                        ) : <span>{fmtMonth(row.scheduleMonth)}</span>}
                       </td>
-                      {/* Invoice Month */}
                       <td className="cell cell-readonly">{fmtMonth(row.invoiceMonth)}</td>
-                      {/* Client */}
                       <td className="cell cell-readonly">{clientName}</td>
-                      {/* Brand */}
                       <td className="cell cell-click" onDoubleClick={() => startEdit(row.id, 'brandName', row.brandName || '')}>
                         {isEditing('brandName') ? (
                           <>
                             <input className="cell-input" list="brand-edit-list" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} />
-                            <datalist id="brand-edit-list">
-                              {brandSuggestions.map(b => <option key={b} value={b} />)}
-                            </datalist>
+                            <datalist id="brand-edit-list">{brandSuggestions.map(b => <option key={b} value={b} />)}</datalist>
                           </>
-                        ) : (
-                          <span>{row.brandName || '-'}</span>
-                        )}
+                        ) : <span>{row.brandName || '-'}</span>}
                       </td>
-                      {/* Medium */}
                       <td className="cell cell-readonly">
                         <span className="medium-tag" data-medium={row.medium}>{row.medium || '-'}</span>
                       </td>
-                      {/* Media Group */}
                       <td className="cell cell-readonly">{row.mediaGroup || '-'}</td>
-                      {/* Channel */}
                       <td className="cell cell-click" onDoubleClick={() => startEdit(row.id, 'channelMasterId', String(row.channelMasterId))}>
                         {isEditing('channelMasterId') ? (
-                          <select className="cell-input cell-select" autoFocus value={editValue} onChange={e => { setEditValue(e.target.value); }} onKeyDown={handleEditKeyDown} onBlur={commitEdit}>
+                          <select className="cell-input cell-select" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit}>
                             <option value="">Select...</option>
-                            {channelMasters.filter(c => c.isActive !== false).map(cm => (
-                              <option key={cm.id} value={cm.id}>{cm.name}</option>
-                            ))}
+                            {channelMasters.filter(c => c.isActive !== false).map(cm => <option key={cm.id} value={cm.id}>{cm.name}</option>)}
                           </select>
-                        ) : (
-                          <span>{row.channelMaster?.name || '-'}</span>
-                        )}
+                        ) : <span>{row.channelMaster?.name || '-'}</span>}
                       </td>
-                      {/* Schedule Value */}
                       <td className="cell cell-click" style={{ textAlign: 'right' }} onDoubleClick={() => startEdit(row.id, 'scheduleValue', row.scheduleValue)}>
                         {isEditing('scheduleValue') ? (
                           <input className="cell-input" type="number" step="0.01" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} style={{ textAlign: 'right' }} />
-                        ) : (
-                          <span className="mono">{fmtLKR(row.scheduleValue)}</span>
-                        )}
+                        ) : <span className="mono">{fmtLKR(row.scheduleValue)}</span>}
                       </td>
-                      {/* Actions */}
                       {canWrite && (
                         <td className="cell" style={{ textAlign: 'center' }}>
                           {!row.isDeleted && (
@@ -625,6 +679,81 @@ export default function DatabasePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Upload Preview Modal */}
+      {showUpload && (
+        <div className="modal-scrim show" onClick={() => setShowUpload(false)}>
+          <div className="modal" style={{ maxWidth: 900, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h2>Review Upload</h2>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{uploadFileName} - {uploadPreview.length} rows detected</span>
+              </div>
+              <button className="act-btn" onClick={() => setShowUpload(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ overflow: 'auto', flex: 1, padding: 0 }}>
+              <div style={{ padding: '10px 16px', background: '#eff6ff', fontSize: 12, color: '#1d4ed8', borderBottom: '1px solid var(--border)' }}>
+                Review and edit before importing. Unmatched channels appear in red - select the correct channel from the dropdown.
+              </div>
+              <table className="tbl spreadsheet-tbl" style={{ margin: 0, fontSize: 12.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 30 }}>#</th>
+                    <th>RO Number</th>
+                    <th>Sch Month</th>
+                    <th>Brand</th>
+                    <th>Channel</th>
+                    <th style={{ textAlign: 'right' }}>Value</th>
+                    <th style={{ width: 36 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uploadPreview.map((r, idx) => (
+                    <tr key={r._id}>
+                      <td className="cell cell-readonly" style={{ textAlign: 'center', fontSize: 11 }}>{idx + 1}</td>
+                      <td className="cell cell-editable">
+                        <input className="cell-input" value={r.roNumber} onChange={e => updateUploadRow(idx, 'roNumber', e.target.value)} />
+                      </td>
+                      <td className="cell cell-editable">
+                        <input className="cell-input" type="month" value={r.scheduleMonth} onChange={e => updateUploadRow(idx, 'scheduleMonth', e.target.value)} />
+                      </td>
+                      <td className="cell cell-editable">
+                        <input className="cell-input" list="brand-upload-list" value={r.brandName} onChange={e => updateUploadRow(idx, 'brandName', e.target.value)} />
+                      </td>
+                      <td className="cell cell-editable" style={{ background: r.channelMasterId ? '' : '#fef2f2' }}>
+                        <select className="cell-input cell-select" value={r.channelMasterId} onChange={e => updateUploadRow(idx, 'channelMasterId', e.target.value)}>
+                          <option value="">{r._channelRaw ? `⚠ "${r._channelRaw}"` : 'Select...'}</option>
+                          {channelMasters.filter(c => c.isActive !== false).map(cm => <option key={cm.id} value={cm.id}>{cm.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="cell cell-editable">
+                        <input className="cell-input" type="number" step="0.01" value={r.scheduleValue} onChange={e => updateUploadRow(idx, 'scheduleValue', e.target.value)} style={{ textAlign: 'right' }} />
+                      </td>
+                      <td className="cell" style={{ textAlign: 'center' }}>
+                        <button className="icon-btn" onClick={() => removeUploadRow(idx)}><Icon name="x" size={13} style={{ color: '#ef4444' }} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <datalist id="brand-upload-list">{brandSuggestions.map(b => <option key={b} value={b} />)}</datalist>
+            </div>
+            <div className="modal-foot">
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {uploadPreview.filter(r => !r.channelMasterId).length > 0 && (
+                  <span style={{ color: '#dc2626' }}>{uploadPreview.filter(r => !r.channelMasterId).length} rows missing channel</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={confirmUpload}>
+                  Import {uploadPreview.length} rows to grid
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
