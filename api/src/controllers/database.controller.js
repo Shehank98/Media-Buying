@@ -16,12 +16,6 @@ const logIncludes = {
   deletedBy: { select: { id: true, name: true } },
 };
 
-/**
- * Build the clientId filter based on the user's role.
- * Returns null if the user has no access to ANY client (empty set).
- * Returns { clientId } if clientId is confirmed accessible.
- * Throws with a 403-style message if access is denied.
- */
 async function resolveClientAccess(user, clientId) {
   const cid = parseInt(clientId);
 
@@ -30,7 +24,6 @@ async function resolveClientAccess(user, clientId) {
       return cid;
 
     case 'MANAGER': {
-      // Manager can see clients in their assigned agencies
       const access = await prisma.userAgencyAccess.findMany({
         where: { userId: user.id },
         select: { agencyId: true },
@@ -45,7 +38,6 @@ async function resolveClientAccess(user, clientId) {
     }
 
     case 'GROUP_HEAD': {
-      // GROUP_HEAD can see clients assigned to their team(s)
       const teams = await prisma.teamMember.findMany({
         where: { userId: user.id },
         select: { teamId: true },
@@ -60,7 +52,6 @@ async function resolveClientAccess(user, clientId) {
     }
 
     case 'PLANNER': {
-      // PLANNER can only see their directly assigned clients
       const access = await prisma.userClientAccess.findFirst({
         where: { userId: user.id, clientId: cid },
         select: { clientId: true },
@@ -72,6 +63,17 @@ async function resolveClientAccess(user, clientId) {
     default:
       return null;
   }
+}
+
+function computeInvoiceMonth(scheduleMonth) {
+  const monthMatch = typeof scheduleMonth === 'string' && scheduleMonth.match(/^(\d{4})-(\d{2})$/);
+  if (!monthMatch) return scheduleMonth;
+  const y = parseInt(monthMatch[1]);
+  const m = parseInt(monthMatch[2]);
+  const nextDate = new Date(Date.UTC(y, m, 1));
+  const ny = nextDate.getUTCFullYear();
+  const nm = String(nextDate.getUTCMonth() + 1).padStart(2, '0');
+  return `${ny}-${nm}`;
 }
 
 // ── getScheduleLogs ──
@@ -98,22 +100,19 @@ export async function getScheduleLogs(req, res) {
 
     const user = req.user;
 
-    // Verify role-based access to this client
     const accessedClientId = await resolveClientAccess(user, clientId);
     if (accessedClientId === null) {
       return res.status(403).json({ error: 'You do not have access to this client' });
     }
 
     const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Build where clause
     const where = { clientId: accessedClientId };
 
-    // Soft-deleted filter — only SUPER_ADMIN can see deleted rows
     if (showDeleted === 'true' && user.role === 'SUPER_ADMIN') {
-      // no filter — show all including deleted
+      // show all including deleted
     } else {
       where.isDeleted = false;
     }
@@ -123,15 +122,16 @@ export async function getScheduleLogs(req, res) {
     if (channelMasterId) where.channelMasterId = parseInt(channelMasterId);
     if (medium) where.medium = medium;
 
-    // Text search on roNumber
     if (search) {
-      where.roNumber = { contains: search, mode: 'insensitive' };
+      where.OR = [
+        { roNumber: { contains: search, mode: 'insensitive' } },
+        { brandName: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
-    // Validate sort field
     const allowedSorts = [
       'createdAt', 'updatedAt', 'scheduleMonth', 'invoiceMonth',
-      'roNumber', 'scheduleValue', 'scheduleValueWithVat', 'medium',
+      'roNumber', 'scheduleValue', 'scheduleValueWithVat', 'medium', 'brandName',
     ];
     const sortField = allowedSorts.includes(sort) ? sort : 'createdAt';
     const sortOrder = order === 'asc' ? 'asc' : 'desc';
@@ -159,6 +159,65 @@ export async function getScheduleLogs(req, res) {
   }
 }
 
+// ── getMetadata (group heads, brand suggestions, channels) ──
+
+export async function getMetadata(req, res) {
+  try {
+    const { clientId } = req.query;
+    const user = req.user;
+
+    if (!clientId) {
+      return res.status(400).json({ error: 'clientId is required' });
+    }
+
+    const cid = parseInt(clientId);
+    const accessedClientId = await resolveClientAccess(user, cid);
+    if (accessedClientId === null) {
+      return res.status(403).json({ error: 'You do not have access to this client' });
+    }
+
+    // Get group head(s) for this client
+    const teamClients = await prisma.teamClient.findMany({
+      where: { clientId: cid },
+      select: { teamId: true },
+    });
+    const teamIds = teamClients.map(tc => tc.teamId);
+
+    let groupHeadName = '';
+    if (teamIds.length > 0) {
+      const groupHead = await prisma.teamMember.findFirst({
+        where: { teamId: { in: teamIds }, role: 'GROUP_HEAD' },
+        include: { user: { select: { name: true } } },
+      });
+      if (groupHead) groupHeadName = groupHead.user.name;
+    }
+
+    // Get distinct brand names used for this client
+    const brandLogs = await prisma.scheduleLog.findMany({
+      where: { clientId: cid, isDeleted: false, brandName: { not: null } },
+      select: { brandName: true },
+      distinct: ['brandName'],
+      orderBy: { brandName: 'asc' },
+    });
+    const brandSuggestions = brandLogs.map(l => l.brandName).filter(Boolean);
+
+    // Get client info
+    const client = await prisma.client.findUnique({
+      where: { id: cid },
+      select: { id: true, name: true, agencyId: true },
+    });
+
+    return res.json({
+      groupHeadName,
+      brandSuggestions,
+      client,
+    });
+  } catch (error) {
+    console.error('Get metadata error:', error);
+    return res.status(500).json({ error: 'Failed to get metadata', detail: error.message });
+  }
+}
+
 // ── createScheduleLog ──
 
 export async function createScheduleLog(req, res) {
@@ -169,6 +228,7 @@ export async function createScheduleLog(req, res) {
       roNumber,
       scheduleMonth,
       scheduleValue,
+      brandName,
     } = req.body;
 
     if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
@@ -180,39 +240,24 @@ export async function createScheduleLog(req, res) {
     const user = req.user;
     const cid = parseInt(clientId);
 
-    // Role check
     const accessedClientId = await resolveClientAccess(user, cid);
     if (accessedClientId === null) {
       return res.status(403).json({ error: 'You do not have access to this client' });
     }
 
-    // Resolve client → agencyId
     const client = await prisma.client.findUnique({
       where: { id: cid },
       select: { agencyId: true },
     });
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    // Resolve channelMaster → medium + mediaGroup name
     const channelMasterRec = await prisma.channelMaster.findUnique({
       where: { id: parseInt(channelMasterId) },
       include: { mediaGroup: { select: { name: true } } },
     });
     if (!channelMasterRec) return res.status(404).json({ error: 'Channel master not found' });
 
-    // Auto-compute invoiceMonth (scheduleMonth + 1 month)
-    // scheduleMonth is expected as "YYYY-MM" string
-    let invoiceMonth = scheduleMonth;
-    const monthMatch = typeof scheduleMonth === 'string' && scheduleMonth.match(/^(\d{4})-(\d{2})$/);
-    if (monthMatch) {
-      const y = parseInt(monthMatch[1]);
-      const m = parseInt(monthMatch[2]);
-      const nextDate = new Date(Date.UTC(y, m, 1)); // m is already 0-indexed + 1
-      const ny = nextDate.getUTCFullYear();
-      const nm = String(nextDate.getUTCMonth() + 1).padStart(2, '0');
-      invoiceMonth = `${ny}-${nm}`;
-    }
-
+    const invoiceMonth = computeInvoiceMonth(scheduleMonth);
     const value = parseFloat(scheduleValue);
     const scheduleValueWithVat = parseFloat((value * 1.18).toFixed(2));
 
@@ -228,6 +273,7 @@ export async function createScheduleLog(req, res) {
         invoiceMonth,
         medium: channelMasterRec.medium,
         mediaGroup: channelMasterRec.mediaGroup.name,
+        brandName: brandName || null,
         scheduleValue: value,
         scheduleValueWithVat,
       },
@@ -243,6 +289,85 @@ export async function createScheduleLog(req, res) {
   }
 }
 
+// ── bulkCreateScheduleLogs ──
+
+export async function bulkCreateScheduleLogs(req, res) {
+  try {
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'rows array is required' });
+    }
+    if (rows.length > 100) {
+      return res.status(400).json({ error: 'Maximum 100 rows per batch' });
+    }
+
+    const user = req.user;
+    const results = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName } = row;
+
+        if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
+          errors.push({ row: i, error: 'Missing required fields' });
+          continue;
+        }
+
+        const cid = parseInt(clientId);
+        const accessedClientId = await resolveClientAccess(user, cid);
+        if (accessedClientId === null) {
+          errors.push({ row: i, error: 'No access to this client' });
+          continue;
+        }
+
+        const client = await prisma.client.findUnique({
+          where: { id: cid },
+          select: { agencyId: true },
+        });
+        if (!client) { errors.push({ row: i, error: 'Client not found' }); continue; }
+
+        const channelMasterRec = await prisma.channelMaster.findUnique({
+          where: { id: parseInt(channelMasterId) },
+          include: { mediaGroup: { select: { name: true } } },
+        });
+        if (!channelMasterRec) { errors.push({ row: i, error: 'Channel not found' }); continue; }
+
+        const invoiceMonth = computeInvoiceMonth(scheduleMonth);
+        const value = parseFloat(scheduleValue);
+        const scheduleValueWithVat = parseFloat((value * 1.18).toFixed(2));
+
+        const log = await prisma.scheduleLog.create({
+          data: {
+            agencyId: client.agencyId,
+            clientId: cid,
+            channelMasterId: parseInt(channelMasterId),
+            uploadedById: user.id,
+            roNumber,
+            scheduleMonth,
+            invoiceMonth,
+            medium: channelMasterRec.medium,
+            mediaGroup: channelMasterRec.mediaGroup.name,
+            brandName: brandName || null,
+            scheduleValue: value,
+            scheduleValueWithVat,
+          },
+          include: logIncludes,
+        });
+        results.push(serializeLog(log));
+      } catch (err) {
+        errors.push({ row: i, error: err.message });
+      }
+    }
+
+    return res.status(201).json({ created: results, errors });
+  } catch (error) {
+    console.error('Bulk create error:', error);
+    return res.status(500).json({ error: 'Failed to bulk create', detail: error.message });
+  }
+}
+
 // ── updateScheduleLog ──
 
 export async function updateScheduleLog(req, res) {
@@ -254,20 +379,17 @@ export async function updateScheduleLog(req, res) {
     if (!existing) return res.status(404).json({ error: 'Schedule log not found' });
     if (existing.isDeleted) return res.status(404).json({ error: 'Schedule log has been deleted' });
 
-    // Role-based edit permission
     if (user.role === 'MANAGER') {
       return res.status(403).json({ error: 'Managers cannot edit schedule logs' });
     }
 
     if (user.role === 'PLANNER') {
-      // PLANNER can only edit their own entries
       if (existing.uploadedById !== user.id) {
         return res.status(403).json({ error: 'You can only edit your own schedule log entries' });
       }
     }
 
     if (user.role === 'GROUP_HEAD') {
-      // GROUP_HEAD can only edit entries belonging to their team's clients
       const teams = await prisma.teamMember.findMany({
         where: { userId: user.id },
         select: { teamId: true },
@@ -286,11 +408,10 @@ export async function updateScheduleLog(req, res) {
       return res.status(400).json({ error: 'editNote is required for updates' });
     }
 
-    // Build update data from provided fields
     const updateData = {};
     const editableFields = [
       'roNumber', 'scheduleMonth', 'invoiceMonth', 'scheduleValue',
-      'channelMasterId',
+      'channelMasterId', 'brandName',
     ];
 
     for (const field of editableFields) {
@@ -298,12 +419,17 @@ export async function updateScheduleLog(req, res) {
         if (field === 'scheduleValue') {
           updateData.scheduleValue = parseFloat(updates.scheduleValue);
           updateData.scheduleValueWithVat = parseFloat((parseFloat(updates.scheduleValue) * 1.18).toFixed(2));
-        } else if (field === 'brandId' || field === 'campaignId' || field === 'channelMasterId') {
+        } else if (field === 'channelMasterId') {
           updateData[field] = parseInt(updates[field]);
         } else {
           updateData[field] = updates[field];
         }
       }
+    }
+
+    // If scheduleMonth changed, recompute invoiceMonth
+    if (updateData.scheduleMonth && !updateData.invoiceMonth) {
+      updateData.invoiceMonth = computeInvoiceMonth(updateData.scheduleMonth);
     }
 
     // If channelMasterId changed, re-resolve medium and mediaGroup
@@ -317,13 +443,11 @@ export async function updateScheduleLog(req, res) {
       updateData.mediaGroup = cm.mediaGroup.name;
     }
 
-    // Capture previous values before update
     const previousValues = {};
     for (const key of Object.keys(updateData)) {
       previousValues[key] = existing[key] != null ? String(existing[key]) : null;
     }
 
-    // Save edit history and update in a transaction
     const [, updated] = await prisma.$transaction([
       prisma.scheduleLogEdit.create({
         data: {
@@ -368,7 +492,6 @@ export async function deleteScheduleLog(req, res) {
     }
 
     if (user.role === 'PLANNER') {
-      // PLANNER: only their own entries, same day only
       if (existing.uploadedById !== user.id) {
         return res.status(403).json({ error: 'You can only delete your own schedule log entries' });
       }
@@ -384,7 +507,6 @@ export async function deleteScheduleLog(req, res) {
     }
 
     if (user.role === 'GROUP_HEAD') {
-      // GROUP_HEAD: any in their team's clients
       const teams = await prisma.teamMember.findMany({
         where: { userId: user.id },
         select: { teamId: true },
@@ -398,7 +520,6 @@ export async function deleteScheduleLog(req, res) {
       }
     }
 
-    // Soft delete
     await prisma.scheduleLog.update({
       where: { id },
       data: {
@@ -428,7 +549,6 @@ export async function getScheduleLogEdits(req, res) {
     });
     if (!log) return res.status(404).json({ error: 'Schedule log not found' });
 
-    // Basic access check: verify user can see this client
     const accessedClientId = await resolveClientAccess(req.user, log.clientId);
     if (accessedClientId === null) {
       return res.status(403).json({ error: 'You do not have access to this schedule log' });

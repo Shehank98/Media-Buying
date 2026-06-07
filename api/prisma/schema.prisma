@@ -296,6 +296,7 @@ model ScheduleLog {
   channelMasterId      Int       @map("channel_master_id")
   medium               String
   mediaGroup           String    @map("media_group")
+  brandName            String?   @map("brand_name")
   scheduleValue        Decimal   @map("schedule_value") @db.Decimal(14, 2)
   scheduleValueWithVat Decimal   @map("schedule_value_with_vat") @db.Decimal(14, 2)
   propertyId           Int?      @map("property_id")
