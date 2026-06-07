@@ -537,7 +537,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <label className="field-label">Agencies</label>
                   <div className="chips">
                     {agencies.map(a => (
-                      <button key={a.id} type="button" className={'chip' + (userForm.agencyIds.includes(a.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, agencyIds: toggleArrayItem(p.agencyIds, a.id) }))}>
+                      <button key={a.id} type="button" className={'chip' + (userForm.agencyIds.includes(a.id) ? ' active' : '')} onClick={() => setUserForm(p => {
+                        const newAgencyIds = toggleArrayItem(p.agencyIds, a.id);
+                        const validClientIds = p.clientIds.filter(cid => allClients.some(c => c.id === cid && newAgencyIds.includes(c.agencyId)));
+                        return { ...p, agencyIds: newAgencyIds, clientIds: validClientIds };
+                      })}>
                         {a.name}
                         {userForm.agencyIds.includes(a.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                       </button>
@@ -548,15 +552,22 @@ export default function AdminPage({ initialTab = 'users' }) {
                 {!hideClientSelect && (
                   <div className="field">
                     <label className="field-label">Clients</label>
+                    {userForm.agencyIds.length === 0 && (
+                      <span style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Select an agency first to see its clients</span>
+                    )}
                     <div className="chips">
-                      {allClients.map(c => (
-                        <button key={c.id} type="button" className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
-                          {c.name}
-                          {c.agencyName && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>({c.agencyName})</span>}
-                          {userForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
-                        </button>
-                      ))}
-                      {allClients.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients available</span>}
+                      {allClients
+                        .filter(c => userForm.agencyIds.includes(c.agencyId))
+                        .map(c => (
+                          <button key={c.id} type="button" className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
+                            {c.name}
+                            {userForm.agencyIds.length > 1 && c.agencyName && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>({c.agencyName})</span>}
+                            {userForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                          </button>
+                        ))}
+                      {userForm.agencyIds.length > 0 && allClients.filter(c => userForm.agencyIds.includes(c.agencyId)).length === 0 && (
+                        <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients in selected agencies</span>
+                      )}
                     </div>
                   </div>
                 )}
