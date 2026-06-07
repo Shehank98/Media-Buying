@@ -90,6 +90,11 @@ export default function DatabasePage() {
   const [uploadFileName, setUploadFileName] = useState('');
   const fileInputRef = useRef(null);
 
+  // Upload batches
+  const [uploadBatches, setUploadBatches] = useState([]);
+  const [showBatches, setShowBatches] = useState(false);
+  const [deletingBatch, setDeletingBatch] = useState(null);
+
   // Focus tracking for column paste
   const [focusedCol, setFocusedCol] = useState(null);
   const [focusedRowIdx, setFocusedRowIdx] = useState(null);
@@ -138,6 +143,16 @@ export default function DatabasePage() {
   }, [selectedClientId, page, sortField, sortOrder, search]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  const fetchBatches = useCallback(async () => {
+    if (!selectedClientId) { setUploadBatches([]); return; }
+    try {
+      const { data } = await api.get('/database/batches', { params: { clientId: selectedClientId } });
+      setUploadBatches(data.batches || []);
+    } catch { setUploadBatches([]); }
+  }, [selectedClientId]);
+
+  useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
   const totalPages = Math.ceil(total / 100);
 
@@ -202,7 +217,7 @@ export default function DatabasePage() {
         brandName: r.brandName || null,
       }));
 
-      const { data } = await api.post('/database/bulk', { rows: payload });
+      const { data } = await api.post('/database/bulk', { rows: payload, fileName: uploadFileName || null });
       const createdCount = data.created?.length || 0;
       const errorCount = data.errors?.length || 0;
       setSaveResult({ created: createdCount, errors: errorCount });
@@ -213,8 +228,10 @@ export default function DatabasePage() {
           setNewRows(prev => prev.filter((_, i) => errorIndices.has(i)));
         } else {
           setNewRows([]);
+          setUploadFileName('');
         }
         fetchLogs();
+        fetchBatches();
         api.get('/database/metadata', { params: { clientId: selectedClientId } }).then(r => setMetadata(r.data)).catch(() => {});
       }
     } catch (err) {
@@ -408,6 +425,19 @@ export default function DatabasePage() {
     catch (err) { alert(err.response?.data?.error || 'Failed to delete'); }
   };
 
+  const handleDeleteBatch = async (batchId, fileName) => {
+    if (!confirm(`Delete all rows uploaded from "${fileName}"? This will remove all entries from that upload.`)) return;
+    setDeletingBatch(batchId);
+    try {
+      await api.delete(`/database/batches/${batchId}`);
+      fetchLogs();
+      fetchBatches();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete batch');
+    }
+    setDeletingBatch(null);
+  };
+
   const brandSuggestions = metadata.brandSuggestions || [];
   const grandTotal = useMemo(() => rows.reduce((s, r) => s + (Number(r.scheduleValue) || 0), 0), [rows]);
 
@@ -478,6 +508,58 @@ export default function DatabasePage() {
               </div>
             )}
           </div>
+
+          {/* Upload Batches */}
+          {canWrite && uploadBatches.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowBatches(p => !p)}
+                style={{ fontSize: 12, gap: 4 }}
+              >
+                <Icon name="upload" size={13} />
+                Upload History ({uploadBatches.length})
+                <Icon name={showBatches ? 'chevD' : 'chevR'} size={12} />
+              </button>
+              {showBatches && (
+                <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  <table className="tbl" style={{ margin: 0, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th>File Name</th>
+                        <th>Uploaded By</th>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Rows</th>
+                        <th style={{ width: 80 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadBatches.map(b => (
+                        <tr key={b.id}>
+                          <td style={{ fontWeight: 600 }}>{b.fileName}</td>
+                          <td style={{ color: 'var(--muted)' }}>{b.uploader?.name || '-'}</td>
+                          <td style={{ color: 'var(--muted)' }}>
+                            {new Date(b.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{b.activeRows}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: '#dc2626', fontSize: 11, padding: '3px 8px' }}
+                              onClick={() => handleDeleteBatch(b.id, b.fileName)}
+                              disabled={deletingBatch === b.id}
+                            >
+                              {deletingBatch === b.id ? 'Deleting...' : 'Delete All'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Save result */}
           {saveResult && (

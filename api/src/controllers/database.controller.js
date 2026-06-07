@@ -386,7 +386,7 @@ export async function createScheduleLog(req, res) {
 
 export async function bulkCreateScheduleLogs(req, res) {
   try {
-    const { rows } = req.body;
+    const { rows, fileName } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
@@ -397,6 +397,30 @@ export async function bulkCreateScheduleLogs(req, res) {
     const user = req.user;
     const results = [];
     const errors = [];
+
+    // Determine client/agency from first row for batch record
+    const firstRow = rows[0];
+    const batchClientId = parseInt(firstRow.clientId);
+    const batchClient = await prisma.client.findUnique({
+      where: { id: batchClientId },
+      select: { agencyId: true },
+    });
+
+    // Create upload batch to track this upload
+    let uploadBatch = null;
+    if (batchClient && fileName) {
+      uploadBatch = await prisma.uploadBatch.create({
+        data: {
+          agencyId: batchClient.agencyId,
+          clientIds: [batchClientId],
+          scheduleMonth: firstRow.scheduleMonth || '',
+          uploadedById: user.id,
+          fileName: fileName || 'manual-entry',
+          totalRows: rows.length,
+          status: 'PROCESSING',
+        },
+      });
+    }
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -437,6 +461,7 @@ export async function bulkCreateScheduleLogs(req, res) {
             clientId: cid,
             channelMasterId: parseInt(channelMasterId),
             uploadedById: user.id,
+            uploadBatchId: uploadBatch?.id || null,
             roNumber,
             scheduleMonth,
             invoiceMonth,
@@ -454,10 +479,97 @@ export async function bulkCreateScheduleLogs(req, res) {
       }
     }
 
-    return res.status(201).json({ created: results, errors });
+    // Update batch with results
+    if (uploadBatch) {
+      await prisma.uploadBatch.update({
+        where: { id: uploadBatch.id },
+        data: {
+          successfulRows: results.length,
+          failedRows: errors.length,
+          status: errors.length === rows.length ? 'FAILED' : 'COMPLETE',
+        },
+      });
+    }
+
+    return res.status(201).json({ created: results, errors, batchId: uploadBatch?.id || null });
   } catch (error) {
     console.error('Bulk create error:', error);
     return res.status(500).json({ error: 'Failed to bulk create', detail: error.message });
+  }
+}
+
+// ── getUploadBatches ──
+
+export async function getUploadBatches(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const user = req.user;
+    const cid = parseInt(clientId);
+    const accessedClientId = await resolveClientAccess(user, cid);
+    if (accessedClientId === null) {
+      return res.status(403).json({ error: 'You do not have access to this client' });
+    }
+
+    const batches = await prisma.uploadBatch.findMany({
+      where: {
+        clientIds: { has: cid },
+        status: { not: 'FAILED' },
+      },
+      include: {
+        uploader: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    // For each batch, count how many active (non-deleted) logs remain
+    const batchesWithCounts = await Promise.all(
+      batches.map(async (batch) => {
+        const activeCount = await prisma.scheduleLog.count({
+          where: { uploadBatchId: batch.id, isDeleted: false },
+        });
+        return { ...batch, activeRows: activeCount };
+      })
+    );
+
+    return res.json({ batches: batchesWithCounts.filter(b => b.activeRows > 0) });
+  } catch (error) {
+    console.error('Get upload batches error:', error);
+    return res.status(500).json({ error: 'Failed to get upload batches', detail: error.message });
+  }
+}
+
+// ── deleteUploadBatch ──
+
+export async function deleteUploadBatch(req, res) {
+  try {
+    const batchId = parseInt(req.params.batchId);
+    const user = req.user;
+
+    const batch = await prisma.uploadBatch.findUnique({ where: { id: batchId } });
+    if (!batch) return res.status(404).json({ error: 'Upload batch not found' });
+
+    // Only the uploader or SUPER_ADMIN can delete a batch
+    if (user.role !== 'SUPER_ADMIN' && batch.uploadedById !== user.id) {
+      return res.status(403).json({ error: 'You can only delete your own uploads' });
+    }
+
+    // Soft-delete all schedule logs in this batch
+    const result = await prisma.scheduleLog.updateMany({
+      where: { uploadBatchId: batchId, isDeleted: false },
+      data: {
+        isDeleted: true,
+        deletedById: user.id,
+        deletedAt: new Date(),
+      },
+    });
+
+    return res.json({ message: `Deleted ${result.count} rows from batch`, deletedCount: result.count });
+  } catch (error) {
+    console.error('Delete upload batch error:', error);
+    return res.status(500).json({ error: 'Failed to delete upload batch', detail: error.message });
   }
 }
 
