@@ -218,6 +218,99 @@ export async function getMetadata(req, res) {
   }
 }
 
+// ── getAnalytics ──
+
+export async function getAnalytics(req, res) {
+  try {
+    const { monthFrom, monthTo, agencyId, clientId } = req.query;
+
+    const where = { isDeleted: false };
+    if (monthFrom) where.scheduleMonth = { ...where.scheduleMonth, gte: monthFrom };
+    if (monthTo) where.scheduleMonth = { ...where.scheduleMonth, lte: monthTo };
+    if (agencyId) where.agencyId = parseInt(agencyId);
+    if (clientId) where.clientId = parseInt(clientId);
+
+    const logs = await prisma.scheduleLog.findMany({
+      where,
+      select: {
+        scheduleMonth: true,
+        medium: true,
+        mediaGroup: true,
+        scheduleValue: true,
+        scheduleValueWithVat: true,
+        channelMasterId: true,
+        channelMaster: { select: { name: true } },
+        client: { select: { name: true } },
+        agency: { select: { name: true } },
+        brandName: true,
+      },
+    });
+
+    // Aggregations
+    const byMediaGroup = {};
+    const byMedium = {};
+    const byChannel = {};
+    const byMonth = {};
+    const byClient = {};
+    const byBrand = {};
+    let totalValue = 0;
+    let totalWithVat = 0;
+
+    for (const log of logs) {
+      const val = Number(log.scheduleValue) || 0;
+      const vat = Number(log.scheduleValueWithVat) || 0;
+      totalValue += val;
+      totalWithVat += vat;
+
+      const mg = log.mediaGroup || 'Unknown';
+      if (!byMediaGroup[mg]) byMediaGroup[mg] = { name: mg, value: 0, count: 0 };
+      byMediaGroup[mg].value += val;
+      byMediaGroup[mg].count++;
+
+      const med = log.medium || 'Unknown';
+      if (!byMedium[med]) byMedium[med] = { name: med, value: 0, count: 0 };
+      byMedium[med].value += val;
+      byMedium[med].count++;
+
+      const ch = log.channelMaster?.name || 'Unknown';
+      if (!byChannel[ch]) byChannel[ch] = { name: ch, medium: med, mediaGroup: mg, value: 0, count: 0 };
+      byChannel[ch].value += val;
+      byChannel[ch].count++;
+
+      const month = log.scheduleMonth || 'Unknown';
+      if (!byMonth[month]) byMonth[month] = { month, value: 0, valueWithVat: 0, count: 0 };
+      byMonth[month].value += val;
+      byMonth[month].valueWithVat += vat;
+      byMonth[month].count++;
+
+      const client = log.client?.name || 'Unknown';
+      if (!byClient[client]) byClient[client] = { name: client, value: 0, count: 0 };
+      byClient[client].value += val;
+      byClient[client].count++;
+
+      const brand = log.brandName || 'Unbranded';
+      if (!byBrand[brand]) byBrand[brand] = { name: brand, value: 0, count: 0 };
+      byBrand[brand].value += val;
+      byBrand[brand].count++;
+    }
+
+    return res.json({
+      totalEntries: logs.length,
+      totalValue: Math.round(totalValue * 100) / 100,
+      totalWithVat: Math.round(totalWithVat * 100) / 100,
+      byMediaGroup: Object.values(byMediaGroup).sort((a, b) => b.value - a.value),
+      byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
+      byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
+      byMonth: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+      byClient: Object.values(byClient).sort((a, b) => b.value - a.value),
+      byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+    });
+  } catch (error) {
+    console.error('Get analytics error:', error);
+    return res.status(500).json({ error: 'Failed to get analytics', detail: error.message });
+  }
+}
+
 // ── createScheduleLog ──
 
 export async function createScheduleLog(req, res) {

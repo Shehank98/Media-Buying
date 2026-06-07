@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage';
 import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
+import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
 import UploadTrackerPage from './pages/UploadTrackerPage';
 
 export default function App() {
@@ -45,6 +46,14 @@ export default function App() {
           >
             <Route path="/" element={<DashboardPage />} />
             <Route path="/database" element={<DatabasePage />} />
+            <Route
+              path="/spend-analytics"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                  <SpendAnalyticsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/agencies" element={<AgenciesPage />} />
             <Route path="/agencies/:agencyId" element={<AgencyDetailPage />} />
             <Route path="/clients" element={<ClientsPage />} />

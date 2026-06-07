@@ -7,6 +7,7 @@ import api from '../lib/api';
 const NAV = [
   { key: '/', label: 'Dashboard', icon: 'grid' },
   { key: '/database', label: 'Database', icon: 'database' },
+  { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/clients', label: 'Clients', icon: 'folder' },
@@ -31,6 +32,7 @@ function Breadcrumbs({ go }) {
   if (path === '/clients') return <>{home}{sep}<b>Clients</b></>;
   if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
   if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Channel</b></>;
+  if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
