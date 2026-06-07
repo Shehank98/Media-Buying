@@ -29,10 +29,13 @@ function Breadcrumbs({ go }) {
   if (path === '/') return <><b>Dashboard</b></>;
   if (path === '/database') return <>{home}{sep}<b>Database</b></>;
   if (path === '/agencies') return <>{home}{sep}<b>Agencies</b></>;
+  if (path.startsWith('/agencies/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Agency</b></>;
   if (path === '/clients') return <>{home}{sep}<b>Clients</b></>;
   if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
   if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Channel</b></>;
+  if (path.startsWith('/channel-masters/')) return <>{home}{sep}<b>Channel Intelligence</b></>;
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
+  if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
