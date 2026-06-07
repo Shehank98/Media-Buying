@@ -4,7 +4,7 @@ import Icon from '../components/Icon';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
@@ -201,7 +201,7 @@ export default function SpendAnalyticsPage() {
       if (monthlyImg) {
         const imgH = contentW * 0.45;
         pdf.addImage(monthlyImg, 'PNG', margin, 38, contentW, imgH);
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 38 + imgH + 5,
           head: [['Month', 'Schedule Value (LKR)', 'Entries']],
           body: data.byMonth.map(m => [fmtMonth(m.month), fmtLKR(m.value), m.count]),
@@ -218,7 +218,7 @@ export default function SpendAnalyticsPage() {
       if (mediumImg) {
         const imgH = contentW * 0.5;
         pdf.addImage(mediumImg, 'PNG', margin, 38, contentW, imgH);
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 38 + imgH + 5,
           head: [['Medium', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byMedium.map(m => [
@@ -238,7 +238,7 @@ export default function SpendAnalyticsPage() {
       if (mgImg) {
         const imgH = contentW * 0.5;
         pdf.addImage(mgImg, 'PNG', margin, 38, contentW, imgH);
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 38 + imgH + 5,
           head: [['Media Group', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byMediaGroup.map(mg => [
@@ -258,7 +258,7 @@ export default function SpendAnalyticsPage() {
       if (chImg) {
         const imgH = Math.min(contentW * 0.5, 90);
         pdf.addImage(chImg, 'PNG', margin, 38, contentW, imgH);
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 38 + imgH + 5,
           head: [['Channel', 'Medium', 'Media Group', 'Value (LKR)', 'Entries', '%']],
           body: data.byChannel.map(ch => [
@@ -275,7 +275,7 @@ export default function SpendAnalyticsPage() {
       if (data.byClient.length > 0) {
         pdf.addPage();
         addHeader('Spend by Client');
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 40,
           head: [['Client', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byClient.map(c => [
@@ -292,7 +292,7 @@ export default function SpendAnalyticsPage() {
       if (data.byBrand.length > 0) {
         pdf.addPage();
         addHeader('Spend by Brand');
-        pdf.autoTable({
+        autoTable(pdf, {
           startY: 40,
           head: [['Brand', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byBrand.map(b => [
