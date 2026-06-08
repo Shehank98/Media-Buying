@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import api from '../lib/api';
@@ -265,16 +265,31 @@ export default function SpendAnalyticsPage() {
       const chImg = await captureChart(chartChannelRef);
       {
         const bottom = addChart(chImg, 38, contentW, 100);
+        const groupedRows = [];
+        data.byMediaGroup.forEach(mg => {
+          const mgPct = data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '-';
+          groupedRows.push({ content: [mg.name, '', String(mg.count), fmtLKR(mg.value), mgPct], isGroup: true });
+          data.byChannel.filter(ch => ch.mediaGroup === mg.name).forEach(ch => {
+            groupedRows.push({ content: ['   ' + ch.name, ch.medium, String(ch.count), fmtLKR(ch.value),
+              data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-'], isGroup: false });
+          });
+        });
         autoTable(pdf, {
           startY: bottom + 5,
-          head: [['Channel', 'Medium', 'Media Group', 'Value (LKR)', 'Entries', '%']],
-          body: data.byChannel.map(ch => [
-            ch.name, ch.medium, ch.mediaGroup, fmtLKR(ch.value), ch.count,
-            data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-',
-          ]),
+          head: [['Media Group / Channel', 'Medium', 'Entries', 'Value (LKR)', '%']],
+          body: groupedRows.map(r => r.content),
           styles: { fontSize: 7, cellPadding: 1.5 },
           headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
           margin: { left: margin, right: margin },
+          didParseCell: (hookData) => {
+            if (hookData.section === 'body') {
+              const row = groupedRows[hookData.row.index];
+              if (row && row.isGroup) {
+                hookData.cell.styles.fontStyle = 'bold';
+                hookData.cell.styles.fillColor = [230, 237, 244];
+              }
+            }
+          },
         });
       }
 
@@ -548,40 +563,56 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
-          {/* Full Channel Table */}
+          {/* Grouped Breakdown: Media Group → Channels */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
-              All Channels ({data.byChannel.length})
+              Spend Breakdown — Media Group &amp; Channels
             </div>
-            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+            <div style={{ overflow: 'auto' }}>
               <table className="tbl" style={{ margin: 0 }}>
                 <thead>
                   <tr>
-                    <th>Channel</th>
+                    <th style={{ width: 260 }}>Media Group / Channel</th>
                     <th>Medium</th>
-                    <th>Media Group</th>
                     <th style={{ textAlign: 'right' }}>Entries</th>
                     <th style={{ textAlign: 'right' }}>Schedule Value</th>
                     <th style={{ textAlign: 'right' }}>% Share</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.byChannel.map(ch => (
-                    <tr key={ch.name}>
-                      <td className="strong">{ch.name}</td>
-                      <td><span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span></td>
-                      <td style={{ color: 'var(--muted)', fontSize: 13 }}>{ch.mediaGroup}</td>
-                      <td style={{ textAlign: 'right' }}>{ch.count}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(ch.value)}</td>
-                      <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>
-                        {data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {data.byMediaGroup.map((mg, mgIdx) => {
+                    const channels = data.byChannel.filter(ch => ch.mediaGroup === mg.name);
+                    const mgPct = data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '-';
+                    return (
+                      <Fragment key={mg.name}>
+                        <tr style={{ background: 'var(--navy-50, #f0f4f8)' }}>
+                          <td style={{ fontWeight: 700, fontSize: 13 }}>
+                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLORS[mgIdx % COLORS.length], marginRight: 8, verticalAlign: 'middle' }} />
+                            {mg.name}
+                          </td>
+                          <td></td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{mg.count}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(mg.value)}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--coral-600)' }}>{mgPct}</td>
+                        </tr>
+                        {channels.map(ch => (
+                          <tr key={ch.name}>
+                            <td style={{ paddingLeft: 34, fontSize: 13 }}>{ch.name}</td>
+                            <td><span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span></td>
+                            <td style={{ textAlign: 'right' }}>{ch.count}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(ch.value)}</td>
+                            <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>
+                              {data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td className="strong" colSpan={3}>Total</td>
+                    <td className="strong" colSpan={2}>Total</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{data.totalEntries}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(data.totalValue)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>100%</td>
