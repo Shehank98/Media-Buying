@@ -192,17 +192,27 @@ export default function SpendAnalyticsPage() {
       const captureChart = async (ref) => {
         if (!ref?.current) return null;
         const canvas = await html2canvas(ref.current, { scale: 2, backgroundColor: '#ffffff', logging: false });
-        return canvas.toDataURL('image/png');
+        return { src: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
+      };
+
+      const addChart = (chart, y, maxW, maxH) => {
+        if (!chart) return y;
+        const ratio = chart.w / chart.h;
+        let imgW = maxW;
+        let imgH = imgW / ratio;
+        if (imgH > maxH) { imgH = maxH; imgW = imgH * ratio; }
+        const x = margin + (maxW - imgW) / 2;
+        pdf.addImage(chart.src, 'PNG', x, y, imgW, imgH);
+        return y + imgH;
       };
 
       // Page 1: Monthly Spend Trend
       addHeader('Monthly Spend Trend');
       const monthlyImg = await captureChart(chartMonthlyRef);
-      if (monthlyImg) {
-        const imgH = contentW * 0.45;
-        pdf.addImage(monthlyImg, 'PNG', margin, 38, contentW, imgH);
+      {
+        const bottom = addChart(monthlyImg, 38, contentW, 100);
         autoTable(pdf, {
-          startY: 38 + imgH + 5,
+          startY: bottom + 5,
           head: [['Month', 'Schedule Value (LKR)', 'Entries']],
           body: data.byMonth.map(m => [fmtMonth(m.month), fmtLKR(m.value), m.count]),
           styles: { fontSize: 8, cellPadding: 2 },
@@ -215,11 +225,10 @@ export default function SpendAnalyticsPage() {
       pdf.addPage();
       addHeader('Spend by Medium');
       const mediumImg = await captureChart(chartMediumRef);
-      if (mediumImg) {
-        const imgH = contentW * 0.5;
-        pdf.addImage(mediumImg, 'PNG', margin, 38, contentW, imgH);
+      {
+        const bottom = addChart(mediumImg, 38, contentW * 0.65, 100);
         autoTable(pdf, {
-          startY: 38 + imgH + 5,
+          startY: bottom + 5,
           head: [['Medium', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byMedium.map(m => [
             m.name, fmtLKR(m.value), m.count,
@@ -235,11 +244,10 @@ export default function SpendAnalyticsPage() {
       pdf.addPage();
       addHeader('Spend by Media Group');
       const mgImg = await captureChart(chartMediaGroupRef);
-      if (mgImg) {
-        const imgH = contentW * 0.5;
-        pdf.addImage(mgImg, 'PNG', margin, 38, contentW, imgH);
+      {
+        const bottom = addChart(mgImg, 38, contentW * 0.65, 100);
         autoTable(pdf, {
-          startY: 38 + imgH + 5,
+          startY: bottom + 5,
           head: [['Media Group', 'Schedule Value (LKR)', 'Entries', '% Share']],
           body: data.byMediaGroup.map(mg => [
             mg.name, fmtLKR(mg.value), mg.count,
@@ -255,11 +263,10 @@ export default function SpendAnalyticsPage() {
       pdf.addPage();
       addHeader('Spend by Channel');
       const chImg = await captureChart(chartChannelRef);
-      if (chImg) {
-        const imgH = Math.min(contentW * 0.5, 90);
-        pdf.addImage(chImg, 'PNG', margin, 38, contentW, imgH);
+      {
+        const bottom = addChart(chImg, 38, contentW, 100);
         autoTable(pdf, {
-          startY: 38 + imgH + 5,
+          startY: bottom + 5,
           head: [['Channel', 'Medium', 'Media Group', 'Value (LKR)', 'Entries', '%']],
           body: data.byChannel.map(ch => [
             ch.name, ch.medium, ch.mediaGroup, fmtLKR(ch.value), ch.count,
