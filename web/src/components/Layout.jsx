@@ -9,6 +9,7 @@ const NAV = [
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { key: '/decisions', label: 'Decision Center', icon: 'sparkle', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/clients', label: 'Clients', icon: 'folder' },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
@@ -36,6 +37,7 @@ function Breadcrumbs({ go }) {
   if (path.startsWith('/channel-masters/')) return <>{home}{sep}<b>Channel Intelligence</b></>;
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
+  if (path === '/decisions') return <>{home}{sep}<b>Decision Center</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;

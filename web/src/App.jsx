@@ -19,6 +19,7 @@ import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
+import DecisionsPage from './pages/DecisionsPage';
 import UploadTrackerPage from './pages/UploadTrackerPage';
 
 export default function App() {
@@ -59,6 +60,14 @@ export default function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
+            <Route
+              path="/decisions"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                  <DecisionsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/executive-dashboard"
               element={
