@@ -119,7 +119,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setShowAgencyModal(false);
       await fetchData();
     } catch (err) {
-      setAgencyError(err.response?.data?.message || 'Failed to save agency.');
+      setAgencyError(err.response?.data?.error || err.response?.data?.message || 'Failed to save agency.');
     } finally {
       setAgencySubmitting(false);
     }
@@ -174,7 +174,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setShowUserModal(false);
       await fetchData();
     } catch (err) {
-      setUserError(err.response?.data?.message || 'Failed to save user.');
+      setUserError(err.response?.data?.error || err.response?.data?.message || 'Failed to save user.');
     } finally {
       setUserSubmitting(false);
     }
@@ -210,7 +210,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setShowTeamModal(false);
       await fetchData();
     } catch (err) {
-      setTeamError(err.response?.data?.message || 'Failed to save team.');
+      setTeamError(err.response?.data?.error || err.response?.data?.message || 'Failed to save team.');
     } finally {
       setTeamSubmitting(false);
     }
@@ -231,7 +231,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setDeleteTarget(null);
       await fetchData();
     } catch (err) {
-      setError(err.response?.data?.message || `Failed to delete ${deleteType.slice(0, -1)}.`);
+      setError(err.response?.data?.error || err.response?.data?.message || `Failed to delete ${deleteType.slice(0, -1)}.`);
     } finally {
       setDeleting(false);
     }

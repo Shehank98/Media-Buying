@@ -39,6 +39,7 @@ export default function ProfilePage() {
       setConfirmPassword('');
     } catch (err) {
       setError(
+        err.response?.data?.error ||
         err.response?.data?.message ||
         'Failed to change password. Please check your current password.'
       );

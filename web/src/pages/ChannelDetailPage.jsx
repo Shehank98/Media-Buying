@@ -133,7 +133,7 @@ export default function ChannelDetailPage() {
       setShowModal(false);
       await fetchData();
     } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to save property.');
+      setFormError(err.response?.data?.error || err.response?.data?.message || 'Failed to save property.');
     } finally {
       setSubmitting(false);
     }
@@ -148,7 +148,7 @@ export default function ChannelDetailPage() {
       setDeletingProperty(null);
       await fetchData();
     } catch (err) {
-      setFormError(err.response?.data?.message || 'Failed to delete property.');
+      setFormError(err.response?.data?.error || err.response?.data?.message || 'Failed to delete property.');
     } finally {
       setDeleting(false);
     }

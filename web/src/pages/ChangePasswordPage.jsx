@@ -25,7 +25,7 @@ export default function ChangePasswordPage() {
       await changePassword(currentPassword, newPassword);
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to change password.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to change password.');
     } finally {
       setSubmitting(false);
     }

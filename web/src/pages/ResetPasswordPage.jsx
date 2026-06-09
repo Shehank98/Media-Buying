@@ -25,7 +25,7 @@ export default function ResetPasswordPage() {
       await api.post('/auth/reset-password', { token, newPassword: password });
       navigate('/login', { state: { message: 'Password reset successfully. Please sign in.' }, replace: true });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reset password. The link may have expired.');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to reset password. The link may have expired.');
     } finally {
       setSubmitting(false);
     }
