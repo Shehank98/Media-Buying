@@ -65,6 +65,9 @@ export default function ReportsPage() {
   const [sortField, setSortField] = useState('agencyName');
   const [sortDir, setSortDir] = useState('asc');
 
+  // Collapsed group names (only relevant when grouped)
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+
   useEffect(() => {
     (async () => {
       try {
@@ -172,6 +175,43 @@ export default function ReportsPage() {
     });
   }, [rows, sortField, sortDir]);
 
+  // Group rows on screen to mirror the grouped Excel export (one block per
+  // agency / client / channel, each with its own subtotal). 'all' = flat list.
+  const grouped = useMemo(() => {
+    if (groupBy === 'all') return null;
+    const keyField = groupBy === 'agency' ? 'agencyName' : groupBy === 'client' ? 'clientName' : 'channelName';
+    const map = new Map();
+    for (const r of sorted) {
+      const k = r[keyField] || '—';
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
+    }
+    const groups = Array.from(map.entries()).map(([name, gRows]) => ({
+      name,
+      rows: gRows,
+      entries: gRows.length,
+      cost: gRows.reduce((s, r) => s + (Number(r.cost) || 0), 0),
+      value: gRows.reduce((s, r) => s + (Number(r.scheduleValue) || 0), 0),
+      vat: gRows.reduce((s, r) => s + (Number(r.scheduleValueWithVat) || 0), 0),
+    }));
+    groups.sort((a, b) => (source === 'properties' ? b.cost - a.cost : b.value - a.value) || a.name.localeCompare(b.name));
+    return groups;
+  }, [sorted, groupBy, source]);
+
+  const toggleGroup = (name) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    next.has(name) ? next.delete(name) : next.add(name);
+    return next;
+  });
+
+  const changeGroupBy = (g) => { setGroupBy(g); setCollapsedGroups(new Set()); };
+
+  const groupSubtotal = (g) => (
+    source === 'properties'
+      ? `${g.entries} ${g.entries === 1 ? 'property' : 'properties'} · ${fmtLKR(g.cost)}`
+      : `${g.entries} ${g.entries === 1 ? 'entry' : 'entries'} · ${fmtLKR(g.value)}`
+  );
+
   const filtersActive = agencyId || clientId || medium || monthFrom || monthTo || channelType || propertyType;
 
   const clearFilters = () => {
@@ -218,6 +258,7 @@ export default function ReportsPage() {
     setSummary({});
     setSortField('agencyName');
     setSortDir('asc');
+    setCollapsedGroups(new Set());
     clearFilters();
   };
 
@@ -382,7 +423,7 @@ export default function ReportsPage() {
           return (
             <button
               key={opt.key}
-              onClick={() => setGroupBy(opt.key)}
+              onClick={() => changeGroupBy(opt.key)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '7px 14px', borderRadius: 7, border: 'none', fontSize: 13,
@@ -547,6 +588,17 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {/* Grouping toolbar */}
+      {!loading && grouped && grouped.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, fontSize: 13 }}>
+          <span style={{ color: 'var(--muted)' }}>
+            {grouped.length} {grouped.length === 1 ? 'group' : 'groups'} by {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace('By ', '').toLowerCase()}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set())}>Expand all</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set(grouped.map((g) => g.name)))}>Collapse all</button>
+        </div>
+      )}
+
       {/* Results Table */}
       {!loading && sorted.length > 0 && (
         <div className="tbl-wrap">
@@ -564,17 +616,54 @@ export default function ReportsPage() {
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {sorted.map((row, idx) => (
-                <tr key={idx}>
-                  {columns.map((col) => (
-                    <td key={col.key} style={{ textAlign: col.align || 'left' }}>
-                      {renderCell(row, col)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
+            {grouped ? (
+              grouped.map((g) => {
+                const collapsed = collapsedGroups.has(g.name);
+                return (
+                  <tbody key={g.name}>
+                    <tr
+                      className="report-group-row"
+                      onClick={() => toggleGroup(g.name)}
+                      style={{ cursor: 'pointer', background: 'var(--bg-sunken)' }}
+                    >
+                      <td colSpan={columns.length} style={{ fontWeight: 700 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Icon name={collapsed ? 'chevR' : 'chevD'} size={15} />
+                          <span style={{ color: 'var(--ink)' }}>{g.name}</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 600, color: 'var(--muted)', fontSize: 12.5 }}>
+                            {groupSubtotal(g)}
+                            {source !== 'properties' && (
+                              <span style={{ marginLeft: 8 }}>(VAT {fmtLKR(g.vat)})</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {!collapsed && g.rows.map((row, idx) => (
+                      <tr key={idx}>
+                        {columns.map((col) => (
+                          <td key={col.key} style={{ textAlign: col.align || 'left' }}>
+                            {renderCell(row, col)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                );
+              })
+            ) : (
+              <tbody>
+                {sorted.map((row, idx) => (
+                  <tr key={idx}>
+                    {columns.map((col) => (
+                      <td key={col.key} style={{ textAlign: col.align || 'left' }}>
+                        {renderCell(row, col)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            )}
             <tfoot>
               <tr>
                 {source === 'properties' ? (
