@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
+import RecentUploads from '../components/RecentUploads';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 
@@ -475,10 +476,13 @@ export default function DatabasePage() {
       </div>
 
       {!selectedClientId ? (
-        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
-          <Icon name="database" size={48} style={{ opacity: 0.2, marginBottom: 12, display: 'inline-block' }} />
-          <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Select an agency and client to view data</p>
-        </div>
+        <>
+          <div style={{ textAlign: 'center', padding: '48px 0 16px', color: 'var(--muted)' }}>
+            <Icon name="database" size={48} style={{ opacity: 0.2, marginBottom: 12, display: 'inline-block' }} />
+            <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Select an agency and client to view data</p>
+          </div>
+          <RecentUploads title="Recent uploaded sheets" />
+        </>
       ) : (
         <>
           {/* Toolbar */}

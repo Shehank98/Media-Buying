@@ -98,10 +98,11 @@ export default function DashboardPage() {
             <div className="section-head"><h3>Quick access</h3></div>
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {[
-                { ic: 'folder', t: 'Clients', s: 'Browse all clients', v: '/clients' },
-                { ic: 'chart', t: 'Buying report', s: 'Filter & export buys', v: '/reports' },
-                { ic: 'shield', t: 'User management', s: 'Roles & access', v: '/admin' },
-              ].map((q) => (
+                { ic: 'database', t: 'Database', s: 'Upload & manage schedules', v: '/database' },
+                { ic: 'folder', t: 'Clients', s: 'Browse all clients', v: '/clients', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'] },
+                { ic: 'chart', t: 'Buying report', s: 'Filter & export buys', v: '/reports', roles: ['SUPER_ADMIN', 'MANAGER'] },
+                { ic: 'shield', t: 'User management', s: 'Roles & access', v: '/admin', roles: ['SUPER_ADMIN'] },
+              ].filter((q) => !q.roles || q.roles.includes(user?.role)).map((q) => (
                 <button
                   key={q.v}
                   onClick={() => go(q.v)}

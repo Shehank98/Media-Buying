@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
 
 // ── helpers ──
 
@@ -591,6 +592,65 @@ export async function deleteUploadBatch(req, res) {
   } catch (error) {
     console.error('Delete upload batch error:', error);
     return res.status(500).json({ error: 'Failed to delete upload batch', detail: error.message });
+  }
+}
+
+// ── getRecentBatches ──
+// Recent upload sheets across all clients the user can access (no clientId
+// filter required). Used by the Database page and the Admin panel.
+
+export async function getRecentBatches(req, res) {
+  try {
+    const user = req.user;
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+
+    const where = { status: { not: 'FAILED' } };
+    if (user.role !== 'SUPER_ADMIN') {
+      const clientIds = await getAccessibleClientIds(user.id, user.role);
+      if (!clientIds.length) return res.json({ batches: [] });
+      where.clientIds = { hasSome: clientIds };
+    }
+
+    const batches = await prisma.uploadBatch.findMany({
+      where,
+      include: {
+        uploader: { select: { id: true, name: true } },
+        agency: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // Resolve client names referenced across the batches in one query.
+    const allClientIds = [...new Set(batches.flatMap(b => b.clientIds || []))];
+    const clients = allClientIds.length
+      ? await prisma.client.findMany({ where: { id: { in: allClientIds } }, select: { id: true, name: true } })
+      : [];
+    const clientNameMap = new Map(clients.map(c => [c.id, c.name]));
+
+    const withCounts = await Promise.all(batches.map(async (b) => {
+      const activeRows = await prisma.scheduleLog.count({
+        where: { uploadBatchId: b.id, isDeleted: false },
+      });
+      return {
+        id: b.id,
+        fileName: b.fileName,
+        scheduleMonth: b.scheduleMonth,
+        totalRows: b.totalRows,
+        activeRows,
+        status: b.status,
+        createdAt: b.createdAt,
+        uploader: b.uploader,
+        agencyName: b.agency?.name || '',
+        clientNames: (b.clientIds || []).map(id => clientNameMap.get(id)).filter(Boolean),
+        canDelete: user.role === 'SUPER_ADMIN' || b.uploadedById === user.id,
+      };
+    }));
+
+    return res.json({ batches: withCounts.filter(b => b.activeRows > 0) });
+  } catch (error) {
+    console.error('Get recent batches error:', error);
+    return res.status(500).json({ error: 'Failed to get recent batches', detail: error.message });
   }
 }
 

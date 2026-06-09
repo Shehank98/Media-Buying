@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
+import RecentUploads from '../components/RecentUploads';
 import api from '../lib/api';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
@@ -481,7 +482,8 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-
+      {/* ============ RECENT UPLOAD SHEETS ============ */}
+      <RecentUploads title="Recent upload sheets" limit={25} />
 
       {/* ============ USER MODAL ============ */}
       {showUserModal && (

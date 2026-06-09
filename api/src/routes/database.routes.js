@@ -10,6 +10,7 @@ import {
   deleteScheduleLog,
   getScheduleLogEdits,
   getUploadBatches,
+  getRecentBatches,
   deleteUploadBatch,
 } from '../controllers/database.controller.js';
 
@@ -19,6 +20,7 @@ router.get('/', authenticate, getScheduleLogs);
 router.get('/metadata', authenticate, getMetadata);
 router.get('/analytics', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAnalytics);
 router.get('/batches', authenticate, getUploadBatches);
+router.get('/recent-batches', authenticate, getRecentBatches);
 router.post('/', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), createScheduleLog);
 router.post('/bulk', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), bulkCreateScheduleLogs);
 router.put('/:id', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), updateScheduleLog);
