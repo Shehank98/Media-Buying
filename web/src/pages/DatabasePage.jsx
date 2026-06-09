@@ -89,6 +89,7 @@ export default function DatabasePage() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadPreview, setUploadPreview] = useState([]);
   const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadScheduleMonth, setUploadScheduleMonth] = useState('');
   const fileInputRef = useRef(null);
 
   // Upload batches
@@ -384,7 +385,12 @@ export default function DatabasePage() {
           return r;
         }).filter(r => r.roNumber || r.scheduleValue || r.channelMasterId);
 
-        setUploadPreview(mapped);
+        // Pick a default schedule month for the whole sheet: the first month
+        // parsed from the file, otherwise the current month. Fill any rows that
+        // didn't carry a month so the Sch:Month column is never blank.
+        const defaultMonth = mapped.find(r => r.scheduleMonth)?.scheduleMonth || currentMonth;
+        setUploadScheduleMonth(defaultMonth);
+        setUploadPreview(mapped.map(r => ({ ...r, scheduleMonth: r.scheduleMonth || defaultMonth })));
         setShowUpload(true);
       } catch {
         alert('Failed to read Excel file. Please check the format.');
@@ -398,6 +404,12 @@ export default function DatabasePage() {
     setNewRows(prev => [...prev, ...uploadPreview]);
     setShowUpload(false);
     setUploadPreview([]);
+  };
+
+  // Set the schedule month for the whole upload at once (auto-fills every row).
+  const applyUploadMonth = (month) => {
+    setUploadScheduleMonth(month);
+    setUploadPreview(prev => prev.map(r => ({ ...r, scheduleMonth: month })));
   };
 
   const updateUploadRow = (idx, field, value) => {
@@ -779,8 +791,29 @@ export default function DatabasePage() {
               <button className="act-btn" onClick={() => setShowUpload(false)}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body" style={{ overflow: 'auto', flex: 1, padding: 0 }}>
+              {/* Auto-fill bar: pick the schedule month once for the whole sheet */}
+              <div style={{ padding: '12px 16px', background: 'var(--bg-sunken)', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 18 }}>
+                <div className="filter-field" style={{ margin: 0 }}>
+                  <label>Schedule month (applies to all rows)</label>
+                  <input
+                    type="month"
+                    className="input"
+                    value={uploadScheduleMonth}
+                    onChange={e => applyUploadMonth(e.target.value)}
+                    style={{ width: 170 }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Invoice month (auto)</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{fmtMonth(computeInvoiceMonth(uploadScheduleMonth)) || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Client (auto)</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{clientName || '—'}</div>
+                </div>
+              </div>
               <div style={{ padding: '10px 16px', background: '#eff6ff', fontSize: 12, color: '#1d4ed8', borderBottom: '1px solid var(--border)' }}>
-                Review and edit before importing. Unmatched channels appear in red - select the correct channel from the dropdown.
+                Schedule month, invoice month, client, medium and media group are filled automatically. Unmatched channels appear in red - select the correct channel from the dropdown.
               </div>
               <table className="tbl spreadsheet-tbl" style={{ margin: 0, fontSize: 12.5 }}>
                 <thead>
@@ -788,6 +821,7 @@ export default function DatabasePage() {
                     <th style={{ width: 30 }}>#</th>
                     <th>RO Number</th>
                     <th>Sch Month</th>
+                    <th>Invoice Month</th>
                     <th>Brand</th>
                     <th>Channel</th>
                     <th style={{ textAlign: 'right' }}>Value</th>
@@ -804,6 +838,7 @@ export default function DatabasePage() {
                       <td className="cell cell-editable">
                         <input className="cell-input" type="month" value={r.scheduleMonth} onChange={e => updateUploadRow(idx, 'scheduleMonth', e.target.value)} />
                       </td>
+                      <td className="cell cell-readonly" style={{ color: 'var(--muted)' }}>{fmtMonth(computeInvoiceMonth(r.scheduleMonth))}</td>
                       <td className="cell cell-editable">
                         <input className="cell-input" list="brand-upload-list" value={r.brandName} onChange={e => updateUploadRow(idx, 'brandName', e.target.value)} />
                       </td>
