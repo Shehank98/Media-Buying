@@ -127,8 +127,9 @@ export async function createUser(req, res) {
       });
     }
 
-    // Send welcome email (fire-and-forget)
-    const loginUrl = process.env.FRONTEND_URL || 'https://your-app.railway.app';
+    // Send welcome email (fire-and-forget). FRONTEND_URL may be a
+    // comma-separated CORS whitelist, so use the first entry.
+    const loginUrl = (process.env.FRONTEND_URL || 'https://your-app.railway.app').split(',')[0].trim();
     sendEmail({
       type: 'welcome',
       to: email,

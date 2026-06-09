@@ -1,5 +1,12 @@
 import prisma from '../utils/prisma.js';
 import ExcelJS from 'exceljs';
+import { sendEmail } from '../services/email.service.js';
+
+// FRONTEND_URL may be a comma-separated CORS whitelist; use the first entry.
+function loginUrl() {
+  const raw = process.env.FRONTEND_URL || 'https://your-app.railway.app';
+  return raw.split(',')[0].trim();
+}
 
 function safeNum(v) {
   if (v == null) return 0;
@@ -146,15 +153,31 @@ export async function sendReminder(req, res) {
       month: 'long', year: 'numeric',
     });
 
+    const reminderText = message || `Please upload your schedule data for ${monthLabel}.`;
+
     const notifications = await prisma.notification.createMany({
       data: users.map(u => ({
         userId: u.id,
         type: 'UPLOAD_REMINDER',
         title: 'Upload Reminder',
-        message: message || `Please upload your schedule data for ${monthLabel}.`,
+        message: reminderText,
         month,
       })),
     });
+
+    // Also deliver the reminder by email (fire-and-forget per recipient).
+    const link = loginUrl();
+    for (const u of users) {
+      if (!u.email) continue;
+      sendEmail({
+        type: 'reminder',
+        to: u.email,
+        name: u.name,
+        monthLabel,
+        message: reminderText,
+        loginUrl: link,
+      }).catch(err => console.error(`Reminder email to ${u.email} failed:`, err));
+    }
 
     return res.json({
       message: `Reminder sent to ${users.length} user(s)`,

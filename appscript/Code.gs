@@ -8,8 +8,9 @@
  * Set GOOGLE_SCRIPT_URL in Railway to the deployed web app URL.
  *
  * Payload shapes:
- *   Welcome:  { type: "welcome", to, name, password, loginUrl }
- *   Reset:    { type: "reset",   to, name, resetLink }
+ *   Welcome:  { type: "welcome",  to, name, password, loginUrl }
+ *   Reset:    { type: "reset",    to, name, resetLink }
+ *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
  */
 
 var BRAND_NAME = "Media Buying Records";
@@ -25,6 +26,8 @@ function doPost(e) {
       sendWelcomeEmail(data);
     } else if (data.type === "reset") {
       sendResetEmail(data);
+    } else if (data.type === "reminder") {
+      sendReminderEmail(data);
     } else {
       throw new Error("Unknown email type: " + data.type);
     }
@@ -78,6 +81,104 @@ function sendResetEmail(data) {
     name:     FROM_NAME,
     htmlBody: html,
   });
+}
+
+// ─── Reminder Email ───────────────────────────────────────────────────────────
+
+function sendReminderEmail(data) {
+  var to        = data.to;
+  var name      = data.name       || "User";
+  var monthLabel = data.monthLabel || "this month";
+  var message   = data.message    || ("Please upload your schedule data for " + monthLabel + ".");
+  var loginUrl  = data.loginUrl   || "https://your-app.railway.app";
+
+  var subject = "Reminder: Upload schedule data for " + monthLabel;
+  var html    = buildReminderHtml(name, monthLabel, message, loginUrl);
+
+  GmailApp.sendEmail(to, subject, stripTags(html), {
+    name:     FROM_NAME,
+    htmlBody: html,
+  });
+}
+
+// ─── Reminder HTML Template ───────────────────────────────────────────────────
+
+function buildReminderHtml(name, monthLabel, message, loginUrl) {
+  return '<!DOCTYPE html>' +
+  '<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>Upload Reminder</title></head>' +
+  '<body style="margin:0;padding:0;background:#f0f4f8;font-family:\'Helvetica Neue\',Arial,sans-serif;">' +
+
+  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:40px 16px;">' +
+  '<tr><td align="center">' +
+
+  '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(10,23,41,.10);">' +
+
+  // ── Header ──
+  '<tr><td style="background:#0A1729;padding:40px 48px 32px;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0"><tr><td>' +
+      '<div style="display:inline-block;background:#E85D24;border-radius:10px;padding:10px 14px;margin-bottom:20px;">' +
+        '<span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-0.5px;">MB</span>' +
+      '</div>' +
+      '<h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;line-height:1.2;letter-spacing:-0.5px;">Upload reminder</h1>' +
+      '<p style="margin:8px 0 0;color:#8ba4c2;font-size:15px;">Action needed for ' + escHtml(monthLabel) + '</p>' +
+    '</td></tr></table>' +
+  '</td></tr>' +
+
+  // ── Body ──
+  '<tr><td style="padding:40px 48px;">' +
+
+    '<p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.7;">' +
+      'Hi <strong>' + escHtml(name) + '</strong>,<br><br>' + escHtml(message) +
+    '</p>' +
+
+    // Pending month highlight
+    '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">' +
+    '<tr><td style="background:#fff3ec;border:1px solid #f6d2bf;border-left:4px solid #E85D24;border-radius:10px;padding:16px 20px;">' +
+      '<p style="margin:0;color:#C44A18;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Pending upload</p>' +
+      '<p style="margin:4px 0 0;color:#0A1729;font-size:20px;font-weight:700;">' + escHtml(monthLabel) + '</p>' +
+    '</td></tr>' +
+    '</table>' +
+
+    // CTA Button
+    '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">' +
+    '<tr><td align="center">' +
+      '<a href="' + loginUrl + '" style="display:inline-block;background:#E85D24;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:16px 48px;border-radius:10px;letter-spacing:0.3px;">' +
+        'Upload Schedule Data &rarr;' +
+      '</a>' +
+    '</td></tr>' +
+    '</table>' +
+
+    // Already-done notice
+    '<table width="100%" cellpadding="0" cellspacing="0">' +
+    '<tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;">' +
+      '<table cellpadding="0" cellspacing="0"><tr>' +
+        '<td style="padding-right:12px;vertical-align:top;font-size:18px;">&#9989;</td>' +
+        '<td>' +
+          '<p style="margin:0 0 4px;color:#166534;font-size:13px;font-weight:700;">Already uploaded?</p>' +
+          '<p style="margin:0;color:#166534;font-size:13px;line-height:1.6;">' +
+            'If you have already submitted your data for ' + escHtml(monthLabel) + ', no further action is needed. Thank you!' +
+          '</p>' +
+        '</td>' +
+      '</tr></table>' +
+    '</td></tr>' +
+    '</table>' +
+
+  '</td></tr>' +
+
+  // ── Footer ──
+  '<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 48px;">' +
+    '<p style="margin:0 0 4px;color:#94a3b8;font-size:12px;text-align:center;">' +
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated reminder — please do not reply.' +
+    '</p>' +
+    '<p style="margin:0;color:#cbd5e1;font-size:12px;text-align:center;">' +
+      'You are receiving this because you are assigned to upload schedule data.' +
+    '</p>' +
+  '</td></tr>' +
+
+  '</table>' +
+  '</td></tr></table>' +
+  '</body></html>';
 }
 
 // ─── Welcome HTML Template ──────────────────────────────────────────────────
@@ -304,4 +405,20 @@ function escHtml(str) {
 
 function stripTags(html) {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// ─── Dev helper ───────────────────────────────────────────────────────────────
+// Run this from the editor to send a sample email to yourself. Change `type`
+// to "reset" or "reminder" to preview the other templates.
+function testSend() {
+  var me = Session.getActiveUser().getEmail();
+  doPost({ postData: { contents: JSON.stringify({
+    type: "welcome",
+    to: me,
+    name: "Test User",
+    password: "TempPass@123",
+    loginUrl: "https://example.com",
+    // reset:    resetLink: "https://example.com/reset-password?token=abc"
+    // reminder: monthLabel: "June 2026", message: "Please upload your June data."
+  }) } });
 }
