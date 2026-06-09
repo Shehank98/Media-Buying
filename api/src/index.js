@@ -36,7 +36,7 @@ app.use(cors({
     : '*',
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(cookieParser());
 
 // API routes under /api prefix

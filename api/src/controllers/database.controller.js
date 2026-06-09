@@ -412,29 +412,44 @@ export async function bulkCreateScheduleLogs(req, res) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
-    if (rows.length > 100) {
-      return res.status(400).json({ error: 'Maximum 100 rows per batch' });
+    if (rows.length > 5000) {
+      return res.status(400).json({ error: 'Maximum 5000 rows per upload' });
     }
 
     const user = req.user;
-    const results = [];
     const errors = [];
 
-    // Determine client/agency from first row for batch record
-    const firstRow = rows[0];
-    const batchClientId = parseInt(firstRow.clientId);
-    const batchClient = await prisma.client.findUnique({
-      where: { id: batchClientId },
-      select: { agencyId: true },
-    });
+    // Pre-fetch everything referenced so we don't run per-row queries (which
+    // would be thousands of round-trips for a large sheet). Rows are normally
+    // all for the same client, but we handle multiple just in case.
+    const clientIds = [...new Set(rows.map(r => parseInt(r.clientId)).filter(Number.isInteger))];
+    const channelIds = [...new Set(rows.map(r => parseInt(r.channelMasterId)).filter(Number.isInteger))];
 
-    // Create upload batch to track this upload
+    // Resolve access + agency once per distinct client.
+    const clientInfo = new Map();
+    for (const cid of clientIds) {
+      const accessed = await resolveClientAccess(user, cid);
+      const client = accessed === null ? null
+        : await prisma.client.findUnique({ where: { id: cid }, select: { agencyId: true } });
+      clientInfo.set(cid, { allowed: accessed !== null && !!client, agencyId: client?.agencyId });
+    }
+
+    // Fetch all referenced channel masters in one query.
+    const channelRecs = await prisma.channelMaster.findMany({
+      where: { id: { in: channelIds } },
+      include: { mediaGroup: { select: { name: true } } },
+    });
+    const channelMap = new Map(channelRecs.map(c => [c.id, c]));
+
+    // Create the batch record (client/agency taken from the first row).
+    const firstRow = rows[0];
+    const batchAgencyId = clientInfo.get(parseInt(firstRow.clientId))?.agencyId;
     let uploadBatch = null;
-    if (batchClient && fileName) {
+    if (batchAgencyId && fileName) {
       uploadBatch = await prisma.uploadBatch.create({
         data: {
-          agencyId: batchClient.agencyId,
-          clientIds: [batchClientId],
+          agencyId: batchAgencyId,
+          clientIds,
           scheduleMonth: firstRow.scheduleMonth || '',
           uploadedById: user.id,
           fileName: fileName || 'manual-entry',
@@ -444,76 +459,59 @@ export async function bulkCreateScheduleLogs(req, res) {
       });
     }
 
+    // Validate every row and build the insert payload.
+    const toInsert = [];
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      try {
-        const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName } = row;
+      const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName } = rows[i];
 
-        if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
-          errors.push({ row: i, error: 'Missing required fields' });
-          continue;
-        }
-
-        const cid = parseInt(clientId);
-        const accessedClientId = await resolveClientAccess(user, cid);
-        if (accessedClientId === null) {
-          errors.push({ row: i, error: 'No access to this client' });
-          continue;
-        }
-
-        const client = await prisma.client.findUnique({
-          where: { id: cid },
-          select: { agencyId: true },
-        });
-        if (!client) { errors.push({ row: i, error: 'Client not found' }); continue; }
-
-        const channelMasterRec = await prisma.channelMaster.findUnique({
-          where: { id: parseInt(channelMasterId) },
-          include: { mediaGroup: { select: { name: true } } },
-        });
-        if (!channelMasterRec) { errors.push({ row: i, error: 'Channel not found' }); continue; }
-
-        const invoiceMonth = computeInvoiceMonth(scheduleMonth);
-        const value = parseFloat(scheduleValue);
-        const scheduleValueWithVat = parseFloat((value * 1.18).toFixed(2));
-
-        const log = await prisma.scheduleLog.create({
-          data: {
-            agencyId: client.agencyId,
-            clientId: cid,
-            channelMasterId: parseInt(channelMasterId),
-            uploadedById: user.id,
-            uploadBatchId: uploadBatch?.id || null,
-            roNumber,
-            scheduleMonth,
-            invoiceMonth,
-            medium: channelMasterRec.medium,
-            mediaGroup: channelMasterRec.mediaGroup.name,
-            brandName: brandName || null,
-            scheduleValue: value,
-            scheduleValueWithVat,
-          },
-          include: logIncludes,
-        });
-        results.push(serializeLog(log));
-      } catch (err) {
-        errors.push({ row: i, error: err.message });
+      if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
+        errors.push({ row: i, error: 'Missing required fields' });
+        continue;
       }
+      const ci = clientInfo.get(parseInt(clientId));
+      if (!ci || !ci.allowed) { errors.push({ row: i, error: 'No access to this client' }); continue; }
+      const ch = channelMap.get(parseInt(channelMasterId));
+      if (!ch) { errors.push({ row: i, error: 'Channel not found' }); continue; }
+      const value = parseFloat(scheduleValue);
+      if (Number.isNaN(value)) { errors.push({ row: i, error: 'Invalid schedule value' }); continue; }
+
+      toInsert.push({
+        agencyId: ci.agencyId,
+        clientId: parseInt(clientId),
+        channelMasterId: ch.id,
+        uploadedById: user.id,
+        uploadBatchId: uploadBatch?.id || null,
+        roNumber: String(roNumber),
+        scheduleMonth,
+        invoiceMonth: computeInvoiceMonth(scheduleMonth),
+        medium: ch.medium,
+        mediaGroup: ch.mediaGroup.name,
+        brandName: brandName || null,
+        scheduleValue: value,
+        scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+      });
     }
 
-    // Update batch with results
+    // Single bulk insert for everything that validated.
+    let createdCount = 0;
+    if (toInsert.length > 0) {
+      const result = await prisma.scheduleLog.createMany({ data: toInsert });
+      createdCount = result.count;
+    }
+
+    // Update batch with results.
     if (uploadBatch) {
       await prisma.uploadBatch.update({
         where: { id: uploadBatch.id },
         data: {
-          successfulRows: results.length,
+          successfulRows: createdCount,
           failedRows: errors.length,
-          status: errors.length === rows.length ? 'FAILED' : 'COMPLETE',
+          status: createdCount === 0 ? 'FAILED' : 'COMPLETE',
         },
       });
     }
 
-    return res.status(201).json({ created: results, errors, batchId: uploadBatch?.id || null });
+    return res.status(201).json({ created: createdCount, createdCount, errors, batchId: uploadBatch?.id || null });
   } catch (error) {
     console.error('Bulk create error:', error);
     return res.status(500).json({ error: 'Failed to bulk create', detail: error.message });

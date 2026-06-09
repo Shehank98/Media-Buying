@@ -220,7 +220,7 @@ export default function DatabasePage() {
       }));
 
       const { data } = await api.post('/database/bulk', { rows: payload, fileName: uploadFileName || null });
-      const createdCount = data.created?.length || 0;
+      const createdCount = data.createdCount ?? (Array.isArray(data.created) ? data.created.length : (data.created || 0));
       const errorCount = data.errors?.length || 0;
       setSaveResult({ created: createdCount, errors: errorCount });
 
