@@ -1,4 +1,12 @@
 import prisma from '../utils/prisma.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
+
+// Confirm the caller can reach a given client. SUPER_ADMIN always can.
+async function clientReachable(user, clientId) {
+  if (user.role === 'SUPER_ADMIN') return true;
+  const ids = await getAccessibleClientIds(user.id, user.role);
+  return ids.includes(clientId);
+}
 
 // ── Brands ──
 
@@ -45,6 +53,12 @@ export async function updateBrand(req, res) {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Brand name is required' });
 
+    const existing = await prisma.brand.findUnique({ where: { id }, select: { clientId: true } });
+    if (!existing) return res.status(404).json({ error: 'Brand not found' });
+    if (!(await clientReachable(req.user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this brand' });
+    }
+
     const brand = await prisma.brand.update({
       where: { id },
       data: { name },
@@ -62,6 +76,11 @@ export async function updateBrand(req, res) {
 export async function deleteBrand(req, res) {
   try {
     const id = parseInt(req.params.id);
+    const existing = await prisma.brand.findUnique({ where: { id }, select: { clientId: true } });
+    if (!existing) return res.status(404).json({ error: 'Brand not found' });
+    if (!(await clientReachable(req.user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this brand' });
+    }
     await prisma.brand.delete({ where: { id } });
     return res.json({ message: 'Brand deleted successfully' });
   } catch (error) {
@@ -76,6 +95,11 @@ export async function deleteBrand(req, res) {
 export async function listCampaigns(req, res) {
   try {
     const brandId = parseInt(req.params.brandId);
+    const brand = await prisma.brand.findUnique({ where: { id: brandId }, select: { clientId: true } });
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+    if (!(await clientReachable(req.user, brand.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this brand' });
+    }
     const campaigns = await prisma.campaign.findMany({
       where: { brandId },
       orderBy: { name: 'asc' },
@@ -96,6 +120,9 @@ export async function createCampaign(req, res) {
     // Look up parent brand to get clientId
     const brand = await prisma.brand.findUnique({ where: { id: brandId } });
     if (!brand) return res.status(404).json({ error: 'Brand not found' });
+    if (!(await clientReachable(req.user, brand.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this brand' });
+    }
 
     const campaign = await prisma.campaign.create({
       data: { brandId, clientId: brand.clientId, name, createdById: req.user.id },
@@ -114,6 +141,12 @@ export async function updateCampaign(req, res) {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Campaign name is required' });
 
+    const existing = await prisma.campaign.findUnique({ where: { id }, select: { clientId: true } });
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+    if (!(await clientReachable(req.user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this campaign' });
+    }
+
     const campaign = await prisma.campaign.update({
       where: { id },
       data: { name },
@@ -130,6 +163,11 @@ export async function updateCampaign(req, res) {
 export async function deleteCampaign(req, res) {
   try {
     const id = parseInt(req.params.id);
+    const existing = await prisma.campaign.findUnique({ where: { id }, select: { clientId: true } });
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+    if (!(await clientReachable(req.user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this campaign' });
+    }
     await prisma.campaign.delete({ where: { id } });
     return res.json({ message: 'Campaign deleted successfully' });
   } catch (error) {

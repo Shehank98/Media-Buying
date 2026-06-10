@@ -1,4 +1,19 @@
 import prisma from '../utils/prisma.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
+
+// Resolve a property -> its channel's client and confirm the caller can reach it.
+// Returns { status, property } where status is 200 / 403 / 404.
+async function resolvePropertyAccess(user, propertyId) {
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    include: { channel: { select: { clientId: true } } },
+  });
+  if (!property) return { status: 404 };
+  if (user.role === 'SUPER_ADMIN') return { status: 200, property };
+  const ids = await getAccessibleClientIds(user.id, user.role);
+  if (!ids.includes(property.channel.clientId)) return { status: 403 };
+  return { status: 200, property };
+}
 
 export async function list(req, res) {
   try {
@@ -58,13 +73,10 @@ export async function update(req, res) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
     }
 
-    const existing = await prisma.property.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!existing) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
+    const access = await resolvePropertyAccess(req.user, parseInt(id));
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+    const existing = access.property;
 
     // Build previous and new values for history
     const previousValues = {};
@@ -126,6 +138,10 @@ export async function getHistory(req, res) {
   try {
     const { id } = req.params;
 
+    const access = await resolvePropertyAccess(req.user, parseInt(id));
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+
     const history = await prisma.propertyHistory.findMany({
       where: { propertyId: parseInt(id) },
       include: {
@@ -144,6 +160,11 @@ export async function getHistory(req, res) {
 export async function remove(req, res) {
   try {
     const { id } = req.params;
+
+    const access = await resolvePropertyAccess(req.user, parseInt(id));
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+
     await prisma.property.delete({ where: { id: parseInt(id) } });
     return res.json({ message: 'Property deleted successfully' });
   } catch (error) {

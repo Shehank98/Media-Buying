@@ -53,9 +53,11 @@ export default function DashboardPage() {
           <h1 className="page-title">{greeting}, {firstName}</h1>
           <p className="page-sub">Here's what's moving across Ogilvy Media today - {dateStr}.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => go('/reports')}>
-          <Icon name="chart" size={16} />New report
-        </button>
+        {['SUPER_ADMIN', 'MANAGER'].includes(user?.role) && (
+          <button className="btn btn-primary" onClick={() => go('/reports')}>
+            <Icon name="chart" size={16} />New report
+          </button>
+        )}
       </div>
 
       <div className="summary-grid">
@@ -63,18 +65,16 @@ export default function DashboardPage() {
           icon="building" ig="var(--navy-900)" ifg="#fff"
           label="My Agencies" val={String(stats.agencies)}
           meta={agencies.map(a => a.name).join(' · ') || '-'}
-          trend="Full access" trendCls="trend-flat"
         />
         <Stat
           icon="folder" ig="var(--coral-50)" ifg="var(--coral-600)"
-          label="Active Clients" val={String(stats.clients)}
-          meta="this quarter"
-          trend="+3" trendCls="trend-up"
+          label="Clients" val={String(stats.clients)}
+          meta="across your agencies"
         />
         <Stat
-          icon="sparkle" ig="var(--green-50)" ifg="var(--green-600)"
-          label="Properties This Month" val="-"
-          meta="vs last month"
+          icon="database" ig="var(--green-50)" ifg="var(--green-600)"
+          label="Database" val=""
+          meta="Upload & manage schedule logs"
         />
       </div>
 

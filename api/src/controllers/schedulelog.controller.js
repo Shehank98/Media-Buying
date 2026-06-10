@@ -1,4 +1,12 @@
 import prisma from '../utils/prisma.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
+
+// True if the caller can reach the client this log belongs to.
+async function logClientReachable(user, clientId) {
+  if (user.role === 'SUPER_ADMIN') return true;
+  const ids = await getAccessibleClientIds(user.id, user.role);
+  return ids.includes(clientId);
+}
 
 function serializeLog(log) {
   return {
@@ -117,6 +125,11 @@ export async function updateScheduleLog(req, res) {
     const existing = await prisma.scheduleLog.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Schedule log not found' });
 
+    // Must be able to reach the log's client regardless of role.
+    if (!(await logClientReachable(user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this schedule log' });
+    }
+
     if (
       user.role !== 'SUPER_ADMIN' &&
       user.role !== 'GROUP_HEAD' &&
@@ -184,6 +197,10 @@ export async function deleteScheduleLog(req, res) {
 
     const existing = await prisma.scheduleLog.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Schedule log not found' });
+
+    if (!(await logClientReachable(user, existing.clientId))) {
+      return res.status(403).json({ error: 'You do not have access to this schedule log' });
+    }
 
     if (user.role !== 'SUPER_ADMIN' && existing.uploadedById !== user.id) {
       return res.status(403).json({ error: 'You do not have permission to delete this schedule log' });

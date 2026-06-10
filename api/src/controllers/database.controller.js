@@ -571,9 +571,17 @@ export async function deleteUploadBatch(req, res) {
     const batch = await prisma.uploadBatch.findUnique({ where: { id: batchId } });
     if (!batch) return res.status(404).json({ error: 'Upload batch not found' });
 
-    // Only the uploader or SUPER_ADMIN can delete a batch
-    if (user.role !== 'SUPER_ADMIN' && batch.uploadedById !== user.id) {
-      return res.status(403).json({ error: 'You can only delete your own uploads' });
+    // Non-admins must have access to at least one client in the batch.
+    if (user.role !== 'SUPER_ADMIN') {
+      const accessibleIds = await getAccessibleClientIds(user.id, user.role);
+      const hasAccess = (batch.clientIds || []).some(cid => accessibleIds.includes(cid));
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'You do not have access to this batch' });
+      }
+      // Only the original uploader can delete it.
+      if (batch.uploadedById !== user.id) {
+        return res.status(403).json({ error: 'You can only delete your own uploads' });
+      }
     }
 
     // Soft-delete all schedule logs in this batch

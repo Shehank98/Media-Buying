@@ -258,14 +258,14 @@ export default function ChannelDetailPage() {
                   <td>
                     <div className="row-actions">
                       {canModify(user?.role) && (
-                        <>
-                          <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
-                            <Icon name="edit" size={16} />
-                          </button>
-                          <button className="act-btn" title="Delete" onClick={() => { setDeletingProperty(property); setShowDeleteModal(true); }}>
-                            <Icon name="trash" size={16} />
-                          </button>
-                        </>
+                        <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
+                          <Icon name="edit" size={16} />
+                        </button>
+                      )}
+                      {['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role) && (
+                        <button className="act-btn" title="Delete" onClick={() => { setDeletingProperty(property); setShowDeleteModal(true); }}>
+                          <Icon name="trash" size={16} />
+                        </button>
                       )}
                       <button className="act-btn" title="History" onClick={() => openHistory(property)}>
                         <Icon name="history" size={16} />

@@ -66,10 +66,13 @@ export async function getDashboardSummary(req, res) {
     const lycm = lastYearCurrentMonth();
 
     const where = { isDeleted: false };
-    if (agencyId) where.agencyId = parseInt(agencyId);
-    else {
-      const ids = await agencyIdsForUser(user);
-      if (ids) where.agencyId = { in: ids };
+    const ids = await agencyIdsForUser(user); // null = unrestricted (non-MANAGER)
+    if (agencyId) {
+      const aid = parseInt(agencyId);
+      if (ids && !ids.includes(aid)) return res.status(403).json({ error: 'Access denied to this agency' });
+      where.agencyId = aid;
+    } else if (ids) {
+      where.agencyId = { in: ids };
     }
 
     const [billingsThisMonth, billingsYTD, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth] =
@@ -239,8 +242,14 @@ export async function getMediumSplit(req, res) {
     const user = req.user;
     const { agencyId } = req.query;
     const base = { isDeleted: false };
-    if (agencyId) base.agencyId = parseInt(agencyId);
-    else { const ids = await agencyIdsForUser(user); if (ids) base.agencyId = { in: ids }; }
+    const aIds = await agencyIdsForUser(user);
+    if (agencyId) {
+      const aid = parseInt(agencyId);
+      if (aIds && !aIds.includes(aid)) return res.status(403).json({ error: 'Access denied to this agency' });
+      base.agencyId = aid;
+    } else if (aIds) {
+      base.agencyId = { in: aIds };
+    }
 
     const ym = currentYM();
     const ys = yearStart();
