@@ -5,6 +5,8 @@ import api from '../lib/api';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
+const MEDIUMS = ['TV', 'RADIO', 'PRINT'];
+
 const ROLE_DESC = {
   SUPER_ADMIN: 'Full access; manages agencies, users & assignments',
   MANAGER: 'Read-only across assigned agencies; can export reports',
@@ -27,6 +29,8 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [users, setUsers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [allClients, setAllClients] = useState([]);
+  const [mediaGroups, setMediaGroups] = useState([]);
+  const [channelMasters, setChannelMasters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -55,6 +59,20 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamError, setTeamError] = useState('');
 
+  /* ---- channel master modal ---- */
+  const [showChannelModal, setShowChannelModal] = useState(false);
+  const [editingChannel, setEditingChannel] = useState(null);
+  const [channelForm, setChannelForm] = useState({ name: '', medium: 'TV', mediaGroupId: '', aliases: '' });
+  const [channelSubmitting, setChannelSubmitting] = useState(false);
+  const [channelError, setChannelError] = useState('');
+
+  /* ---- media group modal ---- */
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [groupForm, setGroupForm] = useState({ name: '' });
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [groupError, setGroupError] = useState('');
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -65,10 +83,12 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
+        api.get('/masterdata/media-groups'),
+        api.get('/masterdata/channel-masters', { params: { includeInactive: 'true' } }),
       ]);
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
@@ -86,6 +106,14 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (teamsRes.status === 'fulfilled') {
         const rawTeams = teamsRes.value.data.teams || teamsRes.value.data;
         setTeams(Array.isArray(rawTeams) ? rawTeams : []);
+      }
+      if (groupsRes.status === 'fulfilled') {
+        const rawGroups = groupsRes.value.data.mediaGroups || groupsRes.value.data;
+        setMediaGroups(Array.isArray(rawGroups) ? rawGroups : []);
+      }
+      if (channelsRes.status === 'fulfilled') {
+        const rawCh = channelsRes.value.data.channelMasters || channelsRes.value.data;
+        setChannelMasters(Array.isArray(rawCh) ? rawCh : []);
       }
     } catch {
       setError('Failed to load admin data.');
@@ -238,6 +266,94 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- Channel Master CRUD ---- */
+  const openAddChannel = () => {
+    setEditingChannel(null);
+    setChannelForm({ name: '', medium: 'TV', mediaGroupId: '', aliases: '' });
+    setChannelError('');
+    setShowChannelModal(true);
+  };
+  const openEditChannel = ch => {
+    setEditingChannel(ch);
+    setChannelForm({
+      name: ch.name,
+      medium: ch.medium,
+      mediaGroupId: String(ch.mediaGroup?.id || ch.mediaGroupId || ''),
+      aliases: (ch.aliases || []).join(', '),
+    });
+    setChannelError('');
+    setShowChannelModal(true);
+  };
+  const handleChannelSubmit = async e => {
+    e.preventDefault();
+    setChannelError('');
+    if (!channelForm.name.trim()) { setChannelError('Channel name is required.'); return; }
+    if (!channelForm.mediaGroupId) { setChannelError('Please select a media group.'); return; }
+    setChannelSubmitting(true);
+    const payload = {
+      name: channelForm.name.trim(),
+      medium: channelForm.medium,
+      mediaGroupId: parseInt(channelForm.mediaGroupId),
+      aliases: channelForm.aliases.split(',').map(a => a.trim()).filter(Boolean),
+    };
+    try {
+      if (editingChannel) await api.put(`/masterdata/channel-masters/${editingChannel.id}`, payload);
+      else await api.post('/masterdata/channel-masters', payload);
+      setShowChannelModal(false);
+      await fetchData();
+    } catch (err) {
+      setChannelError(err.response?.data?.error || err.response?.data?.message || 'Failed to save channel.');
+    } finally {
+      setChannelSubmitting(false);
+    }
+  };
+  const toggleChannel = async ch => {
+    try {
+      await api.patch(`/masterdata/channel-masters/${ch.id}/toggle`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update channel status.');
+    }
+  };
+
+  /* ---- Media Group CRUD ---- */
+  const openAddGroup = () => {
+    setEditingGroup(null);
+    setGroupForm({ name: '' });
+    setGroupError('');
+    setShowGroupModal(true);
+  };
+  const openEditGroup = g => {
+    setEditingGroup(g);
+    setGroupForm({ name: g.name });
+    setGroupError('');
+    setShowGroupModal(true);
+  };
+  const handleGroupSubmit = async e => {
+    e.preventDefault();
+    setGroupError('');
+    if (!groupForm.name.trim()) { setGroupError('Media group name is required.'); return; }
+    setGroupSubmitting(true);
+    try {
+      if (editingGroup) await api.put(`/masterdata/media-groups/${editingGroup.id}`, { name: groupForm.name.trim() });
+      else await api.post('/masterdata/media-groups', { name: groupForm.name.trim() });
+      setShowGroupModal(false);
+      await fetchData();
+    } catch (err) {
+      setGroupError(err.response?.data?.error || err.response?.data?.message || 'Failed to save media group.');
+    } finally {
+      setGroupSubmitting(false);
+    }
+  };
+  const toggleGroup = async g => {
+    try {
+      await api.patch(`/masterdata/media-groups/${g.id}/toggle`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update media group status.');
+    }
+  };
+
   /* ---- helpers ---- */
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
@@ -256,6 +372,17 @@ export default function AdminPage({ initialTab = 'users' }) {
     teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
     [teams, search]);
 
+  const filteredChannels = useMemo(() =>
+    channelMasters.filter(c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.mediaGroup?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.medium || '').toLowerCase().includes(search.toLowerCase())
+    ), [channelMasters, search]);
+
+  const filteredGroups = useMemo(() =>
+    mediaGroups.filter(g => g.name.toLowerCase().includes(search.toLowerCase())),
+    [mediaGroups, search]);
+
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   if (loading) {
@@ -270,6 +397,8 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'users', label: 'Users', count: users.length },
     { key: 'agencies', label: 'Agencies', count: agencies.length },
     { key: 'teams', label: 'Teams', count: teams.length },
+    { key: 'channels', label: 'Channels', count: channelMasters.length },
+    { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
   ];
 
   return (
@@ -327,6 +456,16 @@ export default function AdminPage({ initialTab = 'users' }) {
         {activeTab === 'teams' && (
           <button className="btn btn-primary" onClick={openAddTeam} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Team
+          </button>
+        )}
+        {activeTab === 'channels' && (
+          <button className="btn btn-primary" onClick={openAddChannel} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Channel
+          </button>
+        )}
+        {activeTab === 'media-groups' && (
+          <button className="btn btn-primary" onClick={openAddGroup} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Media Group
           </button>
         )}
       </div>
@@ -479,6 +618,118 @@ export default function AdminPage({ initialTab = 'users' }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ============ CHANNELS TABLE ============ */}
+      {activeTab === 'channels' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Channel Name</th>
+                <th>Medium</th>
+                <th>Media Group</th>
+                <th>Aliases</th>
+                <th>Usage</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredChannels.map(ch => (
+                <tr key={ch.id} style={{ opacity: ch.isActive === false ? 0.55 : 1 }}>
+                  <td className="strong">{ch.name}</td>
+                  <td><span className="medium-tag">{ch.medium}</span></td>
+                  <td>{ch.mediaGroup?.name || '-'}</td>
+                  <td style={{ color: 'var(--muted)', fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ch.aliases?.length ? ch.aliases.join(', ') : '-'}
+                  </td>
+                  <td style={{ color: 'var(--muted)' }}>{ch._count?.scheduleLogs ?? 0} logs</td>
+                  <td>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                      background: ch.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)',
+                      color: ch.isActive === false ? 'var(--muted)' : 'var(--green-600)',
+                    }}>{ch.isActive === false ? 'Inactive' : 'Active'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditChannel(ch)} title="Edit channel">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button
+                        className="act-btn"
+                        onClick={() => toggleChannel(ch)}
+                        title={ch.isActive === false ? 'Activate' : 'Deactivate'}
+                        style={{ color: ch.isActive === false ? 'var(--green-600)' : 'var(--red-600,#dc2626)' }}
+                      >
+                        <Icon name={ch.isActive === false ? 'check' : 'trash'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredChannels.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+              <Icon name="tv" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+              <p>No channels found</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ MEDIA GROUPS TABLE ============ */}
+      {activeTab === 'media-groups' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Media Group</th>
+                <th>Channels</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGroups.map(g => (
+                <tr key={g.id} style={{ opacity: g.active === false ? 0.55 : 1 }}>
+                  <td className="strong">{g.name}</td>
+                  <td style={{ color: 'var(--muted)' }}>{g._count?.channelMasters ?? 0} channels</td>
+                  <td>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                      background: g.active === false ? 'var(--bg-sunken)' : 'var(--green-100)',
+                      color: g.active === false ? 'var(--muted)' : 'var(--green-600)',
+                    }}>{g.active === false ? 'Inactive' : 'Active'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditGroup(g)} title="Edit media group">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button
+                        className="act-btn"
+                        onClick={() => toggleGroup(g)}
+                        title={g.active === false ? 'Activate' : 'Deactivate'}
+                        style={{ color: g.active === false ? 'var(--green-600)' : 'var(--red-600,#dc2626)' }}
+                      >
+                        <Icon name={g.active === false ? 'check' : 'trash'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredGroups.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+              <Icon name="folder" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+              <p>No media groups found</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -664,6 +915,84 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowTeamModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={teamSubmitting}>{teamSubmitting ? 'Saving...' : editingTeam ? 'Save Changes' : 'Add Team'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ CHANNEL MODAL ============ */}
+      {showChannelModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowChannelModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="modal-head">
+              <h2>{editingChannel ? 'Edit Channel' : 'Add Channel'}</h2>
+              <button className="act-btn" onClick={() => setShowChannelModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleChannelSubmit}>
+              <div className="modal-body">
+                {channelError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{channelError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Channel Name <span className="req">*</span></label>
+                  <input className="input" type="text" value={channelForm.name} onChange={e => setChannelForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Hiru TV" />
+                </div>
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">Medium <span className="req">*</span></label>
+                    <select className="select" value={channelForm.medium} onChange={e => setChannelForm(p => ({ ...p, medium: e.target.value }))}>
+                      {MEDIUMS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Media Group <span className="req">*</span></label>
+                    <select className="select" value={channelForm.mediaGroupId} onChange={e => setChannelForm(p => ({ ...p, mediaGroupId: e.target.value }))}>
+                      <option value="">Select media group...</option>
+                      {mediaGroups.filter(g => g.active !== false || String(g.id) === channelForm.mediaGroupId).map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="field-label">Aliases</label>
+                  <input className="input" type="text" value={channelForm.aliases} onChange={e => setChannelForm(p => ({ ...p, aliases: e.target.value }))} placeholder="Comma-separated, e.g. Hiru, HiruTV" />
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    Alternative names matched automatically when uploading sheets.
+                  </span>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowChannelModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={channelSubmitting}>{channelSubmitting ? 'Saving...' : editingChannel ? 'Save Changes' : 'Add Channel'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MEDIA GROUP MODAL ============ */}
+      {showGroupModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowGroupModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingGroup ? 'Edit Media Group' : 'Add Media Group'}</h2>
+              <button className="act-btn" onClick={() => setShowGroupModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleGroupSubmit}>
+              <div className="modal-body">
+                {groupError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{groupError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Media Group Name <span className="req">*</span></label>
+                  <input className="input" type="text" value={groupForm.name} onChange={e => setGroupForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Maharaja Group" />
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowGroupModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={groupSubmitting}>{groupSubmitting ? 'Saving...' : editingGroup ? 'Save Changes' : 'Add Media Group'}</button>
               </div>
             </form>
           </div>
