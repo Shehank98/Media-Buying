@@ -145,6 +145,9 @@ export async function resetPassword(req, res) {
     if (!token || !email || !newPassword) {
       return res.status(400).json({ error: 'Token, email, and new password are required' });
     }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
@@ -208,6 +211,9 @@ export async function changePassword(req, res) {
 
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ error: 'Old password and new password are required' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });

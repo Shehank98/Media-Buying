@@ -1,6 +1,13 @@
 import { verifyAccessToken } from '../services/auth.service.js';
 import prisma from '../utils/prisma.js';
 
+// Endpoints a user may still call while a password change is pending.
+const PASSWORD_CHANGE_ALLOWED = [
+  '/api/auth/change-password',
+  '/api/auth/logout',
+  '/api/auth/profile',
+];
+
 export async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
@@ -14,6 +21,18 @@ export async function authenticate(req, res, next) {
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
+    }
+
+    // Forced password change is enforced server-side, not just by the
+    // frontend redirect, so direct API calls are blocked too.
+    if (user.mustChangePassword) {
+      const path = (req.originalUrl || '').split('?')[0];
+      if (!PASSWORD_CHANGE_ALLOWED.includes(path)) {
+        return res.status(403).json({
+          error: 'Password change required',
+          mustChangePassword: true,
+        });
+      }
     }
 
     req.user = user;
