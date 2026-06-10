@@ -78,6 +78,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteType, setDeleteType] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   /* ---- fetch ---- */
   const fetchData = async () => {
@@ -249,18 +250,27 @@ export default function AdminPage({ initialTab = 'users' }) {
   const confirmDelete = (item, type) => {
     setDeleteTarget(item);
     setDeleteType(type);
+    setDeleteError('');
     setShowDeleteModal(true);
+  };
+  // Channels & media groups live under /masterdata; everything else under /admin.
+  const deletePath = (type, id) => {
+    if (type === 'channels') return `/masterdata/channel-masters/${id}`;
+    if (type === 'media-groups') return `/masterdata/media-groups/${id}`;
+    return `/admin/${type}/${id}`;
   };
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError('');
     try {
-      await api.delete(`/admin/${deleteType}/${deleteTarget.id}`);
+      await api.delete(deletePath(deleteType, deleteTarget.id));
       setShowDeleteModal(false);
       setDeleteTarget(null);
       await fetchData();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.message || `Failed to delete ${deleteType.slice(0, -1)}.`);
+      // Keep the modal open and show why (e.g. still referenced by logs).
+      setDeleteError(err.response?.data?.error || err.response?.data?.message || `Failed to delete ${deleteType.slice(0, -1)}.`);
     } finally {
       setDeleting(false);
     }
@@ -442,7 +452,7 @@ export default function AdminPage({ initialTab = 'users' }) {
           <input
             className="input"
             type="text"
-            placeholder={`Search ${activeTab}...`}
+            placeholder={`Search ${activeTab === 'media-groups' ? 'media groups' : activeTab}...`}
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ paddingLeft: 32 }}
@@ -662,9 +672,12 @@ export default function AdminPage({ initialTab = 'users' }) {
                         className="act-btn"
                         onClick={() => toggleChannel(ch)}
                         title={ch.isActive === false ? 'Activate' : 'Deactivate'}
-                        style={{ color: ch.isActive === false ? 'var(--green-600)' : 'var(--red-600,#dc2626)' }}
+                        style={{ color: ch.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}
                       >
-                        <Icon name={ch.isActive === false ? 'check' : 'trash'} size={15} />
+                        <Icon name={ch.isActive === false ? 'check' : 'eye'} size={15} />
+                      </button>
+                      <button className="act-btn" onClick={() => confirmDelete(ch, 'channels')} title="Delete permanently" style={{ color: 'var(--red-600,#dc2626)' }}>
+                        <Icon name="trash" size={15} />
                       </button>
                     </div>
                   </td>
@@ -714,9 +727,12 @@ export default function AdminPage({ initialTab = 'users' }) {
                         className="act-btn"
                         onClick={() => toggleGroup(g)}
                         title={g.active === false ? 'Activate' : 'Deactivate'}
-                        style={{ color: g.active === false ? 'var(--green-600)' : 'var(--red-600,#dc2626)' }}
+                        style={{ color: g.active === false ? 'var(--green-600)' : 'var(--muted)' }}
                       >
-                        <Icon name={g.active === false ? 'check' : 'trash'} size={15} />
+                        <Icon name={g.active === false ? 'check' : 'eye'} size={15} />
+                      </button>
+                      <button className="act-btn" onClick={() => confirmDelete(g, 'media-groups')} title="Delete permanently" style={{ color: 'var(--red-600,#dc2626)' }}>
+                        <Icon name="trash" size={15} />
                       </button>
                     </div>
                   </td>
@@ -1008,6 +1024,9 @@ export default function AdminPage({ initialTab = 'users' }) {
               <button className="act-btn" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body">
+              {deleteError && (
+                <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 14 }}>{deleteError}</div>
+              )}
               <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
                 Are you sure you want to delete{' '}
                 <strong style={{ color: 'var(--ink)' }}>{deleteTarget?.name || deleteTarget?.email}</strong>?

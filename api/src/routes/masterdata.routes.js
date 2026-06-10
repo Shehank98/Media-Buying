@@ -5,10 +5,12 @@ import {
   createMediaGroup,
   updateMediaGroup,
   toggleMediaGroup,
+  deleteMediaGroup,
   listChannelMasters,
   createChannelMaster,
   updateChannelMaster,
   toggleChannelMaster,
+  deleteChannelMaster,
   mergeChannelMasters,
   listAllBrands,
   createBrand,
@@ -25,12 +27,14 @@ router.get('/media-groups', authenticate, requireRole('SUPER_ADMIN'), listMediaG
 router.post('/media-groups', authenticate, requireRole('SUPER_ADMIN'), createMediaGroup);
 router.put('/media-groups/:id', authenticate, requireRole('SUPER_ADMIN'), updateMediaGroup);
 router.patch('/media-groups/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), toggleMediaGroup);
+router.delete('/media-groups/:id', authenticate, requireRole('SUPER_ADMIN'), deleteMediaGroup);
 
 // Channel Masters
 router.get('/channel-masters', authenticate, listChannelMasters);
 router.post('/channel-masters', authenticate, requireRole('SUPER_ADMIN'), createChannelMaster);
 router.put('/channel-masters/:id', authenticate, requireRole('SUPER_ADMIN'), updateChannelMaster);
 router.patch('/channel-masters/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), toggleChannelMaster);
+router.delete('/channel-masters/:id', authenticate, requireRole('SUPER_ADMIN'), deleteChannelMaster);
 router.post('/channel-masters/merge', authenticate, requireRole('SUPER_ADMIN'), mergeChannelMasters);
 
 // Brands

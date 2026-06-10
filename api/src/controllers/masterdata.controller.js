@@ -264,6 +264,60 @@ export async function mergeChannelMasters(req, res) {
   }
 }
 
+// Permanently delete a channel master, but only if nothing references it.
+// Otherwise refuse and suggest deactivating instead (keeps history intact).
+export async function deleteChannelMaster(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+
+    const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return res.status(404).json({ error: 'Channel master not found' });
+
+    const [logCount, channelCount, rowCount] = await Promise.all([
+      prisma.scheduleLog.count({ where: { channelMasterId: id } }),
+      prisma.channel.count({ where: { channelMasterId: id } }),
+      prisma.uploadBatchRow.count({ where: { channelResolvedId: id } }),
+    ]);
+
+    if (logCount + channelCount + rowCount > 0) {
+      return res.status(409).json({
+        error: `This channel is used by ${logCount} schedule log(s) and ${channelCount} client channel(s). Deactivate it instead of deleting to keep historical data.`,
+      });
+    }
+
+    await prisma.channelMaster.delete({ where: { id } });
+    return res.json({ message: 'Channel master deleted' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
+    console.error('Delete channel master error:', error);
+    return res.status(500).json({ error: 'Failed to delete channel master', detail: error.message });
+  }
+}
+
+// Permanently delete a media group, but only if it has no channels.
+export async function deleteMediaGroup(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+
+    const existing = await prisma.mediaGroup.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return res.status(404).json({ error: 'Media group not found' });
+
+    const channelCount = await prisma.channelMaster.count({ where: { mediaGroupId: id } });
+    if (channelCount > 0) {
+      return res.status(409).json({
+        error: `This media group has ${channelCount} channel(s). Reassign or delete those channels first, or deactivate this group instead.`,
+      });
+    }
+
+    await prisma.mediaGroup.delete({ where: { id } });
+    return res.json({ message: 'Media group deleted' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Media group not found' });
+    console.error('Delete media group error:', error);
+    return res.status(500).json({ error: 'Failed to delete media group', detail: error.message });
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Brands (admin cross-client view)
 // ═══════════════════════════════════════════════════════════════════════════
