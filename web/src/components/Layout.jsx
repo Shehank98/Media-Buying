@@ -15,6 +15,7 @@ const NAV = [
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [
+  { key: '/packages', label: 'Media Packages', icon: 'mail', roles: ['SUPER_ADMIN'] },
   { key: '/upload-tracker', label: 'Upload Tracker', icon: 'upload', roles: ['SUPER_ADMIN'] },
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
   { key: '/profile', label: 'Profile', icon: 'user' },
@@ -39,6 +40,7 @@ function Breadcrumbs({ go }) {
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/decisions') return <>{home}{sep}<b>Decision Center</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
+  if (path === '/packages') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Media Packages</b></>;
   if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
   if (path === '/profile') return <>{home}{sep}<b>Profile</b></>;

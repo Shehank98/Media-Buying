@@ -11,6 +11,7 @@
  *   Welcome:  { type: "welcome",  to, name, password, loginUrl }
  *   Reset:    { type: "reset",    to, name, resetLink }
  *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
+ *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
  */
 
 var BRAND_NAME = "Media Buying Records";
@@ -28,6 +29,8 @@ function doPost(e) {
       sendResetEmail(data);
     } else if (data.type === "reminder") {
       sendReminderEmail(data);
+    } else if (data.type === "package") {
+      sendPackageEmail(data);
     } else {
       throw new Error("Unknown email type: " + data.type);
     }
@@ -173,6 +176,109 @@ function buildReminderHtml(name, monthLabel, message, loginUrl) {
     '</p>' +
     '<p style="margin:0;color:#cbd5e1;font-size:12px;text-align:center;">' +
       'You are receiving this because you are assigned to upload schedule data.' +
+    '</p>' +
+  '</td></tr>' +
+
+  '</table>' +
+  '</td></tr></table>' +
+  '</body></html>';
+}
+
+// ─── Package Email ────────────────────────────────────────────────────────────
+
+function sendPackageEmail(data) {
+  var to          = data.to;
+  var name        = data.name        || "Team Head";
+  var packageName = data.packageName || "Media Package";
+  var intro       = data.intro       || "";
+  var lineItems   = data.lineItems   || [];
+  var responseLink = data.responseLink || "#";
+
+  var subject = packageName + " — Media Package for your review";
+  var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink);
+
+  var options = { name: FROM_NAME, htmlBody: html };
+
+  // Attach the PDF live from the uploaded base64 (never stored server-side).
+  if (data.pdfBase64) {
+    var bytes = Utilities.base64Decode(data.pdfBase64);
+    var blob  = Utilities.newBlob(bytes, "application/pdf", data.pdfFileName || (packageName + ".pdf"));
+    options.attachments = [blob];
+  }
+
+  GmailApp.sendEmail(to, subject, stripTags(html), options);
+}
+
+// ─── Package HTML Template ──────────────────────────────────────────────────
+
+function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
+  var rows = "";
+  for (var i = 0; i < lineItems.length; i++) {
+    var li = lineItems[i] || {};
+    var rate = (li.rate === 0 || li.rate) ? "LKR " + Number(li.rate).toLocaleString("en-US") : "";
+    rows +=
+      '<tr>' +
+        '<td style="padding:10px 16px;border-top:1px solid #e2e8f0;color:#0A1729;font-size:13px;">' + escHtml(li.label || "") + '</td>' +
+        '<td style="padding:10px 16px;border-top:1px solid #e2e8f0;color:#0A1729;font-size:13px;font-weight:700;text-align:right;font-family:\'Courier New\',monospace;">' + escHtml(rate) + '</td>' +
+      '</tr>';
+  }
+
+  return '<!DOCTYPE html>' +
+  '<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>' + escHtml(packageName) + '</title></head>' +
+  '<body style="margin:0;padding:0;background:#f0f4f8;font-family:\'Helvetica Neue\',Arial,sans-serif;">' +
+
+  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:40px 16px;">' +
+  '<tr><td align="center">' +
+
+  '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(10,23,41,.10);">' +
+
+  // Header
+  '<tr><td style="background:#0A1729;padding:40px 48px 32px;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0"><tr><td>' +
+      '<div style="display:inline-block;background:#E85D24;border-radius:10px;padding:10px 14px;margin-bottom:20px;">' +
+        '<span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-0.5px;">MB</span>' +
+      '</div>' +
+      '<h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;line-height:1.25;letter-spacing:-0.5px;">' + escHtml(packageName) + '</h1>' +
+      '<p style="margin:8px 0 0;color:#8ba4c2;font-size:15px;">A media package for your review, ' + escHtml(name) + '</p>' +
+    '</td></tr></table>' +
+  '</td></tr>' +
+
+  // Body
+  '<tr><td style="padding:40px 48px;">' +
+
+    (intro
+      ? '<p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.7;">' + escHtml(intro) + '</p>'
+      : '<p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.7;">Please review the attached package and let us know your interest using the button below.</p>') +
+
+    // Line items table
+    (rows
+      ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:28px;border-collapse:separate;overflow:hidden;">' +
+          '<tr>' +
+            '<td style="padding:10px 16px;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Item</td>' +
+            '<td style="padding:10px 16px;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;">Rate</td>' +
+          '</tr>' + rows +
+        '</table>'
+      : '') +
+
+    // CTA
+    '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
+    '<tr><td align="center">' +
+      '<a href="' + responseLink + '" style="display:inline-block;background:#E85D24;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:16px 48px;border-radius:10px;letter-spacing:0.3px;">' +
+        'Review &amp; Respond &rarr;' +
+      '</a>' +
+    '</td></tr>' +
+    '</table>' +
+
+    '<p style="margin:0 0 8px;color:#64748b;font-size:13px;">If the button does not work, copy this link into your browser:</p>' +
+    '<p style="margin:0;word-break:break-all;"><a href="' + responseLink + '" style="color:#2563eb;font-size:13px;text-decoration:none;">' + responseLink + '</a></p>' +
+
+  '</td></tr>' +
+
+  // Footer
+  '<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 48px;">' +
+    '<p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">' +
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Your response link is unique to you — please do not forward this email.' +
     '</p>' +
   '</td></tr>' +
 

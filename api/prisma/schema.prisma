@@ -41,6 +41,19 @@ enum RowStatus {
   FAILED
 }
 
+enum PackageInterest {
+  INTERESTED
+  NOT_INTERESTED
+  NEGOTIATE
+}
+
+enum ResponseFollowUp {
+  PENDING
+  FOLLOWED_UP
+  BOOKED
+  CLOSED
+}
+
 model User {
   id                    Int                  @id @default(autoincrement())
   email                 String               @unique
@@ -66,6 +79,8 @@ model User {
   uploadBatches         UploadBatch[]        @relation("UploadBatchUploader")
   scheduleLogEdits      ScheduleLogEdit[]    @relation("ScheduleLogEditor")
   notifications         Notification[]
+  packagesCreated       MediaPackage[]       @relation("PackageCreator")
+  packageRecipients     PackageRecipient[]   @relation("PackageRecipientUser")
 
   @@map("users")
 }
@@ -411,4 +426,53 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_reset_tokens")
+}
+
+// ─── Media Packages ───────────────────────────────────────────────────────────
+
+model MediaPackage {
+  id          Int                @id @default(autoincrement())
+  name        String
+  category    String
+  emailIntro  String             @map("email_intro")
+  isActive    Boolean            @default(true) @map("is_active")
+  createdById Int                @map("created_by_id")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  creator     User               @relation("PackageCreator", fields: [createdById], references: [id])
+  lineItems   PackageLineItem[]
+  recipients  PackageRecipient[]
+
+  @@map("media_packages")
+}
+
+model PackageLineItem {
+  id        Int          @id @default(autoincrement())
+  packageId Int          @map("package_id")
+  label     String
+  rate      Decimal      @db.Decimal(12, 2)
+  sortOrder Int          @default(0) @map("sort_order")
+  package   MediaPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@map("package_line_items")
+}
+
+model PackageRecipient {
+  id          Int               @id @default(autoincrement())
+  packageId   Int               @map("package_id")
+  userId      Int               @map("user_id")
+  tokenHash   String            @unique @map("token_hash")
+  expiresAt   DateTime          @map("expires_at")
+  sentAt      DateTime?         @map("sent_at")
+  respondedAt DateTime?         @map("responded_at")
+  interest    PackageInterest?
+  budgetNote  String?           @map("budget_note")
+  clientName  String?           @map("client_name")
+  notes       String?
+  followUp    ResponseFollowUp  @default(PENDING) @map("follow_up")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  package     MediaPackage      @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user        User              @relation("PackageRecipientUser", fields: [userId], references: [id])
+
+  @@map("package_recipients")
 }
