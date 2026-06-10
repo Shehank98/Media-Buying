@@ -225,11 +225,11 @@ export default function PackagesPage() {
                 <div className="field-grid2">
                   <div className="field">
                     <label className="field-label">Name <span className="req">*</span></label>
-                    <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="FIFA World Cup 2026 — Terrestrial" />
+                    <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Package name" />
                   </div>
                   <div className="field">
                     <label className="field-label">Category <span className="req">*</span></label>
-                    <input className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="FIFA partners / spot buying" />
+                    <input className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="Category" />
                   </div>
                 </div>
                 <div className="field">
