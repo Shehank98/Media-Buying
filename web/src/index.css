@@ -440,6 +440,9 @@ input, select, textarea { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .ob-login *, .brand-orbit * { animation: none !important; }
 }
+/* keep cosmic login scroll-safe on short windows, but hide the scrollbar */
+.ob-login, .ob-login * { scrollbar-width: none; -ms-overflow-style: none; }
+.ob-login *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* Orbit logo mark (sidebar) */
 .brand-orbit { position: relative; width: 34px; height: 34px; display: grid; place-items: center; flex: none; }

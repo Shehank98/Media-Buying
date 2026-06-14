@@ -126,7 +126,7 @@ export default function LoginPage() {
       </div>
 
       {/* content */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '44px 40px' }}>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 40px' }}>
         <div style={{ width: 418, maxWidth: '100%', animation: 'ob-rise .8s cubic-bezier(.22,.61,.36,1) both' }}>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}>
