@@ -423,46 +423,36 @@ input, select, textarea { font-family: inherit; }
 .login-foot a, .link { color: var(--coral-600); font-weight: 600; text-decoration: none; cursor: pointer; }
 .link:hover, .login-foot a:hover { text-decoration: underline; }
 
-/* ── Login hero (Claude / warm editorial) ─────────────────────────── */
-.login-art .sparks { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.login-art .spark {
-  position: absolute; color: #CC785C; opacity: .16;
-  animation: floaty var(--dur, 9s) ease-in-out infinite; animation-delay: var(--delay, 0s);
-  will-change: transform, opacity;
+/* ── Ogilvy Orbit motion (cosmic login + orbit logo) ──────────────── */
+@keyframes ob-spin { to { transform: rotate(360deg); } }
+@keyframes ob-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes ob-twinkle { 0%, 100% { opacity: var(--lo, .3); } 50% { opacity: var(--hi, 1); } }
+@keyframes ob-drift { 0% { transform: translateY(0); } 100% { transform: translateY(-26px); } }
+@keyframes ob-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes ob-pulse { 0%, 100% { opacity: .5; transform: scale(1); } 50% { opacity: .85; transform: scale(1.06); } }
+@keyframes ob-shoot {
+  0%   { transform: translate(0,0) rotate(-24deg); opacity: 0; }
+  8%   { opacity: 1; }
+  22%  { opacity: 1; }
+  40%, 100% { transform: translate(420px,190px) rotate(-24deg); opacity: 0; }
 }
-@keyframes floaty {
-  0%, 100% { transform: translateY(0) rotate(0deg);   opacity: .10; }
-  50%      { transform: translateY(-16px) rotate(28deg); opacity: .26; }
-}
-.orbit-hero { margin: auto; position: relative; z-index: 1; text-align: center; animation: fadeIn .6s ease; }
-.orbit-ring {
-  width: 138px; height: 138px; border-radius: 50%; margin: 0 auto 32px;
-  border: 1px solid rgba(31,30,29,.12); display: grid; place-items: center;
-  position: relative; animation: orbitSpin 18s linear infinite;
-  box-shadow: inset 0 0 60px rgba(204,120,92,.14);
-}
-.orbit-ring::after {
-  content: ""; position: absolute; top: -4px; left: 50%; margin-left: -4px;
-  width: 9px; height: 9px; border-radius: 50%; background: #CC785C;
-  box-shadow: 0 0 10px 1px rgba(204,120,92,.6);
-}
-.orbit-core {
-  width: 74px; height: 74px; border-radius: 22px;
-  background: linear-gradient(150deg, #D98E72, #C16645);
-  display: grid; place-items: center; color: #FAF8F2;
-  font-family: 'Newsreader', Georgia, serif; font-size: 38px; font-weight: 500;
-  box-shadow: 0 12px 34px rgba(193,102,69,.32); animation: orbitSpinRev 18s linear infinite;
-}
-.orbit-title {
-  font-family: 'Newsreader', Georgia, 'Times New Roman', serif;
-  font-size: 52px; font-weight: 500; letter-spacing: -1px; line-height: 1.02; color: #1F1E1D;
-}
-.orbit-title span { font-style: italic; color: #C16645; }
-.login-art-foot { position: absolute; bottom: 28px; left: 56px; font-size: 12px; color: #8A8272; z-index: 1; }
-@keyframes orbitSpin { to { transform: rotate(360deg); } }
-@keyframes orbitSpinRev { to { transform: rotate(-360deg); } }
+@keyframes ob-orbit { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .login-art .spark, .orbit-ring, .orbit-core { animation: none; }
+  .ob-login *, .brand-orbit * { animation: none !important; }
+}
+
+/* Orbit logo mark (sidebar) */
+.brand-orbit { position: relative; width: 34px; height: 34px; display: grid; place-items: center; flex: none; }
+.brand-orbit .bo-ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,.18); }
+.brand-orbit .bo-track { position: absolute; inset: 0; animation: ob-orbit 9s linear infinite; }
+.brand-orbit .bo-dot {
+  position: absolute; top: -2px; left: 50%; margin-left: -2.5px;
+  width: 5px; height: 5px; border-radius: 50%; background: #FF7A45; box-shadow: 0 0 7px 1px rgba(255,122,69,.9);
+}
+.brand-orbit .bo-core {
+  width: 21px; height: 21px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #F2A07C, #C16645 60%, #8A3A1E);
+  display: grid; place-items: center; font-family: 'Newsreader', Georgia, serif; font-size: 13px; color: #FFF3EC;
 }
 
 .empty-soft { text-align: center; padding: 54px 20px; color: var(--muted); }

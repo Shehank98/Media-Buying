@@ -8,101 +8,83 @@ import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 
-const fmtLKR = (v) => (v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US'));
-const fmtShort = (v) => {
-  if (v == null || v === 0) return '0';
+// ── formatting ────────────────────────────────────────────────────────────
+const fmtRs = (v) => {
+  if (v == null) return 'Rs 0';
   const n = Number(v);
-  if (Math.abs(n) >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(0) + 'K';
-  return String(Math.round(n));
+  if (Math.abs(n) >= 1e9) return 'Rs ' + (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) { const m = n / 1e6; return 'Rs ' + (Math.abs(m) >= 100 ? Math.round(m) : m.toFixed(1)) + 'M'; }
+  if (Math.abs(n) >= 1e3) return 'Rs ' + Math.round(n).toLocaleString('en-US');
+  return 'Rs ' + Math.round(n);
 };
-const fmtMonth = (ym) => {
-  if (!ym) return '-';
-  const [y, m] = ym.split('-');
-  return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-};
-const fmtMonthShort = (ym) => {
-  if (!ym) return '';
-  const [y, m] = ym.split('-');
-  return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
-};
+const fmtNum = (v) => (v == null ? '0' : Number(v).toLocaleString('en-US'));
+const mShort = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short' }); };
+const mFull = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); };
+const initials = (name) => (name ? name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?');
 const timeAgo = (iso) => {
   if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
   const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 };
 
-const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669' };
+// ── design tokens ─────────────────────────────────────────────────────────
+const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
+const MEDIUM = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B' };
+const MEDIUM_LABEL = { TV: 'Television', RADIO: 'Radio', PRINT: 'Print' };
+const DOTS = [['#FDF1EB', '#D9521C'], ['#EDF3FD', '#1F5BB5'], ['#ECF8F1', '#15814B'], ['#E8DEF8', '#6B3FB5'], ['#FCF4E2', '#9A5B00'], ['#FBE0DA', '#C5391F']];
+const trendChip = (kind) => {
+  const c = kind === 'up' ? ['#15814B', '#ECF8F1'] : kind === 'down' ? ['#C5391F', '#FBE0DA'] : ['#6B7790', '#EEF0F3'];
+  return { color: c[0], background: c[1], display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700, padding: '3px 8px', borderRadius: 7, fontFamily: "'Spline Sans Mono', monospace" };
+};
+const COL_HEAD = { textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '11px 22px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' };
+const CELL = { padding: '12px 22px', borderBottom: '1px solid #E5E8ED' };
 
-function Kpi({ icon, ig, ifg, label, val, sub, trend, dir }) {
-  const tColor = dir === 'up' ? 'var(--green-600)' : dir === 'down' ? '#DC2626' : 'var(--muted)';
+function StatCard({ tone, icon, value, label, meta, trend, trendKind }) {
   return (
-    <div className="stat">
-      <div className="stat-top">
-        <div className="stat-ico" style={{ background: ig, color: ifg }}>
+    <div style={{ ...CARD, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: tone[0], color: tone[1] }}>
           <Icon name={icon} size={19} />
         </div>
-        <div className="stat-label">{label}</div>
+        {trend && <span style={trendChip(trendKind)}>{trend}</span>}
       </div>
-      <div className="stat-val">{val}</div>
-      <div className="stat-meta">
-        {trend != null && (
-          <span style={{ color: tColor, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <Icon name={dir === 'down' ? 'trending-down' : 'trending-up'} size={13} />
-            {Math.abs(trend)}%
-          </span>
-        )}
-        {sub}
-      </div>
+      <div style={{ fontSize: 31, fontWeight: 700, letterSpacing: '-1px', lineHeight: 1, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{value}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#6B7790', marginTop: 9 }}>{label}</div>
+      {meta && <div style={{ fontSize: 12, color: '#93A0B5', marginTop: 4 }}>{meta}</div>}
     </div>
   );
 }
 
-function Mini({ icon, label, val }) {
+function CardHead({ title, sub, right }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 11, padding: '13px 15px',
-      background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-xs)',
-    }}>
-      <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--bg-sunken)', color: 'var(--navy-700)', display: 'grid', placeItems: 'center', flex: 'none' }}>
-        <Icon name={icon} size={16} />
+    <div style={{ padding: '18px 22px 6px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div>
+        <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: '-.2px' }}>{title}</h3>
+        {sub && <p style={{ fontSize: 12.5, color: '#6B7790', margin: '4px 0 0' }}>{sub}</p>}
       </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 18, fontWeight: 740, color: 'var(--ink)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
-      </div>
+      {right}
     </div>
   );
 }
-
-const ChartEmpty = ({ h = 180 }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: h, color: 'var(--muted)' }}>
-    <Icon name="bar-chart" size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-    <div style={{ fontSize: 13 }}>No data yet</div>
-  </div>
-);
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const role = user?.role;
   const isExec = ['SUPER_ADMIN', 'MANAGER'].includes(role);
+  const [range, setRange] = useState('QTD');
 
   const [agencies, setAgencies] = useState([]);
   const [clientTotal, setClientTotal] = useState(0);
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState([]);
   const [medium, setMedium] = useState([]);
-  const [topClients, setTopClients] = useState([]);
-  const [topChannels, setTopChannels] = useState([]);
+  const [clients, setClients] = useState([]);
   const [uploads, setUploads] = useState([]);
 
   useEffect(() => {
@@ -117,317 +99,263 @@ export default function DashboardPage() {
       api.get('/analytics/dashboard/summary').then(({ data }) => setSummary(data)).catch(() => {});
       api.get('/analytics/dashboard/monthly-trend').then(({ data }) => setTrend((data.combined || []).slice(-12))).catch(() => {});
       api.get('/analytics/dashboard/medium-split').then(({ data }) => setMedium((data.ytd || []).filter(d => d.value > 0))).catch(() => {});
-      api.get('/analytics/dashboard/top-clients').then(({ data }) => setTopClients((data || []).slice(0, 6))).catch(() => {});
-      api.get('/analytics/dashboard/top-channels').then(({ data }) => setTopChannels((data || []).slice(0, 6))).catch(() => {});
+      api.get('/analytics/dashboard/top-clients').then(({ data }) => setClients((data || []).slice(0, 6))).catch(() => {});
       api.get('/analytics/dashboard/recent-uploads').then(({ data }) => setUploads((data || []).slice(0, 5))).catch(() => {});
     }
   }, [isExec]);
 
   const go = (path) => { navigate(path); window.scrollTo?.(0, 0); };
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  const hour = new Date().getHours();
+  const greeting = `${hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}, ${firstName}`;
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  const firstName = user?.name?.split(' ')[0] || 'User';
-  const now = new Date();
-  const hour = now.getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
+  const mediumData = medium.map(m => ({ name: m.medium, value: m.value, pct: m.pct }));
   const mediumTotal = medium.reduce((s, m) => s + m.value, 0);
+  const channelsCenter = summary?.activeChannelsThisMonth ?? mediumData.length;
 
-  const quickItems = [
-    { ic: 'database', t: 'Database', s: 'Upload & manage schedules', v: '/database' },
-    { ic: 'folder', t: 'Clients', s: 'Browse all clients', v: '/clients', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'] },
-    { ic: 'chart', t: 'Spend analytics', s: 'Charts & breakdowns', v: '/spend-analytics', roles: ['SUPER_ADMIN', 'MANAGER'] },
-    { ic: 'bar-chart', t: 'Executive dashboard', s: 'Full overview', v: '/executive-dashboard', roles: ['SUPER_ADMIN', 'MANAGER'] },
-    { ic: 'file', t: 'Buying report', s: 'Filter & export buys', v: '/reports', roles: ['SUPER_ADMIN', 'MANAGER'] },
-    { ic: 'upload', t: 'Upload tracker', s: 'Monthly upload status', v: '/upload-tracker', roles: ['SUPER_ADMIN'] },
-    { ic: 'shield', t: 'User management', s: 'Roles & access', v: '/admin', roles: ['SUPER_ADMIN'] },
-  ].filter((q) => !q.roles || q.roles.includes(role));
+  const yoy = summary?.yoyGrowthPct;
 
-  // ── Reusable cards ────────────────────────────────────────────────────────
-  const QuickAccess = () => (
-    <div className="section-card">
-      <div className="section-head"><h3>Quick access</h3></div>
-      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {quickItems.map((q) => (
-          <button
-            key={q.v}
-            onClick={() => go(q.v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-          >
-            <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--bg-sunken)', display: 'grid', placeItems: 'center', color: 'var(--navy-700)', flex: 'none' }}>
-              <Icon name={q.ic} size={18} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{q.t}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>{q.s}</div>
-            </div>
-            <Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} />
-          </button>
-        ))}
+  // ── Header ────────────────────────────────────────────────────────────────
+  const Header = () => (
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20, marginBottom: 22, flexWrap: 'wrap' }}>
+      <div>
+        <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0 }}>{greeting}</h1>
+        <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>
+          {isExec ? 'Network-wide media buying overview' : 'Your media buying workspace'} · {today}
+        </p>
       </div>
-    </div>
-  );
-
-  const Agencies = () => (
-    <div className="section-card">
-      <div className="section-head">
-        <h3>Your agencies</h3>
-        <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/agencies')}>View all</span>
-      </div>
-      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {agencies.length === 0 && (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No agencies assigned.</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {isExec && (
+          <div style={{ display: 'flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3 }}>
+            {['30D', 'QTD', 'YTD'].map((r) => {
+              const on = range === r;
+              return (
+                <button key={r} onClick={() => setRange(r)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 7, fontFamily: 'inherit', background: on ? '#fff' : 'transparent', color: on ? '#16243C' : '#6B7790', boxShadow: on ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{r}</button>
+              );
+            })}
+          </div>
         )}
-        {agencies.map((ag) => (
-          <button
-            key={ag.id}
-            onClick={() => go(`/agencies/${ag.id}`)}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-          >
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--navy-900)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>
-              {ag.name?.[0] || 'A'}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--ink)' }}>{ag.name}</div>
-            </div>
-            <span className="count-badge">{ag._count?.clients || ag.clientCount || 0} clients</span>
+        {isExec && (
+          <button onClick={() => go('/reports')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, fontSize: 13, fontWeight: 600, padding: '9px 14px', border: '1px solid #D5DAE2', background: '#fff', color: '#3B4A63', boxShadow: '0 1px 2px rgba(15,31,61,.06)', cursor: 'pointer' }}>
+            <Icon name="download" size={16} />Export
           </button>
-        ))}
+        )}
+        <button onClick={() => go('/database')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, fontSize: 13, fontWeight: 600, padding: '9px 15px', border: 'none', background: '#E85D24', color: '#fff', boxShadow: '0 1px 2px rgba(232,93,36,.4)', cursor: 'pointer' }}>
+          <Icon name="plus" size={16} />Add record
+        </button>
       </div>
     </div>
   );
+
+  // ── Non-exec (GROUP_HEAD / PLANNER) compact view ────────────────────────────
+  if (!isExec) {
+    const quick = [
+      { ic: 'database', t: 'Database', s: 'Upload & manage schedules', v: '/database' },
+      { ic: 'folder', t: 'Clients', s: 'Browse your clients', v: '/clients', roles: ['GROUP_HEAD'] },
+      { ic: 'building', t: 'Agencies', s: 'Your agencies', v: '/agencies' },
+      { ic: 'user', t: 'Profile', s: 'Account & password', v: '/profile' },
+    ].filter(q => !q.roles || q.roles.includes(role));
+    return (
+      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+        <Header />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 18, marginBottom: 20 }}>
+          <StatCard tone={DOTS[0]} icon="building" value={String(agencies.length)} label="My Agencies" meta={agencies.map(a => a.name).join(' · ') || '—'} />
+          <StatCard tone={DOTS[1]} icon="folder" value={String(clientTotal)} label="Clients" meta="Across your agencies" />
+          <StatCard tone={DOTS[2]} icon="database" value="—" label="Database" meta="Upload & manage schedule logs" />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+          <div style={{ ...CARD, overflow: 'hidden' }}>
+            <CardHead title="Quick access" />
+            <div style={{ padding: '6px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {quick.map(q => (
+                <button key={q.v} onClick={() => go(q.v)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, background: '#EEF0F3', display: 'grid', placeItems: 'center', color: '#274069', flex: 'none' }}><Icon name={q.ic} size={18} /></div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 650, color: '#16243C' }}>{q.t}</div>
+                    <div style={{ fontSize: 12, color: '#6B7790', marginTop: 1 }}>{q.s}</div>
+                  </div>
+                  <Icon name="chevR" size={16} style={{ color: '#93A0B5' }} />
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ ...CARD, overflow: 'hidden' }}>
+            <CardHead title="Your agencies" />
+            <div style={{ padding: '6px 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {agencies.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', color: '#6B7790', fontSize: 13 }}>No agencies assigned.</div>}
+              {agencies.map(ag => (
+                <button key={ag.id} onClick={() => go(`/agencies/${ag.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#0F1F3D', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>{ag.name?.[0] || 'A'}</div>
+                  <div style={{ flex: 1, fontSize: 13.5, fontWeight: 650, color: '#16243C' }}>{ag.name}</div>
+                  <span style={{ fontSize: 11, fontWeight: 600, background: '#EEF0F3', color: '#6B7790', padding: '2px 8px', borderRadius: 20 }}>{ag._count?.clients || ag.clientCount || 0} clients</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Exec dashboard (the design) ─────────────────────────────────────────────
+  const stats = [
+    { tone: DOTS[0], icon: 'money', value: fmtRs(summary?.billingsYTD), label: 'Total Media Spend', meta: `Across all agencies · ${range}`, trend: yoy != null ? `${yoy >= 0 ? '▲' : '▼'} ${Math.abs(yoy)}%` : null, trendKind: yoy > 0 ? 'up' : yoy < 0 ? 'down' : 'flat' },
+    { tone: DOTS[1], icon: 'folder', value: fmtNum(summary?.activeClients ?? clientTotal), label: 'Active Clients', meta: 'Billing this year' },
+    { tone: DOTS[2], icon: 'database', value: fmtNum(channelsCenter), label: 'Channels Tracked', meta: 'TV · Radio · Print', trend: 'flat', trendKind: 'flat' },
+    { tone: DOTS[3], icon: 'activity', value: fmtNum(summary?.logsThisMonth), label: 'Schedule Logs (MTD)', meta: `${summary?.uploadsThisMonth ?? 0} uploads this month` },
+  ];
 
   return (
-    <div className="content-narrow fade-in">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">{greeting}, {firstName}</h1>
-          <p className="page-sub">Here's what's moving across Ogilvy Media today - {dateStr}.</p>
-        </div>
-        {isExec && (
-          <button className="btn btn-primary" onClick={() => go('/reports')}>
-            <Icon name="chart" size={16} />New report
-          </button>
-        )}
+    <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+      <Header />
+
+      {/* stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 18, marginBottom: 20 }}>
+        {stats.map((s, i) => <StatCard key={i} {...s} />)}
       </div>
 
-      {/* KPI cards */}
-      {isExec ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 18, marginBottom: 16 }}>
-          <Kpi
-            icon="money" ig="var(--navy-900)" ifg="#fff"
-            label="Billings this month" val={fmtShort(summary?.billingsThisMonth)}
-            sub={fmtMonth(new Date().toISOString().slice(0, 7))}
+      {/* trend + donut */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.62fr 1fr', gap: 18, marginBottom: 20 }}>
+        <div style={CARD}>
+          <CardHead
+            title="Monthly Spend Trend" sub="Total committed media value · last 12 months"
+            right={(
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", letterSpacing: '-.5px' }}>{fmtRs(summary?.billingsYTD)}</div>
+                {yoy != null && <div style={{ fontSize: 12, fontWeight: 700, color: yoy >= 0 ? '#15814B' : '#C5391F' }}>{yoy >= 0 ? '▲' : '▼'} {Math.abs(yoy)}% YoY</div>}
+              </div>
+            )}
           />
-          <Kpi
-            icon="dollar" ig="var(--coral-50)" ifg="var(--coral-600)"
-            label="Billings YTD" val={fmtShort(summary?.billingsYTD)}
-            trend={summary?.yoyGrowthPct} dir={summary?.yoyGrowthPct > 0 ? 'up' : summary?.yoyGrowthPct < 0 ? 'down' : 'same'}
-            sub="YoY"
-          />
-          <Kpi
-            icon="folder" ig="var(--green-50)" ifg="var(--green-600)"
-            label="Active clients" val={String(summary?.activeClients ?? clientTotal)}
-            sub="billing this year"
-          />
-          <Kpi
-            icon="tv" ig="var(--blue-50)" ifg="var(--blue-700)"
-            label="Active channels" val={String(summary?.activeChannelsThisMonth ?? 0)}
-            sub="this month"
-          />
+          <div style={{ padding: '6px 14px 16px' }}>
+            {trend.length === 0 ? (
+              <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend data yet</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={trend} margin={{ top: 8, right: 14, left: 6, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="obArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#E85D24" stopOpacity={0.26} />
+                      <stop offset="100%" stopColor="#E85D24" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="#EEF0F3" />
+                  <XAxis dataKey="month" tickFormatter={mShort} tick={{ fontSize: 10.5, fill: '#93A0B5', fontWeight: 600 }} axisLine={{ stroke: '#E5E8ED' }} tickLine={false} interval="preserveStartEnd" minTickGap={4} />
+                  <YAxis hide domain={['dataMin', 'dataMax']} />
+                  <Tooltip formatter={(v) => [fmtRs(v), 'Spend']} labelFormatter={mFull} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <Area type="monotone" dataKey="scheduleValue" stroke="#E85D24" strokeWidth={2.5} fill="url(#obArea)" dot={false} activeDot={{ r: 4.5, fill: '#fff', stroke: '#E85D24', strokeWidth: 2.5 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="summary-grid">
-          <Kpi icon="building" ig="var(--navy-900)" ifg="#fff" label="My agencies" val={String(agencies.length)} sub={agencies.map(a => a.name).join(' · ') || '-'} />
-          <Kpi icon="folder" ig="var(--coral-50)" ifg="var(--coral-600)" label="Clients" val={String(clientTotal)} sub="across your agencies" />
-          <Kpi icon="database" ig="var(--green-50)" ifg="var(--green-600)" label="Database" val="" sub="Upload & manage schedule logs" />
-        </div>
-      )}
 
-      {/* Secondary metric strip (exec) */}
-      {isExec && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 26 }}>
-          <Mini icon="database" label="Schedule logs this month" val={String(summary?.logsThisMonth ?? 0)} />
-          <Mini icon="upload" label="Uploads this month" val={String(summary?.uploadsThisMonth ?? 0)} />
-          <Mini icon="edit" label="Manual entries" val={String(summary?.manualEntriesThisMonth ?? 0)} />
-          <Mini icon="building" label="Agencies" val={String(agencies.length)} />
-        </div>
-      )}
-
-      {/* Charts row (exec) */}
-      {isExec && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 20, marginBottom: 20, alignItems: 'start' }}>
-          <div className="section-card">
-            <div className="section-head">
-              <h3>Billings trend</h3>
-              <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/executive-dashboard')}>Details</span>
-            </div>
-            <div style={{ padding: '16px 14px 8px' }}>
-              {trend.length === 0 ? <ChartEmpty h={220} /> : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={trend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="dashTrend" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#E85D24" stopOpacity={0.32} />
-                        <stop offset="95%" stopColor="#E85D24" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="month" tickFormatter={fmtMonthShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} width={42} />
-                    <Tooltip formatter={(v) => [fmtLKR(v), 'Billings']} labelFormatter={fmtMonth} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
-                    <Area type="monotone" dataKey="scheduleValue" stroke="#E85D24" strokeWidth={2.2} fill="url(#dashTrend)" />
-                  </AreaChart>
+        <div style={CARD}>
+          <CardHead title="Medium Split" sub="Spend share by channel type" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '14px 22px 22px' }}>
+            <div style={{ position: 'relative', width: 140, height: 140, flex: 'none' }}>
+              {mediumData.length > 0 && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={mediumData} dataKey="value" cx="50%" cy="50%" innerRadius={44} outerRadius={62} startAngle={90} endAngle={-270} stroke="none" paddingAngle={1.5}>
+                      {mediumData.map((d) => <Cell key={d.name} fill={MEDIUM[d.name] || '#93A0B5'} />)}
+                    </Pie>
+                    <Tooltip formatter={(v, n) => [fmtRs(v), MEDIUM_LABEL[n] || n]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  </PieChart>
                 </ResponsiveContainer>
               )}
+              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 21, fontWeight: 600, color: '#16243C', lineHeight: 1 }}>{fmtNum(channelsCenter)}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#93A0B5', marginTop: 2 }}>channels</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 13 }}>
+              {mediumData.length === 0 && <div style={{ fontSize: 13, color: '#93A0B5' }}>No spend data yet</div>}
+              {mediumData.map((d) => (
+                <div key={d.name}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 3, background: MEDIUM[d.name] || '#93A0B5' }} />{MEDIUM_LABEL[d.name] || d.name}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace" }}>{mediumTotal > 0 ? Math.round((d.value / mediumTotal) * 100) : 0}%</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#93A0B5', marginLeft: 16 }}>{fmtRs(d.value)}</div>
+                </div>
+              ))}
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="section-card">
-            <div className="section-head">
-              <h3>Medium split (YTD)</h3>
-              <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/spend-analytics')}>Analytics</span>
-            </div>
-            <div style={{ padding: '12px 16px 16px' }}>
-              {medium.length === 0 ? <ChartEmpty h={180} /> : (
-                <>
-                  <ResponsiveContainer width="100%" height={170}>
-                    <PieChart>
-                      <Pie data={medium} dataKey="value" nameKey="medium" innerRadius={48} outerRadius={72} paddingAngle={2}>
-                        {medium.map((d) => <Cell key={d.medium} fill={MEDIUM_COLORS[d.medium] || '#94a3b8'} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => fmtLKR(v)} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                    {medium.map((d) => (
-                      <div key={d.medium} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: 3, background: MEDIUM_COLORS[d.medium] || '#94a3b8', flex: 'none' }} />
-                        <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{d.medium}</span>
-                        <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtShort(d.value)} · {mediumTotal > 0 ? Math.round((d.value / mediumTotal) * 100) : 0}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
+      {/* top clients + activity */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 18 }}>
+        <div style={{ ...CARD, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 22px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: '-.2px' }}>Top Clients by Spend</h3>
+            <span onClick={() => go('/clients')} style={{ fontSize: 12.5, fontWeight: 600, color: '#D9521C', cursor: 'pointer' }}>View all</span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={COL_HEAD}>Client</th>
+                <th style={COL_HEAD}>Agency</th>
+                <th style={{ ...COL_HEAD, textAlign: 'right' }}>Spend</th>
+                <th style={{ ...COL_HEAD, textAlign: 'right' }}>MoM</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clients.length === 0 && (
+                <tr><td colSpan={4} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No client billings yet.</td></tr>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Top lists (exec) */}
-      {isExec && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20, alignItems: 'start' }}>
-          <div className="section-card">
-            <div className="section-head">
-              <h3>Top clients (YTD)</h3>
-              <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/clients')}>All clients</span>
-            </div>
-            <div style={{ padding: 10 }}>
-              {topClients.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No client billings yet.</div>}
-              {topClients.map((c) => (
-                <button
-                  key={c.clientId}
-                  onClick={() => go(`/clients/${c.clientId}`)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 10px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >
-                  <div style={{ width: 24, height: 24, borderRadius: 7, background: 'var(--bg-sunken)', color: 'var(--ink-soft)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 11.5, flex: 'none' }}>{c.rank}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.clientName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{c.agencyName}</div>
-                  </div>
-                  <div style={{ textAlign: 'right', flex: 'none' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{fmtShort(c.ytdBilling)}</div>
-                    {c.momTrend != null && (
-                      <div style={{ fontSize: 11, fontWeight: 700, color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? '#DC2626' : 'var(--muted)' }}>
-                        {c.momDirection === 'down' ? '▼' : '▲'} {Math.abs(c.momTrend)}%
+              {clients.map((c, i) => {
+                const dot = DOTS[i % DOTS.length];
+                const kind = c.momDirection === 'up' ? 'up' : c.momDirection === 'down' ? 'down' : 'flat';
+                return (
+                  <tr key={c.clientId} onClick={() => go(`/clients/${c.clientId}`)} style={{ cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                    <td style={CELL}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ width: 28, height: 28, borderRadius: 8, background: dot[0], color: dot[1], display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(c.clientName)}</span>
+                        <span style={{ fontWeight: 600, color: '#16243C' }}>{c.clientName}</span>
                       </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+                    </td>
+                    <td style={{ ...CELL, color: '#3B4A63' }}>{c.agencyName}</td>
+                    <td style={{ ...CELL, textAlign: 'right', fontWeight: 600, color: '#16243C', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtRs(c.ytdBilling)}</td>
+                    <td style={{ ...CELL, textAlign: 'right' }}>
+                      {c.momTrend != null ? <span style={trendChip(kind)}>{kind === 'down' ? '▼' : '▲'} {Math.abs(c.momTrend)}%</span> : <span style={{ color: '#93A0B5' }}>—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="section-card">
-            <div className="section-head">
-              <h3>Top channels (YTD)</h3>
-              <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/spend-analytics')}>Analytics</span>
-            </div>
-            <div style={{ padding: 10 }}>
-              {topChannels.length === 0 && <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No channel spend yet.</div>}
-              {topChannels.map((c) => (
-                <button
-                  key={c.channelMasterId}
-                  onClick={() => go(`/channel-masters/${c.channelMasterId}`)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 10px', border: 'none', background: 'none', borderRadius: 10, textAlign: 'left', width: '100%', cursor: 'pointer' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-                >
-                  <div style={{ width: 24, height: 24, borderRadius: 7, background: 'var(--bg-sunken)', color: 'var(--ink-soft)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 11.5, flex: 'none' }}>{c.rank}</div>
+        <div style={{ ...CARD, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: '-.2px' }}>Recent Activity</h3>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#15814B', boxShadow: '0 0 0 3px #ECF8F1' }} />
+          </div>
+          <div style={{ padding: '6px 18px 10px' }}>
+            {uploads.length === 0 && <div style={{ padding: '28px 0', textAlign: 'center', color: '#93A0B5', fontSize: 13 }}>No recent activity.</div>}
+            {uploads.map((u) => {
+              const failed = u.failedRows > 0;
+              return (
+                <div key={u.id} style={{ display: 'flex', gap: 12, padding: '13px 2px', borderBottom: '1px solid #EEF0F3' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 9, flex: 'none', display: 'grid', placeItems: 'center', background: failed ? '#FCF4E2' : '#ECF8F1', color: failed ? '#9A5B00' : '#15814B' }}>
+                    <Icon name={failed ? 'alert' : 'check'} size={15} />
+                  </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.channelName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{c.mediaGroup || c.medium} · {c.clientCount} clients</div>
+                    <div style={{ fontSize: 12.5, color: '#3B4A63', lineHeight: 1.45 }}>
+                      <b style={{ color: '#16243C' }}>{u.uploadedBy}</b> uploaded {u.fileName || 'a batch'} · {u.successfulRows}/{u.totalRows} rows{u.agencyName ? ` · ${u.agencyName}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#93A0B5', marginTop: 3 }}>{timeAgo(u.createdAt)}</div>
                   </div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>{fmtShort(c.ytdSpend)}</div>
-                </button>
-              ))}
-            </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
-
-      {/* Lower split: activity/uploads + quick access/agencies */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.55fr 1fr', gap: 20, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {isExec ? (
-            <div className="section-card">
-              <div className="section-head">
-                <h3>Recent uploads</h3>
-                <span className="link" style={{ fontSize: 12.5 }} onClick={() => go('/database')}>Database</span>
-              </div>
-              <div style={{ padding: '6px 10px 8px' }}>
-                {uploads.length === 0 ? (
-                  <div style={{ padding: '28px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No uploads yet.</div>
-                ) : (
-                  <div className="feed">
-                    {uploads.map((u) => {
-                      const failed = u.failedRows > 0;
-                      return (
-                        <div key={u.id} className="feed-item">
-                          <div className="feed-ico" style={{ background: failed ? 'var(--amber-50)' : 'var(--green-50)', color: failed ? '#B45309' : 'var(--green-600)' }}>
-                            <Icon name={failed ? 'alert' : 'upload'} />
-                          </div>
-                          <div className="feed-body">
-                            <div className="feed-text">
-                              <b>{u.uploadedBy}</b> uploaded <b>{u.fileName || 'a file'}</b> · {u.successfulRows}/{u.totalRows} rows
-                              {u.agencyName ? ` · ${u.agencyName}` : ''}{u.scheduleMonth ? ` · ${fmtMonth(u.scheduleMonth)}` : ''}
-                            </div>
-                            <div className="feed-time">{timeAgo(u.createdAt)}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <Agencies />
-          )}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <QuickAccess />
-          {isExec && <Agencies />}
         </div>
       </div>
     </div>

@@ -108,7 +108,11 @@ export default function Layout() {
     <div className="app">
       <div className="sidebar">
         <div className="brand">
-          <div className="brand-mark">O</div>
+          <div className="brand-orbit">
+            <span className="bo-ring" />
+            <span className="bo-track"><span className="bo-dot" /></span>
+            <span className="bo-core">O</span>
+          </div>
           <div>
             <div className="brand-name">Ogilvy</div>
             <div className="brand-sub">ORBIT</div>
