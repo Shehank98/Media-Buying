@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
@@ -15,6 +15,20 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/';
+
+  const stars = useMemo(() => Array.from({ length: 52 }, () => ({
+    top: Math.random() * 100,
+    left: Math.random() * 100,
+    size: +(Math.random() * 2 + 1).toFixed(1),
+    tw: +(Math.random() * 3 + 2).toFixed(2),
+    delay: +(Math.random() * 4).toFixed(2),
+  })), []);
+  const shooters = useMemo(() => Array.from({ length: 3 }, (_, i) => ({
+    top: Math.random() * 35 + 5,
+    left: Math.random() * 35 + 55,
+    dur: +(Math.random() * 4 + 7).toFixed(2),
+    delay: +(i * 4 + Math.random() * 3).toFixed(2),
+  })), []);
 
   if (isAuthenticated) {
     navigate(from, { replace: true });
@@ -54,34 +68,29 @@ export default function LoginPage() {
   return (
     <div className="login-wrap">
       <div className="login-art">
-        <div className="brand" style={{ padding: 0, position: 'relative', zIndex: 1 }}>
-          <div className="brand-mark" style={{ width: 40, height: 40, fontSize: 19 }}>O</div>
-          <div>
-            <div className="brand-name" style={{ fontSize: 17 }}>Ogilvy</div>
-            <div className="brand-sub">Orbit</div>
-          </div>
+        <div className="stars">
+          {stars.map((s, i) => (
+            <span
+              key={i}
+              className="star"
+              style={{ top: `${s.top}%`, left: `${s.left}%`, width: s.size, height: s.size, '--tw': `${s.tw}s`, animationDelay: `${s.delay}s` }}
+            />
+          ))}
+          {shooters.map((s, i) => (
+            <span
+              key={`sh${i}`}
+              className="shooting"
+              style={{ top: `${s.top}%`, left: `${s.left}%`, '--dur': `${s.dur}s`, '--delay': `${s.delay}s` }}
+            />
+          ))}
         </div>
 
-        <div style={{ marginTop: 'auto', position: 'relative', zIndex: 1 }}>
-          <div style={{ fontSize: 32, fontWeight: 770, letterSpacing: '-1px', lineHeight: 1.15, maxWidth: 420 }}>
-            Every buy, every channel, every change - on the record.
-          </div>
-          <p style={{ color: 'var(--navy-300)', fontSize: 15, lineHeight: 1.6, marginTop: 18, maxWidth: 420 }}>
-            Plan, track and audit airtime, sponsorships and print across agencies and clients - with a full change history behind every property.
-          </p>
-          <div style={{ display: 'flex', gap: 28, marginTop: 36 }}>
-            {['3 agencies', '240+ properties', 'Full audit trail'].map((s, i) => (
-              <div key={i}>
-                <div style={{ fontSize: 19, fontWeight: 750, color: '#fff' }}>{s.split(' ')[0]}</div>
-                <div style={{ fontSize: 12.5, color: 'var(--navy-300)', marginTop: 2 }}>{s.split(' ').slice(1).join(' ')}</div>
-              </div>
-            ))}
-          </div>
+        <div className="orbit-hero">
+          <div className="orbit-ring"><div className="orbit-core">O</div></div>
+          <div className="orbit-title">Ogilvy <span>Orbit</span></div>
         </div>
 
-        <div style={{ marginTop: 40, fontSize: 12, color: 'var(--navy-400)', position: 'relative', zIndex: 1 }}>
-          © 2026 Ogilvy Media · Colombo
-        </div>
+        <div className="login-art-foot">© 2026 Ogilvy Media · Colombo</div>
       </div>
 
       <div className="login-card-side">

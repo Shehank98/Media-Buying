@@ -423,6 +423,62 @@ input, select, textarea { font-family: inherit; }
 .login-foot a, .link { color: var(--coral-600); font-weight: 600; text-decoration: none; cursor: pointer; }
 .link:hover, .login-foot a:hover { text-decoration: underline; }
 
+/* ── Login space hero ─────────────────────────────────────────────── */
+.login-art .stars { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.login-art .star {
+  position: absolute; background: #fff; border-radius: 50%;
+  animation: twinkle var(--tw, 3s) ease-in-out infinite; will-change: opacity, transform;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: .12; transform: scale(.7); }
+  50%      { opacity: .85; transform: scale(1.2); }
+}
+.login-art .shooting {
+  position: absolute; width: 2px; height: 2px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 7px 1px rgba(255,255,255,.85);
+  opacity: 0; animation: shoot var(--dur, 6s) ease-in infinite; animation-delay: var(--delay, 0s);
+}
+.login-art .shooting::after {
+  content: ""; position: absolute; top: 50%; right: 0; transform: translateY(-50%);
+  width: 90px; height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,.7), transparent);
+}
+@keyframes shoot {
+  0%        { opacity: 0; transform: translate(0, 0); }
+  6%        { opacity: 1; }
+  20%       { opacity: 1; }
+  34%, 100% { opacity: 0; transform: translate(-360px, 210px); }
+}
+.orbit-hero { margin: auto; position: relative; z-index: 1; text-align: center; animation: fadeIn .6s ease; }
+.orbit-ring {
+  width: 132px; height: 132px; border-radius: 50%; margin: 0 auto 30px;
+  border: 1px solid rgba(255,255,255,.14); display: grid; place-items: center;
+  position: relative; animation: orbitSpin 16s linear infinite;
+  box-shadow: inset 0 0 60px rgba(232,93,36,.12);
+}
+.orbit-ring::after {
+  content: ""; position: absolute; top: -4px; left: 50%; margin-left: -4px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--coral-500);
+  box-shadow: 0 0 12px 2px rgba(232,93,36,.85);
+}
+.orbit-core {
+  width: 70px; height: 70px; border-radius: 20px;
+  background: linear-gradient(150deg, var(--coral-400), var(--coral-600));
+  display: grid; place-items: center; color: #fff; font-size: 33px; font-weight: 800;
+  box-shadow: 0 10px 30px rgba(232,93,36,.4); animation: orbitSpinRev 16s linear infinite;
+}
+.orbit-title { font-size: 46px; font-weight: 800; letter-spacing: -1.6px; line-height: 1.04; color: #fff; }
+.orbit-title span {
+  background: linear-gradient(90deg, var(--coral-400), var(--coral-600));
+  background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+}
+.login-art-foot { position: absolute; bottom: 28px; left: 56px; font-size: 12px; color: var(--navy-400); z-index: 1; }
+@keyframes orbitSpin { to { transform: rotate(360deg); } }
+@keyframes orbitSpinRev { to { transform: rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .login-art .star, .login-art .shooting, .orbit-ring, .orbit-core { animation: none; }
+}
+
 .empty-soft { text-align: center; padding: 54px 20px; color: var(--muted); }
 .empty-soft svg { width: 38px; height: 38px; opacity: .4; margin-bottom: 12px; }
 
