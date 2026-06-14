@@ -6,8 +6,8 @@ import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
-import PackageResponsePage from './pages/PackageResponsePage';
 import PackagesPage from './pages/PackagesPage';
+import MyPackagesPage from './pages/MyPackagesPage';
 import DashboardPage from './pages/DashboardPage';
 import AgenciesPage from './pages/AgenciesPage';
 import AgencyDetailPage from './pages/AgencyDetailPage';
@@ -32,7 +32,6 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/package-response" element={<PackageResponsePage />} />
           <Route
             path="/change-password"
             element={
@@ -108,6 +107,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
                   <PackagesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-packages"
+              element={
+                <ProtectedRoute requiredRoles={['GROUP_HEAD']}>
+                  <MyPackagesPage />
                 </ProtectedRoute>
               }
             />

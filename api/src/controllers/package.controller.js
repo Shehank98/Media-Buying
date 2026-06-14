@@ -1,18 +1,12 @@
-import crypto from 'crypto';
 import prisma from '../utils/prisma.js';
-import { generateResetToken } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 
 const INTERESTS = ['INTERESTED', 'NOT_INTERESTED', 'NEGOTIATE'];
 const FOLLOW_UPS = ['PENDING', 'FOLLOWED_UP', 'BOOKED', 'CLOSED'];
-const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const INTEREST_LABEL = { INTERESTED: 'Interested', NOT_INTERESTED: 'Not interested', NEGOTIATE: 'Open to negotiate' };
 
 function frontendBase() {
   return (process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app').split(',')[0].trim();
-}
-
-function hashToken(token) {
-  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function num(v) {
@@ -204,26 +198,33 @@ export async function sendPackage(req, res) {
     if (!users.length) return res.status(400).json({ error: 'No valid team-head recipients' });
 
     const base = frontendBase();
+    const inboxLink = `${base}/my-packages`;
     const lineItemsForEmail = pkg.lineItems.map(li => ({ label: li.label, rate: num(li.rate) }));
     const sent = [];
 
     for (const u of users) {
-      const { token, tokenHash } = generateResetToken();
-      // One active token per (package,user): drop any prior unresponded recipient row.
-      await prisma.packageRecipient.deleteMany({
-        where: { packageId: id, userId: u.id, respondedAt: null },
+      // One recipient row per (package,user). Re-sending refreshes the timestamp
+      // and keeps any existing response intact.
+      const existing = await prisma.packageRecipient.findFirst({
+        where: { packageId: id, userId: u.id },
       });
-      await prisma.packageRecipient.create({
-        data: {
-          packageId: id,
-          userId: u.id,
-          tokenHash,
-          expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-          sentAt: new Date(),
-        },
-      });
+      if (existing) {
+        await prisma.packageRecipient.update({ where: { id: existing.id }, data: { sentAt: new Date() } });
+      } else {
+        await prisma.packageRecipient.create({ data: { packageId: id, userId: u.id, sentAt: new Date() } });
+      }
 
-      const responseLink = `${base}/package-response?token=${token}`;
+      // In-app notification so they see it the moment they log in.
+      await prisma.notification.create({
+        data: {
+          userId: u.id,
+          type: 'PACKAGE_SHARED',
+          title: 'New media package shared',
+          message: `"${pkg.name}" was shared with you. Open Media Packages to respond.`,
+        },
+      }).catch(() => {});
+
+      // Email points to the in-app inbox (login required) — no public token link.
       if (u.email) {
         sendEmail({
           type: 'package',
@@ -232,7 +233,7 @@ export async function sendPackage(req, res) {
           packageName: pkg.name,
           intro: pkg.emailIntro,
           lineItems: lineItemsForEmail,
-          responseLink,
+          responseLink: inboxLink,
           pdfBase64: pdfBase64 || null,
           pdfFileName: pdfFileName || `${pkg.name}.pdf`,
         }).catch(err => console.error(`Package email to ${u.email} failed:`, err));
@@ -240,7 +241,7 @@ export async function sendPackage(req, res) {
       sent.push({ id: u.id, name: u.name, email: u.email });
     }
 
-    return res.json({ message: `Package sent to ${sent.length} team head(s)`, recipients: sent });
+    return res.json({ message: `Package shared with ${sent.length} team head(s)`, recipients: sent });
   } catch (error) {
     console.error('Send package error:', error);
     return res.status(500).json({ error: 'Failed to send package', detail: error.message });
@@ -292,59 +293,70 @@ export async function updateFollowUp(req, res) {
   }
 }
 
-// ── Public (token-authenticated, no JWT) ─────────────────────────────────────
+// ── Team head (GROUP_HEAD): in-app inbox ─────────────────────────────────────
 
-async function recipientFromToken(token) {
-  if (!token) return null;
-  const tokenHash = hashToken(token);
-  return prisma.packageRecipient.findFirst({
-    where: { tokenHash, expiresAt: { gt: new Date() } },
-    include: {
-      user: { select: { name: true } },
-      package: { include: { lineItems: { orderBy: { sortOrder: 'asc' } } } },
-    },
-  });
-}
-
-export async function getPackageByToken(req, res) {
+// Packages shared with the signed-in team head — opened in their own interface.
+export async function listMyPackages(req, res) {
   try {
-    const recipient = await recipientFromToken(req.query.token);
-    if (!recipient) return res.status(400).json({ error: 'This link is invalid or has expired.' });
-
-    return res.json({
-      recipientName: recipient.user?.name || '',
-      respondedAt: recipient.respondedAt,
-      response: {
-        interest: recipient.interest,
-        budgetNote: recipient.budgetNote || '',
-        clientName: recipient.clientName || '',
-        notes: recipient.notes || '',
-      },
-      package: {
-        name: recipient.package.name,
-        category: recipient.package.category,
-        emailIntro: recipient.package.emailIntro,
-        lineItems: recipient.package.lineItems.map(serializeLineItem),
+    const rows = await prisma.packageRecipient.findMany({
+      where: { userId: req.user.id, sentAt: { not: null } },
+      orderBy: { sentAt: 'desc' },
+      include: {
+        package: {
+          include: {
+            lineItems: { orderBy: { sortOrder: 'asc' } },
+            creator: { select: { name: true } },
+          },
+        },
       },
     });
+
+    const items = rows.map(r => ({
+      recipientId: r.id,
+      sentAt: r.sentAt,
+      respondedAt: r.respondedAt,
+      response: {
+        interest: r.interest,
+        budgetNote: r.budgetNote || '',
+        clientName: r.clientName || '',
+        notes: r.notes || '',
+      },
+      package: {
+        id: r.package.id,
+        name: r.package.name,
+        category: r.package.category,
+        emailIntro: r.package.emailIntro,
+        isActive: r.package.isActive,
+        sharedBy: r.package.creator?.name || '',
+        lineItems: r.package.lineItems.map(serializeLineItem),
+      },
+    }));
+    return res.json({ items });
   } catch (error) {
-    console.error('Get package by token error:', error);
-    return res.status(500).json({ error: 'Failed to load package', detail: error.message });
+    console.error('List my packages error:', error);
+    return res.status(500).json({ error: 'Failed to load your packages', detail: error.message });
   }
 }
 
-export async function submitPackageResponse(req, res) {
+export async function respondToMyPackage(req, res) {
   try {
-    const { token, interest, budgetNote, clientName, notes } = req.body;
+    const recipientId = parseInt(req.params.recipientId);
+    const { interest, budgetNote, clientName, notes } = req.body;
     if (!INTERESTS.includes(interest)) {
       return res.status(400).json({ error: 'Please select your interest level.' });
     }
-    const recipient = await recipientFromToken(token);
-    if (!recipient) return res.status(400).json({ error: 'This link is invalid or has expired.' });
 
-    const firstResponse = !recipient.respondedAt;
+    const recipient = await prisma.packageRecipient.findUnique({
+      where: { id: recipientId },
+      include: { package: true, user: { select: { name: true } } },
+    });
+    // Only the recipient may respond to their own shared package.
+    if (!recipient || recipient.userId !== req.user.id) {
+      return res.status(404).json({ error: 'Package not found.' });
+    }
+
     await prisma.packageRecipient.update({
-      where: { id: recipient.id },
+      where: { id: recipientId },
       data: {
         interest,
         budgetNote: budgetNote ? String(budgetNote) : null,
@@ -354,25 +366,22 @@ export async function submitPackageResponse(req, res) {
       },
     });
 
-    // Notify admins (derive server-side; public request body is untrusted).
-    if (firstResponse) {
-      const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
-      const ids = new Set(admins.map(a => a.id));
-      ids.add(recipient.package.createdById);
-      const label = { INTERESTED: 'Interested', NOT_INTERESTED: 'Not interested', NEGOTIATE: 'Open to negotiate' }[interest];
-      await prisma.notification.createMany({
-        data: Array.from(ids).map(userId => ({
-          userId,
-          type: 'PACKAGE_RESPONSE',
-          title: 'Package response received',
-          message: `${recipient.user?.name || 'A team head'} responded "${label}" to "${recipient.package.name}".`,
-        })),
-      });
-    }
+    // Notify the package creator + super admins so they see the reply at their end.
+    const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
+    const ids = new Set(admins.map(a => a.id));
+    ids.add(recipient.package.createdById);
+    await prisma.notification.createMany({
+      data: Array.from(ids).map(userId => ({
+        userId,
+        type: 'PACKAGE_RESPONSE',
+        title: 'Package response received',
+        message: `${recipient.user?.name || 'A team head'} responded "${INTEREST_LABEL[interest]}" to "${recipient.package.name}".`,
+      })),
+    }).catch(() => {});
 
     return res.json({ message: 'Response submitted. Thank you!' });
   } catch (error) {
-    console.error('Submit package response error:', error);
+    console.error('Respond to my package error:', error);
     return res.status(500).json({ error: 'Failed to submit response', detail: error.message });
   }
 }

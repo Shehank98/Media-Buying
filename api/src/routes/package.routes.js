@@ -11,15 +11,15 @@ import {
   sendPackage,
   getPackageResponses,
   updateFollowUp,
-  getPackageByToken,
-  submitPackageResponse,
+  listMyPackages,
+  respondToMyPackage,
 } from '../controllers/package.controller.js';
 
 const router = Router();
 
-// Public, token-authenticated (no JWT) — declare before any '/:id' routes.
-router.get('/public/by-token', getPackageByToken);
-router.post('/public/submit', submitPackageResponse);
+// Team head (GROUP_HEAD) in-app inbox — literal segments before '/:id'.
+router.get('/inbox', authenticate, requireRole('GROUP_HEAD'), listMyPackages);
+router.post('/inbox/:recipientId/respond', authenticate, requireRole('GROUP_HEAD'), respondToMyPackage);
 
 // Admin (SUPER_ADMIN) — literal segments before '/:id'.
 router.get('/recipients/group-heads', authenticate, requireRole('SUPER_ADMIN'), listGroupHeads);
