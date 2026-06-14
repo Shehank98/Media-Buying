@@ -3,6 +3,23 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 
+// Anthropic-style sunburst accent
+function Burst({ size = 18, style }) {
+  const spokes = Array.from({ length: 8 }, (_, i) => (i * 360) / 8);
+  return (
+    <svg className="spark" width={size} height={size} viewBox="0 0 24 24" style={style} aria-hidden="true">
+      {spokes.map((a) => (
+        <line
+          key={a}
+          x1="12" y1="12" x2="12" y2="2"
+          transform={`rotate(${a} 12 12)`}
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+        />
+      ))}
+    </svg>
+  );
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('shehan.kavishka@ogilvy.com');
   const [pw, setPw] = useState('');
@@ -16,18 +33,12 @@ export default function LoginPage() {
   const location = useLocation();
   const from = location.state?.from?.pathname || '/';
 
-  const stars = useMemo(() => Array.from({ length: 52 }, () => ({
-    top: Math.random() * 100,
-    left: Math.random() * 100,
-    size: +(Math.random() * 2 + 1).toFixed(1),
-    tw: +(Math.random() * 3 + 2).toFixed(2),
-    delay: +(Math.random() * 4).toFixed(2),
-  })), []);
-  const shooters = useMemo(() => Array.from({ length: 3 }, (_, i) => ({
-    top: Math.random() * 35 + 5,
-    left: Math.random() * 35 + 55,
-    dur: +(Math.random() * 4 + 7).toFixed(2),
-    delay: +(i * 4 + Math.random() * 3).toFixed(2),
+  const sparks = useMemo(() => Array.from({ length: 9 }, () => ({
+    top: Math.random() * 90 + 4,
+    left: Math.random() * 90 + 4,
+    size: Math.round(Math.random() * 14 + 12),
+    dur: +(Math.random() * 5 + 7).toFixed(2),
+    delay: +(Math.random() * 6).toFixed(2),
   })), []);
 
   if (isAuthenticated) {
@@ -68,18 +79,11 @@ export default function LoginPage() {
   return (
     <div className="login-wrap">
       <div className="login-art">
-        <div className="stars">
-          {stars.map((s, i) => (
-            <span
+        <div className="sparks">
+          {sparks.map((s, i) => (
+            <Burst
               key={i}
-              className="star"
-              style={{ top: `${s.top}%`, left: `${s.left}%`, width: s.size, height: s.size, '--tw': `${s.tw}s`, animationDelay: `${s.delay}s` }}
-            />
-          ))}
-          {shooters.map((s, i) => (
-            <span
-              key={`sh${i}`}
-              className="shooting"
+              size={s.size}
               style={{ top: `${s.top}%`, left: `${s.left}%`, '--dur': `${s.dur}s`, '--delay': `${s.delay}s` }}
             />
           ))}
