@@ -3,7 +3,7 @@ import PDFDocument from 'pdfkit';
 
 export async function generateExcel(data, title) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Media Buying System';
+  workbook.creator = 'Ogilvy Orbit';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(title);

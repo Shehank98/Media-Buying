@@ -39,7 +39,7 @@ export default function ChangePasswordPage() {
             <div className="brand-mark" style={{ width: 40, height: 40, fontSize: 19 }}>O</div>
             <div>
               <div className="brand-name" style={{ fontSize: 17, color: 'var(--ink)' }}>Ogilvy</div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '.3px', marginTop: 2 }}>Media Buying Records</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '.3px', marginTop: 2 }}>Orbit</div>
             </div>
           </div>
 

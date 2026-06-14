@@ -1,4 +1,4 @@
-# Media Buying Records System
+# Ogilvy Orbit (Media Buying Records System)
 
 ## Architecture
 

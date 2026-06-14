@@ -1,5 +1,5 @@
 /**
- * Media Buying Records System — Email Service
+ * Ogilvy Orbit — Email Service
  *
  * Deploy as a Web App:
  *   Execute as: Me
@@ -14,8 +14,8 @@
  *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
  */
 
-var BRAND_NAME = "Media Buying Records";
-var FROM_NAME  = "Media Buying Records";
+var BRAND_NAME = "Ogilvy Orbit";
+var FROM_NAME  = "Ogilvy Orbit";
 
 // ─── Router ────────────────────────────────────────────────────────────────
 

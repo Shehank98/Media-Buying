@@ -365,7 +365,7 @@ export async function exportProperties(req, res) {
     }));
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Media Buying System';
+    workbook.creator = 'Ogilvy Orbit';
     workbook.created = new Date();
 
     const HEADER_COLUMNS = [
@@ -587,7 +587,7 @@ export async function exportScheduleLogs(req, res) {
     // ─── Excel export ──────────────────────────────────────────────────
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Media Buying System';
+    workbook.creator = 'Ogilvy Orbit';
     workbook.created = new Date();
 
     const HEADER_COLUMNS = [

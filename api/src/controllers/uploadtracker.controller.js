@@ -261,7 +261,7 @@ export async function exportMasterSheet(req, res) {
     });
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Ogilvy Media Buying';
+    wb.creator = 'Ogilvy Orbit';
 
     const headerStyle = {
       font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },

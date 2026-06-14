@@ -1,4 +1,4 @@
-# Media Buying Records System
+# Ogilvy Orbit
 
 A full-stack application for managing media buying records across agencies, clients, and channels (TV, Radio, Print).
 

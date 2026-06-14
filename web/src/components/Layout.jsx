@@ -111,7 +111,7 @@ export default function Layout() {
           <div className="brand-mark">O</div>
           <div>
             <div className="brand-name">Ogilvy</div>
-            <div className="brand-sub">MEDIA BUYING RECORDS</div>
+            <div className="brand-sub">ORBIT</div>
           </div>
         </div>
 

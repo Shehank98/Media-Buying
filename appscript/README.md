@@ -45,7 +45,7 @@ All three render full branded HTML (navy + coral theme) with a plain-text fallba
 1. Click **Deploy ▸ New deployment**.
 2. **Select type** (gear icon) → **Web app**.
 3. Configure:
-   - **Description:** `Media Buying email webhook`
+   - **Description:** `Ogilvy Orbit email webhook`
    - **Execute as:** **Me** (your account — required to send mail)
    - **Who has access:** **Anyone**
      *(This only exposes the email-sending endpoint; it does not expose your
@@ -77,7 +77,7 @@ Redeploy / restart the API so it picks up the variable.
 
 **Health check** — open the `/exec` URL in a browser. You should see:
 ```json
-{ "status": "ok", "service": "Media Buying Records Email Service" }
+{ "status": "ok", "service": "Ogilvy Orbit Email Service" }
 ```
 
 **End-to-end:**

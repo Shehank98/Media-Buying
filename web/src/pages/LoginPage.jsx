@@ -58,7 +58,7 @@ export default function LoginPage() {
           <div className="brand-mark" style={{ width: 40, height: 40, fontSize: 19 }}>O</div>
           <div>
             <div className="brand-name" style={{ fontSize: 17 }}>Ogilvy</div>
-            <div className="brand-sub">Media Buying Records</div>
+            <div className="brand-sub">Orbit</div>
           </div>
         </div>
 
