@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import Icon from '../components/Icon';
+import Icon, { fmtLKR } from '../components/Icon';
 import api from '../lib/api';
 
 export default function ClientsPage() {
@@ -108,17 +108,22 @@ export default function ClientsPage() {
     }
   };
 
-  if (loading) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>;
+  const MONO = "'Spline Sans Mono', monospace";
+
+  if (loading) return <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto', padding: '60px 0', textAlign: 'center', color: '#6B7790' }}>Loading…</div>;
 
   return (
-    <div className="content-narrow fade-in">
-      <div className="page-head">
+    <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
         <div>
-          <h1 className="page-title">Clients</h1>
-          <p className="page-sub">{clients.length} client{clients.length !== 1 ? 's' : ''} you can access</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: '#16243C' }}>Clients</h1>
+          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>{clients.length} client{clients.length !== 1 ? 's' : ''} you can access</p>
         </div>
         {canManage && (
-          <button className="btn btn-primary" onClick={openAdd}>
+          <button
+            onClick={openAdd}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E85D24', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 1px 2px rgba(232,93,36,.4)' }}
+          >
             <Icon name="plus" size={16} />Add client
           </button>
         )}
@@ -131,31 +136,45 @@ export default function ClientsPage() {
         </div>
       )}
 
-      <div className="tbl-wrap">
+      <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', overflow: 'hidden' }}>
         {clients.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>No clients yet.</div>
+          <div style={{ padding: '48px 24px', textAlign: 'center', color: '#6B7790' }}>No clients yet.</div>
         ) : (
-          <table className="tbl">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr>
-              <th>Client</th>
-              <th>Agency</th>
-              <th style={{ textAlign: 'center' }}>Channels</th>
-              {canManage && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
-              <th style={{ width: 40 }}></th>
+              {['Client', 'Agency'].map(h => (
+                <th key={h} style={{ textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '12px 22px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' }}>{h}</th>
+              ))}
+              <th style={{ textAlign: 'center', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '12px 22px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' }}>Channels</th>
+              <th style={{ textAlign: 'right', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '12px 22px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' }}>YTD Spend</th>
+              {canManage && <th style={{ width: 80, textAlign: 'right', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '12px 22px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' }}>Actions</th>}
+              <th style={{ width: 40, background: '#F5F6F8', borderBottom: '1px solid #E5E8ED' }}></th>
             </tr></thead>
             <tbody>
-              {clients.map(c => (
-                <tr key={c.id} className="clickable" onClick={() => navigate(`/clients/${c.id}`)}>
-                  <td>
+              {clients.map(c => {
+                const channelCount = c._count?.channels ?? c.channelCount ?? null;
+                const ytd = c.ytdSpend ?? c.ytd ?? null;
+                return (
+                <tr
+                  key={c.id}
+                  onClick={() => navigate(`/clients/${c.id}`)}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#F7F8FA'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = ''; }}
+                >
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--bg-sunken)', color: 'var(--navy-800)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>{c.name?.[0]}</div>
-                      <span className="strong">{c.name}</span>
+                      <div style={{ width: 34, height: 34, borderRadius: 9, background: '#EEF0F3', color: '#0F1F3D', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>{c.name?.[0]}</div>
+                      <span style={{ fontWeight: 600, color: '#16243C' }}>{c.name}</span>
                     </div>
                   </td>
-                  <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
-                  <td style={{ textAlign: 'center' }}><span className="count-badge">{c._count?.channels || c.channelCount || 0}</span></td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', color: '#6B7790' }}>{c.agencyName || '—'}</td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-block', minWidth: 26, fontSize: 12, fontWeight: 700, fontFamily: MONO, background: '#EEF0F3', color: '#3B4A63', padding: '2px 9px', borderRadius: 20 }}>{channelCount ?? '—'}</span>
+                  </td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'right', fontWeight: 600, fontFamily: MONO, color: '#16243C' }}>{ytd != null ? fmtLKR(ytd) : '—'}</td>
                   {canManage && (
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'right' }}>
                       <div className="row-actions">
                         <button className="act-btn" title="Edit client" onClick={e => openEdit(c, e)}>
                           <Icon name="edit" size={15} />
@@ -168,9 +187,9 @@ export default function ClientsPage() {
                       </div>
                     </td>
                   )}
-                  <td><Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} /></td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3' }}><Icon name="chevR" size={16} style={{ color: '#C7D0DD' }} /></td>
                 </tr>
-              ))}
+              ); })}
             </tbody>
           </table>
         )}

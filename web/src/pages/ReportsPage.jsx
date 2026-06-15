@@ -348,13 +348,69 @@ export default function ReportsPage() {
     };
   }, [rows, source]);
 
+  // ---- Design tokens ----
+  const CARD = {
+    background: '#fff',
+    border: '1px solid #E5E8ED',
+    borderRadius: 14,
+    boxShadow: '0 1px 2px rgba(15,31,61,.06)',
+  };
+  const TINTS = [
+    { bg: '#FDF1EB', fg: '#D9521C' },
+    { bg: '#EDF3FD', fg: '#1F5BB5' },
+    { bg: '#ECF8F1', fg: '#15814B' },
+    { bg: '#E8DEF8', fg: '#6B3FB5' },
+    { bg: '#FCF4E2', fg: '#9A5B00' },
+    { bg: '#FBE0DA', fg: '#C5391F' },
+  ];
+
+  // Real report types this page offers = each group-by mode for the active
+  // source. Selecting a card sets the grouping and exports an Excel file via
+  // the page's existing handleExportExcel handler.
+  const sourceLabel = source === 'properties' ? 'Property' : 'Schedule Log';
+  const reportCards = GROUP_OPTIONS.map((opt) => ({
+    key: opt.key,
+    icon: opt.icon,
+    name:
+      opt.key === 'all'
+        ? `${sourceLabel} Report — All Data`
+        : `${sourceLabel} Report ${opt.label}`,
+    desc:
+      opt.key === 'channel'
+        ? `${sourceLabel.toLowerCase()} data grouped by channel, each channel with its own subtotal.`
+        : opt.key === 'client'
+        ? `${sourceLabel.toLowerCase()} data grouped by client, each client with its own subtotal.`
+        : opt.key === 'agency'
+        ? `${sourceLabel.toLowerCase()} data grouped by agency, each agency with its own subtotal.`
+        : `Flat ${sourceLabel.toLowerCase()} listing across every agency, client and channel.`,
+  }));
+
+  const generateReport = (groupKey) => {
+    changeGroupBy(groupKey);
+    handleExportExcel();
+  };
+
+  // Recently generated history derived from the active source/grouping —
+  // wired to re-run the existing export handler.
+  const recent = !loading && rows.length > 0
+    ? grouped
+      ? grouped.slice(0, 5).map((g) => ({
+          name: `${g.name} — ${sourceLabel}`,
+          sub: `${groupSubtotal(g)}`,
+        }))
+      : [{
+          name: `${sourceLabel} Report — All Data`,
+          sub: `${rows.length} ${rows.length === 1 ? 'row' : 'rows'} · ${fmtLKR(source === 'properties' ? computedTotals.cost : computedTotals.value)}`,
+        }]
+    : [];
+
   return (
-    <div className="fade-in">
+    <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       {/* Header */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">Buying Reports</h1>
-          <p className="page-sub">Export property and schedule log data grouped by channel, client, or agency</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: 0 }}>Reports</h1>
+          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Generate and export media buying reports</p>
         </div>
         <button
           className="btn btn-primary"
@@ -364,6 +420,60 @@ export default function ReportsPage() {
           <Icon name="download" size={16} />
           {exporting ? 'Exporting...' : 'Export Excel'}
         </button>
+      </div>
+
+      {/* Report Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gap: 18,
+        marginBottom: 24,
+      }}>
+        {reportCards.map((rc, i) => {
+          const tint = TINTS[i % TINTS.length];
+          const fmtPill = source === 'properties' ? 'EXCEL' : 'EXCEL';
+          return (
+            <div
+              key={rc.key}
+              onClick={() => generateReport(rc.key)}
+              style={{
+                ...CARD,
+                padding: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                cursor: 'pointer',
+                transition: 'border-color .15s ease, box-shadow .15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#C7D0DD';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(15,31,61,.09)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#E5E8ED';
+                e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,31,61,.06)';
+              }}
+            >
+              <div style={{
+                width: 40, height: 40, borderRadius: 11,
+                background: tint.bg, color: tint.fg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                marginBottom: 14,
+              }}>
+                <Icon name={rc.icon} size={20} />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{rc.name}</div>
+              <div style={{ fontSize: 12.5, color: '#6B7790', marginTop: 6, lineHeight: 1.5, flex: 1 }}>{rc.desc}</div>
+              <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#3B4A63',
+                  background: '#EEF0F3', padding: '3px 9px', borderRadius: 6,
+                }}>{fmtPill}</span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#D9521C' }}>Generate →</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Error */}
@@ -683,6 +793,55 @@ export default function ReportsPage() {
               </tr>
             </tfoot>
           </table>
+        </div>
+      )}
+
+      {/* Recently Generated */}
+      {recent.length > 0 && (
+        <div style={{ ...CARD, padding: 20, marginTop: 24 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C', marginBottom: 14 }}>Recently Generated</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {recent.map((r, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid #EEF0F3',
+                }}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: 9,
+                  background: '#FDF1EB', color: '#D9521C',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <Icon name="file" size={16} />
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                  <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 2 }}>{r.sub}</div>
+                </div>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#3B4A63',
+                  background: '#EEF0F3', padding: '3px 9px', borderRadius: 6, flexShrink: 0,
+                }}>EXCEL</span>
+                <button
+                  onClick={handleExportExcel}
+                  disabled={exporting}
+                  title="Download"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#93A0B5', display: 'flex', alignItems: 'center', padding: 4,
+                    transition: 'color .15s ease', flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#D9521C'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#93A0B5'; }}
+                >
+                  <Icon name="download" size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

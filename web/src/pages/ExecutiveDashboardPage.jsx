@@ -214,17 +214,65 @@ export default function ExecutiveDashboardPage() {
     return null;
   };
 
+  // Delta/trend chip per design tokens
+  const Chip = ({ dir = 'flat', children }) => {
+    const palette = {
+      up: { color: '#15814B', bg: '#ECF8F1' },
+      down: { color: '#C5391F', bg: '#FBE0DA' },
+      flat: { color: '#6B7790', bg: '#EEF0F3' },
+    };
+    const p = palette[dir] || palette.flat;
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700,
+        padding: '3px 8px', borderRadius: 7, color: p.color, background: p.bg,
+        fontFamily: "'Spline Sans Mono', monospace",
+      }}>
+        {children}
+      </span>
+    );
+  };
+
+  // Build KPI list from real summary data (only metrics with data)
+  const kpis = summary ? [
+    {
+      key: 'billingsThisMonth', icon: 'dollar', label: 'Billings this month',
+      value: fmtLKR(summary.billingsThisMonth),
+      chip: summary.yoyGrowthPct != null
+        ? { dir: summary.yoyGrowthPct >= 0 ? 'up' : 'down', text: (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%' }
+        : { dir: 'flat', text: 'YoY' },
+    },
+    { key: 'billingsYTD', icon: 'trending-up', label: 'YTD Billings', value: fmtLKR(summary.billingsYTD) },
+    summary.yoyGrowthPct != null && {
+      key: 'yoy', icon: 'bar-chart', label: 'YoY Growth',
+      value: (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%',
+      valueColor: summary.yoyGrowthPct >= 0 ? '#15814B' : '#C5391F',
+      chip: { dir: summary.yoyGrowthPct >= 0 ? 'up' : 'down', text: summary.yoyGrowthPct >= 0 ? 'up' : 'down' },
+    },
+    summary.activeClients != null && { key: 'activeClients', icon: 'users', label: 'Active Clients', value: String(summary.activeClients) },
+    summary.logsThisMonth != null && { key: 'logsThisMonth', icon: 'calendar', label: 'Logs this month', value: String(summary.logsThisMonth) },
+    summary.activeChannelsThisMonth != null && { key: 'activeChannels', icon: 'tv', label: 'Active Channels', value: String(summary.activeChannelsThisMonth) },
+    summary.uploadsThisMonth != null && { key: 'uploads', icon: 'upload', label: 'Uploads this month', value: String(summary.uploadsThisMonth) },
+    summary.manualEntriesThisMonth != null && { key: 'manual', icon: 'edit', label: 'Manual entries', value: String(summary.manualEntriesThisMonth) },
+  ].filter(Boolean) : [];
+
   return (
-    <div className="fade-in" style={{ maxWidth: 1400 }}>
+    <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .dash-section { margin-bottom: 36px; }
         .dash-section-title { font-size: 15px; font-weight: 720; color: var(--ink); margin-bottom: 14px; letter-spacing: -0.3px; }
-        .stat-grid-6 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
-        .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-        .chart-card-title { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
-        .chart-card-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+        .ed-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); }
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .kpi-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 13px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 16px 18px; }
+        .kpi-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .kpi-val { font-size: 23px; font-weight: 700; letter-spacing: -.6px; font-family: 'Spline Sans Mono', monospace; color: #16243C; }
+        .kpi-label { font-size: 12px; color: #6B7790; margin-top: 5px; }
+        .two-col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; }
+        .chart-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 20px; }
+        .chart-card-title { font-size: 14px; font-weight: 700; color: #16243C; margin-bottom: 4px; }
+        .chart-card-sub { font-size: 12px; color: #6B7790; margin-bottom: 16px; }
+        .ed-secondary-btn { border: 1px solid #D5DAE2; background: #fff; color: #3B4A63; border-radius: 10px; padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
         .toggle-group { display: flex; gap: 6px; }
         .toggle-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
         .toggle-btn.active { background: var(--navy-900); color: #fff; border-color: var(--navy-900); }
@@ -235,111 +283,64 @@ export default function ExecutiveDashboardPage() {
         .activity-table-wrap { max-height: 400px; overflow-y: auto; }
         .pagination { display: flex; align-items: center; gap: 10px; margin-top: 12px; justify-content: flex-end; }
         .placeholder-card { background: var(--bg-sunken); border: 2px dashed var(--border-strong); border-radius: 12px; padding: 40px; text-align: center; }
-        @media (max-width: 900px) { .two-col-grid { grid-template-columns: 1fr; } }
+        .league-row td { padding: 12px 22px; border-bottom: 1px solid #EEF0F3; }
+        .league-row:hover { background: #F7F8FA; }
+        @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
       `}</style>
 
       {/* Page header */}
-      <div className="page-head" style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 16 }}>
         <div>
-          <h1 className="page-title">Executive Dashboard</h1>
-          <p className="page-sub">Billings overview across all agencies</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: 0 }}>Executive Dashboard</h1>
+          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Billings overview across all agencies</p>
         </div>
-        {isSuperAdmin && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>Agency</label>
-            <select
-              className="select"
-              value={agencyId}
-              onChange={e => setAgencyId(e.target.value)}
-              style={{ minWidth: 180 }}
-            >
-              <option value="">All agencies</option>
-              {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isSuperAdmin && (
+            <>
+              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>Agency</label>
+              <select
+                className="select"
+                value={agencyId}
+                onChange={e => setAgencyId(e.target.value)}
+                style={{ minWidth: 180 }}
+              >
+                <option value="">All agencies</option>
+                {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </>
+          )}
+          <button className="ed-secondary-btn" onClick={() => window.print()}>
+            <Icon name="upload" size={15} />
+            Export summary
+          </button>
+        </div>
       </div>
 
-      {/* Section 1: Summary Cards */}
-      <div className="dash-section">
-        <div className="dash-section-title">Overview</div>
-        <div className="stat-grid-6">
-          {summaryLoading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="stat" style={{ padding: 20 }}>
-                <Skeleton h={12} w="60%" />
-                <div style={{ marginTop: 10 }}><Skeleton h={28} w="80%" /></div>
-              </div>
-            ))
-          ) : summary ? (
-            <>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Billings this month</span>
-                  <span className="stat-ico"><Icon name="dollar" size={17} /></span>
-                </div>
-                <div className="stat-val">{fmtLKR(summary.billingsThisMonth)}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">YTD Billings</span>
-                  <span className="stat-ico"><Icon name="trending-up" size={17} /></span>
-                </div>
-                <div className="stat-val">{fmtLKR(summary.billingsYTD)}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">YoY Growth</span>
-                  <span className="stat-ico"><Icon name="bar-chart" size={17} /></span>
-                </div>
-                <div className="stat-val" style={{ color: yoyColor(summary.yoyGrowthPct) }}>
-                  {summary.yoyGrowthPct != null
-                    ? (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%'
-                    : '-'}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Active Clients</span>
-                  <span className="stat-ico"><Icon name="users" size={17} /></span>
-                </div>
-                <div className="stat-val">{summary.activeClients ?? '-'}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Logs this month</span>
-                  <span className="stat-ico"><Icon name="calendar" size={17} /></span>
-                </div>
-                <div className="stat-val">{summary.logsThisMonth ?? '-'}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Active Channels</span>
-                  <span className="stat-ico"><Icon name="tv" size={17} /></span>
-                </div>
-                <div className="stat-val">{summary.activeChannelsThisMonth ?? '-'}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Uploads this month</span>
-                  <span className="stat-ico"><Icon name="upload" size={17} /></span>
-                </div>
-                <div className="stat-val">{summary.uploadsThisMonth ?? '-'}</div>
-              </div>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Manual entries</span>
-                  <span className="stat-ico"><Icon name="edit" size={17} /></span>
-                </div>
-                <div className="stat-val">{summary.manualEntriesThisMonth ?? '-'}</div>
-              </div>
-            </>
-          ) : (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px 0', color: 'var(--muted)' }}>
-              Failed to load summary
+      {/* Section 1: KPI Cards */}
+      <div className="kpi-grid">
+        {summaryLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="kpi-card">
+              <Skeleton h={12} w="60%" />
+              <div style={{ marginTop: 12 }}><Skeleton h={28} w="80%" /></div>
             </div>
-          )}
-        </div>
+          ))
+        ) : summary ? (
+          kpis.map(k => (
+            <div key={k.key} className="kpi-card">
+              <div className="kpi-top">
+                <span style={{ color: '#93A0B5', display: 'inline-flex' }}><Icon name={k.icon} size={18} /></span>
+                {k.chip && <Chip dir={k.chip.dir}>{k.chip.text}</Chip>}
+              </div>
+              <div className="kpi-val" style={k.valueColor ? { color: k.valueColor } : undefined}>{k.value}</div>
+              <div className="kpi-label">{k.label}</div>
+            </div>
+          ))
+        ) : (
+          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px 0', color: 'var(--muted)' }}>
+            Failed to load summary
+          </div>
+        )}
       </div>
 
       {/* Section 2: Monthly Billing Trend */}

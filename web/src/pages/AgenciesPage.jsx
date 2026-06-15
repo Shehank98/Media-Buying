@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
-import Icon from '../components/Icon';
+import Icon, { fmtLKR } from '../components/Icon';
+
+const CARD_STYLE = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
+const BRAND_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00'];
+const MONO = "'Spline Sans Mono', monospace";
 
 export default function AgenciesPage() {
   const [agencies, setAgencies] = useState([]);
@@ -94,70 +98,97 @@ export default function AgenciesPage() {
     }
   };
 
-  if (loading) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>;
+  if (loading) return <div style={{ maxWidth: 1320, margin: '0 auto', padding: '60px 0', textAlign: 'center', color: '#6B7790' }}>Loading…</div>;
 
   return (
-    <div className="content-narrow fade-in">
-      <div className="page-head">
+    <div style={{ maxWidth: 1320, margin: '0 auto' }} className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 className="page-title">Agencies</h1>
-          <p className="page-sub">Agencies you have access to</p>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: '#16243C' }}>Agencies</h1>
+          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Agencies you have access to</p>
         </div>
         {isSuperAdmin && (
-          <button className="btn btn-primary" onClick={openAdd}>
+          <button
+            onClick={openAdd}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E85D24', color: '#fff', border: 'none', borderRadius: 10, padding: '9px 15px', fontSize: 13, fontWeight: 600, boxShadow: '0 1px 2px rgba(232,93,36,.4)', cursor: 'pointer' }}
+          >
             <Icon name="plus" size={16} />Add agency
           </button>
         )}
       </div>
 
       {error && (
-        <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 18 }}>
           {error}
           <button onClick={() => setError('')} style={{ marginLeft: 8, fontWeight: 600, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Dismiss</button>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 18 }}>
-        {agencies.map(ag => {
-          const count = ag._count?.clients || ag.clientCount || 0;
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 18 }}>
+        {agencies.map((ag, i) => {
+          const clientCount = ag._count?.clients ?? ag.clientCount ?? 0;
+          const channelCount = ag._count?.channels ?? ag.channelCount ?? null;
+          const spend = ag.totalSpend ?? ag.spend ?? null;
+          const sub = ag.lead || ag.owner || ag.ownerName || null;
+          const brand = BRAND_COLORS[i % BRAND_COLORS.length];
           return (
-            <div key={ag.id} style={{ position: 'relative' }}>
-              <button
-                className="stat"
-                style={{ textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', width: '100%' }}
-                onClick={() => navigate(`/agencies/${ag.id}`)}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--navy-400)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-              >
-                <div className="stat-top">
-                  <div className="stat-ico" style={{ background: 'var(--navy-900)', color: '#fff' }}>{ag.name[0]}</div>
-                  <div className="stat-label">{ag.name}</div>
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{count} client{count !== 1 ? 's' : ''}</div>
-              </button>
+            <div
+              key={ag.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/agencies/${ag.id}`)}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#C7D0DD'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(15,31,61,.09)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E8ED'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,31,61,.06)'; }}
+              style={{ ...CARD_STYLE, padding: 22, cursor: 'pointer', position: 'relative', transition: 'border-color .15s, box-shadow .15s' }}
+            >
               {isSuperAdmin && (
-                <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }}>
+                <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 4 }}>
                   <button
                     onClick={e => openEdit(ag, e)}
-                    style={{ background: 'var(--bg-sunken)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: 'var(--muted)' }}
+                    style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 8, padding: '4px 6px', cursor: 'pointer', color: '#6B7790' }}
                     title="Edit agency"
                   >
                     <Icon name="edit" size={13} />
                   </button>
                   <button
                     onClick={e => openDelete(ag, e)}
-                    style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: 'var(--red-600,#dc2626)' }}
+                    style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '4px 6px', cursor: 'pointer', color: '#dc2626' }}
                     title="Delete agency"
                   >
                     <Icon name="x" size={13} />
                   </button>
                 </div>
               )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                <div style={{ width: 46, height: 46, borderRadius: 12, background: brand, color: '#fff', fontWeight: 700, fontSize: 19, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {ag.name?.[0]?.toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ag.name}</div>
+                  {sub && <div style={{ fontSize: 12, color: '#93A0B5', marginTop: 2 }}>{sub}</div>}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 10px' }}>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{clientCount}</div>
+                  <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Clients</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{channelCount ?? '—'}</div>
+                  <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Channels</div>
+                </div>
+                <div style={{ gridColumn: '1/-1', borderTop: '1px solid #EEF0F3', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#6B7790' }}>Total spend</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, color: '#D9521C' }}>{spend != null ? fmtLKR(spend) : '—'}</span>
+                </div>
+              </div>
             </div>
           );
         })}
         {agencies.length === 0 && (
-          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '48px 0', color: '#6B7790' }}>
             No agencies yet.
           </div>
         )}

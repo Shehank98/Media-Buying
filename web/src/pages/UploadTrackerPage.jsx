@@ -96,30 +96,28 @@ export default function UploadTrackerPage() {
   }
 
   return (
-    <div className="fade-in" style={{ maxWidth: 1200 }}>
+    <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       <style>{`
-        .tracker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 32px; }
-        .month-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.15s; position: relative; }
-        .month-card:hover { border-color: var(--navy-500); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-        .month-card.selected { border-color: var(--coral-600); box-shadow: 0 0 0 2px rgba(232,93,36,0.15); }
-        .month-card.all-done { border-left: 3px solid var(--green-600); }
-        .month-card.pending { border-left: 3px solid var(--coral-600); }
+        .tracker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .month-card { background: #FAFBFC; border: 1.5px solid #E5E8ED; border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: all 0.15s; position: relative; }
+        .month-card:hover { border-color: #C7D0DD; box-shadow: 0 4px 12px rgba(15,31,61,0.06); }
+        .month-card.selected { background: #fff; border-color: #E85D24; box-shadow: 0 4px 14px rgba(232,93,36,0.12); }
         .month-card.future { opacity: 0.5; pointer-events: none; }
-        .month-label { font-size: 14px; font-weight: 720; color: var(--ink); margin-bottom: 8px; }
-        .month-stat { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .status-dot.green { background: var(--green-600); }
-        .status-dot.red { background: var(--coral-600); }
-        .status-dot.gray { background: var(--muted-2); }
-        .detail-panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
-        .agency-row { background: var(--bg-sunken); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
-        .agency-row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-        .agency-name { font-size: 14px; font-weight: 720; color: var(--ink); }
+        .month-label { font-size: 14px; font-weight: 700; color: #16243C; margin-bottom: 8px; }
+        .month-stat { font-size: 12px; color: #6B7790; display: flex; align-items: center; margin-bottom: 3px; }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; flex: none; }
+        .status-dot.green { background: #15814B; }
+        .status-dot.red { background: #C5391F; }
+        .status-dot.gray { background: #93A0B5; }
+        .detail-panel { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 22px; }
+        .agency-row { background: #FAFBFC; border: 1px solid #EEF0F3; border-radius: 11px; padding: 16px; margin-bottom: 12px; }
+        .agency-row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+        .agency-name { font-size: 14px; font-weight: 700; color: #16243C; }
         .user-list { display: flex; flex-wrap: wrap; gap: 8px; }
-        .user-chip-tracker { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
-        .user-chip-tracker.uploaded { border-color: var(--green-200); background: var(--green-50, #f0fdf4); }
-        .user-chip-tracker.pending { border-color: var(--coral-200, #fed7aa); background: var(--coral-50); }
-        .reminder-info { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .user-chip-tracker { display: flex; align-items: center; gap: 9px; background: #fff; border: 1px solid #E5E8ED; border-radius: 9px; padding: 6px 12px 6px 9px; font-size: 13px; }
+        .user-chip-tracker.uploaded { border-color: #CDEBD9; background: #F0FBF4; }
+        .user-chip-tracker.pending { border-color: #F6D2C5; background: #FDEEE9; }
+        .reminder-info { font-size: 11px; color: #93A0B5; margin-top: 2px; }
       `}</style>
 
       <div className="page-head">
