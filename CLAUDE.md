@@ -38,8 +38,8 @@ Media-Buying/
 │   │   └── phase1-migration.sql
 │   └── src/
 │       ├── index.js          # Express app entry point
-│       ├── controllers/      # 13 controller files
-│       ├── routes/           # 13 route files
+│       ├── controllers/      # 14 controller files
+│       ├── routes/           # 14 route files
 │       ├── middleware/
 │       │   ├── auth.js       # authenticate, requireRole, checkPasswordChange
 │       │   └── access.js     # checkClientAccess, checkAgencyAccess, checkChannelAccess, getAccessibleClientIds
@@ -164,6 +164,14 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | Notification | User notifications (type, title, message, isRead) |
 | PasswordResetToken | Password reset tokens with SHA256 hash + expiry |
 
+### Media Package Models
+
+| Model | Purpose |
+|---|---|
+| MediaPackage | A channel package (name, category, emailIntro, isActive) created by an admin |
+| PackageLineItem | A line item within a package (label + rate) |
+| PackageRecipient | Per-team-head send record + in-app response (interest, budgetNote, clientName, notes, followUp). `tokenHash`/`expiresAt` are legacy/optional — the flow is now in-app, not token links |
+
 ### Default Seed Data
 
 - **Admin:** `shehan.kavishka@ogilvy.com` / `Shehan@98`
@@ -253,7 +261,27 @@ GET    /api/reports/agency/:agencyId     ?format=excel|pdf  (AUTH + SUPER_ADMIN|
 GET    /api/reports/client/:clientId     ?format=excel|pdf  (AUTH + SUPER_ADMIN|MANAGER)
 GET    /api/reports/channel/:channelId   ?format=excel|pdf  (AUTH + SUPER_ADMIN|MANAGER)
 GET    /api/reports/properties           (AUTH + SUPER_ADMIN|MANAGER)
+       ?groupBy=all|agency|client|channel   (channel = canonical channel master, spans agencies)
+       &agencyId &clientId &channelName &channelType &propertyType
+       &includeHistory=true|false &format=json|excel|pdf
+       Excel: per-group sheets + "Rate History" sheet. PDF: branded, per-property rate timeline.
 GET    /api/reports/schedule-logs        (AUTH + SUPER_ADMIN|MANAGER)
+       ?groupBy &agencyId &clientId &channelMasterId &medium &monthFrom &monthTo &format=json|excel|pdf
+
+### Media Packages
+```
+GET    /api/packages                              (AUTH + SUPER_ADMIN)   list + value + response counts
+POST   /api/packages                              (AUTH + SUPER_ADMIN)
+GET    /api/packages/:id                          (AUTH + SUPER_ADMIN)
+PUT    /api/packages/:id                          (AUTH + SUPER_ADMIN)
+PATCH  /api/packages/:id/toggle                   (AUTH + SUPER_ADMIN)
+DELETE /api/packages/:id                          (AUTH + SUPER_ADMIN)
+POST   /api/packages/:id/send                     (AUTH + SUPER_ADMIN)   creates recipients, emails + notifies
+GET    /api/packages/:id/responses                (AUTH + SUPER_ADMIN)
+PATCH  /api/packages/recipients/:id/follow-up     (AUTH + SUPER_ADMIN)
+GET    /api/packages/recipients/group-heads       (AUTH + SUPER_ADMIN)
+GET    /api/packages/inbox                         (AUTH + GROUP_HEAD)    packages shared with me
+POST   /api/packages/inbox/:recipientId/respond    (AUTH + GROUP_HEAD)    Interested/Negotiate/Not interested + notes
 ```
 
 ### Analytics
@@ -339,6 +367,8 @@ GET    /api/notifications/master-sheet           (AUTH + SUPER_ADMIN|MANAGER)
 | ReportsPage | `/reports` | SUPER_ADMIN, MANAGER | Report generation by channel/client/agency |
 | UploadTrackerPage | `/upload-tracker` | SUPER_ADMIN | Monthly upload status tracking, send reminders |
 | AdminPage | `/admin` | SUPER_ADMIN | User, team, agency, client management (tabbed) |
+| PackagesPage | `/packages` | SUPER_ADMIN | Build packages (card grid), send to team heads, track responses |
+| MyPackagesPage | `/my-packages` | GROUP_HEAD | Inbox of shared packages; reply Interested/Negotiate/Not interested |
 
 ## Design System
 
@@ -430,3 +460,37 @@ Cost of `0` displays as "Added value" in the UI.
 - **Frontend proxy:** Vite dev server proxies `/api` to `localhost:3001`; in production, Express serves both API and static frontend
 - **Token storage:** accessToken, refreshToken, and user JSON stored in localStorage
 - **Notification polling:** Layout component fetches notifications every 60 seconds
+
+## Media Packages (in-app flow)
+
+A SUPER_ADMIN builds a package (name, category, line items with rates) and **sends** it to GROUP_HEADs. Sending does **not** create a public token link — instead each recipient gets:
+- an **email** (Apps Script) linking to `/my-packages` (login required), and
+- an **in-app notification**.
+
+GROUP_HEADs open `/my-packages`, review the package, and reply **Interested / Open to negotiate / Not interested** with optional client, budget note, and notes. The admin sees every reply (and follow-up status) on the Packages → Responses view, and gets a notification per response. `PackageRecipient.tokenHash`/`expiresAt` are nullable legacy columns from the old token flow.
+
+## Property & Rate-History Export
+
+Properties carry negotiated deal terms whose **cost changes over time** are tracked in `PropertyHistory`. `GET /api/reports/properties` builds a chronological **rate timeline** per property (original rate at creation + every cost change with date, delta, note, who) and exports:
+- **Excel:** per-group sheets (current deals) + a dedicated **Rate History** sheet logging the rate at every point in time.
+- **PDF:** branded (`generatePropertyHistoryPdf` in export.service.js), grouped, each property showing current deal + a rate-history timeline.
+Group/filter by canonical **channel master** (spans agencies), agency, client, or all.
+
+## UI Redesign (Ogilvy Orbit)
+
+- **Login** (`LoginPage.jsx`): deep-cosmic "mission control" — fixed full-screen navy starfield (drifting/twinkling stars, shooting stars), coral-lit planet, mouse parallax, orbit "O" brand mark, glass sign-in card. Scroll-safe with hidden scrollbar.
+- **App shell** (`.app` in index.css): locked to `height:100vh; overflow:hidden` so only the content area scrolls (no window scrollbar). Sidebar uses the animated orbit logo mark.
+- **Dashboard / content pages:** light, card-based design system (white cards `#fff`/`#E5E8ED`/14px radius, navy+coral, Spline Sans Mono figures, uppercase table heads, trend chips). Dashboard wires real analytics; pages restyled to match.
+- **Apps Script emails** (`appscript/Code.gs`): branded with the Ogilvy Orbit lockup via shared header/footer/CTA/callout helpers. **Editing `Code.gs` in the repo does not update the live service** — it must be redeployed in the Google Apps Script project.
+
+## Known Gaps / Suggested Features
+
+> Audit as of 2026-06. Candidate work, not yet implemented:
+
+- **Property `bonusPct` & `sponsorshipDetails` are not editable or history-tracked.** `property.controller.js` create/update only handle `name/type/cost/notes`, and history records only those. Bonus % (added value) and sponsorship details can't be set via the API, and bonus changes don't appear in the rate timeline. **Recommend** adding these to create/update + `PropertyHistory` so the rate-history export reflects both rate and added-value evolution.
+- **Global topbar search is non-functional** — the search input in `Layout.jsx` is decorative (no handler/results). Either wire it to a search endpoint or remove it.
+- **Two schedule-log surfaces:** `/api/database/*` (used by DatabasePage spreadsheet) and `/api/schedule-logs/*` (client-scoped CRUD). Overlapping; consider consolidating.
+- **Campaign model** has controller/routes (`brand.controller.js`) but little/no UI surface.
+- **No automated tests or CI** (`npm test` is a placeholder).
+- **Decision Center was removed** (nav, route, page, and `/api/decisions` backend) — do not re-add references.
+- **Auth is stateless JWT:** logout is client-side; refresh tokens aren't revoked server-side.
