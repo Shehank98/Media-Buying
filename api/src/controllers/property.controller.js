@@ -37,7 +37,7 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { channelId } = req.params;
-    const { name, type, cost, notes } = req.body;
+    const { name, type, cost, notes, bonusPct, sponsorshipDetails } = req.body;
 
     if (!name || !type || cost === undefined) {
       return res.status(400).json({ error: 'Name, type, and cost are required' });
@@ -49,6 +49,8 @@ export async function create(req, res) {
         name,
         type,
         cost,
+        bonusPct: bonusPct === '' || bonusPct == null ? null : Number(bonusPct),
+        sponsorshipDetails: sponsorshipDetails ? String(sponsorshipDetails) : null,
         notes: notes || null,
         createdBy: req.user.id,
       },
@@ -67,7 +69,7 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { name, type, cost, notes, changeNote } = req.body;
+    const { name, type, cost, notes, bonusPct, sponsorshipDetails, changeNote } = req.body;
 
     if (!changeNote) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
@@ -98,12 +100,29 @@ export async function update(req, res) {
       previousValues.notes = existing.notes;
       newValues.notes = notes;
     }
+    if (bonusPct !== undefined) {
+      const newB = bonusPct === '' || bonusPct == null ? null : Number(bonusPct);
+      const oldB = existing.bonusPct == null ? null : Number(existing.bonusPct);
+      if (newB !== oldB) {
+        previousValues.bonusPct = oldB;
+        newValues.bonusPct = newB;
+      }
+    }
+    if (sponsorshipDetails !== undefined) {
+      const newS = sponsorshipDetails ? String(sponsorshipDetails) : null;
+      if (newS !== (existing.sponsorshipDetails || null)) {
+        previousValues.sponsorshipDetails = existing.sponsorshipDetails || null;
+        newValues.sponsorshipDetails = newS;
+      }
+    }
 
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (type !== undefined) updateData.type = type;
     if (cost !== undefined) updateData.cost = cost;
     if (notes !== undefined) updateData.notes = notes;
+    if (bonusPct !== undefined) updateData.bonusPct = bonusPct === '' || bonusPct == null ? null : Number(bonusPct);
+    if (sponsorshipDetails !== undefined) updateData.sponsorshipDetails = sponsorshipDetails ? String(sponsorshipDetails) : null;
 
     const [history, property] = await prisma.$transaction([
       prisma.propertyHistory.create({

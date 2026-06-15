@@ -49,7 +49,7 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { name, type, cost, notes } = req.body;
+    const { name, type, cost, notes, bonusPct, sponsorshipDetails } = req.body;
 
     if (!name || !type || cost == null) {
       return res.status(400).json({ error: 'Name, type, and cost are required' });
@@ -61,6 +61,8 @@ export async function createProperty(req, res) {
         name,
         type,
         cost,
+        bonusPct: bonusPct === '' || bonusPct == null ? null : Number(bonusPct),
+        sponsorshipDetails: sponsorshipDetails ? String(sponsorshipDetails) : null,
         notes: notes || null,
         createdBy: req.user.id,
       },

@@ -39,6 +39,8 @@ export default function ChannelDetailPage() {
     name: '',
     type: 'BOUGHT_AIRTIME',
     cost: '',
+    bonusPct: '',
+    sponsorshipDetails: '',
     notes: '',
     changeNote: '',
   });
@@ -77,7 +79,7 @@ export default function ChannelDetailPage() {
 
   const openAddModal = () => {
     setEditingProperty(null);
-    setPropertyForm({ name: '', type: 'BOUGHT_AIRTIME', cost: '', notes: '', changeNote: '' });
+    setPropertyForm({ name: '', type: 'BOUGHT_AIRTIME', cost: '', bonusPct: '', sponsorshipDetails: '', notes: '', changeNote: '' });
     setFormError('');
     setShowModal(true);
   };
@@ -88,6 +90,8 @@ export default function ChannelDetailPage() {
       name: property.name,
       type: property.type,
       cost: property.cost?.toString() || '',
+      bonusPct: property.bonusPct != null ? property.bonusPct.toString() : '',
+      sponsorshipDetails: property.sponsorshipDetails || '',
       notes: property.notes || '',
       changeNote: '',
     });
@@ -120,6 +124,8 @@ export default function ChannelDetailPage() {
         name: propertyForm.name,
         type: propertyForm.type,
         cost: Number(propertyForm.cost),
+        bonusPct: propertyForm.bonusPct === '' ? null : Number(propertyForm.bonusPct),
+        sponsorshipDetails: propertyForm.sponsorshipDetails || null,
         notes: propertyForm.notes,
       };
 
@@ -247,6 +253,9 @@ export default function ChannelDetailPage() {
                     {Number(property.cost) === 0
                       ? <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Added value</span>
                       : fmtLKR(property.cost)}
+                    {property.bonusPct != null && property.bonusPct !== '' && (
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{property.bonusPct}% bonus</span>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -419,6 +428,31 @@ export default function ChannelDetailPage() {
                       placeholder="0"
                       value={propertyForm.cost}
                       onChange={(e) => setPropertyForm((prev) => ({ ...prev, cost: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">Bonus % (added value)</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      placeholder="e.g. 40"
+                      value={propertyForm.bonusPct}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusPct: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Sponsorship details</label>
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="Optional, e.g. title sponsor"
+                      value={propertyForm.sponsorshipDetails}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, sponsorshipDetails: e.target.value }))}
                     />
                   </div>
                 </div>

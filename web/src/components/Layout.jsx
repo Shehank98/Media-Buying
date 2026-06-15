@@ -56,6 +56,21 @@ export default function Layout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifs, setShowNotifs] = useState(false);
 
+  const [searchQ, setSearchQ] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (q.length < 2) { setSearchResults([]); setSearchOpen(false); return; }
+    const t = setTimeout(() => {
+      api.get('/search', { params: { q } })
+        .then((r) => { setSearchResults(r.data?.results || []); setSearchOpen(true); })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [searchQ]);
+
   const fetchNotifications = useCallback(() => {
     if (!user) return;
     api.get('/notifications', { params: { unreadOnly: 'false' } })
@@ -168,10 +183,48 @@ export default function Layout() {
           <div className="crumb">
             <Breadcrumbs go={go} />
           </div>
-          <div className="topbar-search">
-            <Icon name="search" size={16} />
-            <input placeholder="Search clients, channels, properties…" />
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted-2)', border: '1px solid var(--border-strong)', borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
+          <div style={{ position: 'relative' }}>
+            <div className="topbar-search">
+              <Icon name="search" size={16} />
+              <input
+                placeholder="Search agencies, clients, channels, properties…"
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onFocus={() => { if (searchResults.length) setSearchOpen(true); }}
+              />
+              {searchQ
+                ? <button className="icon-btn" style={{ width: 22, height: 22 }} onClick={() => { setSearchQ(''); setSearchOpen(false); }}><Icon name="x" size={13} /></button>
+                : <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted-2)', border: '1px solid var(--border-strong)', borderRadius: 5, padding: '1px 5px' }}>⌘K</span>}
+            </div>
+            {searchOpen && searchQ.trim().length >= 2 && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setSearchOpen(false)} />
+                <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, width: 380, maxWidth: '90vw', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden' }}>
+                  {searchResults.length === 0 ? (
+                    <div style={{ padding: '22px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No matches for “{searchQ.trim()}”</div>
+                  ) : (
+                    <div style={{ maxHeight: 380, overflowY: 'auto', padding: 6 }}>
+                      {searchResults.map((r, i) => (
+                        <button
+                          key={`${r.type}-${i}`}
+                          onClick={() => { setSearchOpen(false); setSearchQ(''); go(r.to); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', border: 'none', background: 'none', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                        >
+                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.3px', textTransform: 'uppercase', color: 'var(--muted)', background: 'var(--bg-sunken)', borderRadius: 5, padding: '3px 7px', flex: 'none', width: 64, textAlign: 'center' }}>{r.type}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
+                            {r.sub && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)' }}>{r.sub}</span>}
+                          </span>
+                          <Icon name="chevR" size={15} style={{ color: 'var(--muted-2)' }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <div className="topbar-spacer" />
           <div style={{ position: 'relative' }}>
