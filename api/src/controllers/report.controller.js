@@ -653,6 +653,33 @@ export async function exportScheduleLogs(req, res) {
       return res.json({ rows, summary });
     }
 
+    // ── PDF export (curated columns + totals row) ──
+    if (format === 'pdf') {
+      const fmtNum = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pdfRows = logs.map((log) => ({
+        Agency: log.agency.name,
+        Client: log.client.name,
+        Channel: log.channelMaster.name,
+        Medium: log.medium,
+        'RO Number': log.roNumber || '',
+        'Sch Month': log.scheduleMonth || '',
+        'Schedule Value': fmtNum(log.scheduleValue),
+        'With VAT': fmtNum(log.scheduleValueWithVat),
+      }));
+      if (pdfRows.length) {
+        const totSV = logs.reduce((s, l) => s + Number(l.scheduleValue), 0);
+        const totVAT = logs.reduce((s, l) => s + Number(l.scheduleValueWithVat), 0);
+        pdfRows.push({
+          Agency: 'TOTAL', Client: '', Channel: '', Medium: '', 'RO Number': '', 'Sch Month': '',
+          'Schedule Value': fmtNum(totSV), 'With VAT': fmtNum(totVAT),
+        });
+      }
+      const buffer = await generatePdf(pdfRows, 'Schedule Logs Report');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="schedule-logs-${groupBy}-${new Date().toISOString().split('T')[0]}.pdf"`);
+      return res.send(buffer);
+    }
+
     // Excel: display-name keys for column headers
     const rows = logs.map((log) => ({
       Agency: log.agency.name,
