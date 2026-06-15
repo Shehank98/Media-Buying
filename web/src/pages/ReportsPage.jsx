@@ -60,6 +60,9 @@ export default function ReportsPage() {
   // Property filters
   const [channelType, setChannelType] = useState('');
   const [propertyType, setPropertyType] = useState('');
+  const [channelName, setChannelName] = useState('');   // canonical channel (across agencies)
+  const [channels, setChannels] = useState([]);          // distinct channel names from results
+  const [includeHistory, setIncludeHistory] = useState(true);
 
   // Sort
   const [sortField, setSortField] = useState('agencyName');
@@ -113,9 +116,11 @@ export default function ReportsPage() {
     } else {
       if (channelType) params.set('channelType', channelType);
       if (propertyType) params.set('propertyType', propertyType);
+      if (channelName) params.set('channelName', channelName);
+      if (!includeHistory) params.set('includeHistory', 'false');
     }
     return params.toString();
-  }, [groupBy, agencyId, clientId, medium, monthFrom, monthTo, channelType, propertyType, source]);
+  }, [groupBy, agencyId, clientId, medium, monthFrom, monthTo, channelType, propertyType, channelName, includeHistory, source]);
 
   const endpoint = source === 'properties' ? '/reports/properties' : '/reports/schedule-logs';
 
@@ -130,6 +135,7 @@ export default function ReportsPage() {
         if (cancelled) return;
         setRows(Array.isArray(data.rows) ? data.rows : []);
         setSummary(data.summary || {});
+        if (Array.isArray(data.channels)) setChannels(data.channels);
       } catch {
         if (!cancelled) {
           setError('Failed to load report data.');
@@ -222,6 +228,7 @@ export default function ReportsPage() {
     setMonthTo('');
     setChannelType('');
     setPropertyType('');
+    setChannelName('');
   };
 
   const handleExportExcel = async () => {
@@ -242,6 +249,29 @@ export default function ReportsPage() {
       showToast('Excel exported successfully');
     } catch {
       setError('Failed to export Excel. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      const qs = buildParams('pdf');
+      const response = await api.get(`${endpoint}?${qs}`, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const prefix = source === 'properties' ? 'properties' : 'schedule-logs';
+      link.download = `${prefix}-${groupBy}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      showToast('PDF exported successfully');
+    } catch {
+      setError('Failed to export PDF. Please try again.');
     } finally {
       setExporting(false);
     }
@@ -412,14 +442,24 @@ export default function ReportsPage() {
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: 0 }}>Reports</h1>
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Generate and export media buying reports</p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={handleExportExcel}
-          disabled={loading || exporting || rows.length === 0}
-        >
-          <Icon name="download" size={16} />
-          {exporting ? 'Exporting...' : 'Export Excel'}
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={handleExportPdf}
+            disabled={loading || exporting || rows.length === 0}
+          >
+            <Icon name="file" size={16} />
+            PDF
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleExportExcel}
+            disabled={loading || exporting || rows.length === 0}
+          >
+            <Icon name="download" size={16} />
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </button>
+        </div>
       </div>
 
       {/* Report Cards */}
@@ -592,6 +632,13 @@ export default function ReportsPage() {
         {source === 'properties' && (
           <>
             <div className="filter-field">
+              <label>Channel</label>
+              <select className="select" value={channelName} onChange={(e) => setChannelName(e.target.value)}>
+                <option value="">All channels</option>
+                {channels.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="filter-field">
               <label>Channel Type</label>
               <select className="select" value={channelType} onChange={(e) => setChannelType(e.target.value)}>
                 <option value="">All types</option>
@@ -604,6 +651,12 @@ export default function ReportsPage() {
                 <option value="">All types</option>
                 {PROPERTY_TYPE_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
+            </div>
+            <div className="filter-field" style={{ justifyContent: 'flex-end' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 13, color: '#3B4A63', fontWeight: 600 }}>
+                <input type="checkbox" checked={includeHistory} onChange={(e) => setIncludeHistory(e.target.checked)} />
+                Include rate history
+              </label>
             </div>
           </>
         )}

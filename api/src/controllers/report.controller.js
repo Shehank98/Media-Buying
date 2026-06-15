@@ -1,6 +1,36 @@
 import ExcelJS from 'exceljs';
 import prisma from '../utils/prisma.js';
-import { generateExcel, generatePdf } from '../services/export.service.js';
+import { generateExcel, generatePdf, generatePropertyHistoryPdf } from '../services/export.service.js';
+
+// Build a chronological rate timeline for a property from its change history.
+// First event = the original rate at creation; each subsequent cost change appends.
+function buildPropertyTimeline(p) {
+  const history = p.history || [];
+  const costChanges = history.filter(h => h.newValues && Object.prototype.hasOwnProperty.call(h.newValues, 'cost'));
+  const firstPrev = (costChanges.length && costChanges[0].previousValues && 'cost' in costChanges[0].previousValues)
+    ? Number(costChanges[0].previousValues.cost)
+    : Number(p.cost);
+  const tl = [{
+    date: p.createdAt,
+    cost: isFinite(firstPrev) ? firstPrev : Number(p.cost),
+    prevCost: null,
+    note: 'Initial rate',
+    by: p.creator?.name || '',
+  }];
+  for (const h of history) {
+    if (h.newValues && 'cost' in h.newValues) {
+      const prev = (h.previousValues && 'cost' in h.previousValues) ? Number(h.previousValues.cost) : null;
+      tl.push({
+        date: h.changedAt,
+        cost: Number(h.newValues.cost),
+        prevCost: prev,
+        note: h.changeNote || '',
+        by: h.changer?.name || '',
+      });
+    }
+  }
+  return tl;
+}
 
 export async function byChannel(req, res) {
   try {
@@ -265,14 +295,18 @@ export async function exportProperties(req, res) {
       groupBy,
       agencyId,
       clientId,
+      channelMasterId,
+      channelName,
       channelType,
       propertyType,
+      includeHistory = 'true',
       format = 'json',
     } = req.query;
 
     if (!groupBy || !['channel', 'client', 'agency', 'all'].includes(groupBy)) {
       return res.status(400).json({ error: "groupBy is required and must be one of: 'channel', 'client', 'agency', 'all'" });
     }
+    const withHistory = includeHistory !== 'false';
 
     const channelWhere = {};
     const clientWhere = {};
@@ -298,6 +332,9 @@ export async function exportProperties(req, res) {
     }
     if (clientId) channelWhere.clientId = parseInt(clientId);
     if (channelType) channelWhere.type = channelType;
+    // Filter by canonical channel (master) — spans clients & agencies.
+    if (channelMasterId) channelWhere.channelMasterId = parseInt(channelMasterId);
+    else if (channelName) channelWhere.channelMaster = { name: channelName };
 
     const propertyWhere = {};
     if (propertyType) propertyWhere.type = propertyType;
@@ -313,164 +350,211 @@ export async function exportProperties(req, res) {
       include: {
         channel: {
           include: {
-            client: {
-              include: {
-                agency: { select: { id: true, name: true } },
-              },
-            },
+            channelMaster: { select: { name: true, medium: true } },
+            client: { include: { agency: { select: { id: true, name: true } } } },
           },
         },
         creator: { select: { id: true, name: true } },
+        history: { orderBy: { changedAt: 'asc' }, include: { changer: { select: { name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (format !== 'excel') {
-      const rows = properties.map((p) => ({
-        agencyName: p.channel.client.agency.name,
-        clientName: p.channel.client.name,
-        channelName: p.channel.name,
-        channelType: p.channel.type,
-        propertyName: p.name,
-        propertyType: p.type,
-        cost: Number(p.cost),
-        bonusPct: p.bonusPct ? Number(p.bonusPct) : null,
-        notes: p.notes || '',
-        createdBy: p.creator.name,
-        createdAt: p.createdAt.toISOString().split('T')[0],
-      }));
+    // Normalize, attaching the rate timeline. Channel = canonical master name
+    // so grouping/filtering by channel spans every agency & client.
+    const norm = properties.map((p) => ({
+      agencyName: p.channel.client.agency.name,
+      clientName: p.channel.client.name,
+      channelName: p.channel.name,
+      channelMasterName: p.channel.channelMaster?.name || p.channel.name,
+      channelType: p.channel.type,
+      propertyName: p.name,
+      propertyType: p.type,
+      cost: Number(p.cost),
+      bonusPct: p.bonusPct != null ? Number(p.bonusPct) : null,
+      notes: p.notes || '',
+      createdBy: p.creator?.name || '',
+      createdAt: p.createdAt,
+      history: p.history || [],
+      timeline: buildPropertyTimeline(p),
+    }));
 
+    const channels = [...new Set(norm.map((n) => n.channelMasterName))].sort((a, b) => a.localeCompare(b));
+    const groupNameOf = (n) =>
+      groupBy === 'agency' ? n.agencyName
+        : groupBy === 'client' ? n.clientName
+          : groupBy === 'channel' ? n.channelMasterName
+            : 'All Properties';
+
+    // ── JSON (preview) ──
+    if (format !== 'excel' && format !== 'pdf') {
+      const rows = norm.map((n) => ({
+        agencyName: n.agencyName,
+        clientName: n.clientName,
+        channelName: n.channelMasterName,
+        channelType: n.channelType,
+        propertyName: n.propertyName,
+        propertyType: n.propertyType,
+        cost: n.cost,
+        bonusPct: n.bonusPct,
+        notes: n.notes,
+        createdBy: n.createdBy,
+        createdAt: n.createdAt.toISOString().split('T')[0],
+        historyCount: n.history.length,
+      }));
       const summary = {
-        totalCost: rows.reduce((sum, r) => sum + r.cost, 0),
+        totalCost: rows.reduce((s, r) => s + r.cost, 0),
         totalEntries: rows.length,
         addedValue: rows.filter((r) => r.cost === 0).length,
       };
-
-      return res.json({ rows, summary });
+      return res.json({ rows, summary, channels });
     }
 
-    // Excel export
-    const rows = properties.map((p) => ({
-      Agency: p.channel.client.agency.name,
-      Client: p.channel.client.name,
-      Channel: p.channel.name,
-      'Channel Type': p.channel.type,
-      'Property Name': p.name,
-      'Property Type': p.type,
-      'Cost (LKR)': Number(p.cost),
-      'Bonus %': p.bonusPct ? Number(p.bonusPct) : '',
-      Notes: p.notes || '',
-      'Created By': p.creator.name,
-      'Created At': p.createdAt.toISOString().split('T')[0],
-    }));
+    // ── Build groups ──
+    const groupsMap = {};
+    for (const n of norm) { const k = groupNameOf(n); (groupsMap[k] = groupsMap[k] || []).push(n); }
+    const groups = Object.keys(groupsMap).sort((a, b) => a.localeCompare(b)).map((name) => ({ name, properties: groupsMap[name] }));
+    const totals = { properties: norm.length, cost: norm.reduce((s, n) => s + n.cost, 0) };
 
+    const ftParts = [`Grouped by ${groupBy}`];
+    if (channelName) ftParts.push(`Channel: ${channelName}`);
+    if (channelType) ftParts.push(`Medium: ${channelType}`);
+    if (propertyType) ftParts.push(`Type: ${propertyType}`);
+    ftParts.push(withHistory ? 'Rate history included' : 'Current rates only');
+    const filtersText = ftParts.join('   ·   ');
+    const fileStamp = `properties-${groupBy}-${new Date().toISOString().split('T')[0]}`;
+
+    // ── PDF ──
+    if (format === 'pdf') {
+      const buffer = await generatePropertyHistoryPdf({ title: 'Property & Rate History', filtersText, groups, totals, includeHistory: withHistory });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileStamp}.pdf"`);
+      return res.send(buffer);
+    }
+
+    // ── Excel ──
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Ogilvy Orbit';
     workbook.created = new Date();
-
-    const HEADER_COLUMNS = [
-      { header: 'Agency', key: 'Agency', width: 20 },
-      { header: 'Client', key: 'Client', width: 20 },
-      { header: 'Channel', key: 'Channel', width: 22 },
-      { header: 'Channel Type', key: 'Channel Type', width: 14 },
-      { header: 'Property Name', key: 'Property Name', width: 24 },
-      { header: 'Property Type', key: 'Property Type', width: 18 },
-      { header: 'Cost (LKR)', key: 'Cost (LKR)', width: 20 },
-      { header: 'Bonus %', key: 'Bonus %', width: 12 },
-      { header: 'Notes', key: 'Notes', width: 30 },
-      { header: 'Created By', key: 'Created By', width: 18 },
-      { header: 'Created At', key: 'Created At', width: 14 },
-    ];
-
     const NAVY_BG = '0A1729';
 
-    function styleSheet(sheet) {
+    const PROP_COLUMNS = [
+      { header: 'Agency', width: 20 },
+      { header: 'Client', width: 20 },
+      { header: 'Channel', width: 22 },
+      { header: 'Medium', width: 12 },
+      { header: 'Property Name', width: 24 },
+      { header: 'Property Type', width: 18 },
+      { header: 'Current Cost (LKR)', width: 20 },
+      { header: 'Bonus %', width: 12 },
+      { header: 'Rate Changes', width: 14 },
+      { header: 'Notes', width: 30 },
+      { header: 'Created By', width: 18 },
+      { header: 'Created At', width: 14 },
+    ];
+
+    const navyHeader = (sheet, colCount) => {
       const headerRow = sheet.getRow(1);
       headerRow.eachCell((cell) => {
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
         cell.alignment = { vertical: 'middle', horizontal: 'left' };
       });
-      sheet.autoFilter = {
-        from: { row: 1, column: 1 },
-        to: { row: 1, column: HEADER_COLUMNS.length },
-      };
-    }
+      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: colCount } };
+    };
+    const autoWidth = (sheet) => {
+      sheet.columns.forEach((column) => {
+        let maxLength = column.header ? String(column.header).length : 10;
+        column.eachCell({ includeEmpty: false }, (cell) => {
+          const len = cell.value != null ? String(cell.value).length : 0;
+          if (len > maxLength) maxLength = len;
+        });
+        column.width = Math.min(maxLength + 4, 52);
+      });
+    };
 
-    function addSheet(name, sheetRows) {
-      const safeName = name.replace(/[\\/*?:\[\]]/g, '').substring(0, 31);
+    const addPropSheet = (name, items) => {
+      const safeName = (name || 'Properties').replace(/[\\/*?:\[\]]/g, '').substring(0, 31) || 'Sheet';
       const sheet = workbook.addWorksheet(safeName);
-      sheet.columns = HEADER_COLUMNS.map((c) => ({ ...c }));
-      for (const row of sheetRows) sheet.addRow(row);
+      sheet.columns = PROP_COLUMNS.map((c) => ({ header: c.header, width: c.width }));
+      for (const n of items) {
+        sheet.addRow([
+          n.agencyName, n.clientName, n.channelMasterName, n.channelType,
+          n.propertyName, n.propertyType, n.cost, n.bonusPct != null ? n.bonusPct : '',
+          Math.max(0, n.timeline.length - 1), n.notes, n.createdBy, n.createdAt.toISOString().split('T')[0],
+        ]);
+      }
       sheet.getColumn(7).numFmt = '#,##0.00';
       sheet.getColumn(8).numFmt = '0.000';
-      styleSheet(sheet);
-
-      if (sheetRows.length > 0) {
-        const totalsRowNum = sheetRows.length + 2;
+      navyHeader(sheet, PROP_COLUMNS.length);
+      if (items.length > 0) {
+        const totalsRowNum = items.length + 2;
         const totalsRow = sheet.getRow(totalsRowNum);
         totalsRow.getCell(1).value = 'TOTAL';
         totalsRow.getCell(7).value = { formula: `SUM(G2:G${totalsRowNum - 1})` };
         totalsRow.getCell(7).numFmt = '#,##0.00';
         totalsRow.eachCell((cell) => { cell.font = { bold: true }; });
       }
-
-      sheet.columns.forEach((column) => {
-        let maxLength = column.header ? column.header.length : 10;
-        column.eachCell({ includeEmpty: false }, (cell) => {
-          const len = cell.value ? String(cell.value).length : 0;
-          if (len > maxLength) maxLength = len;
-        });
-        column.width = Math.min(maxLength + 4, 50);
-      });
-
-      return sheet;
-    }
+      autoWidth(sheet);
+    };
 
     if (groupBy === 'all') {
-      addSheet('All Properties', rows);
+      addPropSheet('All Properties', norm);
     } else {
-      const keyMap = { agency: 'Agency', client: 'Client', channel: 'Channel' };
-      const groupKey = keyMap[groupBy];
-      const grouped = {};
-      for (const row of rows) {
-        const key = row[groupKey];
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(row);
-      }
-
-      const summaryGroups = [];
-      for (const [name, groupRows] of Object.entries(grouped)) {
-        addSheet(name, groupRows);
-        summaryGroups.push({
-          name,
-          entries: groupRows.length,
-          totalCost: groupRows.reduce((s, r) => s + r['Cost (LKR)'], 0),
-        });
-      }
-
-      summaryGroups.sort((a, b) => a.name.localeCompare(b.name));
-
+      for (const g of groups) addPropSheet(g.name, g.properties);
       const summSheet = workbook.addWorksheet('Summary');
       summSheet.columns = [
-        { header: 'Group Name', key: 'name', width: 30 },
-        { header: 'Total Entries', key: 'entries', width: 16 },
-        { header: 'Total Cost (LKR)', key: 'totalCost', width: 24 },
+        { header: 'Group Name', width: 30 },
+        { header: 'Properties', width: 14 },
+        { header: 'Total Cost (LKR)', width: 24 },
       ];
-      for (const g of summaryGroups) summSheet.addRow(g);
+      for (const g of groups) summSheet.addRow([g.name, g.properties.length, g.properties.reduce((s, n) => s + n.cost, 0)]);
       summSheet.getColumn(3).numFmt = '#,##0.00';
-      const hdr = summSheet.getRow(1);
-      hdr.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
-        cell.alignment = { vertical: 'middle', horizontal: 'left' };
-      });
-      summSheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 3 } };
+      navyHeader(summSheet, 3);
+      autoWidth(summSheet);
+    }
+
+    // ── Rate History sheet (every rate at every point in time) ──
+    if (withHistory) {
+      const hSheet = workbook.addWorksheet('Rate History');
+      hSheet.columns = [
+        { header: 'Agency', width: 18 },
+        { header: 'Client', width: 18 },
+        { header: 'Channel', width: 20 },
+        { header: 'Property', width: 22 },
+        { header: 'Date', width: 14 },
+        { header: 'Year', width: 8 },
+        { header: 'Rate (LKR)', width: 18 },
+        { header: 'Change', width: 12 },
+        { header: 'Change Note', width: 34 },
+        { header: 'Changed By', width: 18 },
+      ];
+      const sorted = [...norm].sort((a, b) =>
+        a.channelMasterName.localeCompare(b.channelMasterName) || a.propertyName.localeCompare(b.propertyName));
+      for (const n of sorted) {
+        for (const ev of n.timeline) {
+          let change = 'Initial';
+          if (ev.prevCost != null && Number(ev.prevCost) !== 0) {
+            const pct = ((ev.cost - ev.prevCost) / ev.prevCost) * 100;
+            change = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+          } else if (ev.prevCost != null) {
+            change = 'Set';
+          }
+          hSheet.addRow([
+            n.agencyName, n.clientName, n.channelMasterName, n.propertyName,
+            new Date(ev.date).toISOString().split('T')[0], new Date(ev.date).getFullYear(),
+            ev.cost, change, ev.note, ev.by,
+          ]);
+        }
+      }
+      hSheet.getColumn(7).numFmt = '#,##0.00';
+      navyHeader(hSheet, 10);
+      autoWidth(hSheet);
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="properties-${groupBy}-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileStamp}.xlsx"`);
     return res.send(Buffer.from(buffer));
   } catch (error) {
     console.error('Property export error:', error);
