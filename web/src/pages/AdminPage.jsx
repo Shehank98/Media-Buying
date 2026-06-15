@@ -416,8 +416,8 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* Header */}
       <div className="page-head">
         <div>
-          <h1 className="page-title">User management</h1>
-          <p className="page-sub">Super Admin &middot; {users.length} users across agencies</p>
+          <h1 className="page-title">User Management</h1>
+          <p className="page-sub">Super Admin &middot; {users.length} users across {agencies.length} agencies</p>
         </div>
         <button className="btn btn-primary" onClick={openAddUser}>
           <Icon name="plus" size={16} /> Create user
@@ -432,17 +432,27 @@ export default function AdminPage({ initialTab = 'users' }) {
       )}
 
       {/* Tabs */}
-      <div className="tabs">
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            className={'tab' + (activeTab === tab.key ? ' active' : '')}
-            onClick={() => { setActiveTab(tab.key); setSearch(''); }}
-          >
-            {tab.label}
-            <span className="tcount">{tab.count}</span>
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+        {tabs.map(tab => {
+          const on = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setSearch(''); }}
+              style={{
+                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '8px 15px',
+                borderRadius: 9, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7,
+                background: on ? '#0F1F3D' : 'transparent', color: on ? '#fff' : '#6B7790',
+              }}
+            >
+              {tab.label}
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+                background: on ? 'rgba(255,255,255,.16)' : '#EEF0F3', color: on ? '#fff' : '#93A0B5',
+              }}>{tab.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Search */}

@@ -25,10 +25,24 @@ export async function listPackages(req, res) {
       orderBy: { createdAt: 'desc' },
       include: {
         creator: { select: { id: true, name: true } },
+        lineItems: { select: { rate: true } },
+        recipients: { select: { interest: true } },
         _count: { select: { lineItems: true, recipients: true } },
       },
     });
-    return res.json({ packages });
+    const shaped = packages.map(p => {
+      const totalValue = p.lineItems.reduce((s, li) => s + (num(li.rate) || 0), 0);
+      const responses = { interested: 0, negotiate: 0, declined: 0, pending: 0 };
+      for (const r of p.recipients) {
+        if (r.interest === 'INTERESTED') responses.interested++;
+        else if (r.interest === 'NEGOTIATE') responses.negotiate++;
+        else if (r.interest === 'NOT_INTERESTED') responses.declined++;
+        else responses.pending++;
+      }
+      const { lineItems, recipients, ...rest } = p;
+      return { ...rest, totalValue, responses };
+    });
+    return res.json({ packages: shaped });
   } catch (error) {
     console.error('List packages error:', error);
     return res.status(500).json({ error: 'Failed to list packages', detail: error.message });

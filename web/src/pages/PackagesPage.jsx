@@ -176,38 +176,45 @@ export default function PackagesPage() {
           <p>No packages yet. Create your first one.</p>
         </div>
       ) : (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Package</th><th>Category</th><th>Items</th><th>Sent</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packages.map((p) => (
-                <tr key={p.id} style={{ opacity: p.isActive === false ? 0.55 : 1 }}>
-                  <td className="strong">{p.name}</td>
-                  <td style={{ color: 'var(--muted)' }}>{p.category}</td>
-                  <td style={{ color: 'var(--muted)' }}>{p._count?.lineItems ?? 0}</td>
-                  <td style={{ color: 'var(--muted)' }}>{p._count?.recipients ?? 0}</td>
-                  <td>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: p.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)', color: p.isActive === false ? 'var(--muted)' : 'var(--green-600)' }}>
-                      {p.isActive === false ? 'Inactive' : 'Active'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openSend(p)} title="Send"><Icon name="mail" size={14} /> Send</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openResponses(p)} title="Responses"><Icon name="users" size={14} /> Responses</button>
-                      <button className="act-btn" onClick={() => openEdit(p)} title="Edit"><Icon name="edit" size={15} /></button>
-                      <button className="act-btn" onClick={() => togglePkg(p)} title={p.isActive === false ? 'Activate' : 'Deactivate'} style={{ color: p.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}><Icon name="eye" size={15} /></button>
-                      <button className="act-btn" onClick={() => deletePkg(p)} title="Delete" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={15} /></button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 18 }}>
+          {packages.map((p) => {
+            const active = p.isActive !== false;
+            const r = p.responses || {};
+            return (
+              <div key={p.id} style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 20, opacity: active ? 1 : 0.72 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{p.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: '#3B4A63', background: '#EEF0F3', padding: '2px 9px', borderRadius: 6 }}>{p.category}</span>
+                      <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} line items</span>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: active ? '#ECF8F1' : '#EEF0F3', color: active ? '#15814B' : '#93A0B5', whiteSpace: 'nowrap' }}>{active ? 'Active' : 'Inactive'}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid #EEF0F3', borderBottom: '1px solid #EEF0F3' }}>
+                  <span style={{ fontSize: 12.5, color: '#6B7790' }}>Package value</span>
+                  <span style={{ fontSize: 18, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#D9521C' }}>{fmtLKR(p.totalValue)}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#15814B', background: '#ECF8F1', padding: '3px 9px', borderRadius: 7 }}>{r.interested ?? 0} Interested</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#9A5B00', background: '#FCF4E2', padding: '3px 9px', borderRadius: 7 }}>{r.negotiate ?? 0} Negotiate</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#93A0B5', background: '#EEF0F3', padding: '3px 9px', borderRadius: 7 }}>{r.declined ?? 0} Declined</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16, paddingTop: 14, borderTop: '1px solid #EEF0F3' }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openSend(p)}><Icon name="mail" size={14} /> Send</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openResponses(p)}><Icon name="users" size={14} /> Responses</button>
+                  <div style={{ flex: 1 }} />
+                  <button className="act-btn" onClick={() => openEdit(p)} title="Edit"><Icon name="edit" size={15} /></button>
+                  <button className="act-btn" onClick={() => togglePkg(p)} title={active ? 'Deactivate' : 'Activate'} style={{ color: active ? 'var(--muted)' : 'var(--green-600)' }}><Icon name="eye" size={15} /></button>
+                  <button className="act-btn" onClick={() => deletePkg(p)} title="Delete" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={15} /></button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
