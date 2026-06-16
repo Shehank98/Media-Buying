@@ -167,63 +167,73 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
       return;
     }
 
+    const renderProperty = (p) => {
+      ensure(64);
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor(PP.ink).text(p.propertyName, { width: contentW });
+      doc.font('Helvetica').fontSize(8.5).fillColor(PP.soft)
+        .text(`${p.channelMasterName}  ·  ${p.clientName}  ·  ${p.agencyName}  ·  ${p.propertyType}`, { width: contentW });
+      doc.moveDown(0.15);
+      doc.font('Helvetica').fontSize(9).fillColor(PP.ink)
+        .text(`Current rate: `, { continued: true })
+        .font('Helvetica-Bold').text(rs(p.cost), { continued: true })
+        .font('Helvetica').fillColor(PP.soft).text(`     Bonus: `, { continued: true })
+        .font('Helvetica-Bold').fillColor(PP.ink).text(p.bonusPct != null ? p.bonusPct + '%' : '—');
+      if (p.notes) {
+        doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(PP.soft).text(`Notes: ${trunc(p.notes, 140)}`, { width: contentW });
+      }
+
+      if (includeHistory && p.timeline && p.timeline.length) {
+        doc.moveDown(0.25);
+        ensure(28);
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.muted2).text('RATE HISTORY', { characterSpacing: 0.8 });
+        doc.moveDown(0.15);
+        const cDate = left, cRate = left + 95, cChg = left + 190, cNote = left + 255, cBy = right - 95;
+        const noteW = cBy - cNote - 8;
+        const hy = doc.y;
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.soft);
+        doc.text('DATE', cDate, hy); doc.text('RATE', cRate, hy); doc.text('CHANGE', cChg, hy);
+        doc.text('NOTE', cNote, hy); doc.text('BY', cBy, hy);
+        doc.y = hy + 11;
+        doc.moveTo(left, doc.y - 2).lineTo(right, doc.y - 2).strokeColor('#EEF0F3').lineWidth(0.5).stroke();
+
+        for (const ev of p.timeline) {
+          ensure(13);
+          const ry = doc.y;
+          let chgTxt = '—', chgColor = PP.soft;
+          if (ev.prevCost == null) { chgTxt = 'Initial'; chgColor = PP.muted2; }
+          else if (Number(ev.prevCost) !== 0) {
+            const pct = ((Number(ev.cost) - Number(ev.prevCost)) / Number(ev.prevCost)) * 100;
+            const up = pct >= 0;
+            chgTxt = (up ? '+' : '') + pct.toFixed(0) + '%';
+            chgColor = up ? PP.green : PP.red;
+          }
+          doc.font('Helvetica').fontSize(8).fillColor(PP.ink).text(dt(ev.date), cDate, ry, { width: 90 });
+          doc.font('Helvetica-Bold').fontSize(8).fillColor(PP.ink).text(rs(ev.cost), cRate, ry, { width: 90 });
+          doc.font('Helvetica-Bold').fontSize(8).fillColor(chgColor).text(chgTxt, cChg, ry, { width: 60 });
+          doc.font('Helvetica').fontSize(8).fillColor(PP.soft).text(trunc(ev.note, 46), cNote, ry, { width: noteW });
+          doc.font('Helvetica').fontSize(8).fillColor(PP.soft).text(trunc(ev.by, 16), cBy, ry, { width: 90 });
+          doc.y = ry + 12.5;
+        }
+      }
+      doc.moveDown(0.7);
+    };
+
     for (const g of groups) {
       ensure(46);
       doc.font('Helvetica-Bold').fontSize(11.5).fillColor(PP.coralDk).text(g.name, left, doc.y);
       doc.moveTo(left, doc.y + 3).lineTo(right, doc.y + 3).strokeColor(PP.line).lineWidth(1).stroke();
       doc.moveDown(0.6);
 
-      for (const p of g.properties) {
-        ensure(64);
-        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(PP.ink).text(p.propertyName, { width: contentW });
-        doc.font('Helvetica').fontSize(8.5).fillColor(PP.soft)
-          .text(`${p.channelMasterName}  ·  ${p.clientName}  ·  ${p.agencyName}  ·  ${p.propertyType}`, { width: contentW });
-        doc.moveDown(0.15);
-        doc.font('Helvetica').fontSize(9).fillColor(PP.ink)
-          .text(`Current rate: `, { continued: true })
-          .font('Helvetica-Bold').text(rs(p.cost), { continued: true })
-          .font('Helvetica').fillColor(PP.soft).text(`     Bonus: `, { continued: true })
-          .font('Helvetica-Bold').fillColor(PP.ink).text(p.bonusPct != null ? p.bonusPct + '%' : '—');
-        if (p.notes) {
-          doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(PP.soft).text(`Notes: ${trunc(p.notes, 140)}`, { width: contentW });
+      if (g.subgroups) {
+        for (const sg of g.subgroups) {
+          ensure(30);
+          doc.font('Helvetica-Bold').fontSize(9.5).fillColor(PP.ink).text(sg.name, left + 6, doc.y, { width: contentW - 6 });
+          doc.moveDown(0.3);
+          for (const p of sg.properties) renderProperty(p);
+          doc.moveDown(0.3);
         }
-
-        if (includeHistory && p.timeline && p.timeline.length) {
-          doc.moveDown(0.25);
-          ensure(28);
-          doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.muted2).text('RATE HISTORY', { characterSpacing: 0.8 });
-          doc.moveDown(0.15);
-          // columns
-          const cDate = left, cRate = left + 95, cChg = left + 190, cNote = left + 255, cBy = right - 95;
-          const noteW = cBy - cNote - 8;
-          // header
-          const hy = doc.y;
-          doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.soft);
-          doc.text('DATE', cDate, hy); doc.text('RATE', cRate, hy); doc.text('CHANGE', cChg, hy);
-          doc.text('NOTE', cNote, hy); doc.text('BY', cBy, hy);
-          doc.y = hy + 11;
-          doc.moveTo(left, doc.y - 2).lineTo(right, doc.y - 2).strokeColor('#EEF0F3').lineWidth(0.5).stroke();
-
-          for (const ev of p.timeline) {
-            ensure(13);
-            const ry = doc.y;
-            let chgTxt = '—', chgColor = PP.soft;
-            if (ev.prevCost == null) { chgTxt = 'Initial'; chgColor = PP.muted2; }
-            else if (Number(ev.prevCost) !== 0) {
-              const pct = ((Number(ev.cost) - Number(ev.prevCost)) / Number(ev.prevCost)) * 100;
-              const up = pct >= 0;
-              chgTxt = (up ? '+' : '') + pct.toFixed(0) + '%';
-              chgColor = up ? PP.green : PP.red;
-            }
-            doc.font('Helvetica').fontSize(8).fillColor(PP.ink).text(dt(ev.date), cDate, ry, { width: 90 });
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(PP.ink).text(rs(ev.cost), cRate, ry, { width: 90 });
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(chgColor).text(chgTxt, cChg, ry, { width: 60 });
-            doc.font('Helvetica').fontSize(8).fillColor(PP.soft).text(trunc(ev.note, 46), cNote, ry, { width: noteW });
-            doc.font('Helvetica').fontSize(8).fillColor(PP.soft).text(trunc(ev.by, 16), cBy, ry, { width: 90 });
-            doc.y = ry + 12.5;
-          }
-        }
-        doc.moveDown(0.7);
+      } else {
+        for (const p of g.properties) renderProperty(p);
       }
     }
 

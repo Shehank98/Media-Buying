@@ -303,8 +303,8 @@ export async function exportProperties(req, res) {
       format = 'json',
     } = req.query;
 
-    if (!groupBy || !['channel', 'client', 'agency', 'all'].includes(groupBy)) {
-      return res.status(400).json({ error: "groupBy is required and must be one of: 'channel', 'client', 'agency', 'all'" });
+    if (!groupBy || !['channel', 'client', 'agency', 'all', 'agency-channel', 'client-channel'].includes(groupBy)) {
+      return res.status(400).json({ error: "groupBy is required and must be one of: 'channel', 'client', 'agency', 'all', 'agency-channel', 'client-channel'" });
     }
     const withHistory = includeHistory !== 'false';
 
@@ -380,10 +380,10 @@ export async function exportProperties(req, res) {
     }));
 
     const channels = [...new Set(norm.map((n) => n.channelMasterName))].sort((a, b) => a.localeCompare(b));
-    const groupNameOf = (n) =>
-      groupBy === 'agency' ? n.agencyName
-        : groupBy === 'client' ? n.clientName
-          : groupBy === 'channel' ? n.channelMasterName
+    const dimVal = (n, dim) =>
+      dim === 'agency' ? n.agencyName
+        : dim === 'client' ? n.clientName
+          : dim === 'channel' ? n.channelMasterName
             : 'All Properties';
 
     // ── JSON (preview) ──
@@ -410,13 +410,29 @@ export async function exportProperties(req, res) {
       return res.json({ rows, summary, channels });
     }
 
-    // ── Build groups ──
-    const groupsMap = {};
-    for (const n of norm) { const k = groupNameOf(n); (groupsMap[k] = groupsMap[k] || []).push(n); }
-    const groups = Object.keys(groupsMap).sort((a, b) => a.localeCompare(b)).map((name) => ({ name, properties: groupsMap[name] }));
+    // ── Build groups (single-level, or nested e.g. agency-channel / client-channel) ──
+    const isNested = groupBy.includes('-');
+    const sortKeys = (obj) => Object.keys(obj).sort((a, b) => a.localeCompare(b));
+    let groups;
+    if (isNested) {
+      const [pk, sk] = groupBy.split('-');
+      const primMap = {};
+      for (const n of norm) { const p = dimVal(n, pk); (primMap[p] = primMap[p] || []).push(n); }
+      groups = sortKeys(primMap).map((pname) => {
+        const subMap = {};
+        for (const n of primMap[pname]) { const s = dimVal(n, sk); (subMap[s] = subMap[s] || []).push(n); }
+        return { name: pname, subgroups: sortKeys(subMap).map((sname) => ({ name: sname, properties: subMap[sname] })) };
+      });
+    } else {
+      const groupsMap = {};
+      for (const n of norm) { const k = dimVal(n, groupBy); (groupsMap[k] = groupsMap[k] || []).push(n); }
+      groups = sortKeys(groupsMap).map((name) => ({ name, properties: groupsMap[name] }));
+    }
+    // Flatten a group's properties whether single-level or nested.
+    const groupProps = (g) => g.properties || (g.subgroups ? g.subgroups.flatMap((s) => s.properties) : []);
     const totals = { properties: norm.length, cost: norm.reduce((s, n) => s + n.cost, 0) };
 
-    const ftParts = [`Grouped by ${groupBy}`];
+    const ftParts = [`Grouped by ${groupBy.replace('-', ' → ')}`];
     if (channelName) ftParts.push(`Channel: ${channelName}`);
     if (channelType) ftParts.push(`Medium: ${channelType}`);
     if (propertyType) ftParts.push(`Type: ${propertyType}`);
@@ -501,14 +517,14 @@ export async function exportProperties(req, res) {
     if (groupBy === 'all') {
       addPropSheet('All Properties', norm);
     } else {
-      for (const g of groups) addPropSheet(g.name, g.properties);
+      for (const g of groups) addPropSheet(g.name, groupProps(g));
       const summSheet = workbook.addWorksheet('Summary');
       summSheet.columns = [
         { header: 'Group Name', width: 30 },
         { header: 'Properties', width: 14 },
         { header: 'Total Cost (LKR)', width: 24 },
       ];
-      for (const g of groups) summSheet.addRow([g.name, g.properties.length, g.properties.reduce((s, n) => s + n.cost, 0)]);
+      for (const g of groups) { const gp = groupProps(g); summSheet.addRow([g.name, gp.length, gp.reduce((s, n) => s + n.cost, 0)]); }
       summSheet.getColumn(3).numFmt = '#,##0.00';
       navyHeader(summSheet, 3);
       autoWidth(summSheet);

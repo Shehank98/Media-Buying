@@ -8,6 +8,11 @@ const GROUP_OPTIONS = [
   { key: 'agency', label: 'By Agency', icon: 'building' },
   { key: 'all', label: 'All Data', icon: 'database' },
 ];
+// Two-level nesting, properties only (e.g. Agency → its Channels).
+const PROP_GROUP_EXTRA = [
+  { key: 'agency-channel', label: 'By Agency → Channel', icon: 'building' },
+  { key: 'client-channel', label: 'By Client → Channel', icon: 'folder' },
+];
 
 const MEDIUM_OPTIONS = [
   { value: 'TV', label: 'TV' },
@@ -123,6 +128,7 @@ export default function ReportsPage() {
   }, [groupBy, agencyId, clientId, medium, monthFrom, monthTo, channelType, propertyType, channelName, includeHistory, source]);
 
   const endpoint = source === 'properties' ? '/reports/properties' : '/reports/schedule-logs';
+  const groupOptions = source === 'properties' ? [...GROUP_OPTIONS, ...PROP_GROUP_EXTRA] : GROUP_OPTIONS;
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +191,8 @@ export default function ReportsPage() {
   // agency / client / channel, each with its own subtotal). 'all' = flat list.
   const grouped = useMemo(() => {
     if (groupBy === 'all') return null;
-    const keyField = groupBy === 'agency' ? 'agencyName' : groupBy === 'client' ? 'clientName' : 'channelName';
+    const primary = groupBy.includes('-') ? groupBy.split('-')[0] : groupBy;
+    const keyField = primary === 'agency' ? 'agencyName' : primary === 'client' ? 'clientName' : 'channelName';
     const map = new Map();
     for (const r of sorted) {
       const k = r[keyField] || '—';
@@ -289,6 +296,8 @@ export default function ReportsPage() {
     setSortField('agencyName');
     setSortDir('asc');
     setCollapsedGroups(new Set());
+    // Schedule logs don't support nested grouping — fall back to a valid option.
+    if (s !== 'properties' && groupBy.includes('-')) setGroupBy('agency');
     clearFilters();
   };
 
@@ -568,7 +577,7 @@ export default function ReportsPage() {
         display: 'flex', gap: 6, marginBottom: 16,
         background: 'var(--bg-sunken)', borderRadius: 10, padding: 4, width: 'fit-content',
       }}>
-        {GROUP_OPTIONS.map((opt) => {
+        {groupOptions.map((opt) => {
           const active = groupBy === opt.key;
           return (
             <button
@@ -755,7 +764,7 @@ export default function ReportsPage() {
       {!loading && grouped && grouped.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, fontSize: 13 }}>
           <span style={{ color: 'var(--muted)' }}>
-            {grouped.length} {grouped.length === 1 ? 'group' : 'groups'} by {GROUP_OPTIONS.find((o) => o.key === groupBy)?.label.replace('By ', '').toLowerCase()}
+            {grouped.length} {grouped.length === 1 ? 'group' : 'groups'} by {groupOptions.find((o) => o.key === groupBy)?.label.replace('By ', '').toLowerCase()}
           </span>
           <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set())}>Expand all</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set(grouped.map((g) => g.name)))}>Collapse all</button>
