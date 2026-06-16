@@ -645,7 +645,7 @@ export async function exportScheduleLogs(req, res) {
     });
 
     // JSON response: camelCase keys for frontend
-    if (format !== 'excel') {
+    if (format !== 'excel' && format !== 'pdf') {
       const rows = logs.map((log) => ({
         agencyName: log.agency.name,
         clientName: log.client.name,

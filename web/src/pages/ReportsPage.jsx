@@ -107,9 +107,9 @@ export default function ReportsPage() {
     })();
   }, [agencyId]);
 
-  const buildParams = useCallback((format) => {
+  const buildParams = useCallback((format, groupByArg) => {
     const params = new URLSearchParams();
-    params.set('groupBy', groupBy);
+    params.set('groupBy', groupByArg || groupBy);
     if (agencyId) params.set('agencyId', agencyId);
     if (clientId) params.set('clientId', clientId);
     if (format) params.set('format', format);
@@ -238,17 +238,19 @@ export default function ReportsPage() {
     setChannelName('');
   };
 
-  const handleExportExcel = async () => {
+  const handleExportExcel = async (groupKeyOverride) => {
+    const gk = typeof groupKeyOverride === 'string' ? groupKeyOverride : undefined;
+    if (gk) changeGroupBy(gk);
     setExporting(true);
     try {
-      const qs = buildParams('excel');
+      const qs = buildParams('excel', gk);
       const response = await api.get(`${endpoint}?${qs}`, { responseType: 'blob' });
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       const prefix = source === 'properties' ? 'properties' : 'schedule-logs';
-      link.download = `${prefix}-${groupBy}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      link.download = `${prefix}-${gk || groupBy}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -261,17 +263,19 @@ export default function ReportsPage() {
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (groupKeyOverride) => {
+    const gk = typeof groupKeyOverride === 'string' ? groupKeyOverride : undefined;
+    if (gk) changeGroupBy(gk);
     setExporting(true);
     try {
-      const qs = buildParams('pdf');
+      const qs = buildParams('pdf', gk);
       const response = await api.get(`${endpoint}?${qs}`, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       const prefix = source === 'properties' ? 'properties' : 'schedule-logs';
-      link.download = `${prefix}-${groupBy}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      link.download = `${prefix}-${gk || groupBy}-${new Date().toISOString().slice(0, 10)}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -424,11 +428,6 @@ export default function ReportsPage() {
         : `Flat ${sourceLabel.toLowerCase()} listing across every agency, client and channel.`,
   }));
 
-  const generateReport = (groupKey) => {
-    changeGroupBy(groupKey);
-    handleExportExcel();
-  };
-
   // Recently generated history derived from the active source/grouping —
   // wired to re-run the existing export handler.
   const recent = !loading && rows.length > 0
@@ -454,7 +453,7 @@ export default function ReportsPage() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button
             className="btn btn-ghost"
-            onClick={handleExportPdf}
+            onClick={() => handleExportPdf()}
             disabled={loading || exporting || rows.length === 0}
           >
             <Icon name="file" size={16} />
@@ -462,7 +461,7 @@ export default function ReportsPage() {
           </button>
           <button
             className="btn btn-primary"
-            onClick={handleExportExcel}
+            onClick={() => handleExportExcel()}
             disabled={loading || exporting || rows.length === 0}
           >
             <Icon name="download" size={16} />
@@ -480,17 +479,14 @@ export default function ReportsPage() {
       }}>
         {reportCards.map((rc, i) => {
           const tint = TINTS[i % TINTS.length];
-          const fmtPill = source === 'properties' ? 'EXCEL' : 'EXCEL';
           return (
             <div
               key={rc.key}
-              onClick={() => generateReport(rc.key)}
               style={{
                 ...CARD,
                 padding: 20,
                 display: 'flex',
                 flexDirection: 'column',
-                cursor: 'pointer',
                 transition: 'border-color .15s ease, box-shadow .15s ease',
               }}
               onMouseEnter={(e) => {
@@ -513,12 +509,12 @@ export default function ReportsPage() {
               <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{rc.name}</div>
               <div style={{ fontSize: 12.5, color: '#6B7790', marginTop: 6, lineHeight: 1.5, flex: 1 }}>{rc.desc}</div>
               <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, color: '#3B4A63',
-                  background: '#EEF0F3', padding: '3px 9px', borderRadius: 6,
-                }}>{fmtPill}</span>
-                <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#D9521C' }}>Generate →</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleExportPdf(rc.key)} disabled={exporting}>
+                  <Icon name="file" size={14} /> PDF
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => handleExportExcel(rc.key)} disabled={exporting}>
+                  <Icon name="download" size={14} /> Excel
+                </button>
               </div>
             </div>
           );
