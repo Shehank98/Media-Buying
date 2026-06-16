@@ -230,3 +230,94 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
     doc.end();
   });
 }
+
+// ─── Branded grouped TABLE PDF (reused by schedule-logs & tabular exports) ────
+// columns: [{ key, label, align:'left'|'right', w:relativeWeight }]
+// groups:  [{ name, rows:[{key->display}], subtotal:{key->display, _label} }]
+// totals:  { _label, key->display }  (grand total, optional)
+export async function generateGroupedTablePdf({ title, filtersText, columns, groups, totals }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const chunks = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const contentW = right - left;
+    const bottom = () => doc.page.height - doc.page.margins.bottom;
+    const ensure = (h) => { if (doc.y + h > bottom()) { doc.addPage(); doc.y = doc.page.margins.top; return true; } return false; };
+
+    // Column geometry
+    const totalW = columns.reduce((s, c) => s + (c.w || 1), 0);
+    let cx = left;
+    const cols = columns.map((c) => { const w = contentW * ((c.w || 1) / totalW); const o = { ...c, x: cx, width: w - 8 }; cx += w; return o; });
+
+    // Header band
+    doc.save().rect(0, 0, doc.page.width, 84).fill(PP.navy).restore();
+    doc.roundedRect(left, 25, 34, 34, 17).fill(PP.coral);
+    doc.fillColor('#FFF3EC').font('Helvetica-Bold').fontSize(17).text('O', left, 34, { width: 34, align: 'center' });
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Ogilvy Orbit', left + 44, 29);
+    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(9.5).text(title || 'Report', left + 44, 49);
+    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(8).text('Generated ' + dt(new Date()), left, 31, { width: contentW, align: 'right' });
+    doc.fillColor(PP.ink);
+    doc.y = 100;
+    if (filtersText) { doc.font('Helvetica').fontSize(9).fillColor(PP.soft).text(filtersText, left, doc.y, { width: contentW }); doc.moveDown(0.5); }
+
+    const drawColHeader = () => {
+      const hy = doc.y;
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.soft);
+      for (const c of cols) doc.text(String(c.label).toUpperCase(), c.x, hy, { width: c.width, align: c.align || 'left' });
+      doc.y = hy + 11;
+      doc.moveTo(left, doc.y - 2).lineTo(right, doc.y - 2).strokeColor(PP.line).lineWidth(0.5).stroke();
+    };
+    const drawRow = (rowObj, { bold } = {}) => {
+      const paged = ensure(14);
+      if (paged) drawColHeader();
+      const ry = doc.y;
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor(bold ? PP.ink : PP.soft);
+      for (const c of cols) {
+        const v = rowObj[c.key] != null ? String(rowObj[c.key]) : '';
+        doc.fillColor(bold ? PP.ink : (c.align === 'right' ? PP.ink : PP.soft));
+        doc.text(trunc(v, c.align === 'right' ? 22 : 40), c.x, ry, { width: c.width, align: c.align || 'left' });
+      }
+      doc.y = ry + 13;
+    };
+
+    if (!groups || groups.length === 0) {
+      doc.font('Helvetica').fontSize(11).fillColor(PP.soft).text('No data matches the selected filters.', { align: 'center' });
+      doc.end();
+      return;
+    }
+
+    if (totals) {
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(PP.ink).text(totals._label || 'Total', { width: contentW });
+      doc.moveDown(0.5);
+    }
+
+    for (const g of groups) {
+      ensure(46);
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(PP.coralDk).text(g.name, left, doc.y);
+      doc.moveTo(left, doc.y + 3).lineTo(right, doc.y + 3).strokeColor(PP.line).lineWidth(1).stroke();
+      doc.moveDown(0.5);
+      drawColHeader();
+      for (const r of g.rows) drawRow(r);
+      if (g.subtotal) {
+        doc.moveTo(left, doc.y + 1).lineTo(right, doc.y + 1).strokeColor('#EEF0F3').lineWidth(0.5).stroke();
+        doc.y += 3;
+        drawRow(g.subtotal, { bold: true });
+      }
+      doc.moveDown(0.7);
+    }
+
+    if (totals) {
+      ensure(20);
+      doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor(PP.ink).lineWidth(1).stroke();
+      doc.y += 4;
+      drawRow(totals, { bold: true });
+    }
+
+    doc.end();
+  });
+}

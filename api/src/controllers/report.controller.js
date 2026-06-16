@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import prisma from '../utils/prisma.js';
-import { generateExcel, generatePdf, generatePropertyHistoryPdf } from '../services/export.service.js';
+import { generateExcel, generatePdf, generatePropertyHistoryPdf, generateGroupedTablePdf } from '../services/export.service.js';
 
 // Build a chronological rate timeline for a property from its change history.
 // First event = the original rate at creation; each subsequent cost change appends.
@@ -653,28 +653,55 @@ export async function exportScheduleLogs(req, res) {
       return res.json({ rows, summary });
     }
 
-    // ── PDF export (curated columns + totals row) ──
+    // ── PDF export (branded, grouped, with subtotals + grand total) ──
     if (format === 'pdf') {
       const fmtNum = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const pdfRows = logs.map((log) => ({
-        Agency: log.agency.name,
-        Client: log.client.name,
-        Channel: log.channelMaster.name,
-        Medium: log.medium,
-        'RO Number': log.roNumber || '',
-        'Sch Month': log.scheduleMonth || '',
-        'Schedule Value': fmtNum(log.scheduleValue),
-        'With VAT': fmtNum(log.scheduleValueWithVat),
-      }));
-      if (pdfRows.length) {
-        const totSV = logs.reduce((s, l) => s + Number(l.scheduleValue), 0);
-        const totVAT = logs.reduce((s, l) => s + Number(l.scheduleValueWithVat), 0);
-        pdfRows.push({
-          Agency: 'TOTAL', Client: '', Channel: '', Medium: '', 'RO Number': '', 'Sch Month': '',
-          'Schedule Value': fmtNum(totSV), 'With VAT': fmtNum(totVAT),
-        });
-      }
-      const buffer = await generatePdf(pdfRows, 'Schedule Logs Report');
+      const groupNameOf = (log) =>
+        groupBy === 'agency' ? log.agency.name
+          : groupBy === 'client' ? log.client.name
+            : groupBy === 'channel' ? log.channelMaster.name
+              : 'All Schedule Logs';
+
+      const groupsMap = {};
+      for (const log of logs) { const k = groupNameOf(log); (groupsMap[k] = groupsMap[k] || []).push(log); }
+
+      const columns = [
+        { key: 'Client', label: 'Client', align: 'left', w: 1.9 },
+        { key: 'Channel', label: 'Channel', align: 'left', w: 1.6 },
+        { key: 'Medium', label: 'Medium', align: 'left', w: 0.9 },
+        { key: 'Month', label: 'Sch Month', align: 'left', w: 1.0 },
+        { key: 'Schedule Value', label: 'Schedule Value', align: 'right', w: 1.5 },
+        { key: 'With VAT', label: 'With VAT', align: 'right', w: 1.4 },
+      ];
+
+      const groups = Object.keys(groupsMap).sort((a, b) => a.localeCompare(b)).map((name) => {
+        const items = groupsMap[name];
+        const subSV = items.reduce((s, l) => s + Number(l.scheduleValue), 0);
+        const subVAT = items.reduce((s, l) => s + Number(l.scheduleValueWithVat), 0);
+        return {
+          name,
+          rows: items.map((log) => ({
+            Client: log.client.name,
+            Channel: log.channelMaster.name,
+            Medium: log.medium,
+            Month: log.scheduleMonth || '',
+            'Schedule Value': fmtNum(log.scheduleValue),
+            'With VAT': fmtNum(log.scheduleValueWithVat),
+          })),
+          subtotal: { Client: `Subtotal · ${items.length}`, 'Schedule Value': fmtNum(subSV), 'With VAT': fmtNum(subVAT) },
+        };
+      });
+
+      const grandSV = logs.reduce((s, l) => s + Number(l.scheduleValue), 0);
+      const grandVAT = logs.reduce((s, l) => s + Number(l.scheduleValueWithVat), 0);
+      const totals = { _label: `${logs.length} entries · ${fmtNum(grandSV)} total`, Client: 'GRAND TOTAL', 'Schedule Value': fmtNum(grandSV), 'With VAT': fmtNum(grandVAT) };
+
+      const ftParts = [`Grouped by ${groupBy}`];
+      if (medium) ftParts.push(`Medium: ${medium}`);
+      if (monthFrom || monthTo) ftParts.push(`Months: ${monthFrom || '…'} – ${monthTo || '…'}`);
+      const filtersText = ftParts.join('   ·   ');
+
+      const buffer = await generateGroupedTablePdf({ title: 'Schedule Logs Report', filtersText, columns, groups, totals });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="schedule-logs-${groupBy}-${new Date().toISOString().split('T')[0]}.pdf"`);
       return res.send(buffer);
