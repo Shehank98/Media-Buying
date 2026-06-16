@@ -126,35 +126,35 @@ export default function LoginPage() {
       </div>
 
       {/* content */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 40px' }}>
-        <div style={{ width: 418, maxWidth: '100%', animation: 'ob-rise .8s cubic-bezier(.22,.61,.36,1) both' }}>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 3, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 40px' }}>
+        <div style={{ width: 418, maxWidth: '100%', margin: 'auto 0', animation: 'ob-rise .8s cubic-bezier(.22,.61,.36,1) both' }}>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}>
-            <div style={{ position: 'relative', width: 90, height: 90, display: 'grid', placeItems: 'center', marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ position: 'relative', width: 72, height: 72, display: 'grid', placeItems: 'center', marginBottom: 10 }}>
               <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '1px solid rgba(255,255,255,.14)', boxShadow: 'inset 0 0 40px rgba(232,93,36,.12)' }} />
-              <div style={{ position: 'absolute', inset: 14, borderRadius: '50%', border: '1px solid rgba(255,255,255,.07)' }} />
+              <div style={{ position: 'absolute', inset: 12, borderRadius: '50%', border: '1px solid rgba(255,255,255,.07)' }} />
               <div style={{ position: 'absolute', inset: 0, animation: 'ob-spin 14s linear infinite' }}>
                 <div style={{ position: 'absolute', top: -4, left: '50%', marginLeft: -4.5, width: 9, height: 9, borderRadius: '50%', background: '#FF7A45', boxShadow: '0 0 14px 2px rgba(255,122,69,.85)' }} />
               </div>
-              <div style={{ position: 'absolute', inset: 14, animation: 'ob-spin-rev 20s linear infinite' }}>
+              <div style={{ position: 'absolute', inset: 12, animation: 'ob-spin-rev 20s linear infinite' }}>
                 <div style={{ position: 'absolute', bottom: -3, left: '50%', marginLeft: -3, width: 6, height: 6, borderRadius: '50%', background: '#9FB6FF', boxShadow: '0 0 10px 1px rgba(159,182,255,.8)' }} />
               </div>
-              <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'radial-gradient(circle at 34% 30%, #F2A07C, #C16645 58%, #8A3A1E)', display: 'grid', placeItems: 'center', fontFamily: "'Newsreader', serif", fontSize: 30, color: '#FFF3EC', boxShadow: '0 8px 26px rgba(193,102,69,.5), inset -4px -4px 12px rgba(0,0,0,.3)' }}>O</div>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'radial-gradient(circle at 34% 30%, #F2A07C, #C16645 58%, #8A3A1E)', display: 'grid', placeItems: 'center', fontFamily: "'Newsreader', serif", fontSize: 25, color: '#FFF3EC', boxShadow: '0 8px 26px rgba(193,102,69,.5), inset -4px -4px 12px rgba(0,0,0,.3)' }}>O</div>
             </div>
-            <div style={{ fontSize: 12, letterSpacing: '5px', textTransform: 'uppercase', color: '#7F92B8', fontWeight: 600, marginBottom: 5 }}>Ogilvy Media</div>
-            <div style={{ fontSize: 33, fontWeight: 700, letterSpacing: '-1px', lineHeight: 1 }}>Ogilvy <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontStyle: 'italic', color: '#F2A07C' }}>Orbit</span></div>
+            <div style={{ fontSize: 11, letterSpacing: '4px', textTransform: 'uppercase', color: '#7F92B8', fontWeight: 600, marginBottom: 3 }}>Ogilvy Media</div>
+            <div style={{ fontSize: 27, fontWeight: 700, letterSpacing: '-1px', lineHeight: 1 }}>Ogilvy <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 500, fontStyle: 'italic', color: '#F2A07C' }}>Orbit</span></div>
           </div>
 
-          <div style={{ background: 'rgba(14,24,46,.58)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 20, padding: '26px 28px 24px', boxShadow: '0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)' }}>
+          <div style={{ background: 'rgba(14,24,46,.58)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 20, padding: '20px 26px 18px', boxShadow: '0 30px 80px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)' }}>
             <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.3px', marginBottom: 4 }}>Sign in to mission control</div>
-            <div style={{ fontSize: 13.5, color: '#8493B5', marginBottom: 22 }}>Use your agency credentials to continue.</div>
+            <div style={{ fontSize: 13.5, color: '#8493B5', marginBottom: 18 }}>Use your agency credentials to continue.</div>
 
             {err && (
               <div style={{ marginBottom: 16, padding: '10px 13px', borderRadius: 10, background: 'rgba(197,57,31,.16)', border: '1px solid rgba(197,57,31,.3)', color: '#FFB4A2', fontSize: 13, fontWeight: 600 }}>{err}</div>
             )}
 
-            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#AEBBD6', marginBottom: 7 }}>Email address</label>
-            <div style={{ position: 'relative', marginBottom: 18 }}>
+            <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#AEBBD6', marginBottom: 6 }}>Email address</label>
+            <div style={{ position: 'relative', marginBottom: 13 }}>
               <span style={{ position: 'absolute', left: 13, top: 12, color: '#5D6E92', display: 'grid', placeItems: 'center' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6" /></svg>
               </span>
@@ -172,7 +172,7 @@ export default function LoginPage() {
               <label style={{ fontSize: 12.5, fontWeight: 600, color: '#AEBBD6' }}>Password</label>
               <span onClick={() => navigate('/forgot-password')} style={{ fontSize: 12, color: '#F2A07C', fontWeight: 600, cursor: 'pointer' }}>Forgot password?</span>
             </div>
-            <div style={{ position: 'relative', marginBottom: 22 }}>
+            <div style={{ position: 'relative', marginBottom: 16 }}>
               <span style={{ position: 'absolute', left: 13, top: 12, color: '#5D6E92', display: 'grid', placeItems: 'center' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4" /></svg>
               </span>
@@ -189,15 +189,15 @@ export default function LoginPage() {
               </button>
             </div>
 
-            <button onClick={submit} type="button" disabled={loading} style={{ width: '100%', border: 'none', borderRadius: 12, padding: 14, fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', color: '#fff', cursor: loading ? 'default' : 'pointer', background: 'linear-gradient(180deg,#F0703F,#D9521C)', boxShadow: '0 10px 28px rgba(217,82,28,.42), inset 0 1px 0 rgba(255,255,255,.25)', letterSpacing: '.2px', opacity: loading ? 0.8 : 1 }}>
+            <button onClick={submit} type="button" disabled={loading} style={{ width: '100%', border: 'none', borderRadius: 12, padding: 13, fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', color: '#fff', cursor: loading ? 'default' : 'pointer', background: 'linear-gradient(180deg,#F0703F,#D9521C)', boxShadow: '0 10px 28px rgba(217,82,28,.42), inset 0 1px 0 rgba(255,255,255,.25)', letterSpacing: '.2px', opacity: loading ? 0.8 : 1 }}>
               {loading ? 'Launching…' : 'Launch session'}
             </button>
           </div>
 
-          <div style={{ textAlign: 'center', fontSize: 12.5, color: '#6B7CA0', marginTop: 20 }}>
+          <div style={{ textAlign: 'center', fontSize: 12.5, color: '#6B7CA0', marginTop: 14 }}>
             Trouble signing in? <span onClick={() => alert('Contact your super admin.')} style={{ color: '#AEBBD6', fontWeight: 600, cursor: 'pointer' }}>Contact your admin</span>
           </div>
-          <div style={{ textAlign: 'center', fontSize: 11.5, letterSpacing: '.4px', color: '#46557A', marginTop: 26 }}>© 2026 Ogilvy Media · Colombo · Secured workspace</div>
+          <div style={{ textAlign: 'center', fontSize: 11.5, letterSpacing: '.4px', color: '#46557A', marginTop: 14 }}>© 2026 Ogilvy Media · Colombo · Secured workspace</div>
         </div>
       </div>
     </div>
