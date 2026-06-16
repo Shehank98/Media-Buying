@@ -6,7 +6,7 @@ const FOLLOW_UPS = ['PENDING', 'FOLLOWED_UP', 'BOOKED', 'CLOSED'];
 const INTEREST_LABEL = { INTERESTED: 'Interested', NOT_INTERESTED: 'Not interested', NEGOTIATE: 'Open to negotiate' };
 
 function frontendBase() {
-  return (process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app').split(',')[0].trim();
+  return (process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app').split(',')[0].trim().replace(/\/+$/, '');
 }
 
 function num(v) {

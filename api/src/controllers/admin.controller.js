@@ -129,7 +129,7 @@ export async function createUser(req, res) {
 
     // Send welcome email (fire-and-forget). FRONTEND_URL may be a
     // comma-separated CORS whitelist, so use the first entry.
-    const loginUrl = (process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app').split(',')[0].trim();
+    const loginUrl = (process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app').split(',')[0].trim().replace(/\/+$/, '');
     sendEmail({
       type: 'welcome',
       to: email,

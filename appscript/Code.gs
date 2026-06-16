@@ -1,5 +1,5 @@
 /**
- * Ogilvy Orbit — Email Service
+ * Ogilvy Orbit - Email Service
  *
  * Deploy as a Web App:
  *   Execute as: Me
@@ -155,10 +155,10 @@ function spacer(h)   { return '<div style="height:' + h + 'px;line-height:' + h 
 function sendWelcomeEmail(data) {
   var to       = data.to;
   var name     = data.name     || "User";
-  var password = data.password || "—";
+  var password = data.password || "-";
   var loginUrl = data.loginUrl || "https://your-app.railway.app";
 
-  var subject = "Welcome to " + BRAND_NAME + " — Your account is ready";
+  var subject = "Welcome to " + BRAND_NAME + " - Your account is ready";
   var html    = buildWelcomeHtml(name, to, password, loginUrl);
 
   GmailApp.sendEmail(to, subject, stripTags(html), { name: FROM_NAME, htmlBody: html });
@@ -209,7 +209,7 @@ function sendResetEmail(data) {
   var name      = data.name      || "User";
   var resetLink = data.resetLink || "#";
 
-  var subject = "Reset your password — " + BRAND_NAME;
+  var subject = "Reset your password - " + BRAND_NAME;
   var html    = buildResetHtml(name, resetLink);
 
   GmailApp.sendEmail(to, subject, stripTags(html), { name: FROM_NAME, htmlBody: html });
@@ -235,10 +235,10 @@ function buildResetHtml(name, resetLink) {
       '<p style="margin:0 0 26px;word-break:break-all;"><a href="' + resetLink + '" style="color:' + C_CORAL_D + ';font-size:13px;text-decoration:none;">' + resetLink + '</a></p>' +
 
       callout('red', '&#128274;', 'Didn&rsquo;t request this?',
-        'If you didn&rsquo;t request a password reset, your account may be at risk &mdash; contact your administrator. You can safely ignore this email otherwise.') +
+        'If you didn&rsquo;t request a password reset, your account may be at risk - contact your administrator. You can safely ignore this email otherwise.') +
     bodyClose() +
     emailFooter(
-      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated security email — please do not reply.',
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated security email - please do not reply.',
       'This link is single-use and will expire after 1 hour.');
 
   return emailShell('Reset your password', inner);
@@ -281,7 +281,7 @@ function buildReminderHtml(name, monthLabel, message, loginUrl) {
         'If you&rsquo;ve already submitted your data for ' + escHtml(monthLabel) + ', no further action is needed. Thank you!') +
     bodyClose() +
     emailFooter(
-      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated reminder — please do not reply.',
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated reminder - please do not reply.',
       'You are receiving this because you are assigned to upload schedule data.');
 
   return emailShell('Upload reminder', inner);
@@ -297,7 +297,7 @@ function sendPackageEmail(data) {
   var lineItems    = data.lineItems    || [];
   var responseLink = data.responseLink || "#";
 
-  var subject = packageName + " — media package shared with you";
+  var subject = packageName + " - media package shared with you";
   var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink);
 
   var options = { name: FROM_NAME, htmlBody: html };

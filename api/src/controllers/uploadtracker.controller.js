@@ -5,7 +5,7 @@ import { sendEmail } from '../services/email.service.js';
 // FRONTEND_URL may be a comma-separated CORS whitelist; use the first entry.
 function loginUrl() {
   const raw = process.env.FRONTEND_URL || 'https://media-buying-production.up.railway.app';
-  return raw.split(',')[0].trim();
+  return raw.split(',')[0].trim().replace(/\/+$/, '');
 }
 
 function safeNum(v) {

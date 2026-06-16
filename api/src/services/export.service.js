@@ -120,13 +120,13 @@ const PP = {
   soft: '#6B7790', muted2: '#93A0B5', line: '#E5E8ED', green: '#15814B', red: '#C5391F',
 };
 const rs = (v) => {
-  if (v == null || v === '') return '—';
+  if (v == null || v === '') return '-';
   const n = Number(v);
-  if (!isFinite(n)) return '—';
+  if (!isFinite(n)) return '-';
   if (n === 0) return 'Added value';
   return 'LKR ' + Math.round(n).toLocaleString('en-US');
 };
-const dt = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const dt = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
 const trunc = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
 export async function generatePropertyHistoryPdf({ title, filtersText, groups, totals, includeHistory }) {
@@ -177,7 +177,7 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
         .text(`Current rate: `, { continued: true })
         .font('Helvetica-Bold').text(rs(p.cost), { continued: true })
         .font('Helvetica').fillColor(PP.soft).text(`     Bonus: `, { continued: true })
-        .font('Helvetica-Bold').fillColor(PP.ink).text(p.bonusPct != null ? p.bonusPct + '%' : '—');
+        .font('Helvetica-Bold').fillColor(PP.ink).text(p.bonusPct != null ? p.bonusPct + '%' : '-');
       if (p.notes) {
         doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(PP.soft).text(`Notes: ${trunc(p.notes, 140)}`, { width: contentW });
       }
@@ -199,7 +199,7 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
         for (const ev of p.timeline) {
           ensure(13);
           const ry = doc.y;
-          let chgTxt = '—', chgColor = PP.soft;
+          let chgTxt = '-', chgColor = PP.soft;
           if (ev.prevCost == null) { chgTxt = 'Initial'; chgColor = PP.muted2; }
           else if (Number(ev.prevCost) !== 0) {
             const pct = ((Number(ev.cost) - Number(ev.prevCost)) / Number(ev.prevCost)) * 100;
