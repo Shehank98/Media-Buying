@@ -566,7 +566,7 @@ export default function SpendAnalyticsPage() {
           {/* Grouped Breakdown: Media Group → Channels */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
-              Spend Breakdown — Media Group &amp; Channels
+              Spend Breakdown - Media Group &amp; Channels
             </div>
             <div style={{ overflow: 'auto' }}>
               <table className="tbl" style={{ margin: 0 }}>

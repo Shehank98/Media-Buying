@@ -195,7 +195,7 @@ export default function ReportsPage() {
     const keyField = primary === 'agency' ? 'agencyName' : primary === 'client' ? 'clientName' : 'channelName';
     const map = new Map();
     for (const r of sorted) {
-      const k = r[keyField] || '—';
+      const k = r[keyField] || '-';
       if (!map.has(k)) map.set(k, []);
       map.get(k).push(r);
     }
@@ -300,7 +300,7 @@ export default function ReportsPage() {
     setSortField('agencyName');
     setSortDir('asc');
     setCollapsedGroups(new Set());
-    // Schedule logs don't support nested grouping — fall back to a valid option.
+    // Schedule logs don't support nested grouping - fall back to a valid option.
     if (s !== 'properties' && groupBy.includes('-')) setGroupBy('agency');
     clearFilters();
   };
@@ -416,7 +416,7 @@ export default function ReportsPage() {
     icon: opt.icon,
     name:
       opt.key === 'all'
-        ? `${sourceLabel} Report — All Data`
+        ? `${sourceLabel} Report - All Data`
         : `${sourceLabel} Report ${opt.label}`,
     desc:
       opt.key === 'channel'
@@ -428,16 +428,16 @@ export default function ReportsPage() {
         : `Flat ${sourceLabel.toLowerCase()} listing across every agency, client and channel.`,
   }));
 
-  // Recently generated history derived from the active source/grouping —
+  // Recently generated history derived from the active source/grouping -
   // wired to re-run the existing export handler.
   const recent = !loading && rows.length > 0
     ? grouped
       ? grouped.slice(0, 5).map((g) => ({
-          name: `${g.name} — ${sourceLabel}`,
+          name: `${g.name} - ${sourceLabel}`,
           sub: `${groupSubtotal(g)}`,
         }))
       : [{
-          name: `${sourceLabel} Report — All Data`,
+          name: `${sourceLabel} Report - All Data`,
           sub: `${rows.length} ${rows.length === 1 ? 'row' : 'rows'} · ${fmtLKR(source === 'properties' ? computedTotals.cost : computedTotals.value)}`,
         }]
     : [];

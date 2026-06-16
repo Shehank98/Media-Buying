@@ -119,7 +119,7 @@ export default function RecentUploads({ title = 'Recent upload sheets', limit = 
                         {deleting === b.id ? 'Deleting…' : 'Delete'}
                       </button>
                     ) : (
-                      <span style={{ fontSize: 12, color: 'var(--muted-2)' }}>—</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted-2)' }}>-</span>
                     )}
                   </td>
                 </tr>

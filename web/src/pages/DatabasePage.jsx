@@ -805,11 +805,11 @@ export default function DatabasePage() {
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Invoice month (auto)</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{fmtMonth(computeInvoiceMonth(uploadScheduleMonth)) || '—'}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{fmtMonth(computeInvoiceMonth(uploadScheduleMonth)) || '-'}</div>
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Client (auto)</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{clientName || '—'}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{clientName || '-'}</div>
                 </div>
               </div>
               <div style={{ padding: '10px 16px', background: '#eff6ff', fontSize: 12, color: '#1d4ed8', borderBottom: '1px solid var(--border)' }}>

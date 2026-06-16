@@ -20,7 +20,7 @@ function Detail({ label, value }) {
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: value ? 'var(--ink)' : 'var(--muted-2)' }}>{value || '—'}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: value ? 'var(--ink)' : 'var(--muted-2)' }}>{value || '-'}</div>
     </div>
   );
 }
@@ -322,7 +322,7 @@ export default function PackagesPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040 }}>
             <div className="modal-head">
               <div>
-                <h2 style={{ margin: 0 }}>Responses — {respPkg.name}</h2>
+                <h2 style={{ margin: 0 }}>Responses - {respPkg.name}</h2>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
                   {respPkg.category}
                   {respDetail?.lineItems?.length ? ` · ${respDetail.lineItems.length} line items` : ''}

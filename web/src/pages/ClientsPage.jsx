@@ -168,11 +168,11 @@ export default function ClientsPage() {
                       <span style={{ fontWeight: 600, color: '#16243C' }}>{c.name}</span>
                     </div>
                   </td>
-                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', color: '#6B7790' }}>{c.agencyName || '—'}</td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', color: '#6B7790' }}>{c.agencyName || '-'}</td>
                   <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'center' }}>
-                    <span style={{ display: 'inline-block', minWidth: 26, fontSize: 12, fontWeight: 700, fontFamily: MONO, background: '#EEF0F3', color: '#3B4A63', padding: '2px 9px', borderRadius: 20 }}>{channelCount ?? '—'}</span>
+                    <span style={{ display: 'inline-block', minWidth: 26, fontSize: 12, fontWeight: 700, fontFamily: MONO, background: '#EEF0F3', color: '#3B4A63', padding: '2px 9px', borderRadius: 20 }}>{channelCount ?? '-'}</span>
                   </td>
-                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'right', fontWeight: 600, fontFamily: MONO, color: '#16243C' }}>{ytd != null ? fmtLKR(ytd) : '—'}</td>
+                  <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'right', fontWeight: 600, fontFamily: MONO, color: '#16243C' }}>{ytd != null ? fmtLKR(ytd) : '-'}</td>
                   {canManage && (
                     <td style={{ padding: '12px 22px', borderBottom: '1px solid #EEF0F3', textAlign: 'right' }}>
                       <div className="row-actions">

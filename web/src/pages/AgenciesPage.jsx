@@ -176,12 +176,12 @@ export default function AgenciesPage() {
                   <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Clients</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{channelCount ?? '—'}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{channelCount ?? '-'}</div>
                   <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Channels</div>
                 </div>
                 <div style={{ gridColumn: '1/-1', borderTop: '1px solid #EEF0F3', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: '#6B7790' }}>Total spend</span>
-                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, color: '#D9521C' }}>{spend != null ? fmtLKR(spend) : '—'}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, color: '#D9521C' }}>{spend != null ? fmtLKR(spend) : '-'}</span>
                 </div>
               </div>
             </div>

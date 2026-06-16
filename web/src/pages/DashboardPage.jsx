@@ -160,9 +160,9 @@ export default function DashboardPage() {
       <div style={{ maxWidth: 1240, margin: '0 auto' }}>
         <Header />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 18, marginBottom: 20 }}>
-          <StatCard tone={DOTS[0]} icon="building" value={String(agencies.length)} label="My Agencies" meta={agencies.map(a => a.name).join(' · ') || '—'} />
+          <StatCard tone={DOTS[0]} icon="building" value={String(agencies.length)} label="My Agencies" meta={agencies.map(a => a.name).join(' · ') || '-'} />
           <StatCard tone={DOTS[1]} icon="folder" value={String(clientTotal)} label="Clients" meta="Across your agencies" />
-          <StatCard tone={DOTS[2]} icon="database" value="—" label="Database" meta="Upload & manage schedule logs" />
+          <StatCard tone={DOTS[2]} icon="database" value="-" label="Database" meta="Upload & manage schedule logs" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
           <div style={{ ...CARD, overflow: 'hidden' }}>
@@ -323,7 +323,7 @@ export default function DashboardPage() {
                     <td style={{ ...CELL, color: '#3B4A63' }}>{c.agencyName}</td>
                     <td style={{ ...CELL, textAlign: 'right', fontWeight: 600, color: '#16243C', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtRs(c.ytdBilling)}</td>
                     <td style={{ ...CELL, textAlign: 'right' }}>
-                      {c.momTrend != null ? <span style={trendChip(kind)}>{kind === 'down' ? '▼' : '▲'} {Math.abs(c.momTrend)}%</span> : <span style={{ color: '#93A0B5' }}>—</span>}
+                      {c.momTrend != null ? <span style={trendChip(kind)}>{kind === 'down' ? '▼' : '▲'} {Math.abs(c.momTrend)}%</span> : <span style={{ color: '#93A0B5' }}>-</span>}
                     </td>
                   </tr>
                 );
