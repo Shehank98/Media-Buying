@@ -16,6 +16,15 @@ const MAX_PDF_MB = 10;
 
 const emptyForm = () => ({ name: '', category: '', emailIntro: '', lineItems: [{ label: '', rate: '' }] });
 
+function Detail({ label, value }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: value ? 'var(--ink)' : 'var(--muted-2)' }}>{value || '—'}</div>
+    </div>
+  );
+}
+
 export default function PackagesPage() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +49,7 @@ export default function PackagesPage() {
   // responses
   const [respPkg, setRespPkg] = useState(null);
   const [responses, setResponses] = useState([]);
+  const [respDetail, setRespDetail] = useState(null);
   const [respLoading, setRespLoading] = useState(false);
 
   const fetchPackages = useCallback(() => {
@@ -138,10 +148,11 @@ export default function PackagesPage() {
 
   // ── responses ──
   const openResponses = async (pkg) => {
-    setRespPkg(pkg); setResponses([]); setRespLoading(true);
+    setRespPkg(pkg); setResponses([]); setRespDetail(null); setRespLoading(true);
     try {
       const { data } = await api.get(`/packages/${pkg.id}/responses`);
       setResponses(data.recipients || []);
+      setRespDetail(data.package || null);
     } catch { setError('Failed to load responses.'); }
     finally { setRespLoading(false); }
   };
@@ -305,48 +316,99 @@ export default function PackagesPage() {
         </div>
       )}
 
-      {/* Responses modal */}
+      {/* Responses detail */}
       {respPkg && (
         <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) setRespPkg(null); }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040 }}>
             <div className="modal-head">
-              <h2>Responses — {respPkg.name}</h2>
+              <div>
+                <h2 style={{ margin: 0 }}>Responses — {respPkg.name}</h2>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
+                  {respPkg.category}
+                  {respDetail?.lineItems?.length ? ` · ${respDetail.lineItems.length} line items` : ''}
+                  {(() => {
+                    const val = respDetail?.lineItems?.reduce((s, li) => s + Number(li.rate || 0), 0);
+                    return val ? ` · ${fmtLKR(val)}` : '';
+                  })()}
+                </div>
+              </div>
               <button className="act-btn" onClick={() => setRespPkg(null)}><Icon name="x" size={18} /></button>
             </div>
-            <div className="modal-body" style={{ padding: 0 }}>
+            <div className="modal-body">
               {respLoading ? (
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>
               ) : responses.length === 0 ? (
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Not sent to anyone yet.</div>
-              ) : (
-                <div className="tbl-wrap" style={{ margin: 0 }}>
-                  <table className="tbl" style={{ fontSize: 13 }}>
-                    <thead>
-                      <tr><th>Team head</th><th>Interest</th><th>Client</th><th>Budget</th><th>Notes</th><th>Responded</th><th>Follow-up</th></tr>
-                    </thead>
-                    <tbody>
+              ) : (() => {
+                const counts = { INTERESTED: 0, NEGOTIATE: 0, NOT_INTERESTED: 0, pending: 0 };
+                responses.forEach((r) => { if (r.interest) counts[r.interest] += 1; else counts.pending += 1; });
+                const responded = responses.filter((r) => r.respondedAt).length;
+                const rate = Math.round((responded / responses.length) * 100);
+                const SUMMARY = [
+                  { label: 'Sent to', value: responses.length, bg: 'var(--bg-sunken)', fg: 'var(--ink)' },
+                  { label: 'Interested', value: counts.INTERESTED, bg: 'var(--green-100)', fg: 'var(--green-600)' },
+                  { label: 'Negotiate', value: counts.NEGOTIATE, bg: 'var(--coral-100)', fg: 'var(--coral-700)' },
+                  { label: 'Not interested', value: counts.NOT_INTERESTED, bg: 'var(--bg-sunken)', fg: 'var(--muted)' },
+                  { label: 'Awaiting', value: counts.pending, bg: 'var(--amber-50)', fg: '#9A5B00' },
+                  { label: 'Response rate', value: `${rate}%`, bg: 'var(--blue-50)', fg: 'var(--blue-700)' },
+                ];
+                return (
+                  <>
+                    {/* Summary band */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 18 }}>
+                      {SUMMARY.map((s) => (
+                        <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '12px 14px' }}>
+                          <div style={{ fontSize: 22, fontWeight: 750, color: s.fg, fontFamily: "'Spline Sans Mono', monospace", lineHeight: 1 }}>{s.value}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Recipient detail cards */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {responses.map((r) => {
                         const it = r.interest ? INTEREST_LABEL[r.interest] : null;
+                        const initials = (r.user?.name || '?').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
                         return (
-                          <tr key={r.id}>
-                            <td><div className="strong" style={{ fontSize: 12.5 }}>{r.user?.name}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.user?.email}</div></td>
-                            <td>{it ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: it.bg, color: it.fg }}>{it.label}</span> : <span style={{ color: 'var(--muted-2)' }}>No response</span>}</td>
-                            <td style={{ color: 'var(--muted)' }}>{r.clientName || '-'}</td>
-                            <td style={{ color: 'var(--muted)' }}>{r.budgetNote || '-'}</td>
-                            <td style={{ color: 'var(--muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.notes || ''}>{r.notes || '-'}</td>
-                            <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDate(r.respondedAt)}</td>
-                            <td>
-                              <select className="select" value={r.followUp} onChange={(e) => setFollowUp(r.id, e.target.value)} disabled={!r.respondedAt} style={{ fontSize: 12 }}>
-                                {FOLLOW_UPS.map((f) => <option key={f} value={f}>{FOLLOW_LABEL[f]}</option>)}
-                              </select>
-                            </td>
-                          </tr>
+                          <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', background: 'var(--card)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: r.respondedAt ? 12 : 0 }}>
+                              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--navy-900)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>{initials}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--ink)' }}>{r.user?.name}</div>
+                                <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: "'Spline Sans Mono', monospace" }}>{r.user?.email}</div>
+                              </div>
+                              {it
+                                ? <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: it.bg, color: it.fg }}>{it.label}</span>
+                                : <span style={{ fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: 'var(--amber-50)', color: '#9A5B00' }}>Awaiting response</span>}
+                            </div>
+
+                            {r.respondedAt && (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                                <Detail label="Client / brand" value={r.clientName} />
+                                <Detail label="Budget note" value={r.budgetNote} />
+                                <Detail label="Sent" value={fmtDate(r.sentAt || r.createdAt)} />
+                                <Detail label="Responded" value={fmtDate(r.respondedAt)} />
+                                {r.notes && (
+                                  <div style={{ gridColumn: '1 / -1' }}>
+                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>Notes</div>
+                                    <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.5, background: 'var(--bg)', borderRadius: 8, padding: '8px 11px' }}>{r.notes}</div>
+                                  </div>
+                                )}
+                                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Follow-up:</span>
+                                  <select className="select" value={r.followUp} onChange={(e) => setFollowUp(r.id, e.target.value)} style={{ fontSize: 12, width: 'auto' }}>
+                                    {FOLLOW_UPS.map((f) => <option key={f} value={f}>{FOLLOW_LABEL[f]}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
