@@ -18,6 +18,7 @@ import ReportsPage from './pages/ReportsPage';
 import AdminPage from './pages/AdminPage';
 import ProfilePage from './pages/ProfilePage';
 import ExecutiveDashboardPage from './pages/ExecutiveDashboardPage';
+import DeepDashboardPage from './pages/DeepDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
@@ -66,6 +67,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
                   <ExecutiveDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/deep-dashboard"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                  <DeepDashboardPage />
                 </ProtectedRoute>
               }
             />

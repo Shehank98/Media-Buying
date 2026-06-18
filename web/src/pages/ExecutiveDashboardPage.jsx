@@ -313,6 +313,10 @@ export default function ExecutiveDashboardPage() {
             <Icon name="upload" size={15} />
             Export summary
           </button>
+          <button className="btn btn-primary" onClick={() => navigate('/deep-dashboard')}>
+            <Icon name="bar-chart" size={15} />
+            Deep Dashboard
+          </button>
         </div>
       </div>
 

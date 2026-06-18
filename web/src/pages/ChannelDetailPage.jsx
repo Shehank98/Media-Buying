@@ -43,6 +43,7 @@ export default function ChannelDetailPage() {
     name: '',
     cost: '',
     bonusValue: '0',
+    bonusCount: '0',
     notes: '',
     changeNote: '',
   });
@@ -85,7 +86,7 @@ export default function ChannelDetailPage() {
       .catch(() => setCategories([]));
   }, []);
 
-  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', notes: '', changeNote: '' });
+  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', bonusCount: '0', notes: '', changeNote: '' });
 
   const openAddModal = () => {
     setEditingProperty(null);
@@ -104,6 +105,7 @@ export default function ChannelDetailPage() {
       name: property.name,
       cost: property.cost?.toString() || '',
       bonusValue: property.bonusValue != null ? property.bonusValue.toString() : '0',
+      bonusCount: property.bonusCount != null ? property.bonusCount.toString() : '0',
       notes: property.notes || '',
       changeNote: '',
     });
@@ -149,6 +151,7 @@ export default function ChannelDetailPage() {
         name: propertyForm.name,
         cost: Number(propertyForm.cost),
         bonusValue: propertyForm.bonusValue === '' ? 0 : Number(propertyForm.bonusValue),
+        bonusCount: propertyForm.bonusCount === '' ? 0 : Number(propertyForm.bonusCount),
         notes: propertyForm.notes,
       };
 
@@ -492,6 +495,19 @@ export default function ChannelDetailPage() {
                       onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusValue: e.target.value }))}
                     />
                   </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Bonus count (number of bonus spots)</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={propertyForm.bonusCount}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusCount: e.target.value }))}
+                  />
                 </div>
 
                 <div className="field">

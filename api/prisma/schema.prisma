@@ -228,6 +228,7 @@ model Property {
   type               String?
   cost               Decimal           @db.Decimal(12, 2)
   bonusValue         Decimal           @default(0) @map("bonus_value") @db.Decimal(12, 2)
+  bonusCount         Int               @default(0) @map("bonus_count")
   bonusPct           Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
   sponsorshipDetails String?           @map("sponsorship_details")
   notes              String?

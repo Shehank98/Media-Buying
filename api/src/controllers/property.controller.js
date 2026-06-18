@@ -37,7 +37,7 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { channelId } = req.params;
-    const { category, name, type, cost, notes, bonusValue } = req.body;
+    const { category, name, type, cost, notes, bonusValue, bonusCount } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -54,6 +54,7 @@ export async function create(req, res) {
         type: type ? String(type).trim() : null,
         cost,
         bonusValue: bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue),
+        bonusCount: bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount))),
         notes: notes || null,
         createdBy: req.user.id,
       },
@@ -72,7 +73,7 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { category, name, type, cost, notes, bonusValue, changeNote } = req.body;
+    const { category, name, type, cost, notes, bonusValue, bonusCount, changeNote } = req.body;
 
     if (!changeNote) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
@@ -111,6 +112,14 @@ export async function update(req, res) {
         newValues.bonusValue = newB;
       }
     }
+    if (bonusCount !== undefined) {
+      const newC = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
+      const oldC = existing.bonusCount == null ? 0 : Number(existing.bonusCount);
+      if (newC !== oldC) {
+        previousValues.bonusCount = oldC;
+        newValues.bonusCount = newC;
+      }
+    }
     if (notes !== undefined && notes !== existing.notes) {
       previousValues.notes = existing.notes;
       newValues.notes = notes;
@@ -122,6 +131,7 @@ export async function update(req, res) {
     if (type !== undefined) updateData.type = type ? String(type).trim() : null;
     if (cost !== undefined) updateData.cost = cost;
     if (bonusValue !== undefined) updateData.bonusValue = bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue);
+    if (bonusCount !== undefined) updateData.bonusCount = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
     if (notes !== undefined) updateData.notes = notes;
 
     const [history, property] = await prisma.$transaction([

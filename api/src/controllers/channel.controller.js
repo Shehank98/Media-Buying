@@ -49,7 +49,7 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { category, name, type, cost, notes, bonusValue } = req.body;
+    const { category, name, type, cost, notes, bonusValue, bonusCount } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -66,6 +66,7 @@ export async function createProperty(req, res) {
         type: type ? String(type).trim() : null,
         cost,
         bonusValue: bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue),
+        bonusCount: bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount))),
         notes: notes || null,
         createdBy: req.user.id,
       },
