@@ -124,9 +124,9 @@ export default function DeepDashboardPage() {
   const exportExcel = () => {
     const rows = tableRows.map((r) => ({
       Year: r.year, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
-      'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus Count': r.bonusCount,
+      'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus %': r.bonusCount,
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus Count': '' }]);
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '' }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Properties');
     XLSX.writeFile(wb, `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -139,8 +139,8 @@ export default function DeepDashboardPage() {
     doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
     autoTable(doc, {
       startY: 27,
-      head: [['Year', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus #']],
-      body: tableRows.map((r) => [r.year, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount]),
+      head: [['Year', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %']],
+      body: tableRows.map((r) => [r.year, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [10, 23, 41] },
     });
     doc.save(`deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -325,7 +325,6 @@ export default function DeepDashboardPage() {
               <div style={{ padding: '12px 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 <Metric label="Total properties" value={insights.totalProperties ?? 0} />
                 <Metric label="Total bonus value" value={fmtShort(insights.totalBonusValue)} accent="#15814B" />
-                <Metric label="Total bonus count" value={insights.totalBonusCount ?? 0} />
                 <Metric label="Avg property value" value={fmtShort(insights.avgPropertyValue)} />
                 <Metric label="Top category" value={insights.mostPurchasedCategory || '-'} />
                 <Metric label="Highest property" value={insights.highestProperty ? fmtShort(insights.highestProperty.value) : '-'} accent="#D9521C" />
@@ -365,7 +364,7 @@ export default function DeepDashboardPage() {
                     <th style={COL_HEAD} onClick={() => sortBy('name')}>Property Name{sortArrow('name')}</th>
                     <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('value')}>Value{sortArrow('value')}</th>
                     <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusValue')}>Bonus Value{sortArrow('bonusValue')}</th>
-                    <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus Count{sortArrow('bonusCount')}</th>
+                    <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus %{sortArrow('bonusCount')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -378,7 +377,7 @@ export default function DeepDashboardPage() {
                       <td style={{ ...CELL, fontWeight: 600, color: '#16243C' }}>{r.name}</td>
                       <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600 }}>{fmtLKR(r.value)}</td>
                       <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>{r.bonusValue > 0 ? fmtLKR(r.bonusValue) : '-'}</td>
-                      <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount || 0}</td>
+                      <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount ? r.bonusCount + '%' : '-'}</td>
                     </tr>
                   ))}
                 </tbody>

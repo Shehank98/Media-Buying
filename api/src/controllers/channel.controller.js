@@ -49,7 +49,7 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { category, name, type, cost, notes, bonusValue, bonusCount } = req.body;
+    const { category, name, type, cost, notes, bonusCount } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -58,6 +58,10 @@ export async function createProperty(req, res) {
       return res.status(400).json({ error: 'Name and property value are required' });
     }
 
+    // bonusCount = bonus percentage; bonus value is derived = value x bonus% / 100
+    const bonusPctNum = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
+    const bonusValueNum = Math.round((Number(cost) * bonusPctNum / 100) * 100) / 100;
+
     const property = await prisma.property.create({
       data: {
         channelId: parseInt(req.params.channelId),
@@ -65,8 +69,8 @@ export async function createProperty(req, res) {
         name,
         type: type ? String(type).trim() : null,
         cost,
-        bonusValue: bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue),
-        bonusCount: bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount))),
+        bonusCount: bonusPctNum,
+        bonusValue: bonusValueNum,
         notes: notes || null,
         createdBy: req.user.id,
       },

@@ -37,7 +37,7 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { channelId } = req.params;
-    const { category, name, type, cost, notes, bonusValue, bonusCount } = req.body;
+    const { category, name, type, cost, notes, bonusCount } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -46,6 +46,10 @@ export async function create(req, res) {
       return res.status(400).json({ error: 'Name and property value are required' });
     }
 
+    // bonusCount = bonus percentage; bonus value is derived = value x bonus% / 100
+    const bonusPctNum = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
+    const bonusValueNum = Math.round((Number(cost) * bonusPctNum / 100) * 100) / 100;
+
     const property = await prisma.property.create({
       data: {
         channelId: parseInt(channelId),
@@ -53,8 +57,8 @@ export async function create(req, res) {
         name,
         type: type ? String(type).trim() : null,
         cost,
-        bonusValue: bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue),
-        bonusCount: bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount))),
+        bonusCount: bonusPctNum,
+        bonusValue: bonusValueNum,
         notes: notes || null,
         createdBy: req.user.id,
       },
@@ -73,7 +77,7 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { category, name, type, cost, notes, bonusValue, bonusCount, changeNote } = req.body;
+    const { category, name, type, cost, notes, bonusCount, changeNote } = req.body;
 
     if (!changeNote) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
@@ -104,14 +108,7 @@ export async function update(req, res) {
       previousValues.cost = existing.cost;
       newValues.cost = cost;
     }
-    if (bonusValue !== undefined) {
-      const newB = bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue);
-      const oldB = existing.bonusValue == null ? 0 : Number(existing.bonusValue);
-      if (newB !== oldB) {
-        previousValues.bonusValue = oldB;
-        newValues.bonusValue = newB;
-      }
-    }
+    // bonusCount = bonus percentage; bonus value is derived = value x bonus% / 100
     if (bonusCount !== undefined) {
       const newC = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
       const oldC = existing.bonusCount == null ? 0 : Number(existing.bonusCount);
@@ -130,9 +127,22 @@ export async function update(req, res) {
     if (name !== undefined) updateData.name = name;
     if (type !== undefined) updateData.type = type ? String(type).trim() : null;
     if (cost !== undefined) updateData.cost = cost;
-    if (bonusValue !== undefined) updateData.bonusValue = bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue);
     if (bonusCount !== undefined) updateData.bonusCount = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
     if (notes !== undefined) updateData.notes = notes;
+    // Recompute the derived bonus value whenever the value or the bonus % changes.
+    if (cost !== undefined || bonusCount !== undefined) {
+      const baseCost = cost !== undefined ? Number(cost) : Number(existing.cost);
+      const basePct = bonusCount !== undefined
+        ? (bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount))))
+        : Number(existing.bonusCount || 0);
+      const newBonusValue = Math.round((baseCost * basePct / 100) * 100) / 100;
+      updateData.bonusValue = newBonusValue;
+      const oldBonusValue = existing.bonusValue == null ? 0 : Number(existing.bonusValue);
+      if (newBonusValue !== oldBonusValue) {
+        previousValues.bonusValue = oldBonusValue;
+        newValues.bonusValue = newBonusValue;
+      }
+    }
 
     const [history, property] = await prisma.$transaction([
       prisma.propertyHistory.create({

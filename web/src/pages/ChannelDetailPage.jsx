@@ -133,8 +133,8 @@ export default function ChannelDetailPage() {
       setFormError('Please enter a valid property value.');
       return;
     }
-    if (propertyForm.bonusValue !== '' && (isNaN(Number(propertyForm.bonusValue)) || Number(propertyForm.bonusValue) < 0)) {
-      setFormError('Please enter a valid bonus value.');
+    if (propertyForm.bonusCount !== '' && (isNaN(Number(propertyForm.bonusCount)) || Number(propertyForm.bonusCount) < 0)) {
+      setFormError('Please enter a valid bonus count (%).');
       return;
     }
 
@@ -150,7 +150,6 @@ export default function ChannelDetailPage() {
         type: propertyForm.type.trim(),
         name: propertyForm.name,
         cost: Number(propertyForm.cost),
-        bonusValue: propertyForm.bonusValue === '' ? 0 : Number(propertyForm.bonusValue),
         bonusCount: propertyForm.bonusCount === '' ? 0 : Number(propertyForm.bonusCount),
         notes: propertyForm.notes,
       };
@@ -282,7 +281,7 @@ export default function ChannelDetailPage() {
                       ? <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Added value</span>
                       : fmtLKR(property.cost)}
                     {Number(property.bonusValue) > 0 && (
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtLKR(property.bonusValue)} bonus</span>
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtLKR(property.bonusValue)} bonus ({property.bonusCount || 0}%)</span>
                     )}
                   </td>
                   <td>
@@ -484,30 +483,31 @@ export default function ChannelDetailPage() {
                     />
                   </div>
                   <div className="field">
-                    <label className="field-label">Bonus value (LKR)</label>
+                    <label className="field-label">Bonus count (%)</label>
                     <input
                       className="input"
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="1"
                       placeholder="0"
-                      value={propertyForm.bonusValue}
-                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusValue: e.target.value }))}
+                      value={propertyForm.bonusCount}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusCount: e.target.value }))}
                     />
                   </div>
                 </div>
 
                 <div className="field">
-                  <label className="field-label">Bonus count (number of bonus spots)</label>
+                  <label className="field-label">Bonus value (auto-calculated)</label>
                   <input
                     className="input"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="0"
-                    value={propertyForm.bonusCount}
-                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusCount: e.target.value }))}
+                    type="text"
+                    readOnly
+                    value={fmtLKR((Number(propertyForm.cost) || 0) * (Number(propertyForm.bonusCount) || 0) / 100)}
+                    style={{ background: 'var(--bg-sunken)', color: 'var(--ink-soft)' }}
                   />
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    Property value × bonus count (%) ÷ 100
+                  </span>
                 </div>
 
                 <div className="field">
