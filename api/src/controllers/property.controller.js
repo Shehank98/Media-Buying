@@ -37,13 +37,16 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { channelId } = req.params;
-    const { category, name, type, cost, notes, bonusCount } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
     }
     if (!name || cost === undefined) {
       return res.status(400).json({ error: 'Name and property value are required' });
+    }
+    if (!startDate) {
+      return res.status(400).json({ error: 'Start date is required' });
     }
 
     // bonusCount = bonus percentage; bonus value is derived = value x bonus% / 100
@@ -59,6 +62,8 @@ export async function create(req, res) {
         cost,
         bonusCount: bonusPctNum,
         bonusValue: bonusValueNum,
+        startDate: new Date(startDate),
+        endDate: endDate ? new Date(endDate) : null,
         notes: notes || null,
         createdBy: req.user.id,
       },
@@ -77,7 +82,7 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { category, name, type, cost, notes, bonusCount, changeNote } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate, changeNote } = req.body;
 
     if (!changeNote) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
@@ -121,6 +126,15 @@ export async function update(req, res) {
       previousValues.notes = existing.notes;
       newValues.notes = notes;
     }
+    const toDateStr = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    if (startDate !== undefined && toDateStr(startDate) !== toDateStr(existing.startDate)) {
+      previousValues.startDate = toDateStr(existing.startDate);
+      newValues.startDate = toDateStr(startDate);
+    }
+    if (endDate !== undefined && toDateStr(endDate) !== toDateStr(existing.endDate)) {
+      previousValues.endDate = toDateStr(existing.endDate);
+      newValues.endDate = toDateStr(endDate);
+    }
 
     const updateData = {};
     if (category !== undefined) updateData.category = String(category).trim();
@@ -128,6 +142,8 @@ export async function update(req, res) {
     if (type !== undefined) updateData.type = type ? String(type).trim() : null;
     if (cost !== undefined) updateData.cost = cost;
     if (bonusCount !== undefined) updateData.bonusCount = bonusCount === '' || bonusCount == null ? 0 : Math.max(0, Math.round(Number(bonusCount)));
+    if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
+    if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null;
     if (notes !== undefined) updateData.notes = notes;
     // Recompute the derived bonus value whenever the value or the bonus % changes.
     if (cost !== undefined || bonusCount !== undefined) {

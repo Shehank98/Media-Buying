@@ -49,13 +49,16 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { category, name, type, cost, notes, bonusCount } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
     }
     if (!name || cost == null) {
       return res.status(400).json({ error: 'Name and property value are required' });
+    }
+    if (!startDate) {
+      return res.status(400).json({ error: 'Start date is required' });
     }
 
     // bonusCount = bonus percentage; bonus value is derived = value x bonus% / 100
@@ -71,6 +74,8 @@ export async function createProperty(req, res) {
         cost,
         bonusCount: bonusPctNum,
         bonusValue: bonusValueNum,
+        startDate: new Date(startDate),
+        endDate: endDate ? new Date(endDate) : null,
         notes: notes || null,
         createdBy: req.user.id,
       },

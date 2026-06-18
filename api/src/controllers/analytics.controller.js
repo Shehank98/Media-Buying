@@ -624,6 +624,8 @@ export async function getDeepDashboard(req, res) {
       bonusCount: Number(p.bonusCount || 0),
       channel: p.channel.channelMaster?.name || p.channel.name,
       client: p.channel.client?.name || '',
+      startDate: p.startDate,
+      endDate: p.endDate,
       createdAt: p.createdAt,
     }));
 
@@ -641,6 +643,7 @@ export async function getDeepDashboard(req, res) {
       properties: props.map((p) => ({
         year: p.year, category: p.category, type: p.type, name: p.name,
         value: p.value, bonusValue: p.bonusValue, bonusCount: p.bonusCount, channel: p.channel, client: p.client,
+        startDate: p.startDate, endDate: p.endDate,
       })),
       channelInsights: {
         spendByYear: logYears.map((y) => ({ year: y, spend: yearTotals[y] })),

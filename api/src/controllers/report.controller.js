@@ -373,6 +373,8 @@ export async function exportProperties(req, res) {
       propertyType: p.type || '',
       cost: Number(p.cost),
       bonusValue: Number(p.bonusValue || 0),
+      startDate: p.startDate || null,
+      endDate: p.endDate || null,
       notes: p.notes || '',
       createdBy: p.creator?.name || '',
       createdAt: p.createdAt,
@@ -399,6 +401,9 @@ export async function exportProperties(req, res) {
         propertyType: n.propertyType,
         cost: n.cost,
         bonusValue: n.bonusValue,
+        startDate: n.startDate ? n.startDate.toISOString().split('T')[0] : null,
+        endDate: n.endDate ? n.endDate.toISOString().split('T')[0] : null,
+        ongoing: !!n.startDate && !n.endDate,
         notes: n.notes,
         createdBy: n.createdBy,
         createdAt: n.createdAt.toISOString().split('T')[0],
@@ -466,6 +471,8 @@ export async function exportProperties(req, res) {
       { header: 'Property Type', width: 18 },
       { header: 'Property Value (LKR)', width: 20 },
       { header: 'Bonus Value (LKR)', width: 18 },
+      { header: 'Start Date', width: 14 },
+      { header: 'End Date', width: 14 },
       { header: 'Rate Changes', width: 14 },
       { header: 'Notes', width: 30 },
       { header: 'Created By', width: 18 },
@@ -500,6 +507,8 @@ export async function exportProperties(req, res) {
         sheet.addRow([
           n.agencyName, n.clientName, n.channelMasterName, n.channelType,
           n.category, n.propertyName, n.propertyType, n.cost, n.bonusValue,
+          n.startDate ? n.startDate.toISOString().split('T')[0] : '',
+          n.endDate ? n.endDate.toISOString().split('T')[0] : 'Ongoing',
           Math.max(0, n.timeline.length - 1), n.notes, n.createdBy, n.createdAt.toISOString().split('T')[0],
         ]);
       }

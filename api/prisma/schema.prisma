@@ -231,6 +231,8 @@ model Property {
   bonusCount         Int               @default(0) @map("bonus_count")
   bonusPct           Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
   sponsorshipDetails String?           @map("sponsorship_details")
+  startDate          DateTime?         @map("start_date") @db.Date
+  endDate            DateTime?         @map("end_date") @db.Date
   notes              String?
   createdBy          Int               @map("created_by")
   createdAt          DateTime          @default(now()) @map("created_at")

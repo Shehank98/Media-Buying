@@ -121,8 +121,9 @@ export default function DeepDashboardPage() {
     const rows = tableRows.map((r) => ({
       Year: r.year, Channel: r.channel, Client: r.client, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
       'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus %': r.bonusCount,
+      'Start Date': r.startDate ? r.startDate.slice(0, 10) : '', 'End Date': r.endDate ? r.endDate.slice(0, 10) : 'Ongoing',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '' }]);
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '', 'Start Date': '', 'End Date': '' }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Properties');
     XLSX.writeFile(wb, `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -135,8 +136,8 @@ export default function DeepDashboardPage() {
     doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
     autoTable(doc, {
       startY: 27,
-      head: [['Year', 'Channel', 'Client', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %']],
-      body: tableRows.map((r) => [r.year, r.channel, r.client, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-']),
+      head: [['Year', 'Channel', 'Client', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %', 'Duration']],
+      body: tableRows.map((r) => [r.year, r.channel, r.client, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-', r.startDate ? `${r.startDate.slice(0, 10)} - ${r.endDate ? r.endDate.slice(0, 10) : 'Ongoing'}` : '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [10, 23, 41] },
     });
     doc.save(`deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -327,10 +328,11 @@ export default function DeepDashboardPage() {
                     <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('value')}>Value{sortArrow('value')}</th>
                     <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusValue')}>Bonus Value{sortArrow('bonusValue')}</th>
                     <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus %{sortArrow('bonusCount')}</th>
+                    <th style={COL_HEAD} onClick={() => sortBy('startDate')}>Duration{sortArrow('startDate')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tableRows.length === 0 && <tr><td colSpan={9} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
+                  {tableRows.length === 0 && <tr><td colSpan={10} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
                   {tableRows.map((r, i) => (
                     <tr key={i} onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F8FA'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
                       <td style={{ ...CELL, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{r.year}</td>
@@ -342,6 +344,9 @@ export default function DeepDashboardPage() {
                       <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600 }}>{fmtLKR(r.value)}</td>
                       <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>{r.bonusValue > 0 ? fmtLKR(r.bonusValue) : '-'}</td>
                       <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount ? r.bonusCount + '%' : '-'}</td>
+                      <td style={{ ...CELL, fontSize: 12, color: '#3B4A63' }}>
+                        {r.startDate ? <>{fmtDate(r.startDate)} &rarr; {r.endDate ? fmtDate(r.endDate) : <span style={{ color: '#15814B', fontWeight: 600 }}>Ongoing</span>}</> : '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

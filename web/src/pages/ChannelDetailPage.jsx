@@ -44,6 +44,9 @@ export default function ChannelDetailPage() {
     cost: '',
     bonusValue: '0',
     bonusCount: '0',
+    startDate: '',
+    endDate: '',
+    ongoing: false,
     notes: '',
     changeNote: '',
   });
@@ -86,7 +89,9 @@ export default function ChannelDetailPage() {
       .catch(() => setCategories([]));
   }, []);
 
-  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', bonusCount: '0', notes: '', changeNote: '' });
+  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', bonusCount: '0', startDate: '', endDate: '', ongoing: false, notes: '', changeNote: '' });
+
+  const toDateInput = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : '');
 
   const openAddModal = () => {
     setEditingProperty(null);
@@ -106,6 +111,9 @@ export default function ChannelDetailPage() {
       cost: property.cost?.toString() || '',
       bonusValue: property.bonusValue != null ? property.bonusValue.toString() : '0',
       bonusCount: property.bonusCount != null ? property.bonusCount.toString() : '0',
+      startDate: toDateInput(property.startDate),
+      endDate: toDateInput(property.endDate),
+      ongoing: !property.endDate,
       notes: property.notes || '',
       changeNote: '',
     });
@@ -137,6 +145,18 @@ export default function ChannelDetailPage() {
       setFormError('Please enter a valid bonus count (%).');
       return;
     }
+    if (!propertyForm.startDate) {
+      setFormError('Start date is required.');
+      return;
+    }
+    if (!propertyForm.ongoing && !propertyForm.endDate) {
+      setFormError('Please enter an end date, or mark this property as ongoing.');
+      return;
+    }
+    if (!propertyForm.ongoing && propertyForm.endDate && propertyForm.endDate < propertyForm.startDate) {
+      setFormError('End date cannot be before the start date.');
+      return;
+    }
 
     if (editingProperty && !propertyForm.changeNote.trim()) {
       setFormError('Change note is required when editing a property.');
@@ -151,6 +171,8 @@ export default function ChannelDetailPage() {
         name: propertyForm.name,
         cost: Number(propertyForm.cost),
         bonusCount: propertyForm.bonusCount === '' ? 0 : Number(propertyForm.bonusCount),
+        startDate: propertyForm.startDate,
+        endDate: propertyForm.ongoing ? null : propertyForm.endDate,
         notes: propertyForm.notes,
       };
 
@@ -265,6 +287,7 @@ export default function ChannelDetailPage() {
                 <th>Property name</th>
                 <th>Type</th>
                 <th className="num">Value (LKR)</th>
+                <th>Duration</th>
                 <th>Added by</th>
                 <th>Date</th>
                 <th className="num">Actions</th>
@@ -283,6 +306,17 @@ export default function ChannelDetailPage() {
                     {Number(property.bonusValue) > 0 && (
                       <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtLKR(property.bonusValue)} bonus ({property.bonusCount || 0}%)</span>
                     )}
+                  </td>
+                  <td style={{ fontSize: 12.5 }}>
+                    {property.startDate ? (
+                      <>
+                        {fmtDate(property.startDate)}
+                        {' '}&rarr;{' '}
+                        {property.endDate
+                          ? fmtDate(property.endDate)
+                          : <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Ongoing</span>}
+                      </>
+                    ) : <span style={{ color: 'var(--muted-2)' }}>-</span>}
                   </td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -315,7 +349,7 @@ export default function ChannelDetailPage() {
               <tr>
                 <td colSpan={2}>Total committed</td>
                 <td className="num mono">{fmtLKR(totalCost)}</td>
-                <td colSpan={3} />
+                <td colSpan={4} />
               </tr>
             </tfoot>
           </table>
@@ -508,6 +542,45 @@ export default function ChannelDetailPage() {
                   <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
                     Property value × bonus count (%) ÷ 100
                   </span>
+                </div>
+
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">
+                      Start date<span className="req">*</span>
+                    </label>
+                    <input
+                      className="input"
+                      type="date"
+                      value={propertyForm.startDate}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">
+                      End date{!propertyForm.ongoing && <span className="req">*</span>}
+                    </label>
+                    <input
+                      className="input"
+                      type="date"
+                      disabled={propertyForm.ongoing}
+                      value={propertyForm.endDate}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                      style={propertyForm.ongoing ? { background: 'var(--bg-sunken)' } : undefined}
+                    />
+                  </div>
+                </div>
+
+                <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 8, flexDirection: 'row' }}>
+                  <input
+                    type="checkbox"
+                    id="prop-ongoing"
+                    checked={propertyForm.ongoing}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, ongoing: e.target.checked, endDate: e.target.checked ? '' : prev.endDate }))}
+                  />
+                  <label htmlFor="prop-ongoing" style={{ fontSize: 13, color: 'var(--ink-soft)', margin: 0 }}>
+                    Ongoing - no end date (still running)
+                  </label>
                 </div>
 
                 <div className="field">

@@ -148,7 +148,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | MediaGroup | Grouping of channels (e.g., "Maharaja Group") |
 | ChannelMaster | Master registry of all TV/Radio/Print channels with aliases |
 | Channel | Client-specific channel records |
-| Property | Negotiated deals on channels (cost, bonus%, sponsorship details) |
+| Property | Negotiated deals on channels (cost, bonus%, sponsorship details, startDate, endDate — endDate null means still ongoing) |
 | PropertyHistory | Audit trail for property changes (previousValues, newValues JSON) |
 
 ### Schedule & Upload Models

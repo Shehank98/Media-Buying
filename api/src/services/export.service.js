@@ -178,6 +178,10 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
         .font('Helvetica-Bold').text(rs(p.cost), { continued: true })
         .font('Helvetica').fillColor(PP.soft).text(`     Bonus: `, { continued: true })
         .font('Helvetica-Bold').fillColor(PP.ink).text(Number(p.bonusValue) > 0 ? rs(p.bonusValue) : '-');
+      if (p.startDate) {
+        doc.font('Helvetica').fontSize(8.5).fillColor(PP.soft)
+          .text(`Duration: ${dt(p.startDate)} - ${p.endDate ? dt(p.endDate) : 'Ongoing'}`, { width: contentW });
+      }
       if (p.notes) {
         doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(PP.soft).text(`Notes: ${trunc(p.notes, 140)}`, { width: contentW });
       }

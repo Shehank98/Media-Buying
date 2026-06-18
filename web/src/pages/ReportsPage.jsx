@@ -315,6 +315,7 @@ export default function ReportsPage() {
     { key: 'propertyType', label: 'Prop Type' },
     { key: 'cost', label: 'Value', align: 'right' },
     { key: 'bonusValue', label: 'Bonus', align: 'right' },
+    { key: 'duration', label: 'Duration' },
     { key: 'createdBy', label: 'Created By' },
     { key: 'createdAt', label: 'Date' },
   ];
@@ -368,6 +369,11 @@ export default function ReportsPage() {
     if (col.key === 'cost') return <span className="mono">{val === 0 ? 'Added value' : fmtLKR(val)}</span>;
     if (col.key === 'scheduleValue' || col.key === 'scheduleValueWithVat') return <span className="mono">{fmtLKR(val)}</span>;
     if (col.key === 'bonusValue') return <span className="mono">{Number(val) > 0 ? fmtLKR(val) : '-'}</span>;
+    if (col.key === 'duration') {
+      if (!row.startDate) return <span style={{ color: 'var(--muted-2)' }}>-</span>;
+      const fmt = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      return <span style={{ fontSize: 12 }}>{fmt(row.startDate)} &rarr; {row.endDate ? fmt(row.endDate) : <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Ongoing</span>}</span>;
+    }
     if (col.key === 'propertyType') return propTypeBadge(val);
     if (col.key === 'medium') return val ? mediumBadge(val) : '-';
     if (col.key === 'roNumber') return <span className="mono" style={{ fontSize: 12 }}>{val || '-'}</span>;
