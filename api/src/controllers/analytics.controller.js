@@ -611,7 +611,7 @@ export async function getDeepDashboard(req, res) {
 
     const properties = await prisma.property.findMany({
       where: { channel: channelWhere },
-      include: { channel: { include: { channelMaster: { select: { name: true } } } } },
+      include: { channel: { include: { channelMaster: { select: { name: true } }, client: { select: { name: true } } } } },
       orderBy: { createdAt: 'desc' },
     });
     const props = properties.map((p) => ({
@@ -623,6 +623,7 @@ export async function getDeepDashboard(req, res) {
       bonusValue: safeNum(p.bonusValue) || 0,
       bonusCount: Number(p.bonusCount || 0),
       channel: p.channel.channelMaster?.name || p.channel.name,
+      client: p.channel.client?.name || '',
       createdAt: p.createdAt,
     }));
 
@@ -639,7 +640,7 @@ export async function getDeepDashboard(req, res) {
       clientDistribution,
       properties: props.map((p) => ({
         year: p.year, category: p.category, type: p.type, name: p.name,
-        value: p.value, bonusValue: p.bonusValue, bonusCount: p.bonusCount, channel: p.channel,
+        value: p.value, bonusValue: p.bonusValue, bonusCount: p.bonusCount, channel: p.channel, client: p.client,
       })),
       channelInsights: {
         spendByYear: logYears.map((y) => ({ year: y, spend: yearTotals[y] })),

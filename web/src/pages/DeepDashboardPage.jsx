@@ -105,7 +105,7 @@ export default function DeepDashboardPage() {
   const tableRows = useMemo(() => {
     let rows = data?.properties || [];
     const q = search.trim().toLowerCase();
-    if (q) rows = rows.filter((r) => `${r.category} ${r.type} ${r.name}`.toLowerCase().includes(q));
+    if (q) rows = rows.filter((r) => `${r.category} ${r.type} ${r.name} ${r.channel} ${r.client}`.toLowerCase().includes(q));
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...rows].sort((a, b) => {
       const av = a[sortField], bv = b[sortField];
@@ -119,10 +119,10 @@ export default function DeepDashboardPage() {
 
   const exportExcel = () => {
     const rows = tableRows.map((r) => ({
-      Year: r.year, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
+      Year: r.year, Channel: r.channel, Client: r.client, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
       'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus %': r.bonusCount,
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '' }]);
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '' }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Properties');
     XLSX.writeFile(wb, `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -135,8 +135,8 @@ export default function DeepDashboardPage() {
     doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
     autoTable(doc, {
       startY: 27,
-      head: [['Year', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %']],
-      body: tableRows.map((r) => [r.year, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-']),
+      head: [['Year', 'Channel', 'Client', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %']],
+      body: tableRows.map((r) => [r.year, r.channel, r.client, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [10, 23, 41] },
     });
     doc.save(`deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -319,6 +319,8 @@ export default function DeepDashboardPage() {
                 <thead>
                   <tr>
                     <th style={COL_HEAD} onClick={() => sortBy('year')}>Year{sortArrow('year')}</th>
+                    <th style={COL_HEAD} onClick={() => sortBy('channel')}>Channel{sortArrow('channel')}</th>
+                    <th style={COL_HEAD} onClick={() => sortBy('client')}>Client{sortArrow('client')}</th>
                     <th style={COL_HEAD} onClick={() => sortBy('category')}>Category{sortArrow('category')}</th>
                     <th style={COL_HEAD} onClick={() => sortBy('type')}>Type{sortArrow('type')}</th>
                     <th style={COL_HEAD} onClick={() => sortBy('name')}>Property Name{sortArrow('name')}</th>
@@ -328,10 +330,12 @@ export default function DeepDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tableRows.length === 0 && <tr><td colSpan={7} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
+                  {tableRows.length === 0 && <tr><td colSpan={9} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
                   {tableRows.map((r, i) => (
                     <tr key={i} onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F8FA'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
                       <td style={{ ...CELL, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{r.year}</td>
+                      <td style={{ ...CELL, color: '#3B4A63' }}>{r.channel || '-'}</td>
+                      <td style={{ ...CELL, color: '#3B4A63' }}>{r.client || '-'}</td>
                       <td style={CELL}>{r.category}</td>
                       <td style={{ ...CELL, color: '#3B4A63' }}>{r.type || '-'}</td>
                       <td style={{ ...CELL, fontWeight: 600, color: '#16243C' }}>{r.name}</td>
