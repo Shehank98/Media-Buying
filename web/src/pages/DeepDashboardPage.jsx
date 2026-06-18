@@ -90,7 +90,7 @@ export default function DeepDashboardPage() {
       .then(({ data }) => setData(data))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [agencyId, clientId, channelMasterId, yearsKey]);
+  }, [agencyId, clientId, channelMasterId]);
 
   const kpis = data?.kpis || {};
   const trendYears = data?.trendYears || [];
