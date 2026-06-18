@@ -168,6 +168,26 @@ async function main() {
     console.log(`Channel master created/found: ${channel.name} [${channel.medium}] (id: ${channel.id})`);
   }
 
+  // ── Property categories (managed in Admin; shown in Add Property) ──
+  console.log('\nSeeding property categories...');
+  const propertyCategories = [
+    'Frequency Sponsorship',
+    'Drama Sponsorship',
+    'News Sponsorship',
+    'Reality Sponsorship',
+    'Event Sponsorship',
+    'Others',
+  ];
+  for (let i = 0; i < propertyCategories.length; i++) {
+    const name = propertyCategories[i];
+    const cat = await prisma.propertyCategory.upsert({
+      where: { name },
+      update: {},
+      create: { name, sortOrder: i, isActive: true },
+    });
+    console.log(`Property category created/found: ${cat.name} (id: ${cat.id})`);
+  }
+
   console.log('\nSeeding complete!');
 }
 

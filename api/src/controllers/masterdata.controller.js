@@ -548,3 +548,66 @@ export async function toggleCampaign(req, res) {
     return res.status(500).json({ error: 'Failed to toggle campaign', detail: error.message });
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Property Categories (Add Property dropdown; managed in Admin)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function listPropertyCategories(req, res) {
+  try {
+    const includeInactive = req.query.includeInactive === 'true';
+    const categories = await prisma.propertyCategory.findMany({
+      where: includeInactive ? {} : { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    return res.json({ categories });
+  } catch (error) {
+    console.error('List property categories error:', error);
+    return res.status(500).json({ error: 'Failed to list property categories', detail: error.message });
+  }
+}
+
+export async function createPropertyCategory(req, res) {
+  try {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Category name is required' });
+    const count = await prisma.propertyCategory.count();
+    const category = await prisma.propertyCategory.create({
+      data: { name, sortOrder: count, isActive: true },
+    });
+    return res.status(201).json({ category });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'A category with that name already exists' });
+    console.error('Create property category error:', error);
+    return res.status(500).json({ error: 'Failed to create property category', detail: error.message });
+  }
+}
+
+export async function updatePropertyCategory(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Category name is required' });
+    const category = await prisma.propertyCategory.update({ where: { id }, data: { name } });
+    return res.json({ category });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'A category with that name already exists' });
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Category not found' });
+    console.error('Update property category error:', error);
+    return res.status(500).json({ error: 'Failed to update property category', detail: error.message });
+  }
+}
+
+export async function togglePropertyCategory(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.propertyCategory.findUnique({ where: { id }, select: { isActive: true } });
+    if (!existing) return res.status(404).json({ error: 'Category not found' });
+    const category = await prisma.propertyCategory.update({ where: { id }, data: { isActive: !existing.isActive } });
+    return res.json({ category });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Category not found' });
+    console.error('Toggle property category error:', error);
+    return res.status(500).json({ error: 'Failed to toggle property category', detail: error.message });
+  }
+}

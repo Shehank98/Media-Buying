@@ -72,6 +72,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [groupSubmitting, setGroupSubmitting] = useState(false);
   const [groupError, setGroupError] = useState('');
 
+  /* ---- property category modal ---- */
+  const [propertyCategories, setPropertyCategories] = useState([]);
+  const [showCatModal, setShowCatModal] = useState(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [catForm, setCatForm] = useState({ name: '' });
+  const [catSubmitting, setCatSubmitting] = useState(false);
+  const [catError, setCatError] = useState('');
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -83,12 +91,13 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes, catsRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
         api.get('/masterdata/media-groups'),
         api.get('/masterdata/channel-masters', { params: { includeInactive: 'true' } }),
+        api.get('/masterdata/property-categories', { params: { includeInactive: 'true' } }),
       ]);
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
@@ -114,6 +123,10 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (channelsRes.status === 'fulfilled') {
         const rawCh = channelsRes.value.data.channelMasters || channelsRes.value.data;
         setChannelMasters(Array.isArray(rawCh) ? rawCh : []);
+      }
+      if (catsRes.status === 'fulfilled') {
+        const rawCats = catsRes.value.data.categories || catsRes.value.data;
+        setPropertyCategories(Array.isArray(rawCats) ? rawCats : []);
       }
     } catch {
       setError('Failed to load admin data.');
@@ -363,6 +376,44 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- Property Category CRUD ---- */
+  const openAddCat = () => {
+    setEditingCat(null);
+    setCatForm({ name: '' });
+    setCatError('');
+    setShowCatModal(true);
+  };
+  const openEditCat = c => {
+    setEditingCat(c);
+    setCatForm({ name: c.name });
+    setCatError('');
+    setShowCatModal(true);
+  };
+  const handleCatSubmit = async e => {
+    e.preventDefault();
+    setCatError('');
+    if (!catForm.name.trim()) { setCatError('Category name is required.'); return; }
+    setCatSubmitting(true);
+    try {
+      if (editingCat) await api.put(`/masterdata/property-categories/${editingCat.id}`, { name: catForm.name.trim() });
+      else await api.post('/masterdata/property-categories', { name: catForm.name.trim() });
+      setShowCatModal(false);
+      await fetchData();
+    } catch (err) {
+      setCatError(err.response?.data?.error || err.response?.data?.message || 'Failed to save category.');
+    } finally {
+      setCatSubmitting(false);
+    }
+  };
+  const toggleCat = async c => {
+    try {
+      await api.patch(`/masterdata/property-categories/${c.id}/toggle`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update category status.');
+    }
+  };
+
   /* ---- helpers ---- */
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
@@ -392,6 +443,10 @@ export default function AdminPage({ initialTab = 'users' }) {
     mediaGroups.filter(g => g.name.toLowerCase().includes(search.toLowerCase())),
     [mediaGroups, search]);
 
+  const filteredCats = useMemo(() =>
+    propertyCategories.filter(c => c.name.toLowerCase().includes(search.toLowerCase())),
+    [propertyCategories, search]);
+
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   if (loading) {
@@ -408,6 +463,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'teams', label: 'Teams', count: teams.length },
     { key: 'channels', label: 'Channels', count: channelMasters.length },
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
+    { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
   ];
 
   return (
@@ -461,7 +517,7 @@ export default function AdminPage({ initialTab = 'users' }) {
           <input
             className="input"
             type="text"
-            placeholder={`Search ${activeTab === 'media-groups' ? 'media groups' : activeTab}...`}
+            placeholder={`Search ${activeTab === 'media-groups' ? 'media groups' : activeTab === 'property-categories' ? 'property categories' : activeTab}...`}
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ paddingLeft: 32 }}
@@ -485,6 +541,11 @@ export default function AdminPage({ initialTab = 'users' }) {
         {activeTab === 'media-groups' && (
           <button className="btn btn-primary" onClick={openAddGroup} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Media Group
+          </button>
+        )}
+        {activeTab === 'property-categories' && (
+          <button className="btn btn-primary" onClick={openAddCat} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Category
           </button>
         )}
       </div>
@@ -758,6 +819,56 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
+      {/* ============ PROPERTY CATEGORIES TABLE ============ */}
+      {activeTab === 'property-categories' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCats.map(c => (
+                <tr key={c.id} style={{ opacity: c.isActive === false ? 0.55 : 1 }}>
+                  <td className="strong">{c.name}</td>
+                  <td>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                      background: c.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)',
+                      color: c.isActive === false ? 'var(--muted)' : 'var(--green-600)',
+                    }}>{c.isActive === false ? 'Inactive' : 'Active'}</span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditCat(c)} title="Edit category">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button
+                        className="act-btn"
+                        onClick={() => toggleCat(c)}
+                        title={c.isActive === false ? 'Activate' : 'Deactivate'}
+                        style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}
+                      >
+                        <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredCats.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+              <Icon name="folder" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+              <p>No property categories found</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ============ USER MODAL ============ */}
       {showUserModal && (
         <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowUserModal(false); }}>
@@ -1015,6 +1126,34 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowGroupModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={groupSubmitting}>{groupSubmitting ? 'Saving...' : editingGroup ? 'Save Changes' : 'Add Media Group'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ PROPERTY CATEGORY MODAL ============ */}
+      {showCatModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowCatModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingCat ? 'Edit Category' : 'Add Property Category'}</h2>
+              <button className="act-btn" onClick={() => setShowCatModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleCatSubmit}>
+              <div className="modal-body">
+                {catError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{catError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Category Name <span className="req">*</span></label>
+                  <input className="input" type="text" value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Drama Sponsorship" />
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>Appears in the Add Property category dropdown.</span>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCatModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={catSubmitting}>{catSubmitting ? 'Saving...' : editingCat ? 'Save Changes' : 'Add Category'}</button>
               </div>
             </form>
           </div>

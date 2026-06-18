@@ -368,10 +368,11 @@ export async function exportProperties(req, res) {
       channelName: p.channel.name,
       channelMasterName: p.channel.channelMaster?.name || p.channel.name,
       channelType: p.channel.type,
+      category: p.category || '',
       propertyName: p.name,
-      propertyType: p.type,
+      propertyType: p.type || '',
       cost: Number(p.cost),
-      bonusPct: p.bonusPct != null ? Number(p.bonusPct) : null,
+      bonusValue: Number(p.bonusValue || 0),
       notes: p.notes || '',
       createdBy: p.creator?.name || '',
       createdAt: p.createdAt,
@@ -393,10 +394,11 @@ export async function exportProperties(req, res) {
         clientName: n.clientName,
         channelName: n.channelMasterName,
         channelType: n.channelType,
+        category: n.category,
         propertyName: n.propertyName,
         propertyType: n.propertyType,
         cost: n.cost,
-        bonusPct: n.bonusPct,
+        bonusValue: n.bonusValue,
         notes: n.notes,
         createdBy: n.createdBy,
         createdAt: n.createdAt.toISOString().split('T')[0],
@@ -459,10 +461,11 @@ export async function exportProperties(req, res) {
       { header: 'Client', width: 20 },
       { header: 'Channel', width: 22 },
       { header: 'Medium', width: 12 },
+      { header: 'Category', width: 22 },
       { header: 'Property Name', width: 24 },
       { header: 'Property Type', width: 18 },
-      { header: 'Current Cost (LKR)', width: 20 },
-      { header: 'Bonus %', width: 12 },
+      { header: 'Property Value (LKR)', width: 20 },
+      { header: 'Bonus Value (LKR)', width: 18 },
       { header: 'Rate Changes', width: 14 },
       { header: 'Notes', width: 30 },
       { header: 'Created By', width: 18 },
@@ -496,19 +499,19 @@ export async function exportProperties(req, res) {
       for (const n of items) {
         sheet.addRow([
           n.agencyName, n.clientName, n.channelMasterName, n.channelType,
-          n.propertyName, n.propertyType, n.cost, n.bonusPct != null ? n.bonusPct : '',
+          n.category, n.propertyName, n.propertyType, n.cost, n.bonusValue,
           Math.max(0, n.timeline.length - 1), n.notes, n.createdBy, n.createdAt.toISOString().split('T')[0],
         ]);
       }
-      sheet.getColumn(7).numFmt = '#,##0.00';
-      sheet.getColumn(8).numFmt = '0.000';
+      sheet.getColumn(8).numFmt = '#,##0.00';
+      sheet.getColumn(9).numFmt = '#,##0.00';
       navyHeader(sheet, PROP_COLUMNS.length);
       if (items.length > 0) {
         const totalsRowNum = items.length + 2;
         const totalsRow = sheet.getRow(totalsRowNum);
         totalsRow.getCell(1).value = 'TOTAL';
-        totalsRow.getCell(7).value = { formula: `SUM(G2:G${totalsRowNum - 1})` };
-        totalsRow.getCell(7).numFmt = '#,##0.00';
+        totalsRow.getCell(8).value = { formula: `SUM(H2:H${totalsRowNum - 1})` };
+        totalsRow.getCell(8).numFmt = '#,##0.00';
         totalsRow.eachCell((cell) => { cell.font = { bold: true }; });
       }
       autoWidth(sheet);

@@ -171,13 +171,13 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
       ensure(64);
       doc.font('Helvetica-Bold').fontSize(10.5).fillColor(PP.ink).text(p.propertyName, { width: contentW });
       doc.font('Helvetica').fontSize(8.5).fillColor(PP.soft)
-        .text(`${p.channelMasterName}  ·  ${p.clientName}  ·  ${p.agencyName}  ·  ${p.propertyType}`, { width: contentW });
+        .text(`${[p.category, p.channelMasterName, p.clientName, p.agencyName, p.propertyType].filter(Boolean).join('  ·  ')}`, { width: contentW });
       doc.moveDown(0.15);
       doc.font('Helvetica').fontSize(9).fillColor(PP.ink)
         .text(`Current rate: `, { continued: true })
         .font('Helvetica-Bold').text(rs(p.cost), { continued: true })
         .font('Helvetica').fillColor(PP.soft).text(`     Bonus: `, { continued: true })
-        .font('Helvetica-Bold').fillColor(PP.ink).text(p.bonusPct != null ? p.bonusPct + '%' : '-');
+        .font('Helvetica-Bold').fillColor(PP.ink).text(Number(p.bonusValue) > 0 ? rs(p.bonusValue) : '-');
       if (p.notes) {
         doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(PP.soft).text(`Notes: ${trunc(p.notes, 140)}`, { width: contentW });
       }

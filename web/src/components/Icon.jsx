@@ -90,11 +90,13 @@ const TYPE_STYLES = {
 };
 
 export function TypeBadge({ type }) {
-  const t = TYPE_STYLES[type] || TYPE_STYLES.OTHER;
+  if (!type) return <span style={{ color: 'var(--muted-2)' }}>-</span>;
+  // Known legacy enum values keep their styled badge; free-text types render neutrally.
+  const t = TYPE_STYLES[type];
   return (
-    <span className={`badge ${t.cls}`}>
+    <span className={`badge ${t ? t.cls : 'b-other'}`}>
       <span className="bdot" />
-      {t.label}
+      {t ? t.label : type}
     </span>
   );
 }

@@ -170,7 +170,7 @@ export default function ReportsPage() {
   };
 
   const sorted = useMemo(() => {
-    const numericFields = ['cost', 'scheduleValue', 'scheduleValueWithVat', 'bonusPct'];
+    const numericFields = ['cost', 'scheduleValue', 'scheduleValueWithVat', 'bonusValue'];
     return [...rows].sort((a, b) => {
       let aVal = a[sortField];
       let bVal = b[sortField];
@@ -310,11 +310,11 @@ export default function ReportsPage() {
     { key: 'agencyName', label: 'Agency' },
     { key: 'clientName', label: 'Client' },
     { key: 'channelName', label: 'Channel' },
-    { key: 'channelType', label: 'Type' },
+    { key: 'category', label: 'Category' },
     { key: 'propertyName', label: 'Property' },
     { key: 'propertyType', label: 'Prop Type' },
-    { key: 'cost', label: 'Cost', align: 'right' },
-    { key: 'bonusPct', label: 'Bonus %', align: 'right' },
+    { key: 'cost', label: 'Value', align: 'right' },
+    { key: 'bonusValue', label: 'Bonus', align: 'right' },
     { key: 'createdBy', label: 'Created By' },
     { key: 'createdAt', label: 'Date' },
   ];
@@ -335,19 +335,13 @@ export default function ReportsPage() {
   const columns = source === 'properties' ? PROP_COLUMNS : LOG_COLUMNS;
 
   const propTypeBadge = (type) => {
-    const map = {
-      BOUGHT_AIRTIME: { bg: 'var(--blue-100)', color: 'var(--blue-700)', label: 'Bought Airtime' },
-      SPONSORSHIP: { bg: 'var(--purple-100)', color: 'var(--purple-700)', label: 'Sponsorship' },
-      BONUS_COMMERCIAL: { bg: 'var(--green-100)', color: 'var(--green-700)', label: 'Bonus' },
-      OTHER: { bg: 'var(--amber-100)', color: 'var(--amber-700)', label: 'Other' },
-    };
-    const s = map[type] || map.OTHER;
+    if (!type) return <span style={{ color: 'var(--muted-2)' }}>-</span>;
     return (
       <span style={{
         display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-        fontSize: 11, fontWeight: 600, background: s.bg, color: s.color,
+        fontSize: 11, fontWeight: 600, background: 'var(--bg-sunken)', color: 'var(--ink-soft)',
       }}>
-        {s.label}
+        {type}
       </span>
     );
   };
@@ -373,7 +367,7 @@ export default function ReportsPage() {
     const val = row[col.key];
     if (col.key === 'cost') return <span className="mono">{val === 0 ? 'Added value' : fmtLKR(val)}</span>;
     if (col.key === 'scheduleValue' || col.key === 'scheduleValueWithVat') return <span className="mono">{fmtLKR(val)}</span>;
-    if (col.key === 'bonusPct') return val ? `${val}%` : '-';
+    if (col.key === 'bonusValue') return <span className="mono">{Number(val) > 0 ? fmtLKR(val) : '-'}</span>;
     if (col.key === 'propertyType') return propTypeBadge(val);
     if (col.key === 'medium') return val ? mediumBadge(val) : '-';
     if (col.key === 'roNumber') return <span className="mono" style={{ fontSize: 12 }}>{val || '-'}</span>;
@@ -648,13 +642,6 @@ export default function ReportsPage() {
               <select className="select" value={channelType} onChange={(e) => setChannelType(e.target.value)}>
                 <option value="">All types</option>
                 {CHANNEL_TYPE_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-            <div className="filter-field">
-              <label>Property Type</label>
-              <select className="select" value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
-                <option value="">All types</option>
-                {PROPERTY_TYPE_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
             <div className="filter-field" style={{ justifyContent: 'flex-end' }}>

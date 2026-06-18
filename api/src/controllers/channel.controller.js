@@ -49,20 +49,23 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { name, type, cost, notes, bonusPct, sponsorshipDetails } = req.body;
+    const { category, name, type, cost, notes, bonusValue } = req.body;
 
-    if (!name || !type || cost == null) {
-      return res.status(400).json({ error: 'Name, type, and cost are required' });
+    if (!category || !String(category).trim()) {
+      return res.status(400).json({ error: 'Property category is required' });
+    }
+    if (!name || cost == null) {
+      return res.status(400).json({ error: 'Name and property value are required' });
     }
 
     const property = await prisma.property.create({
       data: {
         channelId: parseInt(req.params.channelId),
+        category: String(category).trim(),
         name,
-        type,
+        type: type ? String(type).trim() : null,
         cost,
-        bonusPct: bonusPct === '' || bonusPct == null ? null : Number(bonusPct),
-        sponsorshipDetails: sponsorshipDetails ? String(sponsorshipDetails) : null,
+        bonusValue: bonusValue === '' || bonusValue == null ? 0 : Number(bonusValue),
         notes: notes || null,
         createdBy: req.user.id,
       },

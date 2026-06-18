@@ -18,6 +18,10 @@ import {
   listAllCampaigns,
   createCampaign,
   toggleCampaign,
+  listPropertyCategories,
+  createPropertyCategory,
+  updatePropertyCategory,
+  togglePropertyCategory,
 } from '../controllers/masterdata.controller.js';
 
 const router = Router();
@@ -46,5 +50,11 @@ router.patch('/brands/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), tog
 router.get('/campaigns', authenticate, requireRole('SUPER_ADMIN'), listAllCampaigns);
 router.post('/campaigns', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), createCampaign);
 router.patch('/campaigns/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), toggleCampaign);
+
+// Property Categories (list readable by anyone who can add properties; mutations admin-only)
+router.get('/property-categories', authenticate, listPropertyCategories);
+router.post('/property-categories', authenticate, requireRole('SUPER_ADMIN'), createPropertyCategory);
+router.put('/property-categories/:id', authenticate, requireRole('SUPER_ADMIN'), updatePropertyCategory);
+router.patch('/property-categories/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), togglePropertyCategory);
 
 export default router;

@@ -35,12 +35,14 @@ export default function ChannelDetailPage() {
   // Add/Edit property modal
   const [showModal, setShowModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [propertyForm, setPropertyForm] = useState({
+    category: '',
+    customCategory: '',
+    type: '',
     name: '',
-    type: 'BOUGHT_AIRTIME',
     cost: '',
-    bonusPct: '',
-    sponsorshipDetails: '',
+    bonusValue: '0',
     notes: '',
     changeNote: '',
   });
@@ -77,21 +79,31 @@ export default function ChannelDetailPage() {
     fetchData();
   }, [channelId]);
 
+  useEffect(() => {
+    api.get('/masterdata/property-categories')
+      .then((r) => setCategories(r.data.categories || []))
+      .catch(() => setCategories([]));
+  }, []);
+
+  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', notes: '', changeNote: '' });
+
   const openAddModal = () => {
     setEditingProperty(null);
-    setPropertyForm({ name: '', type: 'BOUGHT_AIRTIME', cost: '', bonusPct: '', sponsorshipDetails: '', notes: '', changeNote: '' });
+    setPropertyForm(emptyPropForm());
     setFormError('');
     setShowModal(true);
   };
 
   const openEditModal = (property) => {
     setEditingProperty(property);
+    const known = categories.some((c) => c.name === property.category);
     setPropertyForm({
+      category: property.category ? (known ? property.category : 'Others') : '',
+      customCategory: property.category && !known ? property.category : '',
+      type: property.type || '',
       name: property.name,
-      type: property.type,
       cost: property.cost?.toString() || '',
-      bonusPct: property.bonusPct != null ? property.bonusPct.toString() : '',
-      sponsorshipDetails: property.sponsorshipDetails || '',
+      bonusValue: property.bonusValue != null ? property.bonusValue.toString() : '0',
       notes: property.notes || '',
       changeNote: '',
     });
@@ -103,13 +115,24 @@ export default function ChannelDetailPage() {
     e.preventDefault();
     setFormError('');
 
+    const resolvedCategory = propertyForm.category === 'Others'
+      ? propertyForm.customCategory.trim()
+      : propertyForm.category.trim();
+
+    if (!resolvedCategory) {
+      setFormError(propertyForm.category === 'Others' ? 'Please enter a custom category name.' : 'Property category is required.');
+      return;
+    }
     if (!propertyForm.name.trim()) {
       setFormError('Property name is required.');
       return;
     }
-
     if (!propertyForm.cost || isNaN(Number(propertyForm.cost)) || Number(propertyForm.cost) < 0) {
-      setFormError('Please enter a valid cost.');
+      setFormError('Please enter a valid property value.');
+      return;
+    }
+    if (propertyForm.bonusValue !== '' && (isNaN(Number(propertyForm.bonusValue)) || Number(propertyForm.bonusValue) < 0)) {
+      setFormError('Please enter a valid bonus value.');
       return;
     }
 
@@ -121,11 +144,11 @@ export default function ChannelDetailPage() {
     setSubmitting(true);
     try {
       const payload = {
+        category: resolvedCategory,
+        type: propertyForm.type.trim(),
         name: propertyForm.name,
-        type: propertyForm.type,
         cost: Number(propertyForm.cost),
-        bonusPct: propertyForm.bonusPct === '' ? null : Number(propertyForm.bonusPct),
-        sponsorshipDetails: propertyForm.sponsorshipDetails || null,
+        bonusValue: propertyForm.bonusValue === '' ? 0 : Number(propertyForm.bonusValue),
         notes: propertyForm.notes,
       };
 
@@ -236,9 +259,10 @@ export default function ChannelDetailPage() {
           <table className="tbl">
             <thead>
               <tr>
+                <th>Category</th>
                 <th>Property name</th>
                 <th>Type</th>
-                <th className="num">Cost (LKR)</th>
+                <th className="num">Value (LKR)</th>
                 <th>Added by</th>
                 <th>Date</th>
                 <th className="num">Actions</th>
@@ -247,14 +271,15 @@ export default function ChannelDetailPage() {
             <tbody>
               {properties.map((property) => (
                 <tr key={property.id}>
+                  <td>{property.category || <span style={{ color: 'var(--muted-2)' }}>-</span>}</td>
                   <td className="strong">{property.name}</td>
                   <td><TypeBadge type={property.type} /></td>
                   <td className="num mono">
                     {Number(property.cost) === 0
                       ? <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Added value</span>
                       : fmtLKR(property.cost)}
-                    {property.bonusPct != null && property.bonusPct !== '' && (
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{property.bonusPct}% bonus</span>
+                    {Number(property.bonusValue) > 0 && (
+                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtLKR(property.bonusValue)} bonus</span>
                     )}
                   </td>
                   <td>
@@ -392,12 +417,49 @@ export default function ChannelDetailPage() {
 
                 <div className="field">
                   <label className="field-label">
+                    Property category<span className="req">*</span>
+                  </label>
+                  <select
+                    className="select"
+                    value={propertyForm.category}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, category: e.target.value }))}
+                  >
+                    <option value="">Select a category…</option>
+                    {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    {/* Ensure "Others" is always available even if not in the active list */}
+                    {!categories.some((c) => c.name === 'Others') && <option value="Others">Others</option>}
+                  </select>
+                  {propertyForm.category === 'Others' && (
+                    <input
+                      className="input"
+                      type="text"
+                      placeholder="Enter custom category name"
+                      style={{ marginTop: 8 }}
+                      value={propertyForm.customCategory}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, customCategory: e.target.value }))}
+                    />
+                  )}
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Property type</label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="e.g. Segment Sponsorship, Presenting Partner, Billboard"
+                    value={propertyForm.type}
+                    onChange={(e) => setPropertyForm((prev) => ({ ...prev, type: e.target.value }))}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">
                     Property name<span className="req">*</span>
                   </label>
                   <input
                     className="input"
                     type="text"
-                    placeholder="Property name"
+                    placeholder="e.g. Hiru Star Season 5 Sponsorship"
                     value={propertyForm.name}
                     onChange={(e) => setPropertyForm((prev) => ({ ...prev, name: e.target.value }))}
                   />
@@ -405,21 +467,9 @@ export default function ChannelDetailPage() {
 
                 <div className="field-grid2">
                   <div className="field">
-                    <label className="field-label">Type</label>
-                    <select
-                      className="select"
-                      value={propertyForm.type}
-                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, type: e.target.value }))}
-                    >
-                      <option value="BOUGHT_AIRTIME">Bought Airtime</option>
-                      <option value="SPONSORSHIP">Sponsorship</option>
-                      <option value="BONUS_COMMERCIAL">Bonus Commercial</option>
-                      <option value="OTHER">Other</option>
-                    </select>
-                  </div>
-
-                  <div className="field">
-                    <label className="field-label">Cost (LKR)</label>
+                    <label className="field-label">
+                      Property value (LKR)<span className="req">*</span>
+                    </label>
                     <input
                       className="input"
                       type="number"
@@ -430,29 +480,16 @@ export default function ChannelDetailPage() {
                       onChange={(e) => setPropertyForm((prev) => ({ ...prev, cost: e.target.value }))}
                     />
                   </div>
-                </div>
-
-                <div className="field-grid2">
                   <div className="field">
-                    <label className="field-label">Bonus % (added value)</label>
+                    <label className="field-label">Bonus value (LKR)</label>
                     <input
                       className="input"
                       type="number"
                       min="0"
-                      step="0.001"
-                      placeholder="e.g. 40"
-                      value={propertyForm.bonusPct}
-                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusPct: e.target.value }))}
-                    />
-                  </div>
-                  <div className="field">
-                    <label className="field-label">Sponsorship details</label>
-                    <input
-                      className="input"
-                      type="text"
-                      placeholder="Optional, e.g. title sponsor"
-                      value={propertyForm.sponsorshipDetails}
-                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, sponsorshipDetails: e.target.value }))}
+                      step="0.01"
+                      placeholder="0"
+                      value={propertyForm.bonusValue}
+                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, bonusValue: e.target.value }))}
                     />
                   </div>
                 </div>
