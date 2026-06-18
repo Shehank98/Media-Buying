@@ -38,7 +38,7 @@ export default function ClientDetailPage() {
 
   // Add channel modal
   const [showChModal, setShowChModal] = useState(false);
-  const [chForm, setChForm] = useState({ name: '', type: 'TV' });
+  const [chForm, setChForm] = useState({ channelMasterId: '' });
   const [chSubmitting, setChSubmitting] = useState(false);
   const [chError, setChError] = useState('');
 
@@ -110,12 +110,12 @@ export default function ClientDetailPage() {
 
   const handleAddChannel = async () => {
     setChError('');
-    if (!chForm.name.trim()) { setChError('Channel name is required.'); return; }
+    if (!chForm.channelMasterId) { setChError('Please select a channel.'); return; }
     setChSubmitting(true);
     try {
-      await api.post(`/clients/${clientId}/channels`, chForm);
+      await api.post(`/clients/${clientId}/channels`, { channelMasterId: parseInt(chForm.channelMasterId) });
       setShowChModal(false);
-      setChForm({ name: '', type: 'TV' });
+      setChForm({ channelMasterId: '' });
       setRefreshKey(k => k + 1);
     } catch (err) { setChError(err.response?.data?.error || 'Failed to add channel.'); }
     finally { setChSubmitting(false); }
@@ -352,14 +352,16 @@ export default function ClientDetailPage() {
             <div className="modal-body">
               {chError && <div style={{ fontSize: 12.5, color: 'var(--red-600)', fontWeight: 600, marginBottom: 14 }}><Icon name="alert" size={14} /> {chError}</div>}
               <div className="field">
-                <label className="field-label">Channel name<span className="req">*</span></label>
-                <input className="input" value={chForm.name} onChange={e => setChForm(p => ({ ...p, name: e.target.value }))} placeholder="Enter channel name" />
-              </div>
-              <div className="field">
-                <label className="field-label">Type<span className="req">*</span></label>
-                <select className="select" value={chForm.type} onChange={e => setChForm(p => ({ ...p, type: e.target.value }))}>
-                  <option value="TV">TV</option><option value="RADIO">Radio</option><option value="PRINT">Print</option>
+                <label className="field-label">Channel<span className="req">*</span></label>
+                <select className="select" value={chForm.channelMasterId} onChange={e => setChForm(p => ({ ...p, channelMasterId: e.target.value }))}>
+                  <option value="">Select a channel…</option>
+                  {channelMasters.filter(cm => cm.isActive !== false).map(cm => (
+                    <option key={cm.id} value={cm.id}>{cm.name} ({cm.medium})</option>
+                  ))}
                 </select>
+                <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  Channels are managed in User Management → Channels.
+                </span>
               </div>
             </div>
             <div className="modal-foot">

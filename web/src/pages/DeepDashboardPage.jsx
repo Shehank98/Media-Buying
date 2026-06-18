@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
-  PieChart, Pie, Cell, BarChart, Bar,
+  Cell, BarChart, Bar,
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -60,7 +60,6 @@ export default function DeepDashboardPage() {
   const [agencyId, setAgencyId] = useState('');
   const [clientId, setClientId] = useState('');
   const [channelMasterId, setChannelMasterId] = useState('');
-  const [years, setYears] = useState([]);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,14 +80,12 @@ export default function DeepDashboardPage() {
     setClientId('');
   }, [agencyId]);
 
-  const yearsKey = years.slice().sort().join(',');
   useEffect(() => {
     setLoading(true);
     const params = {};
     if (agencyId) params.agencyId = agencyId;
     if (clientId) params.clientId = clientId;
     if (channelMasterId) params.channelMasterId = channelMasterId;
-    if (years.length) params.years = years.join(',');
     api.get('/analytics/deep-dashboard', { params })
       .then(({ data }) => setData(data))
       .catch(() => setData(null))
@@ -98,12 +95,11 @@ export default function DeepDashboardPage() {
   const kpis = data?.kpis || {};
   const trendYears = data?.trendYears || [];
   const monthlyTrend = data?.monthlyTrend || [];
-  const categories = data?.categories || [];
+  const clientDistribution = data?.clientDistribution || [];
   const insights = data?.channelInsights || {};
   const history = data?.clientHistory || {};
-  const availableYears = data?.availableYears || [];
-
-  const toggleYear = (y) => setYears((prev) => (prev.includes(y) ? prev.filter((x) => x !== y) : [...prev, y]));
+  const latestYear = kpis.latestYear || new Date().getFullYear();
+  const previousYear = kpis.previousYear || latestYear - 1;
 
   // Property table rows (search + sort)
   const tableRows = useMemo(() => {
@@ -202,19 +198,6 @@ export default function DeepDashboardPage() {
               {channelMasters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <label className="field-label" style={{ display: 'block', marginBottom: 6 }}>Years</label>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {availableYears.length === 0 && <span style={{ fontSize: 12.5, color: '#93A0B5' }}>No data</span>}
-              {availableYears.map((y) => {
-                const on = years.includes(y);
-                return (
-                  <button key={y} onClick={() => toggleYear(y)} style={{ border: `1px solid ${on ? '#E85D24' : '#D5DAE2'}`, background: on ? '#FDF1EB' : '#fff', color: on ? '#D9521C' : '#3B4A63', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>{y}</button>
-                );
-              })}
-              {years.length > 0 && <button onClick={() => setYears([])} className="btn btn-ghost btn-sm">Clear</button>}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -224,9 +207,9 @@ export default function DeepDashboardPage() {
         <>
           {/* KPI cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 18 }}>
-            <Kpi icon="money" tone={['#FDF1EB', '#D9521C']} label="Total Spend" value={fmtShort(kpis.totalSpend)} sub="Selected filters" />
-            <Kpi icon="calendar" tone={['#EDF3FD', '#1F5BB5']} label={`${kpis.currentYear} Spend`} value={fmtShort(kpis.currentYearSpend)} sub="Current year" />
-            <Kpi icon="calendar" tone={['#ECF8F1', '#15814B']} label={`${(kpis.currentYear || new Date().getFullYear()) - 1} Spend`} value={fmtShort(kpis.previousYearSpend)} sub="Previous year" />
+            <Kpi icon="money" tone={['#FDF1EB', '#D9521C']} label="Total Spend" value={fmtShort(kpis.totalSpend)} sub="From schedule logs" />
+            <Kpi icon="calendar" tone={['#EDF3FD', '#1F5BB5']} label={`${latestYear} Spend`} value={fmtShort(kpis.currentYearSpend)} sub="Latest year" />
+            <Kpi icon="calendar" tone={['#ECF8F1', '#15814B']} label={`${previousYear} Spend`} value={fmtShort(kpis.previousYearSpend)} sub="Previous year" />
             <Kpi
               icon={yoyUp ? 'trending-up' : 'trending-down'}
               tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
@@ -270,51 +253,28 @@ export default function DeepDashboardPage() {
             </div>
           </div>
 
-          {/* Category breakdown */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 18, marginBottom: 18 }}>
-            <div style={CARD}>
-              <div style={{ padding: '16px 20px 4px' }}><h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Spend by Category</h3></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '10px 20px 20px' }}>
-                <div style={{ width: 160, height: 160, flex: 'none' }}>
-                  {categories.length === 0 ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 12 }}>No data</div> : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={categories} dataKey="value" nameKey="category" cx="50%" cy="50%" innerRadius={48} outerRadius={75} paddingAngle={2} stroke="none">
-                          {categories.map((c, i) => <Cell key={c.category} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 9 }}>
-                  {categories.map((c, i) => (
-                    <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 3, background: CAT_COLORS[i % CAT_COLORS.length], flex: 'none' }} />
-                      <span style={{ flex: 1, color: '#16243C', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.category}</span>
-                      <span style={{ color: '#6B7790', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtShort(c.value)} · {c.pct}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* Client-wise investment contribution */}
+          <div style={{ ...CARD, marginBottom: 18 }}>
+            <div style={{ padding: '16px 20px 4px' }}>
+              <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Client Investment Contribution</h3>
+              <p style={{ fontSize: 12.5, color: '#6B7790', margin: '4px 0 0' }}>How media investment is distributed across clients (from schedule logs)</p>
             </div>
-            <div style={CARD}>
-              <div style={{ padding: '16px 20px 4px' }}><h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Category Comparison</h3></div>
-              <div style={{ padding: '8px 14px 18px' }}>
-                {categories.length === 0 ? <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 12 }}>No data</div> : (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={categories} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF0F3" />
-                      <XAxis dataKey="category" tick={{ fontSize: 10, fill: '#6B7790' }} axisLine={{ stroke: '#E5E8ED' }} tickLine={false} interval={0} angle={-12} textAnchor="end" height={50} />
-                      <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} axisLine={false} tickLine={false} width={44} />
-                      <Tooltip formatter={(v) => fmtLKR(v)} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                        {categories.map((c, i) => <Cell key={c.category} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
+            <div style={{ padding: '10px 16px 18px' }}>
+              {clientDistribution.length === 0 ? (
+                <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No schedule data for the selected filters</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={Math.max(180, Math.min(clientDistribution.length, 12) * 34 + 30)}>
+                  <BarChart data={clientDistribution.slice(0, 12)} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EEF0F3" />
+                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="client" tick={{ fontSize: 11.5, fill: '#16243C' }} axisLine={false} tickLine={false} width={140} />
+                    <Tooltip formatter={(v) => [fmtLKR(v), 'Investment']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                      {clientDistribution.slice(0, 12).map((c, i) => <Cell key={c.client} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 

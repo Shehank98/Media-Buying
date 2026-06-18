@@ -77,17 +77,31 @@ export async function getChannels(req, res) {
 export async function createChannel(req, res) {
   try {
     const { clientId } = req.params;
-    const { name, type } = req.body;
+    const { name, type, channelMasterId } = req.body;
 
-    if (!name || !type) {
-      return res.status(400).json({ error: 'Name and type are required' });
+    // Prefer selecting from the channel master (User Management); derive name/medium from it.
+    let chName = name;
+    let chType = type;
+    let cmId = null;
+    if (channelMasterId) {
+      const cm = await prisma.channelMaster.findUnique({
+        where: { id: parseInt(channelMasterId) },
+        select: { id: true, name: true, medium: true },
+      });
+      if (!cm) return res.status(400).json({ error: 'Selected channel was not found' });
+      chName = cm.name; chType = cm.medium; cmId = cm.id;
+    }
+
+    if (!chName || !chType) {
+      return res.status(400).json({ error: 'Channel is required' });
     }
 
     const channel = await prisma.channel.create({
       data: {
         clientId: parseInt(clientId),
-        name,
-        type,
+        name: chName,
+        type: chType,
+        channelMasterId: cmId,
       },
     });
 

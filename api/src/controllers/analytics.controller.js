@@ -542,38 +542,79 @@ export async function getDeepDashboard(req, res) {
   try {
     const user = req.user;
     const { agencyId, clientId, channelMasterId } = req.query;
-    const years = String(req.query.years || '')
-      .split(',').map(s => s.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
-
     const allowed = await agencyIdsForUser(user); // null (unrestricted) or array
     if (agencyId && allowed && !allowed.includes(parseInt(agencyId))) {
       return res.status(403).json({ error: 'Access denied to this agency' });
     }
 
-    // ── Properties (sponsorship investments) ──
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const round1 = (n) => Number(n.toFixed(1));
+
+    // ── Spend comes ONLY from schedule logs (actual media investment) ──
+    const logWhere = { isDeleted: false };
+    if (agencyId) logWhere.agencyId = parseInt(agencyId);
+    else if (allowed) logWhere.agencyId = { in: allowed };
+    if (clientId) logWhere.clientId = parseInt(clientId);
+    if (channelMasterId) logWhere.channelMasterId = parseInt(channelMasterId);
+
+    const logs = await prisma.scheduleLog.findMany({
+      where: logWhere,
+      select: { scheduleMonth: true, scheduleValue: true, client: { select: { name: true } } },
+    });
+
+    const yearTotals = {};      // year -> total spend
+    const trend = {};           // year -> [12] monthly spend
+    const clientDist = {};      // client name -> total spend
+    const logMonths = [];       // for first/last activity
+    for (const l of logs) {
+      if (!l.scheduleMonth) continue;
+      const [yStr, mStr] = String(l.scheduleMonth).split('-');
+      const y = Number(yStr), m = Number(mStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m)) continue;
+      const v = safeNum(l.scheduleValue) || 0;
+      yearTotals[y] = (yearTotals[y] || 0) + v;
+      if (!trend[y]) trend[y] = Array(12).fill(0);
+      trend[y][m - 1] += v;
+      const cn = l.client?.name || 'Unknown';
+      clientDist[cn] = (clientDist[cn] || 0) + v;
+      logMonths.push(l.scheduleMonth);
+    }
+
+    const logYears = Object.keys(yearTotals).map(Number).sort((a, b) => a - b);
+    const latestYear = logYears.length ? logYears[logYears.length - 1] : new Date().getFullYear();
+    const previousYear = latestYear - 1;
+    const currentYearSpend = yearTotals[latestYear] || 0;
+    const previousYearSpend = yearTotals[previousYear] || 0;
+    const yoyValue = currentYearSpend - previousYearSpend;
+    const yoyPct = previousYearSpend > 0 ? round1((yoyValue / previousYearSpend) * 100) : null;
+    const totalSpend = Object.values(yearTotals).reduce((s, v) => s + v, 0);
+
+    const trendYears = logYears;
+    const monthlyTrend = MONTHS.map((mn, i) => {
+      const row = { month: mn };
+      for (const y of trendYears) row[y] = trend[y][i];
+      return row;
+    });
+
+    const clientDistribution = Object.entries(clientDist)
+      .map(([client, value]) => ({ client, value }))
+      .sort((a, b) => b.value - a.value);
+
+    // ── Properties (sponsorship analysis only — NOT spend) ──
     const clientWhere = {};
     if (clientId) clientWhere.id = parseInt(clientId);
     if (agencyId) clientWhere.agencyId = parseInt(agencyId);
     else if (allowed) clientWhere.agencyId = { in: allowed };
-
     const channelWhere = {};
     if (channelMasterId) channelWhere.channelMasterId = parseInt(channelMasterId);
     if (Object.keys(clientWhere).length) channelWhere.client = clientWhere;
 
     const properties = await prisma.property.findMany({
       where: { channel: channelWhere },
-      include: {
-        channel: {
-          include: {
-            channelMaster: { select: { name: true } },
-            client: { include: { agency: { select: { name: true } } } },
-          },
-        },
-      },
+      include: { channel: { include: { channelMaster: { select: { name: true } } } } },
       orderBy: { createdAt: 'desc' },
     });
-
-    const all = properties.map(p => ({
+    const props = properties.map((p) => ({
       year: new Date(p.createdAt).getFullYear(),
       category: p.category || 'Uncategorized',
       type: p.type || '',
@@ -582,98 +623,41 @@ export async function getDeepDashboard(req, res) {
       bonusValue: safeNum(p.bonusValue) || 0,
       bonusCount: Number(p.bonusCount || 0),
       channel: p.channel.channelMaster?.name || p.channel.name,
-      client: p.channel.client.name,
-      agency: p.channel.client.agency.name,
       createdAt: p.createdAt,
     }));
 
-    const filtered = years.length ? all.filter(p => years.includes(p.year)) : all;
-    const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
-    const thisYear = new Date().getFullYear();
-
-    const totalSpend = sum(filtered, p => p.value);
-    const currentYearSpend = sum(all.filter(p => p.year === thisYear), p => p.value);
-    const previousYearSpend = sum(all.filter(p => p.year === thisYear - 1), p => p.value);
-    const yoyValue = currentYearSpend - previousYearSpend;
-    const yoyPct = previousYearSpend > 0 ? Number((yoyValue / previousYearSpend * 100).toFixed(1)) : null;
-
-    // Category breakdown
-    const catMap = {};
-    for (const p of filtered) {
-      const c = catMap[p.category] || (catMap[p.category] = { category: p.category, value: 0, count: 0, bonusValue: 0 });
-      c.value += p.value; c.count += 1; c.bonusValue += p.bonusValue;
-    }
-    const categories = Object.values(catMap).sort((a, b) => b.value - a.value);
-    const catTotal = sum(categories, c => c.value);
-    categories.forEach(c => { c.pct = catTotal > 0 ? Number((c.value / catTotal * 100).toFixed(1)) : 0; });
-
-    // Channel insights (filtered set)
-    const byYear = {};
-    for (const p of filtered) byYear[p.year] = (byYear[p.year] || 0) + p.value;
-    const spendByYear = Object.entries(byYear).map(([y, v]) => ({ year: +y, spend: v })).sort((a, b) => a.year - b.year);
-    const highest = filtered.reduce((m, p) => (!m || p.value > m.value ? p : m), null);
-    const channelInsights = {
-      spendByYear,
-      totalProperties: filtered.length,
-      totalBonusValue: sum(filtered, p => p.bonusValue),
-      totalBonusCount: sum(filtered, p => p.bonusCount),
-      avgPropertyValue: filtered.length ? totalSpend / filtered.length : 0,
-      mostPurchasedCategory: categories.length ? categories.reduce((m, c) => (c.count > m.count ? c : m), categories[0]).category : null,
-      highestProperty: highest ? { name: highest.name, value: highest.value, category: highest.category } : null,
-    };
-
-    // Client investment history (lifetime = all matching, ignoring year filter)
-    const times = all.map(p => new Date(p.createdAt).getTime());
-    const clientHistory = {
-      firstDate: times.length ? new Date(Math.min(...times)).toISOString() : null,
-      latestDate: times.length ? new Date(Math.max(...times)).toISOString() : null,
-      yearsActive: new Set(all.map(p => p.year)).size,
-      lifetimeSpend: sum(all, p => p.value),
-      lifetimeBonusValue: sum(all, p => p.bonusValue),
-      totalProperties: all.length,
-    };
-
-    // ── Multi-year monthly spend trend (from schedule logs) ──
-    const logWhere = { isDeleted: false };
-    if (agencyId) logWhere.agencyId = parseInt(agencyId);
-    else if (allowed) logWhere.agencyId = { in: allowed };
-    if (clientId) logWhere.clientId = parseInt(clientId);
-    if (channelMasterId) logWhere.channelMasterId = parseInt(channelMasterId);
-
-    const logRows = await prisma.scheduleLog.groupBy({
-      by: ['scheduleMonth'],
-      where: logWhere,
-      _sum: { scheduleValue: true },
-    });
-    const trend = {}; // year -> [12]
-    for (const r of logRows) {
-      if (!r.scheduleMonth) continue;
-      const [y, m] = r.scheduleMonth.split('-').map(Number);
-      if (!Number.isFinite(y) || !Number.isFinite(m)) continue;
-      if (years.length && !years.includes(y)) continue;
-      if (!trend[y]) trend[y] = Array(12).fill(0);
-      trend[y][m - 1] += safeNum(r._sum.scheduleValue) || 0;
-    }
-    const trendYears = Object.keys(trend).map(Number).sort((a, b) => a - b);
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthlyTrend = MONTHS.map((mn, i) => {
-      const row = { month: mn };
-      for (const y of trendYears) row[y] = trend[y][i];
-      return row;
-    });
+    const catCount = {};
+    for (const p of props) catCount[p.category] = (catCount[p.category] || 0) + 1;
+    const mostPurchasedCategory = Object.keys(catCount).sort((a, b) => catCount[b] - catCount[a])[0] || null;
+    const highest = props.reduce((m, p) => (!m || p.value > m.value ? p : m), null);
+    const propTimes = props.map((p) => new Date(p.createdAt).getTime());
 
     return res.json({
-      kpis: { totalSpend, currentYearSpend, previousYearSpend, yoyValue, yoyPct, currentYear: thisYear },
+      kpis: { totalSpend, currentYearSpend, previousYearSpend, yoyValue, yoyPct, latestYear, previousYear },
       monthlyTrend,
       trendYears,
-      properties: filtered.map(p => ({
+      clientDistribution,
+      properties: props.map((p) => ({
         year: p.year, category: p.category, type: p.type, name: p.name,
         value: p.value, bonusValue: p.bonusValue, bonusCount: p.bonusCount, channel: p.channel,
       })),
-      categories,
-      channelInsights,
-      clientHistory,
-      availableYears: [...new Set(all.map(p => p.year))].sort((a, b) => a - b),
+      channelInsights: {
+        spendByYear: logYears.map((y) => ({ year: y, spend: yearTotals[y] })),
+        totalProperties: props.length,
+        totalBonusValue: props.reduce((s, p) => s + p.bonusValue, 0),
+        avgPropertyValue: props.length ? props.reduce((s, p) => s + p.value, 0) / props.length : 0,
+        mostPurchasedCategory,
+        highestProperty: highest ? { name: highest.name, value: highest.value, category: highest.category } : null,
+      },
+      clientHistory: {
+        firstDate: propTimes.length ? new Date(Math.min(...propTimes)).toISOString() : null,
+        latestDate: propTimes.length ? new Date(Math.max(...propTimes)).toISOString() : null,
+        yearsActive: logYears.length,
+        lifetimeSpend: totalSpend,
+        lifetimeBonusValue: props.reduce((s, p) => s + p.bonusValue, 0),
+        totalProperties: props.length,
+      },
+      availableYears: [...new Set([...logYears, ...props.map((p) => p.year)])].sort((a, b) => a - b),
     });
   } catch (error) {
     console.error('getDeepDashboard error:', error);
