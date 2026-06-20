@@ -42,7 +42,32 @@ export async function list(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    return res.json(agencies);
+    // Total spend (sum of schedule values) + distinct channels used, per agency
+    const [spendRows, channelRows] = await Promise.all([
+      prisma.scheduleLog.groupBy({
+        by: ['agencyId'],
+        where: { agencyId: { in: agencyIds }, isDeleted: false },
+        _sum: { scheduleValue: true },
+      }),
+      prisma.scheduleLog.findMany({
+        where: { agencyId: { in: agencyIds }, isDeleted: false, channelMasterId: { not: null } },
+        select: { agencyId: true, channelMasterId: true },
+        distinct: ['agencyId', 'channelMasterId'],
+      }),
+    ]);
+
+    const spendMap = {};
+    spendRows.forEach((r) => { spendMap[r.agencyId] = Number(r._sum.scheduleValue) || 0; });
+    const channelMap = {};
+    channelRows.forEach((r) => { channelMap[r.agencyId] = (channelMap[r.agencyId] || 0) + 1; });
+
+    const result = agencies.map((a) => ({
+      ...a,
+      totalSpend: spendMap[a.id] || 0,
+      channelCount: channelMap[a.id] || 0,
+    }));
+
+    return res.json(result);
   } catch (error) {
     console.error('List agencies error:', error);
     return res.status(500).json({ error: 'Failed to list agencies' });
