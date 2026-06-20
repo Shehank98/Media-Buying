@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import Icon from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 
 export default function AgencyDetailPage() {
   const { agencyId } = useParams();
@@ -104,7 +105,7 @@ export default function AgencyDetailPage() {
     }
   };
 
-  if (loading) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>;
+  if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading agency…" /></div>;
 
   if (error) return (
     <div className="content-narrow fade-in">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import Icon, { fmtLKR } from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 
 const CARD_STYLE = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
 const BRAND_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00'];
@@ -98,7 +99,7 @@ export default function AgenciesPage() {
     }
   };
 
-  if (loading) return <div style={{ maxWidth: 1320, margin: '0 auto', padding: '60px 0', textAlign: 'center', color: '#6B7790' }}>Loading…</div>;
+  if (loading) return <div style={{ maxWidth: 1320, margin: '0 auto' }}><OrbitLoader fullHeight label="Loading agencies…" /></div>;
 
   return (
     <div style={{ maxWidth: 1320, margin: '0 auto' }} className="fade-in">

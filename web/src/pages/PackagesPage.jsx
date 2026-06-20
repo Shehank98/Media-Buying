@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const fmtLKR = (v) => (v == null || v === '' ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US'));
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
@@ -180,7 +181,7 @@ export default function PackagesPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>Loading…</div>
+        <OrbitLoader fullHeight label="Loading packages…" />
       ) : packages.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>
           <Icon name="folder" size={36} style={{ opacity: 0.25, marginBottom: 10 }} />
@@ -336,7 +337,7 @@ export default function PackagesPage() {
             </div>
             <div className="modal-body">
               {respLoading ? (
-                <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>
+                <OrbitLoader label="Loading…" />
               ) : responses.length === 0 ? (
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Not sent to anyone yet.</div>
               ) : (() => {

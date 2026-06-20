@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar } from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const fmtLKR = v => v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
 const fmtMonth = ym => {
@@ -91,7 +92,7 @@ export default function UploadTrackerPage() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>Loading...</div>
+      <OrbitLoader fullHeight label="Loading…" />
     );
   }
 

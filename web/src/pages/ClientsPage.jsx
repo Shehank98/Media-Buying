@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { fmtLKR } from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 export default function ClientsPage() {
   const navigate = useNavigate();
@@ -110,7 +111,7 @@ export default function ClientsPage() {
 
   const MONO = "'Spline Sans Mono', monospace";
 
-  if (loading) return <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto', padding: '60px 0', textAlign: 'center', color: '#6B7790' }}>Loading…</div>;
+  if (loading) return <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}><OrbitLoader fullHeight label="Loading clients…" /></div>;
 
   return (
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>

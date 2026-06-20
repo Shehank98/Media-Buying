@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import OrbitLoader from './OrbitLoader';
 
 export default function ProtectedRoute({ children, requiredRoles }) {
   const { isAuthenticated, loading, user } = useAuth();
@@ -7,8 +8,8 @@ export default function ProtectedRoute({ children, requiredRoles }) {
 
   if (loading) {
     return (
-      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--muted)' }}>
-        Loading…
+      <div style={{ height: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
+        <OrbitLoader size={64} label="Loading…" />
       </div>
     );
   }

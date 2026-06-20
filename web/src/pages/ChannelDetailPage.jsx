@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, TypeBadge, fmtLKR } from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const CHANNEL_ICON = {
   TV:    { icon: 'tv',    bg: 'var(--blue-50)',  fg: 'var(--blue-700)' },
@@ -223,11 +224,7 @@ export default function ChannelDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="content-narrow fade-in" style={{ padding: '80px 0', textAlign: 'center', color: 'var(--muted)' }}>
-        Loading...
-      </div>
-    );
+    return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading channel…" /></div>;
   }
 
   if (error) {
@@ -370,9 +367,7 @@ export default function ChannelDetailPage() {
         </div>
         <div className="panel-body">
           {historyLoading ? (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-              Loading history...
-            </div>
+            <OrbitLoader label="Loading history…" />
           ) : historyData.length === 0 ? (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
               No history available.

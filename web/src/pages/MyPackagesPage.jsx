@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -176,7 +177,7 @@ export default function MyPackagesPage() {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--muted)' }}>Loading…</div>
+        <OrbitLoader fullHeight label="Loading packages…" />
       ) : items.length === 0 ? (
         <div className="empty-soft">
           <Icon name="mail" />

@@ -4,6 +4,7 @@ import Icon from '../components/Icon';
 import RecentUploads from '../components/RecentUploads';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
+import OrbitLoader from '../components/OrbitLoader';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
@@ -859,7 +860,7 @@ export default function DatabasePage() {
 
                 {/* Existing rows */}
                 {loading ? (
-                  <tr><td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>Loading...</td></tr>
+                  <tr><td colSpan={COLUMNS.length + 1} style={{ padding: 24 }}><OrbitLoader label="Loading rows…" /></td></tr>
                 ) : rows.length === 0 && newRows.length === 0 ? (
                   <tr><td colSpan={COLUMNS.length + 1} style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No entries. Click "Add Row", paste from Excel, or use Upload Excel.</td></tr>
                 ) : rows.map(row => {

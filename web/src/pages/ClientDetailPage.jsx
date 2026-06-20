@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import OrbitLoader from '../components/OrbitLoader';
 
 const CHANNEL_TABS = [
   { key: 'TV', label: 'TV Channels', icon: 'tv' },
@@ -194,7 +195,7 @@ export default function ClientDetailPage() {
     return Array.from({ length: 10 }, (_, i) => String(y - i));
   }, []);
 
-  if (loading) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>;
+  if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading client…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
 
   const allTabs = [...CHANNEL_TABS, { key: 'SCHEDULE', label: 'Schedule Logs', icon: 'calendar' }];
@@ -285,7 +286,7 @@ export default function ClientDetailPage() {
           </div>
 
           {logsLoading ? (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading logs…</div>
+            <OrbitLoader label="Loading logs…" />
           ) : logs.length === 0 ? (
             <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>
               <Icon name="calendar" size={40} style={{ color: 'var(--muted-2)', marginBottom: 10 }} />

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Icon from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const GROUP_OPTIONS = [
   { key: 'channel', label: 'By Channel', icon: 'tv' },
@@ -731,10 +732,7 @@ export default function ReportsPage() {
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
-          <Icon name="clock" size={32} style={{ opacity: 0.3, marginBottom: 12, display: 'inline-block' }} />
-          <p style={{ margin: 0, fontSize: 14 }}>Loading report data...</p>
-        </div>
+        <OrbitLoader fullHeight label="Loading report data…" />
       )}
 
       {/* Empty State */}

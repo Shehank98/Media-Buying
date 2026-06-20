@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Icon from './Icon';
 import api from '../lib/api';
+import OrbitLoader from './OrbitLoader';
 
 const fmtMonth = (ym) => {
   if (!ym) return '-';
@@ -72,7 +73,7 @@ export default function RecentUploads({ title = 'Recent upload sheets', limit = 
       )}
 
       {loading ? (
-        <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Loading uploads…</div>
+        <div style={{ padding: '20px' }}><OrbitLoader label="Loading uploads…" /></div>
       ) : batches.length === 0 ? (
         <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
           <Icon name="upload" size={28} style={{ opacity: 0.25, marginBottom: 6, display: 'inline-block' }} />

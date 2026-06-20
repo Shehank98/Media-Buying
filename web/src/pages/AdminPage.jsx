@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
+import OrbitLoader from '../components/OrbitLoader';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -450,11 +451,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
-        Loading...
-      </div>
-    );
+    return <OrbitLoader fullHeight label="Loading…" />;
   }
 
   const tabs = [
