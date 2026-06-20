@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 import {
   ResponsiveContainer, LineChart, Line,
@@ -133,7 +134,7 @@ export default function ChannelIntelligencePage() {
     dir: s.field === field && s.dir === 'desc' ? 'asc' : 'desc',
   }));
 
-  if (loading) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)' }}>Loading…</div>;
+  if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading channel intelligence…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
 
   const ch = summary?.channel || {};

@@ -9,6 +9,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import Icon from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 
 const fmtLKR = (v) => (v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US'));
@@ -285,7 +286,7 @@ export default function DeepDashboardPage() {
       </div>
 
       {loading && !data ? (
-        <div style={{ textAlign: 'center', padding: '60px 0', color: '#6B7790' }}>Loading…</div>
+        <OrbitLoader label="Loading deep dashboard…" />
       ) : (
         <>
           {/* KPI cards */}

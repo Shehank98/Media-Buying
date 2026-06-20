@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -445,10 +446,7 @@ export default function SpendAnalyticsPage() {
       )}
 
       {loading && (
-        <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
-          <Icon name="clock" size={32} style={{ opacity: 0.3, marginBottom: 12, display: 'inline-block' }} />
-          <p style={{ margin: 0 }}>Loading analytics...</p>
-        </div>
+        <OrbitLoader fullHeight label="Loading analytics…" />
       )}
 
       {!loading && data && (

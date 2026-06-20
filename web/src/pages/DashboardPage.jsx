@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
+import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 
 // ── formatting ────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const role = user?.role;
   const isExec = ['SUPER_ADMIN', 'MANAGER'].includes(role);
-  const [range, setRange] = useState('QTD');
+  const [year, setYear] = useState(''); // '' = all years
 
   const [agencies, setAgencies] = useState([]);
   const [clientTotal, setClientTotal] = useState(0);
@@ -88,6 +89,7 @@ export default function DashboardPage() {
   const [uploads, setUploads] = useState([]);
   const [agencyComp, setAgencyComp] = useState([]);
   const [topChannels, setTopChannels] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.get('/agencies').then(({ data }) => {
@@ -96,17 +98,24 @@ export default function DashboardPage() {
       setAgencies(list);
       setClientTotal(list.reduce((s, a) => s + (a._count?.clients || a.clientCount || 0), 0));
     }).catch(() => {});
+  }, []);
 
-    if (isExec) {
-      api.get('/analytics/dashboard/summary').then(({ data }) => setSummary(data)).catch(() => {});
-      api.get('/analytics/dashboard/monthly-trend').then(({ data }) => setTrend((data.combined || []).slice(-12))).catch(() => {});
-      api.get('/analytics/dashboard/medium-split').then(({ data }) => setMedium((data.ytd || []).filter(d => d.value > 0))).catch(() => {});
-      api.get('/analytics/dashboard/top-clients').then(({ data }) => setClients((data || []).slice(0, 6))).catch(() => {});
-      api.get('/analytics/dashboard/recent-uploads').then(({ data }) => setUploads((data || []).slice(0, 5))).catch(() => {});
-      api.get('/analytics/dashboard/agency-comparison').then(({ data }) => setAgencyComp(Array.isArray(data) ? data : [])).catch(() => {});
-      api.get('/analytics/dashboard/top-channels').then(({ data }) => setTopChannels((data || []).slice(0, 6))).catch(() => {});
-    }
-  }, [isExec]);
+  useEffect(() => {
+    if (!isExec) { setLoading(false); return; }
+    setLoading(true);
+    const params = year ? { year } : {};
+    Promise.allSettled([
+      api.get('/analytics/dashboard/summary', { params }).then(({ data }) => setSummary(data)),
+      api.get('/analytics/dashboard/monthly-trend', { params }).then(({ data }) => setTrend((data.combined || []).slice(-12))),
+      api.get('/analytics/dashboard/medium-split', { params }).then(({ data }) => setMedium((data.ytd || []).filter(d => d.value > 0))),
+      api.get('/analytics/dashboard/top-clients', { params }).then(({ data }) => setClients((data || []).slice(0, 6))),
+      api.get('/analytics/dashboard/recent-uploads').then(({ data }) => setUploads((data || []).slice(0, 5))),
+      api.get('/analytics/dashboard/agency-comparison', { params }).then(({ data }) => setAgencyComp(Array.isArray(data) ? data : [])),
+      api.get('/analytics/dashboard/top-channels', { params }).then(({ data }) => setTopChannels((data || []).slice(0, 6))),
+    ]).finally(() => setLoading(false));
+  }, [isExec, year]);
+
+  const availableYears = summary?.availableYears || [];
 
   const go = (path) => { navigate(path); window.scrollTo?.(0, 0); };
   const firstName = user?.name?.split(' ')[0] || 'there';
@@ -131,11 +140,11 @@ export default function DashboardPage() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {isExec && (
-          <div style={{ display: 'flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3 }}>
-            {['30D', 'QTD', 'YTD'].map((r) => {
-              const on = range === r;
+          <div style={{ display: 'flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3, flexWrap: 'wrap' }}>
+            {['', ...availableYears].map((y) => {
+              const on = String(year) === String(y);
               return (
-                <button key={r} onClick={() => setRange(r)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 7, fontFamily: 'inherit', background: on ? '#fff' : 'transparent', color: on ? '#16243C' : '#6B7790', boxShadow: on ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{r}</button>
+                <button key={y || 'all'} onClick={() => setYear(String(y))} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 12px', borderRadius: 7, fontFamily: 'inherit', background: on ? '#fff' : 'transparent', color: on ? '#16243C' : '#6B7790', boxShadow: on ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{y === '' ? 'All' : y}</button>
               );
             })}
           </div>
@@ -203,16 +212,34 @@ export default function DashboardPage() {
   }
 
   // ── Exec dashboard (the design) ─────────────────────────────────────────────
+  const periodLabel = year ? year : 'All years';
   const stats = [
-    { tone: DOTS[0], icon: 'money', value: fmtRs(summary?.billingsYTD), label: 'Total Media Spend', meta: `Across all agencies · ${range}`, trend: yoy != null ? `${yoy >= 0 ? '▲' : '▼'} ${Math.abs(yoy)}%` : null, trendKind: yoy > 0 ? 'up' : yoy < 0 ? 'down' : 'flat' },
-    { tone: DOTS[1], icon: 'folder', value: fmtNum(summary?.activeClients ?? clientTotal), label: 'Active Clients', meta: 'Billing this year' },
+    { tone: DOTS[0], icon: 'money', value: fmtRs(summary?.billingsYTD), label: 'Total Media Spend', meta: `Across all agencies · ${periodLabel}`, trend: yoy != null ? `${yoy >= 0 ? '▲' : '▼'} ${Math.abs(yoy)}%` : null, trendKind: yoy > 0 ? 'up' : yoy < 0 ? 'down' : 'flat' },
+    { tone: DOTS[1], icon: 'folder', value: fmtNum(summary?.activeClients ?? clientTotal), label: 'Active Clients', meta: `Billing in ${periodLabel.toLowerCase()}` },
     { tone: DOTS[2], icon: 'database', value: fmtNum(channelsCenter), label: 'Channels Tracked', meta: 'TV · Radio · Print', trend: 'flat', trendKind: 'flat' },
-    { tone: DOTS[3], icon: 'activity', value: fmtNum(summary?.logsThisMonth), label: 'Schedule Logs (MTD)', meta: `${summary?.uploadsThisMonth ?? 0} uploads this month` },
+    { tone: DOTS[3], icon: 'activity', value: fmtNum(summary?.logsThisMonth), label: 'Schedule Logs', meta: `${summary?.uploadsThisMonth ?? 0} uploads this month` },
   ];
+
+  if (loading && !summary) {
+    return (
+      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+        <Header />
+        <OrbitLoader fullHeight label="Loading dashboard…" />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto' }}>
       <Header />
+
+      {loading && (
+        <div style={{ position: 'fixed', top: 70, left: '50%', transform: 'translateX(-50%)', zIndex: 40 }}>
+          <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 999, boxShadow: '0 6px 20px rgba(15,31,61,.12)', padding: '6px 8px' }}>
+            <OrbitLoader size={26} />
+          </div>
+        </div>
+      )}
 
       {/* stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 18, marginBottom: 20 }}>
