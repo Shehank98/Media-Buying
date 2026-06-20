@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { MEDIA_GROUPS, CHANNEL_MASTERS } from './channel-seed-data.js';
 
 const prisma = new PrismaClient();
 
@@ -58,21 +59,13 @@ async function main() {
   // ── Media Groups ────────────────────────────────────────────────────────────
   console.log('\nSeeding media groups...');
 
-  const mediaGroupNames = [
-    'Maharaja Group',
-    'Capital Maharaja Group',
-    'Hiru Group',
-    'Rupavahini Group',
-    'Independent',
-    'Other',
-  ];
-
+  const mediaGroupNames = MEDIA_GROUPS;
   const mediaGroupMap = {};
 
   for (const name of mediaGroupNames) {
     const group = await prisma.mediaGroup.upsert({
       where: { name },
-      update: {},
+      update: { active: true },
       create: {
         name,
         active: true,
@@ -80,67 +73,13 @@ async function main() {
       },
     });
     mediaGroupMap[name] = group;
-    console.log(`Media group created/found: ${group.name} (id: ${group.id})`);
   }
+  console.log(`Media groups upserted: ${mediaGroupNames.length}`);
 
   // ── Channel Masters ─────────────────────────────────────────────────────────
   console.log('\nSeeding channel masters...');
 
-  const channelMasterData = [
-    // TV — Maharaja Group
-    { name: 'TV Derana',      medium: 'TV',    mediaGroup: 'Maharaja Group',         aliases: ['Derana', 'TV Derana HD'] },
-    { name: 'Derana 24',      medium: 'TV',    mediaGroup: 'Maharaja Group',         aliases: ['Derana24'] },
-    { name: 'Derana Music',   medium: 'TV',    mediaGroup: 'Maharaja Group',         aliases: [] },
-
-    // TV — Capital Maharaja Group
-    { name: 'Sirasa TV',      medium: 'TV',    mediaGroup: 'Capital Maharaja Group', aliases: ['Sirasa'] },
-    { name: 'Shakthi TV',     medium: 'TV',    mediaGroup: 'Capital Maharaja Group', aliases: ['Shakthi'] },
-    { name: 'MTV Sports',     medium: 'TV',    mediaGroup: 'Capital Maharaja Group', aliases: ['MTV'] },
-
-    // TV — Hiru Group
-    { name: 'Hiru TV',        medium: 'TV',    mediaGroup: 'Hiru Group',             aliases: ['Hiru'] },
-    { name: 'Hiru News',      medium: 'TV',    mediaGroup: 'Hiru Group',             aliases: [] },
-
-    // TV — Rupavahini Group
-    { name: 'Rupavahini',     medium: 'TV',    mediaGroup: 'Rupavahini Group',       aliases: ['Rupa', 'SLRC'] },
-    { name: 'ITN',            medium: 'TV',    mediaGroup: 'Rupavahini Group',       aliases: ['ITN Sri Lanka'] },
-
-    // TV — Other
-    { name: 'TV1',            medium: 'TV',    mediaGroup: 'Other',                  aliases: [] },
-    { name: 'Siyatha TV',     medium: 'TV',    mediaGroup: 'Other',                  aliases: ['Siyatha'] },
-    { name: 'Supreme TV',     medium: 'TV',    mediaGroup: 'Other',                  aliases: ['Supreme'] },
-
-    // Radio — Maharaja Group
-    { name: 'Yes FM',         medium: 'RADIO', mediaGroup: 'Maharaja Group',         aliases: ['YesFM'] },
-    { name: 'Shakthi FM',     medium: 'RADIO', mediaGroup: 'Maharaja Group',         aliases: [] },
-
-    // Radio — Capital Maharaja Group
-    { name: 'Sirasa FM',      medium: 'RADIO', mediaGroup: 'Capital Maharaja Group', aliases: ['SirasaFM'] },
-    { name: 'Shakthi FM Radio', medium: 'RADIO', mediaGroup: 'Capital Maharaja Group', aliases: ['Shakthi Radio'] },
-
-    // Radio — Hiru Group
-    { name: 'Hiru FM',        medium: 'RADIO', mediaGroup: 'Hiru Group',             aliases: ['HiruFM'] },
-
-    // Radio — Independent
-    { name: 'TNL Radio',      medium: 'RADIO', mediaGroup: 'Independent',            aliases: ['TNL'] },
-    { name: 'Gold FM',        medium: 'RADIO', mediaGroup: 'Independent',            aliases: ['GoldFM'] },
-    { name: 'Ran FM',         medium: 'RADIO', mediaGroup: 'Independent',            aliases: ['RanFM'] },
-    { name: 'Sooriyan FM',    medium: 'RADIO', mediaGroup: 'Independent',            aliases: ['Sooriyan'] },
-    { name: 'Swiss Radio',    medium: 'RADIO', mediaGroup: 'Independent',            aliases: [] },
-
-    // Print — Independent
-    { name: 'Daily Mirror',       medium: 'PRINT', mediaGroup: 'Independent', aliases: ['Mirror'] },
-    { name: 'Sunday Times',       medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Daily News',         medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Lankadeepa',         medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Divaina',            medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Virakesari',         medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Thinakaran',         medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Sunday Observer',    medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Sunday Island',      medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Ceylon Today',       medium: 'PRINT', mediaGroup: 'Independent', aliases: [] },
-    { name: 'Ada Derana Online',  medium: 'PRINT', mediaGroup: 'Independent', aliases: ['Ada Derana', 'AdaDerana'] },
-  ];
+  const channelMasterData = CHANNEL_MASTERS;
 
   for (const ch of channelMasterData) {
     const mediaGroup = mediaGroupMap[ch.mediaGroup];
@@ -148,24 +87,69 @@ async function main() {
       throw new Error(`Media group not found for channel: ${ch.name} (group: ${ch.mediaGroup})`);
     }
 
-    const channel = await prisma.channelMaster.upsert({
+    await prisma.channelMaster.upsert({
       where: { name: ch.name },
       update: {
         medium: ch.medium,
-        aliases: ch.aliases,
         mediaGroupId: mediaGroup.id,
+        isActive: true,
       },
       create: {
         name: ch.name,
         medium: ch.medium,
-        aliases: ch.aliases,
+        aliases: [],
         isActive: true,
         mediaGroupId: mediaGroup.id,
         createdById: superAdmin.id,
       },
     });
+  }
+  console.log(`Channel masters upserted: ${channelMasterData.length}`);
 
-    console.log(`Channel master created/found: ${channel.name} [${channel.medium}] (id: ${channel.id})`);
+  // ── One-time replace: remove the old default master data ─────────────────────
+  // Runs only while the legacy default media groups still exist, so this wipe
+  // happens once (when migrating to the client-provided list) and never nukes
+  // channels an admin adds later. Hard-delete where possible; if a record is
+  // still referenced (schedule logs, client channels, upload rows), deactivate
+  // it instead so startup never fails.
+  const LEGACY_GROUPS = ['Maharaja Group', 'Capital Maharaja Group', 'Hiru Group', 'Rupavahini Group', 'Independent', 'Other'];
+  const legacyExists = await prisma.mediaGroup.findFirst({ where: { name: { in: LEGACY_GROUPS } } });
+  if (!legacyExists) {
+    console.log('No legacy default media groups found — skipping one-time channel replace.');
+  } else {
+  const keepChannelNames = new Set(channelMasterData.map((c) => c.name));
+  const staleChannels = await prisma.channelMaster.findMany({
+    where: { name: { notIn: [...keepChannelNames] } },
+    select: { id: true, name: true },
+  });
+  let chDeleted = 0, chDeactivated = 0;
+  for (const sc of staleChannels) {
+    try {
+      await prisma.channelMaster.delete({ where: { id: sc.id } });
+      chDeleted++;
+    } catch {
+      await prisma.channelMaster.update({ where: { id: sc.id }, data: { isActive: false } });
+      chDeactivated++;
+    }
+  }
+
+  const keepGroupNames = new Set(mediaGroupNames);
+  const staleGroups = await prisma.mediaGroup.findMany({
+    where: { name: { notIn: [...keepGroupNames] } },
+    select: { id: true, name: true },
+  });
+  let mgDeleted = 0, mgDeactivated = 0;
+  for (const sg of staleGroups) {
+    try {
+      await prisma.mediaGroup.delete({ where: { id: sg.id } });
+      mgDeleted++;
+    } catch {
+      await prisma.mediaGroup.update({ where: { id: sg.id }, data: { active: false } });
+      mgDeactivated++;
+    }
+  }
+  console.log(`Old channel masters removed: ${chDeleted} deleted, ${chDeactivated} deactivated (still referenced)`);
+  console.log(`Old media groups removed: ${mgDeleted} deleted, ${mgDeactivated} deactivated (still referenced)`);
   }
 
   // ── Property categories (managed in Admin; shown in Add Property) ──
