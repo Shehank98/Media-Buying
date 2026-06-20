@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar,
+  CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Line,
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
@@ -125,6 +125,13 @@ export default function DashboardPage() {
 
   const mediumData = medium.map(m => ({ name: m.medium, value: m.value, pct: m.pct }));
   const mediumTotal = medium.reduce((s, m) => s + m.value, 0);
+
+  // Trend with a 3-month rolling average overlay (smooths volatility).
+  const trendData = trend.map((d, i, arr) => {
+    const slice = arr.slice(Math.max(0, i - 2), i + 1);
+    const avg = slice.reduce((s, x) => s + (Number(x.scheduleValue) || 0), 0) / slice.length;
+    return { ...d, avg3: avg };
+  });
   const channelsCenter = summary?.activeChannelsThisMonth ?? mediumData.length;
 
   const yoy = summary?.yoyGrowthPct;
@@ -262,8 +269,9 @@ export default function DashboardPage() {
             {trend.length === 0 ? (
               <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend data yet</div>
             ) : (
+              <>
               <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={trend} margin={{ top: 8, right: 14, left: 6, bottom: 0 }}>
+                <AreaChart data={trendData} margin={{ top: 8, right: 14, left: 6, bottom: 0 }}>
                   <defs>
                     <linearGradient id="obArea" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#E85D24" stopOpacity={0.26} />
@@ -273,10 +281,16 @@ export default function DashboardPage() {
                   <CartesianGrid vertical={false} stroke="#EEF0F3" />
                   <XAxis dataKey="month" tickFormatter={mShort} tick={{ fontSize: 10.5, fill: '#93A0B5', fontWeight: 600 }} axisLine={{ stroke: '#E5E8ED' }} tickLine={false} interval="preserveStartEnd" minTickGap={4} />
                   <YAxis hide domain={['dataMin', 'dataMax']} />
-                  <Tooltip formatter={(v) => [fmtRs(v), 'Spend']} labelFormatter={mFull} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                  <Area type="monotone" dataKey="scheduleValue" stroke="#E85D24" strokeWidth={2.5} fill="url(#obArea)" dot={false} activeDot={{ r: 4.5, fill: '#fff', stroke: '#E85D24', strokeWidth: 2.5 }} />
+                  <Tooltip formatter={(v, n) => [fmtRs(v), n === 'avg3' ? '3-mo avg' : 'Spend']} labelFormatter={mFull} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <Area type="monotone" dataKey="scheduleValue" name="Spend" stroke="#E85D24" strokeWidth={2.5} fill="url(#obArea)" dot={false} activeDot={{ r: 4.5, fill: '#fff', stroke: '#E85D24', strokeWidth: 2.5 }} />
+                  <Line type="monotone" dataKey="avg3" name="avg3" stroke="#1F5BB5" strokeWidth={2} strokeDasharray="5 3" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 6, fontSize: 11.5, color: '#6B7790' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 12, height: 3, borderRadius: 2, background: '#E85D24' }} /> Monthly spend</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ width: 12, height: 0, borderTop: '2px dashed #1F5BB5' }} /> 3-month avg</span>
+              </div>
+              </>
             )}
           </div>
         </div>
@@ -297,8 +311,8 @@ export default function DashboardPage() {
               )}
               <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 21, fontWeight: 600, color: '#16243C', lineHeight: 1 }}>{fmtNum(channelsCenter)}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#93A0B5', marginTop: 2 }}>channels</div>
+                  <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 18, fontWeight: 700, color: '#16243C', lineHeight: 1 }}>{fmtRs(mediumTotal)}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#93A0B5', marginTop: 3 }}>total spend</div>
                 </div>
               </div>
             </div>

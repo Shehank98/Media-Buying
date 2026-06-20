@@ -352,6 +352,17 @@ export default function SpendAnalyticsPage() {
     setExporting(false);
   };
 
+  // % of total, rendered with a faint progress bar behind the number.
+  const ShareCell = ({ value, color = '#1F5BB5', strong = false }) => {
+    const pct = data?.totalValue > 0 ? (value / data.totalValue) * 100 : 0;
+    return (
+      <td style={{ textAlign: 'right', position: 'relative', padding: '8px 12px' }}>
+        <div style={{ position: 'absolute', right: 0, top: 6, bottom: 6, width: `${Math.min(100, pct)}%`, background: color, opacity: strong ? 0.18 : 0.1, borderRadius: 4 }} />
+        <span className="mono" style={{ position: 'relative', fontWeight: strong ? 700 : 500, color: strong ? color : 'var(--muted)' }}>{pct.toFixed(1)}%</span>
+      </td>
+    );
+  };
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
@@ -686,7 +697,7 @@ export default function SpendAnalyticsPage() {
                           <td></td>
                           <td style={{ textAlign: 'right', fontWeight: 700 }}>{mg.count}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(mg.value)}</td>
-                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--coral-600)' }}>{mgPct}</td>
+                          <ShareCell value={mg.value} color={COLORS[mgIdx % COLORS.length]} strong />
                         </tr>
                         {channels.map(ch => (
                           <tr key={ch.name}>
@@ -694,9 +705,7 @@ export default function SpendAnalyticsPage() {
                             <td><span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span></td>
                             <td style={{ textAlign: 'right' }}>{ch.count}</td>
                             <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(ch.value)}</td>
-                            <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>
-                              {data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '-'}
-                            </td>
+                            <ShareCell value={ch.value} color={MEDIUM_COLORS[ch.medium] || '#93A0B5'} />
                           </tr>
                         ))}
                       </Fragment>

@@ -122,7 +122,10 @@ export default function DeepDashboardPage() {
 
   // Property table rows (search + sort)
   const tableRows = useMemo(() => {
-    let rows = data?.properties || [];
+    let rows = (data?.properties || []).map((r) => ({
+      ...r,
+      bonusYield: Number(r.value) > 0 ? (Number(r.bonusValue || 0) / Number(r.value)) * 100 : 0,
+    }));
     const q = search.trim().toLowerCase();
     if (q) rows = rows.filter((r) => `${r.category} ${r.type} ${r.name} ${r.channel} ${r.client}`.toLowerCase().includes(q));
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -140,9 +143,10 @@ export default function DeepDashboardPage() {
     const rows = tableRows.map((r) => ({
       Year: r.year, Channel: r.channel, Client: r.client, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
       'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus %': r.bonusCount,
+      'Bonus Yield %': Number(r.value) > 0 ? Number(((Number(r.bonusValue || 0) / Number(r.value)) * 100).toFixed(1)) : 0,
       'Start Date': r.startDate ? r.startDate.slice(0, 10) : '', 'End Date': r.endDate ? r.endDate.slice(0, 10) : 'Ongoing',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '', 'Start Date': '', 'End Date': '' }]);
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '', 'Bonus Yield %': '', 'Start Date': '', 'End Date': '' }]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Properties');
     XLSX.writeFile(wb, `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -155,8 +159,8 @@ export default function DeepDashboardPage() {
     doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
     autoTable(doc, {
       startY: 27,
-      head: [['Year', 'Channel', 'Client', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %', 'Duration']],
-      body: tableRows.map((r) => [r.year, r.channel, r.client, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-', r.startDate ? `${r.startDate.slice(0, 10)} - ${r.endDate ? r.endDate.slice(0, 10) : 'Ongoing'}` : '-']),
+      head: [['Year', 'Channel', 'Client', 'Category', 'Type', 'Name', 'Value (LKR)', 'Bonus (LKR)', 'Bonus %', 'Bonus Yield', 'Duration']],
+      body: tableRows.map((r) => [r.year, r.channel, r.client, r.category, r.type, r.name, Math.round(r.value).toLocaleString('en-US'), Math.round(r.bonusValue).toLocaleString('en-US'), r.bonusCount ? r.bonusCount + '%' : '-', (Number(r.value) > 0 ? ((Number(r.bonusValue || 0) / Number(r.value)) * 100).toFixed(1) + '%' : '-'), r.startDate ? `${r.startDate.slice(0, 10)} - ${r.endDate ? r.endDate.slice(0, 10) : 'Ongoing'}` : '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [10, 23, 41] },
     });
     doc.save(`deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -412,11 +416,12 @@ export default function DeepDashboardPage() {
                     <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('value')}>Value{sortArrow('value')}</th>
                     <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('bonusValue')}>Bonus Value{sortArrow('bonusValue')}</th>
                     <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus %{sortArrow('bonusCount')}</th>
+                    <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('bonusYield')}>Bonus Yield{sortArrow('bonusYield')}</th>
                     <th className="dd-th" onClick={() => sortBy('startDate')}>Duration{sortArrow('startDate')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tableRows.length === 0 && <tr><td colSpan={10} className="dd-td" style={{ textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
+                  {tableRows.length === 0 && <tr><td colSpan={11} className="dd-td" style={{ textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
                   {tableRows.map((r, i) => {
                     const catColor = CAT_COLORS[Math.abs((r.category || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % CAT_COLORS.length];
                     return (
@@ -430,6 +435,7 @@ export default function DeepDashboardPage() {
                         <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600 }}>{fmtLKR(r.value)}</td>
                         <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>{r.bonusValue > 0 ? fmtLKR(r.bonusValue) : '-'}</td>
                         <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount ? r.bonusCount + '%' : '-'}</td>
+                        <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600, color: r.bonusYield > 0 ? '#15814B' : '#93A0B5' }}>{r.bonusYield > 0 ? r.bonusYield.toFixed(1) + '%' : '-'}</td>
                         <td className="dd-td" style={{ fontSize: 12, color: '#3B4A63' }}>
                           {r.startDate ? <>{fmtDate(r.startDate)} &rarr; {r.endDate ? fmtDate(r.endDate) : <span style={{ color: '#15814B', fontWeight: 600 }}>Ongoing</span>}</> : '-'}
                         </td>
