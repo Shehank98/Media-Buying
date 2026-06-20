@@ -8,7 +8,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, ComposedChart,
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart, ComposedChart,
+  ScatterChart, Scatter, ZAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush,
 } from 'recharts';
 
@@ -557,6 +558,100 @@ export default function SpendAnalyticsPage() {
                 </ResponsiveContainer>
               </div>
             )}
+          </div>
+
+          {/* Medium Mix Shift + Brand Trend */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            {/* 100% stacked area — medium share month by month */}
+            <div className="spa-card" style={{ padding: '20px' }}>
+              <h3 className="spa-ctitle">Medium Mix Shift</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>TV / Radio / Print share of spend, month by month</p>
+              {(data.byMonthMedium?.length > 0) ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart data={data.byMonthMedium.map(r => ({ ...r, label: fmtMonth(r.month) }))} stackOffset="expand" margin={{ top: 6, right: 12, bottom: 4, left: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
+                    <YAxis tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={40} />
+                    <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Area type="monotone" dataKey="TV" stackId="1" stroke={MEDIUM_COLORS.TV} fill={MEDIUM_COLORS.TV} fillOpacity={0.85} />
+                    <Area type="monotone" dataKey="RADIO" stackId="1" stroke={MEDIUM_COLORS.RADIO} fill={MEDIUM_COLORS.RADIO} fillOpacity={0.85} />
+                    <Area type="monotone" dataKey="PRINT" stackId="1" stroke={MEDIUM_COLORS.PRINT} fill={MEDIUM_COLORS.PRINT} fillOpacity={0.85} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : <div style={{ height: 260, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No monthly data</div>}
+            </div>
+
+            {/* Brand-level spend trend (top 6 brands) */}
+            <div className="spa-card" style={{ padding: '20px' }}>
+              <h3 className="spa-ctitle">Brand Spend Trend</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Monthly spend for the top {data.brandTrendKeys?.length || 0} brands</p>
+              {(data.brandTrend?.length > 0 && data.brandTrendKeys?.length > 0) ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={data.brandTrend.map(r => ({ ...r, label: fmtMonth(r.month) }))} margin={{ top: 6, right: 12, bottom: 4, left: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {data.brandTrendKeys.map((b, i) => (
+                      <Line key={b} type="monotone" dataKey={b} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : <div style={{ height: 260, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No brand data</div>}
+            </div>
+          </div>
+
+          {/* Client Tenure bubble + Agency Efficiency */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div className="spa-card" style={{ padding: '20px' }}>
+              <h3 className="spa-ctitle">Client Tenure &amp; Value</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Months active vs. total spend — bubble size = avg monthly spend</p>
+              {(data.clientTenure?.length > 0) ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" />
+                    <XAxis type="number" dataKey="months" name="Months active" tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} label={{ value: 'Months active', position: 'insideBottom', offset: -10, fontSize: 11, fill: '#6B7790' }} />
+                    <YAxis type="number" dataKey="value" name="Total spend" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={46} />
+                    <ZAxis type="number" dataKey="avgMonth" range={[60, 520]} name="Avg / month" />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const p = payload[0].payload;
+                      return (
+                        <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                          <div style={{ fontWeight: 700, marginBottom: 3 }}>{p.name}</div>
+                          <div>Months active: {p.months}</div>
+                          <div>Total: {fmtLKR(p.value)}</div>
+                          <div>Avg/month: {fmtLKR(p.avgMonth)}</div>
+                        </div>
+                      );
+                    }} />
+                    <Scatter data={data.clientTenure.slice(0, 60)} fill="#1F5BB5" fillOpacity={0.55}>
+                      {data.clientTenure.slice(0, 60).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.55} />)}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              ) : <div style={{ height: 300, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No client data</div>}
+            </div>
+
+            <div className="spa-card" style={{ padding: '20px' }}>
+              <h3 className="spa-ctitle">Agency Efficiency</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Average spend per schedule entry</p>
+              {(data.byAgency?.length > 0) ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.byAgency.map(a => ({ name: a.name, perEntry: a.count ? Math.round(a.value / a.count) : 0 })).sort((a, b) => b.perEntry - a.perEntry)} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
+                    <Tooltip formatter={(v) => [fmtLKR(v), 'Per entry']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Bar dataKey="perEntry" radius={[0, 6, 6, 0]}>
+                      {data.byAgency.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div style={{ height: 300, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No agency data</div>}
+            </div>
           </div>
 
           {/* Medium & Media Group charts side by side */}

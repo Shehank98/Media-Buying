@@ -276,6 +276,9 @@ export async function getAnalytics(req, res) {
     const byClient = {};
     const byBrand = {};
     const byAgency = {};
+    const monthMedium = {};       // month -> { medium -> value }
+    const brandMonth = {};        // brand -> { month -> value }
+    const clientMonths = {};      // client -> Set(months)
     let totalValue = 0;
     let totalWithVat = 0;
 
@@ -320,7 +323,41 @@ export async function getAnalytics(req, res) {
       if (!byAgency[agency]) byAgency[agency] = { name: agency, value: 0, count: 0 };
       byAgency[agency].value += val;
       byAgency[agency].count++;
+
+      // medium share per month (for the 100% stacked mix-shift area)
+      if (/^\d{4}-\d{2}$/.test(month)) {
+        if (!monthMedium[month]) monthMedium[month] = {};
+        monthMedium[month][med] = (monthMedium[month][med] || 0) + val;
+        // brand value per month (for the brand trend lines)
+        if (!brandMonth[brand]) brandMonth[brand] = {};
+        brandMonth[brand][month] = (brandMonth[brand][month] || 0) + val;
+        // distinct active months per client (for tenure bubble)
+        if (!clientMonths[client]) clientMonths[client] = new Set();
+        clientMonths[client].add(month);
+      }
     }
+
+    // ── Derived series for the richer charts ──
+    const sortedMonths = Object.keys(monthMedium).sort();
+    const byMonthMedium = sortedMonths.map((m) => {
+      const row = { month: m, TV: 0, RADIO: 0, PRINT: 0 };
+      for (const [med, v] of Object.entries(monthMedium[m])) row[med] = Math.round(v);
+      return row;
+    });
+
+    // Top 6 brands (by total), pivoted to one row per month.
+    const topBrands = Object.values(byBrand).sort((a, b) => b.value - a.value).slice(0, 6).map((b) => b.name);
+    const brandTrend = sortedMonths.map((m) => {
+      const row = { month: m };
+      for (const b of topBrands) row[b] = Math.round(brandMonth[b]?.[m] || 0);
+      return row;
+    });
+
+    // Client tenure: months active, total value, avg monthly spend.
+    const clientTenure = Object.values(byClient).map((c) => {
+      const months = clientMonths[c.name]?.size || 0;
+      return { name: c.name, months, value: Math.round(c.value), avgMonth: months ? Math.round(c.value / months) : Math.round(c.value), entries: c.count };
+    }).sort((a, b) => b.value - a.value);
 
     return res.json({
       totalEntries: logs.length,
@@ -333,6 +370,10 @@ export async function getAnalytics(req, res) {
       byClient: Object.values(byClient).sort((a, b) => b.value - a.value),
       byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
       byAgency: Object.values(byAgency).sort((a, b) => b.value - a.value),
+      byMonthMedium,
+      brandTrend,
+      brandTrendKeys: topBrands,
+      clientTenure,
     });
   } catch (error) {
     console.error('Get analytics error:', error);
