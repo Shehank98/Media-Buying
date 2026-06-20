@@ -47,6 +47,10 @@ export default function SpendAnalyticsPage() {
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
+  const [compare, setCompare] = useState(false);
+  const [cmpFrom, setCmpFrom] = useState('');
+  const [cmpTo, setCmpTo] = useState('');
+  const [cmpData, setCmpData] = useState(null);
 
   const chartMonthlyRef = useRef(null);
   const chartMediumRef = useRef(null);
@@ -89,6 +93,17 @@ export default function SpendAnalyticsPage() {
     };
     load();
   }, [monthFrom, monthTo, agencyId, clientId]);
+
+  // Comparison period (Period B)
+  useEffect(() => {
+    if (!compare) { setCmpData(null); return; }
+    const params = {};
+    if (cmpFrom) params.monthFrom = cmpFrom;
+    if (cmpTo) params.monthTo = cmpTo;
+    if (agencyId) params.agencyId = agencyId;
+    if (clientId) params.clientId = clientId;
+    api.get('/database/analytics', { params }).then(({ data }) => setCmpData(data)).catch(() => setCmpData(null));
+  }, [compare, cmpFrom, cmpTo, agencyId, clientId]);
 
   const chartMonthly = useMemo(() => {
     if (!data?.byMonth) return [];
@@ -418,8 +433,24 @@ export default function SpendAnalyticsPage() {
               <button className="spa-btn" onClick={handleExport} disabled={!data || loading}>
                 <Icon name="file" size={15} /> Excel
               </button>
+              <button className="spa-btn" onClick={() => setCompare(c => !c)} style={compare ? { background: '#E85D24', borderColor: '#E85D24' } : undefined}>
+                <Icon name="activity" size={15} /> Compare
+              </button>
             </div>
           </div>
+          {compare && (
+            <div className="spa-filters" style={{ marginTop: 10, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.12)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.55)', alignSelf: 'center', textTransform: 'uppercase', letterSpacing: '.5px' }}>Period B</div>
+              <div className="spa-field">
+                <label>From</label>
+                <input type="month" className="spa-input" value={cmpFrom} onChange={e => setCmpFrom(e.target.value)} />
+              </div>
+              <div className="spa-field">
+                <label>To</label>
+                <input type="month" className="spa-input" value={cmpTo} onChange={e => setCmpTo(e.target.value)} />
+              </div>
+            </div>
+          )}
           <div className="spa-filters">
             <div className="spa-field">
               <label>Agency</label>
@@ -492,6 +523,55 @@ export default function SpendAnalyticsPage() {
               <div className="spa-stat-sub">{insights?.topChannel ? fmtLKR(insights.topChannel.value) : ''}</div>
             </div>
           </div>
+
+          {/* Comparison panel (Period A vs Period B) */}
+          {compare && cmpData && (() => {
+            const aLabel = monthFrom ? `${fmtMonth(monthFrom)}–${fmtMonth(monthTo || monthFrom)}` : 'All time (A)';
+            const bLabel = cmpFrom ? `${fmtMonth(cmpFrom)}–${fmtMonth(cmpTo || cmpFrom)}` : 'All time (B)';
+            const a = data.totalValue || 0, b = cmpData.totalValue || 0;
+            const delta = b > 0 ? ((a - b) / b) * 100 : null;
+            const mediums = [...new Set([...(data.byMedium || []), ...(cmpData.byMedium || [])].map(m => m.name))];
+            const cmpBars = mediums.map(name => ({
+              name,
+              A: Math.round(data.byMedium.find(m => m.name === name)?.value || 0),
+              B: Math.round(cmpData.byMedium.find(m => m.name === name)?.value || 0),
+            }));
+            return (
+              <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+                <h3 className="spa-ctitle">Period Comparison</h3>
+                <p className="spa-csub" style={{ marginBottom: 14 }}>Period A ({aLabel}) vs Period B ({bLabel})</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div style={{ flex: 1, background: '#FDF1EB', border: '1px solid #f6d9c9', borderRadius: 11, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 11.5, color: '#6B7790', fontWeight: 600 }}>Period A</div>
+                      <div style={{ fontSize: 20, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtLKR(a)}</div>
+                      <div style={{ fontSize: 11, color: '#93A0B5' }}>{data.totalEntries} entries</div>
+                    </div>
+                    <div style={{ flex: 1, background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 11, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 11.5, color: '#6B7790', fontWeight: 600 }}>Period B</div>
+                      <div style={{ fontSize: 20, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtLKR(b)}</div>
+                      <div style={{ fontSize: 11, color: '#93A0B5' }}>{cmpData.totalEntries} entries</div>
+                    </div>
+                    <div style={{ flex: '0 0 92px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: delta == null ? '#F5F6F8' : delta >= 0 ? '#ECF8F1' : '#FBE0DA', borderRadius: 11, padding: '14px 8px' }}>
+                      <div style={{ fontSize: 11.5, color: '#6B7790', fontWeight: 600 }}>A vs B</div>
+                      <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: delta == null ? '#6B7790' : delta >= 0 ? '#15814B' : '#C5391F' }}>{delta == null ? '-' : (delta >= 0 ? '+' : '') + delta.toFixed(0) + '%'}</div>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={cmpBars} margin={{ top: 6, right: 12, bottom: 4, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
+                      <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={42} />
+                      <Tooltip formatter={(v, n) => [fmtLKR(v), n === 'A' ? `A · ${aLabel}` : `B · ${bLabel}`]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => (v === 'A' ? 'Period A' : 'Period B')} />
+                      <Bar dataKey="A" fill="#E85D24" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                      <Bar dataKey="B" fill="#1F5BB5" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Monthly Trend Chart (value vs VAT, with bars + line) */}
           {chartMonthly.length > 0 && (
