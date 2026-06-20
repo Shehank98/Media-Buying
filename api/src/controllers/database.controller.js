@@ -579,8 +579,8 @@ export async function importAllScheduleLogs(req, res) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
-    if (rows.length > 20000) {
-      return res.status(400).json({ error: 'Maximum 20000 rows per import' });
+    if (rows.length > 60000) {
+      return res.status(400).json({ error: 'Maximum 60000 rows per import' });
     }
     const user = req.user;
 
