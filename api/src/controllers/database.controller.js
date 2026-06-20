@@ -525,6 +525,173 @@ export async function bulkCreateScheduleLogs(req, res) {
   }
 }
 
+// ── importAllScheduleLogs (multi-client bulk import, resolve by name) ──
+
+function normalizeMonthServer(raw) {
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  // YYYY/MM or YYYY-M
+  let m = s.match(/^(\d{4})[/\-.](\d{1,2})$/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}`;
+  // MM/YYYY or M-YYYY
+  m = s.match(/^(\d{1,2})[/\-.](\d{4})$/);
+  if (m) return `${m[2]}-${String(m[1]).padStart(2, '0')}`;
+  // Month name + year, e.g. "Jan 2023", "January-2023"
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  m = s.match(/^([A-Za-z]{3,})[\s\-/]+(\d{4})$/);
+  if (m) {
+    const idx = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (idx >= 0) return `${m[2]}-${String(idx + 1).padStart(2, '0')}`;
+  }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return s;
+}
+
+const norm = (v) => String(v ?? '').trim().toLowerCase();
+
+export async function importAllScheduleLogs(req, res) {
+  try {
+    const { rows, fileName, createMissingClients = true } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'rows array is required' });
+    }
+    if (rows.length > 20000) {
+      return res.status(400).json({ error: 'Maximum 20000 rows per import' });
+    }
+    const user = req.user;
+
+    // Pre-load lookups
+    const [agencies, clients, channels] = await Promise.all([
+      prisma.agency.findMany({ select: { id: true, name: true } }),
+      prisma.client.findMany({ select: { id: true, name: true, agencyId: true } }),
+      prisma.channelMaster.findMany({ include: { mediaGroup: { select: { name: true } } } }),
+    ]);
+
+    const agencyByName = new Map(agencies.map((a) => [norm(a.name), a]));
+    const clientByKey = new Map(clients.map((c) => [`${c.agencyId}::${norm(c.name)}`, c]));
+    const channelByName = new Map();
+    for (const ch of channels) {
+      channelByName.set(norm(ch.name), ch);
+      for (const al of ch.aliases || []) channelByName.set(norm(al), ch);
+    }
+
+    const errors = [];
+    const createdClients = [];
+    const toInsert = [];
+    const usedClientIds = new Set();
+    const usedAgencyIds = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const agencyName = r.agency ?? r.agencyName;
+      const clientName = r.client ?? r.clientName;
+      const channelName = r.channel ?? r.channelName;
+      const scheduleMonth = normalizeMonthServer(r.scheduleMonth ?? r.month);
+      const roNumber = r.roNumber ?? r.ro ?? '';
+      const brandName = r.brand ?? r.brandName ?? null;
+      const rawValue = r.scheduleValue ?? r.value;
+
+      if (!agencyName || !clientName || !channelName) {
+        errors.push({ row: i + 1, error: 'Missing agency, client or channel' }); continue;
+      }
+      if (!/^\d{4}-\d{2}$/.test(scheduleMonth)) {
+        errors.push({ row: i + 1, error: `Invalid month "${r.scheduleMonth ?? r.month}"` }); continue;
+      }
+      const value = parseFloat(String(rawValue).replace(/,/g, ''));
+      if (Number.isNaN(value)) { errors.push({ row: i + 1, error: 'Invalid schedule value' }); continue; }
+
+      const agency = agencyByName.get(norm(agencyName));
+      if (!agency) { errors.push({ row: i + 1, error: `Agency not found: "${agencyName}"` }); continue; }
+
+      const clientKey = `${agency.id}::${norm(clientName)}`;
+      let client = clientByKey.get(clientKey);
+      if (!client) {
+        if (!createMissingClients) { errors.push({ row: i + 1, error: `Client not found: "${clientName}"` }); continue; }
+        try {
+          client = await prisma.client.create({ data: { agencyId: agency.id, name: String(clientName).trim() } });
+          clientByKey.set(clientKey, client);
+          createdClients.push({ agency: agency.name, client: client.name });
+        } catch {
+          // Unique race or other — re-fetch
+          client = await prisma.client.findFirst({ where: { agencyId: agency.id, name: String(clientName).trim() } });
+          if (!client) { errors.push({ row: i + 1, error: `Could not create client "${clientName}"` }); continue; }
+          clientByKey.set(clientKey, client);
+        }
+      }
+
+      const channel = channelByName.get(norm(channelName));
+      if (!channel) { errors.push({ row: i + 1, error: `Channel not found: "${channelName}"` }); continue; }
+
+      usedAgencyIds.add(agency.id);
+      usedClientIds.add(client.id);
+      toInsert.push({
+        agencyId: agency.id,
+        clientId: client.id,
+        channelMasterId: channel.id,
+        uploadedById: user.id,
+        roNumber: String(roNumber || '-'),
+        scheduleMonth,
+        invoiceMonth: computeInvoiceMonth(scheduleMonth),
+        medium: channel.medium,
+        mediaGroup: channel.mediaGroup.name,
+        brandName: brandName ? String(brandName).trim() : null,
+        scheduleValue: value,
+        scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+      });
+    }
+
+    // One batch record for the whole import.
+    let uploadBatch = null;
+    if (toInsert.length > 0) {
+      uploadBatch = await prisma.uploadBatch.create({
+        data: {
+          agencyId: [...usedAgencyIds][0],
+          clientIds: [...usedClientIds],
+          scheduleMonth: '',
+          uploadedById: user.id,
+          fileName: fileName || 'bulk-import',
+          totalRows: rows.length,
+          status: 'PROCESSING',
+        },
+      });
+      for (const t of toInsert) t.uploadBatchId = uploadBatch.id;
+    }
+
+    // Insert in chunks to stay well within payload limits.
+    let createdCount = 0;
+    const CHUNK = 1000;
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const slice = toInsert.slice(i, i + CHUNK);
+      const result = await prisma.scheduleLog.createMany({ data: slice });
+      createdCount += result.count;
+    }
+
+    if (uploadBatch) {
+      await prisma.uploadBatch.update({
+        where: { id: uploadBatch.id },
+        data: {
+          successfulRows: createdCount,
+          failedRows: errors.length,
+          status: createdCount === 0 ? 'FAILED' : 'COMPLETE',
+        },
+      });
+    }
+
+    return res.status(201).json({
+      created: createdCount,
+      failed: errors.length,
+      createdClients,
+      errors: errors.slice(0, 200),
+      batchId: uploadBatch?.id || null,
+    });
+  } catch (error) {
+    console.error('Import all error:', error);
+    return res.status(500).json({ error: 'Failed to import', detail: error.message });
+  }
+}
+
 // ── getUploadBatches ──
 
 export async function getUploadBatches(req, res) {

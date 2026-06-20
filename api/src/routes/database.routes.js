@@ -6,6 +6,7 @@ import {
   getAnalytics,
   createScheduleLog,
   bulkCreateScheduleLogs,
+  importAllScheduleLogs,
   updateScheduleLog,
   deleteScheduleLog,
   getScheduleLogEdits,
@@ -23,6 +24,7 @@ router.get('/batches', authenticate, getUploadBatches);
 router.get('/recent-batches', authenticate, getRecentBatches);
 router.post('/', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), createScheduleLog);
 router.post('/bulk', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), bulkCreateScheduleLogs);
+router.post('/import-all', authenticate, requireRole('SUPER_ADMIN'), importAllScheduleLogs);
 router.put('/:id', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), updateScheduleLog);
 router.delete('/batches/:batchId', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), deleteUploadBatch);
 router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), deleteScheduleLog);

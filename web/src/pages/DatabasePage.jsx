@@ -103,6 +103,16 @@ export default function DatabasePage() {
   const [uploadScheduleMonth, setUploadScheduleMonth] = useState('');
   const fileInputRef = useRef(null);
 
+  // Bulk import (all clients) modal
+  const isSuperAdmin = role === 'SUPER_ADMIN';
+  const [showImport, setShowImport] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importCreateClients, setImportCreateClients] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const importInputRef = useRef(null);
+
   // Upload batches
   const [uploadBatches, setUploadBatches] = useState([]);
   const [showBatches, setShowBatches] = useState(false);
@@ -427,6 +437,76 @@ export default function DatabasePage() {
     setUploadPreview([]);
   };
 
+  // ── Bulk import across all clients ──
+  const downloadImportTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Agency', 'Client', 'Channel', 'Month', 'RO Number', 'Brand', 'Schedule Value'],
+      ['RedWorks Media', 'Sample Client', 'Hiru TV', '2023-01', 'RO-1001', 'Sample Brand', 250000],
+      ['Ogilvy Media', 'Another Client', 'Sirasa TV', 'Feb 2024', 'RO-1002', '', 480000.5],
+    ]);
+    ws['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Schedule Data');
+    XLSX.writeFile(wb, 'bulk-import-template.xlsx');
+  };
+
+  const pick = (row, keys) => {
+    for (const [k, v] of Object.entries(row)) {
+      const kk = k.toLowerCase().trim();
+      if (keys.some(t => kk === t || kk.includes(t))) return String(v).trim();
+    }
+    return '';
+  };
+
+  const handleImportFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const rows = json.map(row => ({
+          agency: pick(row, ['agency']),
+          client: pick(row, ['client', 'advertiser']),
+          channel: pick(row, ['channel']),
+          scheduleMonth: pick(row, ['month', 'sch']),
+          roNumber: pick(row, ['ro number', 'ro', 'estimate']),
+          brand: pick(row, ['brand']),
+          scheduleValue: pick(row, ['value', 'amount']).replace(/[^0-9.\-]/g, ''),
+        })).filter(r => r.agency || r.client || r.channel || r.scheduleValue);
+        setImportRows(rows);
+        setShowImport(true);
+      } catch {
+        alert('Failed to read the file. Please use the template format.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const submitImport = async () => {
+    if (!importRows.length || importing) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const { data } = await api.post('/database/import-all', {
+        rows: importRows,
+        fileName: importFileName,
+        createMissingClients: importCreateClients,
+      });
+      setImportResult(data);
+      if (selectedClientId) { fetchLogs(); fetchBatches(); }
+    } catch (err) {
+      setImportResult({ error: err.response?.data?.error || 'Import failed' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // Set the schedule month for the whole upload at once (auto-fills every row).
   const applyUploadMonth = (month) => {
     setUploadScheduleMonth(month);
@@ -515,6 +595,14 @@ export default function DatabasePage() {
           <div className="filter-field">
             <label>Search</label>
             <input className="input" placeholder="RO number, brand..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          </div>
+        )}
+        {isSuperAdmin && (
+          <div style={{ marginLeft: 'auto', alignSelf: 'flex-end' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => { setImportResult(null); importInputRef.current?.click(); }}>
+              <Icon name="upload" size={14} /> Bulk import (all clients)
+            </button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleImportFileSelect} />
           </div>
         )}
       </div>
@@ -940,6 +1028,92 @@ export default function DatabasePage() {
                 <button className="btn btn-primary" onClick={confirmUpload}>
                   Import {uploadPreview.length} rows to grid
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk import (all clients) modal */}
+      {showImport && (
+        <div className="modal-scrim show" onClick={() => !importing && setShowImport(false)}>
+          <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h3 style={{ margin: 0 }}>Bulk import — all clients</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{importFileName} · {importRows.length} rows</p>
+              </div>
+              <button className="act-btn" onClick={() => !importing && setShowImport(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {!importResult ? (
+                <>
+                  <div style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#3B4A63', marginBottom: 14 }}>
+                    Expected columns: <b>Agency</b>, <b>Client</b>, <b>Channel</b>, <b>Month</b> (e.g. 2023-01 or "Jan 2023"), <b>RO Number</b>, <b>Brand</b>, <b>Schedule Value</b>. Agency, client and channel are matched by name; VAT (18%) is computed automatically.
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={importCreateClients} onChange={e => setImportCreateClients(e.target.checked)} />
+                    Create clients that don't exist yet (under the matched agency)
+                  </label>
+                  <div className="tbl-wrap" style={{ maxHeight: 300, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <table className="tbl" style={{ margin: 0, fontSize: 12 }}>
+                      <thead><tr><th>#</th><th>Agency</th><th>Client</th><th>Channel</th><th>Month</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
+                      <tbody>
+                        {importRows.slice(0, 50).map((r, i) => (
+                          <tr key={i}>
+                            <td style={{ color: 'var(--muted)' }}>{i + 1}</td>
+                            <td>{r.agency}</td><td>{r.client}</td><td>{r.channel}</td>
+                            <td>{r.scheduleMonth}</td><td>{r.roNumber}</td><td>{r.brand}</td>
+                            <td style={{ textAlign: 'right' }} className="mono">{r.scheduleValue}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {importRows.length > 50 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>Showing first 50 of {importRows.length} rows.</p>}
+                </>
+              ) : importResult.error ? (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px', color: '#b91c1c', fontSize: 13 }}>{importResult.error}</div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                    <div style={{ flex: 1, background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: '#15814B', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.created}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>records imported</div>
+                    </div>
+                    <div style={{ flex: 1, background: importResult.failed ? '#FBE0DA' : '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: importResult.failed ? '#C5391F' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.failed}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>rows skipped</div>
+                    </div>
+                    <div style={{ flex: 1, background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: '#1F5BB5', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.createdClients?.length || 0}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>new clients created</div>
+                    </div>
+                  </div>
+                  {importResult.errors?.length > 0 && (
+                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Skipped rows</div>
+                      {importResult.errors.map((e, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-ghost btn-sm" onClick={downloadImportTemplate} style={{ marginRight: 'auto' }}><Icon name="download" size={14} /> Template</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {!importResult ? (
+                  <>
+                    <button className="btn btn-ghost" onClick={() => setShowImport(false)} disabled={importing}>Cancel</button>
+                    <button className="btn btn-primary" onClick={submitImport} disabled={importing || !importRows.length}>
+                      {importing ? 'Importing…' : `Import ${importRows.length} rows`}
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => setShowImport(false)}>Done</button>
+                )}
               </div>
             </div>
           </div>
