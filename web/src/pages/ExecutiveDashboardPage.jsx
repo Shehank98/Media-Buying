@@ -104,6 +104,9 @@ export default function ExecutiveDashboardPage() {
   const [activityPage, setActivityPage] = useState(1);
   const [activityTotal, setActivityTotal] = useState(0);
 
+  const [recentUploads, setRecentUploads] = useState([]);
+  const [uploadsLoading, setUploadsLoading] = useState(true);
+
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   // Fetch agencies list for filter
@@ -188,6 +191,15 @@ export default function ExecutiveDashboardPage() {
       .catch(() => setActivityLog([]))
       .finally(() => setActivityLoading(false));
   }, [isSuperAdmin, agencyId, activityPage]);
+
+  // Recent uploads
+  useEffect(() => {
+    setUploadsLoading(true);
+    api.get('/analytics/dashboard/recent-uploads')
+      .then(r => setRecentUploads(r.data || []))
+      .catch(() => setRecentUploads([]))
+      .finally(() => setUploadsLoading(false));
+  }, []);
 
   // Build agency comparison chart data
   const agencyCompChartData = (() => {
@@ -415,38 +427,89 @@ export default function ExecutiveDashboardPage() {
         .placeholder-card { background: var(--bg-sunken); border: 2px dashed var(--border-strong); border-radius: 12px; padding: 40px; text-align: center; }
         .league-row td { padding: 12px 22px; border-bottom: 1px solid #EEF0F3; }
         .league-row:hover { background: #F7F8FA; }
-        @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
+
+        /* Navy hero */
+        .ed-hero { position: relative; overflow: hidden; border-radius: 18px; margin-bottom: 22px; background: linear-gradient(135deg, #0A1729 0%, #122842 55%, #0F1F3D 100%); padding: 26px 28px; color: #fff; }
+        .ed-hero::before { content: ''; position: absolute; top: -60px; right: -60px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(232,93,36,.30), transparent 70%); border-radius: 50%; }
+        .ed-hero::after { content: ''; position: absolute; bottom: -90px; left: 22%; width: 220px; height: 220px; background: radial-gradient(circle, rgba(31,91,181,.22), transparent 70%); border-radius: 50%; }
+        .ed-hero-inner { position: relative; z-index: 1; }
+        .ed-hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+        .ed-hero-title { font-size: 25px; font-weight: 750; letter-spacing: -.6px; margin: 0; }
+        .ed-hero-sub { font-size: 13.5px; color: rgba(255,255,255,.55); margin: 6px 0 0; }
+        .ed-hero-actions { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+        .ed-hero-field { display: flex; flex-direction: column; gap: 5px; min-width: 170px; }
+        .ed-hero-field label { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: rgba(255,255,255,.45); }
+        .ed-hero-select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 9px; padding: 9px 12px; font-size: 13px; font-weight: 500; outline: none; cursor: pointer; }
+        .ed-hero-select option { color: #16243C; }
+        .ed-hero-btn { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; border-radius: 9px; padding: 9px 14px; cursor: pointer; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08); color: #fff; transition: background .15s; }
+        .ed-hero-btn:hover:not(:disabled) { background: rgba(255,255,255,.18); }
+        .ed-hero-btn:disabled { opacity: .5; cursor: not-allowed; }
+        .ed-hero-btn.accent { background: #E85D24; border-color: #E85D24; }
+        .ed-hero-btn.accent:hover { background: #D9521C; }
+        .ed-hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 22px; }
+        .ed-hero-stat { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10); border-radius: 12px; padding: 13px 15px; }
+        .ed-hero-stat-label { font-size: 11px; color: rgba(255,255,255,.55); font-weight: 600; }
+        .ed-hero-stat-val { font-size: 20px; font-weight: 750; letter-spacing: -.4px; font-family: 'Spline Sans Mono', monospace; margin-top: 6px; }
+
+        /* Upload detail rows */
+        .ed-upload-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 1px solid #EEF0F3; }
+        .ed-upload-row:last-child { border-bottom: none; }
+        .ed-status-pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; text-transform: capitalize; }
+        @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } .ed-hero-stats { grid-template-columns: repeat(2, 1fr); } }
       `}</style>
 
-      {/* Page header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, gap: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: 0 }}>Executive Dashboard</h1>
-          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Billings overview across all agencies</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {isSuperAdmin && (
-            <>
-              <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>Agency</label>
-              <select
-                className="select"
-                value={agencyId}
-                onChange={e => setAgencyId(e.target.value)}
-                style={{ minWidth: 180 }}
-              >
-                <option value="">All agencies</option>
-                {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </>
-          )}
-          <button className="ed-secondary-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
-            <Icon name="download" size={15} />
-            {exporting ? 'Exporting…' : 'Export summary'}
-          </button>
-          <button className="btn btn-primary" onClick={() => navigate('/deep-dashboard')}>
-            <Icon name="bar-chart" size={15} />
-            Deep Dashboard
-          </button>
+      {/* Navy hero header */}
+      <div className="ed-hero">
+        <div className="ed-hero-inner">
+          <div className="ed-hero-top">
+            <div>
+              <h1 className="ed-hero-title">Executive Dashboard</h1>
+              <p className="ed-hero-sub">
+                Billings overview across {agencyId ? (agencies.find(a => String(a.id) === String(agencyId))?.name || 'selected agency') : 'all agencies'} · {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+            <div className="ed-hero-actions">
+              {isSuperAdmin && (
+                <div className="ed-hero-field">
+                  <label>Agency</label>
+                  <select className="ed-hero-select" value={agencyId} onChange={e => setAgencyId(e.target.value)}>
+                    <option value="">All agencies</option>
+                    {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <button className="ed-hero-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
+                <Icon name="download" size={15} />
+                {exporting ? 'Exporting…' : 'Export summary'}
+              </button>
+              <button className="ed-hero-btn accent" onClick={() => navigate('/deep-dashboard')}>
+                <Icon name="bar-chart" size={15} />
+                Deep Dashboard
+              </button>
+            </div>
+          </div>
+
+          {/* Quick-glance hero stats */}
+          <div className="ed-hero-stats">
+            <div className="ed-hero-stat">
+              <div className="ed-hero-stat-label">Billings this month</div>
+              <div className="ed-hero-stat-val">{summary ? fmtLKR(summary.billingsThisMonth) : '—'}</div>
+            </div>
+            <div className="ed-hero-stat">
+              <div className="ed-hero-stat-label">YTD billings</div>
+              <div className="ed-hero-stat-val">{summary ? fmtLKR(summary.billingsYTD) : '—'}</div>
+            </div>
+            <div className="ed-hero-stat">
+              <div className="ed-hero-stat-label">YoY growth</div>
+              <div className="ed-hero-stat-val" style={{ color: summary?.yoyGrowthPct == null ? '#fff' : summary.yoyGrowthPct >= 0 ? '#5FD39A' : '#FF8A6E' }}>
+                {summary?.yoyGrowthPct == null ? '—' : (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%'}
+              </div>
+            </div>
+            <div className="ed-hero-stat">
+              <div className="ed-hero-stat-label">Active clients</div>
+              <div className="ed-hero-stat-val">{summary?.activeClients != null ? summary.activeClients : '—'}</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -720,14 +783,24 @@ export default function ExecutiveDashboardPage() {
                         </PieChart>
                       </ResponsiveContainer>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                        {data.map((entry, i) => (
-                          <div key={entry.medium} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
-                            <span style={{ width: 10, height: 10, borderRadius: 3, background: MEDIUM_COLORS[entry.medium] || AGENCY_COLORS[i], flexShrink: 0 }} />
-                            <span style={{ flex: 1, fontWeight: 600 }}>{entry.medium}</span>
-                            <span className="mono">{fmtLKR(entry.value)}</span>
-                            <span style={{ color: 'var(--muted)', minWidth: 36, textAlign: 'right' }}>{entry.pct != null ? entry.pct.toFixed(1) + '%' : ''}</span>
-                          </div>
-                        ))}
+                        {data.map((entry, i) => {
+                          const isYtd = label === 'Year to Date';
+                          const lyVal = isYtd ? ((mediumSplit.lastYearYtd || []).find(m => m.medium === entry.medium)?.value || 0) : null;
+                          const yoy = isYtd && lyVal > 0 ? ((entry.value - lyVal) / lyVal) * 100 : null;
+                          return (
+                            <div key={entry.medium} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                              <span style={{ width: 10, height: 10, borderRadius: 3, background: MEDIUM_COLORS[entry.medium] || AGENCY_COLORS[i], flexShrink: 0 }} />
+                              <span style={{ flex: 1, fontWeight: 600 }}>{entry.medium}</span>
+                              {yoy != null && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: yoy >= 0 ? 'var(--green-600)' : 'var(--red-600)', minWidth: 48, textAlign: 'right' }}>
+                                  {(yoy >= 0 ? '+' : '') + yoy.toFixed(0) + '% YoY'}
+                                </span>
+                              )}
+                              <span className="mono">{fmtLKR(entry.value)}</span>
+                              <span style={{ color: 'var(--muted)', minWidth: 36, textAlign: 'right' }}>{entry.pct != null ? entry.pct.toFixed(1) + '%' : ''}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}
@@ -803,7 +876,51 @@ export default function ExecutiveDashboardPage() {
         </div>
       )}
 
-      {/* Section 7: Outstanding Schedules Placeholder */}
+      {/* Section 7: Recent Uploads */}
+      <div className="dash-section">
+        <div className="chart-card">
+          <div className="chart-card-title" style={{ marginBottom: 4 }}>Recent Uploads</div>
+          <div className="chart-card-sub">Latest schedule batch uploads across agencies</div>
+          {uploadsLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={42} />)}
+            </div>
+          ) : !recentUploads.length ? (
+            <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--muted)', fontSize: 13 }}>No uploads recorded</div>
+          ) : (
+            <div>
+              {recentUploads.map((u) => {
+                const pct = u.totalRows ? Math.round((u.successfulRows / u.totalRows) * 100) : 0;
+                const st = String(u.status || '').toLowerCase();
+                const stColor = st === 'complete' ? ['#15814B', '#ECF8F1'] : st === 'failed' ? ['#C5391F', '#FBE0DA'] : ['#9A5B00', '#FBF1DD'];
+                return (
+                  <div key={u.id} className="ed-upload-row">
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Icon name="file" size={15} style={{ color: '#93A0B5', flexShrink: 0 }} />
+                        <span style={{ fontWeight: 650, fontSize: 13, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{u.fileName || 'Untitled'}</span>
+                        <span className="ed-status-pill" style={{ color: stColor[0], background: stColor[1] }}>{u.status || '—'}</span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                        {u.agencyName || '—'} · {u.scheduleMonth ? fmtMonth(u.scheduleMonth) : '—'} · by {u.uploadedBy}
+                        {u.createdAt && ` · ${new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#16243C' }}>{u.successfulRows}/{u.totalRows} rows</div>
+                      <div style={{ fontSize: 11.5, color: u.failedRows > 0 ? 'var(--red-600)' : 'var(--green-600)', marginTop: 3 }}>
+                        {u.failedRows > 0 ? `${u.failedRows} failed` : `${pct}% success`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 8: Outstanding Schedules Placeholder */}
       <div className="dash-section">
         <div className="placeholder-card">
           <Icon name="calendar" size={36} style={{ color: 'var(--muted-2)', marginBottom: 12 }} />
