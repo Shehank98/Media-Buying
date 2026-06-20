@@ -491,7 +491,7 @@ export default function DatabasePage() {
       <div className="db-hero">
         <div className="db-hero-in">
           <h1 className="db-title">Schedule Database</h1>
-          <p className="db-sub">Enter data like a spreadsheet — paste columns or upload Excel</p>
+          <p className="db-sub">Enter data like a spreadsheet - paste columns or upload Excel</p>
         </div>
       </div>
 
@@ -532,7 +532,9 @@ export default function DatabasePage() {
           {/* Toolbar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>{total} records</span>
+              {!(clientStats && clientStats.totalEntries > 0) && (
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>{total} records</span>
+              )}
               {metadata.groupHeadName && (
                 <span style={{ fontSize: 12, background: 'var(--blue-50, #eff6ff)', color: 'var(--blue-700, #1d4ed8)', padding: '3px 8px', borderRadius: 4, fontWeight: 600 }}>
                   Group: {metadata.groupHeadName}

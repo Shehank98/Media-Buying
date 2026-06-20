@@ -307,7 +307,7 @@ export default function DeepDashboardPage() {
             <div className="dd-card-head">
               <div>
                 <h3 className="dd-card-title">Multi-Year Monthly Spend Trend</h3>
-                <p className="dd-card-sub">Monthly committed media value by year — drag the slider below to zoom</p>
+                <p className="dd-card-sub">Monthly committed media value by year - drag the slider below to zoom</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="dd-export-btn" onClick={() => exportChart('png')}><Icon name="download" size={14} /> PNG</button>

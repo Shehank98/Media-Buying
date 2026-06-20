@@ -477,7 +477,7 @@ export default function SpendAnalyticsPage() {
             </div>
             <div className="spa-stat">
               <div className="spa-stat-label">Top Channel</div>
-              <div className="spa-stat-val" style={{ fontSize: 16, lineHeight: 1.2 }}>{insights?.topChannel?.name || '—'}</div>
+              <div className="spa-stat-val" style={{ fontSize: 16, lineHeight: 1.2 }}>{insights?.topChannel?.name || '-'}</div>
               <div className="spa-stat-sub">{insights?.topChannel ? fmtLKR(insights.topChannel.value) : ''}</div>
             </div>
           </div>

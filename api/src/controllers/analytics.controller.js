@@ -501,8 +501,23 @@ export async function getChannelClients(req, res) {
 export async function getChannelPropertyHistory(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
+
+    // Some client channels are free-text and not formally linked to a master
+    // (channelMasterId is null). Match those by name/alias so their properties
+    // still appear on the right channel-intelligence page.
+    const master = await prisma.channelMaster.findUnique({
+      where: { id: channelMasterId },
+      select: { name: true, aliases: true },
+    });
+    const nameVariants = master ? [master.name, ...(master.aliases || [])].filter(Boolean) : [];
+    const nameMatch = nameVariants.map((n) => ({ name: { equals: n, mode: 'insensitive' } }));
+
+    const channelWhere = nameMatch.length
+      ? { OR: [{ channelMasterId }, { channelMasterId: null, OR: nameMatch }] }
+      : { channelMasterId };
+
     const properties = await prisma.property.findMany({
-      where: { channel: { channelMasterId } },
+      where: { channel: channelWhere },
       include: {
         channel: { select: { name: true, client: { select: { name: true, agency: { select: { name: true } } } } } },
         creator: { select: { name: true } },

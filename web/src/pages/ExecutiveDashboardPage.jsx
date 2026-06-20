@@ -285,7 +285,7 @@ export default function ExecutiveDashboardPage() {
       doc.rect(0, 0, pageW, 70, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
-      doc.text('Ogilvy Orbit — Executive Summary', margin, 32);
+      doc.text('Ogilvy Orbit - Executive Summary', margin, 32);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       doc.setTextColor(200, 210, 224);
       doc.text(`${agencyName}  ·  Generated ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, 50);
@@ -504,28 +504,6 @@ export default function ExecutiveDashboardPage() {
               </button>
             </div>
           </div>
-
-          {/* Quick-glance hero stats */}
-          <div className="ed-hero-stats">
-            <div className="ed-hero-stat">
-              <div className="ed-hero-stat-label">Billings this month</div>
-              <div className="ed-hero-stat-val">{summary ? fmtLKR(summary.billingsThisMonth) : '—'}</div>
-            </div>
-            <div className="ed-hero-stat">
-              <div className="ed-hero-stat-label">YTD billings</div>
-              <div className="ed-hero-stat-val">{summary ? fmtLKR(summary.billingsYTD) : '—'}</div>
-            </div>
-            <div className="ed-hero-stat">
-              <div className="ed-hero-stat-label">YoY growth</div>
-              <div className="ed-hero-stat-val" style={{ color: summary?.yoyGrowthPct == null ? '#fff' : summary.yoyGrowthPct >= 0 ? '#5FD39A' : '#FF8A6E' }}>
-                {summary?.yoyGrowthPct == null ? '—' : (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%'}
-              </div>
-            </div>
-            <div className="ed-hero-stat">
-              <div className="ed-hero-stat-label">Active clients</div>
-              <div className="ed-hero-stat-val">{summary?.activeClients != null ? summary.activeClients : '—'}</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -635,7 +613,7 @@ export default function ExecutiveDashboardPage() {
         {/* Top Clients */}
         <div className="chart-card">
           <div className="chart-card-title">Top 10 Clients</div>
-          <div className="chart-card-sub">By YTD billing — bar length is share of the top client</div>
+          <div className="chart-card-sub">By YTD billing - bar length is share of the top client</div>
           {topClientsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
@@ -678,7 +656,7 @@ export default function ExecutiveDashboardPage() {
         {/* Top Channels */}
         <div className="chart-card">
           <div className="chart-card-title">Top 10 Channels</div>
-          <div className="chart-card-sub">By YTD spend — bar length is share of the top channel</div>
+          <div className="chart-card-sub">By YTD spend - bar length is share of the top channel</div>
           {topChannelsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
@@ -911,10 +889,10 @@ export default function ExecutiveDashboardPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <Icon name="file" size={15} style={{ color: '#93A0B5', flexShrink: 0 }} />
                         <span style={{ fontWeight: 650, fontSize: 13, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{u.fileName || 'Untitled'}</span>
-                        <span className="ed-status-pill" style={{ color: stColor[0], background: stColor[1] }}>{u.status || '—'}</span>
+                        <span className="ed-status-pill" style={{ color: stColor[0], background: stColor[1] }}>{u.status || '-'}</span>
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                        {u.agencyName || '—'} · {u.scheduleMonth ? fmtMonth(u.scheduleMonth) : '—'} · by {u.uploadedBy}
+                        {u.agencyName || '-'} · {u.scheduleMonth ? fmtMonth(u.scheduleMonth) : '-'} · by {u.uploadedBy}
                         {u.createdAt && ` · ${new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
                       </div>
                     </div>

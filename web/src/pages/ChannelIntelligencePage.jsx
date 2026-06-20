@@ -31,7 +31,7 @@ const TYPE_LABELS = { BOUGHT_AIRTIME: 'Bought Airtime', SPONSORSHIP: 'Sponsorshi
 const FIELD_LABELS = { cost: 'Rate', name: 'Name', type: 'Type', category: 'Category', notes: 'Notes', bonusValue: 'Bonus Value', bonusCount: 'Bonus %', bonusPct: 'Bonus %', sponsorshipDetails: 'Sponsorship', startDate: 'Start Date', endDate: 'End Date' };
 
 const fmtFieldVal = (key, val) => {
-  if (val == null || val === '') return '—';
+  if (val == null || val === '') return '-';
   if (key === 'cost' || key === 'bonusValue') return fmtLKR(val);
   if (key === 'startDate' || key === 'endDate') return fmtDate(val) || String(val).slice(0, 10);
   return String(val);
@@ -152,13 +152,19 @@ export default function ChannelIntelligencePage() {
     { label: 'Total Log Entries', value: (summary?.totalEntries ?? 0).toLocaleString(), icon: 'database' },
     { label: 'Avg Monthly Spend', value: monthlyInsights ? fmtLKR(monthlyInsights.avg) : '-', icon: 'activity' },
     { label: 'Peak Month', value: monthlyInsights?.peakMonth ? fmtMonth(monthlyInsights.peakMonth) : '-', sub: monthlyInsights ? fmtLKR(monthlyInsights.peakValue) : '', icon: 'arrowUp' },
-    { label: 'Media Group', value: ch.mediaGroup || '—', icon: 'grid' },
+    { label: 'Media Group', value: ch.mediaGroup || '-', icon: 'grid' },
   ];
 
   return (
     <div className="content-narrow fade-in">
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .ci-stat { background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; }
+        .ci-stat-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+        .ci-stat-ico { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; color:#fff; flex:none; }
+        .ci-stat-label { font-size:11.5px; font-weight:600; color:var(--muted); }
+        .ci-stat-val { font-size:18px; font-weight:720; letter-spacing:-.3px; color:var(--ink); line-height:1.15; font-family:'Spline Sans Mono', monospace; word-break:break-word; }
+        .ci-stat-sub { font-size:11px; color:var(--muted); margin-top:3px; }
         .ci-chip { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:7px; }
         .ci-meta { font-size:11px; color:var(--muted); background:var(--bg-sunken); border-radius:5px; padding:2px 8px; font-weight:600; }
         .ci-tl-node { position:relative; padding:16px 18px 16px 40px; border-top:1px solid var(--border); }
@@ -184,17 +190,17 @@ export default function ChannelIntelligencePage() {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 28 }}>
         {statCards.map(c => (
-          <div key={c.label} className="stat">
-            <div className="stat-top">
-              <div className="stat-ico" style={{ background: c.color || 'var(--navy-900)', color: '#fff' }}>
-                <Icon name={c.icon} size={16} />
+          <div key={c.label} className="ci-stat">
+            <div className="ci-stat-top">
+              <div className="ci-stat-ico" style={{ background: c.color || 'var(--navy-900)' }}>
+                <Icon name={c.icon} size={15} />
               </div>
-              <span className="stat-label">{c.label}</span>
+              <span className="ci-stat-label">{c.label}</span>
             </div>
-            <div className="stat-val" style={{ color: c.color }}>{c.value}</div>
-            {c.sub && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{c.sub}</div>}
+            <div className="ci-stat-val" style={{ color: c.color }}>{c.value}</div>
+            {c.sub && <div className="ci-stat-sub">{c.sub}</div>}
           </div>
         ))}
       </div>
@@ -334,7 +340,7 @@ export default function ChannelIntelligencePage() {
                         {/* Top line: year, client, type, cost, change */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           <span style={{ background: 'var(--navy-900)', color: '#fff', borderRadius: 6, padding: '3px 10px', fontWeight: 700, fontSize: 12 }}>{e.year}</span>
-                          <span style={{ color: 'var(--ink)', fontWeight: 700, fontSize: 13.5 }}>{e.clientName || '—'}</span>
+                          <span style={{ color: 'var(--ink)', fontWeight: 700, fontSize: 13.5 }}>{e.clientName || '-'}</span>
                           {e.agencyName && <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>· {e.agencyName}</span>}
                           <span style={{ flex: 1 }} />
                           <span className="mono" style={{ fontWeight: 700, color: 'var(--ink)', fontSize: 14 }}>{e.cost > 0 ? fmtLKR(e.cost) : 'Added value'}</span>
