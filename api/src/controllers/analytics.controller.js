@@ -37,6 +37,33 @@ function monthsAgo(n) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function monthsBefore(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 - n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Anchor dashboard windows to the latest schedule month that actually has data
+// (within the given scope), so historical-only datasets still populate the
+// "this month" / YTD / YoY views instead of showing zeros for the calendar year.
+async function refPeriod(where) {
+  const latest = await prisma.scheduleLog.findFirst({
+    where,
+    orderBy: { scheduleMonth: 'desc' },
+    select: { scheduleMonth: true },
+  });
+  const ym = latest?.scheduleMonth && /^\d{4}-\d{2}$/.test(latest.scheduleMonth) ? latest.scheduleMonth : currentYM();
+  const year = parseInt(ym.slice(0, 4));
+  const mm = ym.slice(5);
+  return {
+    ym,
+    ys: `${year}-01`,
+    lys: `${year - 1}-01`,
+    lycm: `${year - 1}-${mm}`,
+    prevYm: prevMonth(ym),
+  };
+}
+
 function baseWhere(user) {
   const w = { isDeleted: false };
   if (user.role === 'MANAGER') {
@@ -60,10 +87,6 @@ export async function getDashboardSummary(req, res) {
   try {
     const user = req.user;
     const { agencyId } = req.query;
-    const ym = currentYM();
-    const ys = yearStart();
-    const lys = lastYearStart();
-    const lycm = lastYearCurrentMonth();
 
     const where = { isDeleted: false };
     const ids = await agencyIdsForUser(user); // null = unrestricted (non-MANAGER)
@@ -74,6 +97,9 @@ export async function getDashboardSummary(req, res) {
     } else if (ids) {
       where.agencyId = { in: ids };
     }
+
+    // Anchor to the latest month that has data within this scope.
+    const { ym, ys, lys, lycm } = await refPeriod(where);
 
     const [billingsThisMonth, billingsYTD, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth] =
       await Promise.all([
@@ -114,10 +140,9 @@ export async function getAgencyComparison(req, res) {
     const agencyWhere = ids ? { id: { in: ids } } : {};
 
     const agencies = await prisma.agency.findMany({ where: agencyWhere, orderBy: { name: 'asc' } });
-    const ym = currentYM();
-    const ys = yearStart();
-    const lys = lastYearStart();
-    const lycm = lastYearCurrentMonth();
+    // Anchor to the latest month that has data across the accessible agencies.
+    const { ym, ys, lys, lycm } = await refPeriod({ isDeleted: false, ...(ids ? { agencyId: { in: ids } } : {}) });
+    const monthlyStart = monthsBefore(ym, 11);
 
     const result = await Promise.all(agencies.map(async (agency) => {
       const base = { isDeleted: false, agencyId: agency.id };
@@ -129,7 +154,7 @@ export async function getAgencyComparison(req, res) {
         prisma.uploadBatch.count({ where: { agencyId: agency.id, createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
         prisma.scheduleLog.groupBy({
           by: ['scheduleMonth'],
-          where: { ...base, scheduleMonth: { gte: monthsAgo(12) } },
+          where: { ...base, scheduleMonth: { gte: monthlyStart, lte: ym } },
           _sum: { scheduleValue: true },
           orderBy: { scheduleMonth: 'asc' },
         }),
@@ -159,10 +184,10 @@ export async function getTopClients(req, res) {
   try {
     const user = req.user;
     const ids = await agencyIdsForUser(user);
-    const base = { isDeleted: false, scheduleMonth: { gte: yearStart() } };
-    if (ids) base.agencyId = { in: ids };
-    const ym = currentYM();
-    const pm = prevMonth(ym);
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+    const { ym, ys, prevYm: pm } = await refPeriod(scope);
+    const base = { ...scope, scheduleMonth: { gte: ys } };
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['clientId'],
@@ -206,12 +231,10 @@ export async function getTopChannels(req, res) {
   try {
     const user = req.user;
     const ids = await agencyIdsForUser(user);
-    const base = { isDeleted: false, scheduleMonth: { gte: yearStart() } };
-    if (ids) base.agencyId = { in: ids };
-
-    const ym = currentYM();
-    const lys = lastYearStart();
-    const lycm = lastYearCurrentMonth();
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+    const { ym, ys, lys, lycm } = await refPeriod(scope);
+    const base = { ...scope, scheduleMonth: { gte: ys } };
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['channelMasterId'],
@@ -224,7 +247,7 @@ export async function getTopChannels(req, res) {
     const result = await Promise.all(grouped.map(async (g, idx) => {
       const cm = await prisma.channelMaster.findUnique({ where: { id: g.channelMasterId }, include: { mediaGroup: { select: { name: true } } } });
       const [clients, currAgg, lastYearAgg] = await Promise.all([
-        prisma.scheduleLog.findMany({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: yearStart() } }, select: { clientId: true }, distinct: ['clientId'] }),
+        prisma.scheduleLog.findMany({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
         prisma.scheduleLog.aggregate({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: ym, ...(ids ? { agencyId: { in: ids } } : {}) }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.aggregate({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: lys, lte: lycm }, ...(ids ? { agencyId: { in: ids } } : {}) }, _sum: { scheduleValue: true } }),
       ]);
@@ -264,10 +287,7 @@ export async function getMediumSplit(req, res) {
       base.agencyId = { in: aIds };
     }
 
-    const ym = currentYM();
-    const ys = yearStart();
-    const lys = lastYearStart();
-    const lycm = lastYearCurrentMonth();
+    const { ym, ys, lys, lycm } = await refPeriod(base);
 
     const [cm, ytd, ly] = await Promise.all([
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
@@ -291,8 +311,11 @@ export async function getMonthlyTrend(req, res) {
   try {
     const user = req.user;
     const ids = await agencyIdsForUser(user);
-    const base = { isDeleted: false, scheduleMonth: { gte: monthsAgo(24) } };
-    if (ids) base.agencyId = { in: ids };
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+    // Show the latest 24 months that have data (falls back to calendar window).
+    const { ym: refYm } = await refPeriod(scope);
+    const base = { ...scope, scheduleMonth: { gte: monthsBefore(refYm, 23), lte: refYm } };
 
     const combined = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
