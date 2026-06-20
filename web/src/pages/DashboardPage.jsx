@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, PieChart, Pie, Cell,
+  CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar,
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
@@ -86,6 +86,8 @@ export default function DashboardPage() {
   const [medium, setMedium] = useState([]);
   const [clients, setClients] = useState([]);
   const [uploads, setUploads] = useState([]);
+  const [agencyComp, setAgencyComp] = useState([]);
+  const [topChannels, setTopChannels] = useState([]);
 
   useEffect(() => {
     api.get('/agencies').then(({ data }) => {
@@ -101,6 +103,8 @@ export default function DashboardPage() {
       api.get('/analytics/dashboard/medium-split').then(({ data }) => setMedium((data.ytd || []).filter(d => d.value > 0))).catch(() => {});
       api.get('/analytics/dashboard/top-clients').then(({ data }) => setClients((data || []).slice(0, 6))).catch(() => {});
       api.get('/analytics/dashboard/recent-uploads').then(({ data }) => setUploads((data || []).slice(0, 5))).catch(() => {});
+      api.get('/analytics/dashboard/agency-comparison').then(({ data }) => setAgencyComp(Array.isArray(data) ? data : [])).catch(() => {});
+      api.get('/analytics/dashboard/top-channels').then(({ data }) => setTopChannels((data || []).slice(0, 6))).catch(() => {});
     }
   }, [isExec]);
 
@@ -355,6 +359,58 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </div>
+
+      {/* spend by agency + top channels */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 18, marginTop: 20 }}>
+        <div style={{ ...CARD, overflow: 'hidden' }}>
+          <CardHead title="Spend by Agency" sub="YTD committed media value per agency" />
+          <div style={{ padding: '10px 16px 18px' }}>
+            {agencyComp.length === 0 ? (
+              <div style={{ height: 220, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No agency data yet</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(180, Math.min(agencyComp.length, 8) * 40 + 20)}>
+                <BarChart data={[...agencyComp].sort((a, b) => b.ytdBillings - a.ytdBillings).slice(0, 8)} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => fmtRs(v).replace('Rs ', '')} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="agencyName" tick={{ fontSize: 11.5, fill: '#16243C' }} axisLine={false} tickLine={false} width={120} />
+                  <Tooltip formatter={(v) => [fmtRs(v), 'YTD Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <Bar dataKey="ytdBillings" radius={[0, 6, 6, 0]}>
+                    {agencyComp.slice(0, 8).map((_, i) => <Cell key={i} fill={DOTS[i % DOTS.length][1]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div style={{ ...CARD, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: '-.2px' }}>Top Channels</h3>
+            <span onClick={() => go('/spend-analytics')} style={{ fontSize: 12.5, fontWeight: 600, color: '#D9521C', cursor: 'pointer' }}>Analytics</span>
+          </div>
+          <div style={{ padding: '8px 16px 12px' }}>
+            {topChannels.length === 0 && <div style={{ padding: '28px 0', textAlign: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data yet.</div>}
+            {(() => {
+              const max = Math.max(...topChannels.map(c => c.ytdSpend || 0), 1);
+              return topChannels.map((c, i) => {
+                const color = MEDIUM[c.medium] || DOTS[i % DOTS.length][1];
+                const pct = Math.max(3, Math.round((c.ytdSpend / max) * 100));
+                return (
+                  <div key={c.channelMasterId} onClick={() => go(`/channel-masters/${c.channelMasterId}`)} style={{ padding: '9px 6px', borderRadius: 8, cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 650, color: '#16243C' }}>{c.channelName}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtRs(c.ytdSpend)}</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 4, background: '#EEF0F3', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: color }} />
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       </div>

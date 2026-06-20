@@ -7,8 +7,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, ComposedChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush,
 } from 'recharts';
 
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
@@ -89,11 +89,27 @@ export default function SpendAnalyticsPage() {
 
   const chartMonthly = useMemo(() => {
     if (!data?.byMonth) return [];
-    return data.byMonth.map(m => ({
-      ...m,
-      label: fmtMonth(m.month),
-      valueMil: Math.round(m.value / 1000),
-    }));
+    let run = 0;
+    return data.byMonth.map(m => {
+      run += m.value || 0;
+      return {
+        ...m,
+        label: fmtMonth(m.month),
+        valueMil: Math.round(m.value / 1000),
+        cumulative: run,
+      };
+    });
+  }, [data]);
+
+  // Derived insights
+  const insights = useMemo(() => {
+    if (!data) return null;
+    const months = data.byMonth?.length || 0;
+    const avgMonth = months ? data.totalValue / months : 0;
+    const peak = (data.byMonth || []).reduce((a, b) => (b.value > (a?.value || 0) ? b : a), null);
+    const topChannel = data.byChannel?.[0] || null;
+    const topClient = data.byClient?.[0] || null;
+    return { months, avgMonth, peak, topChannel, topClient };
   }, [data]);
 
   const handleExport = () => {
@@ -349,50 +365,77 @@ export default function SpendAnalyticsPage() {
 
   return (
     <div className="fade-in">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Spend Analytics</h1>
-          <p className="page-sub">Budget allocation by media group, medium, and channel</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handlePdfExport} disabled={!data || loading || exporting}>
-            <Icon name="download" size={16} /> {exporting ? 'Exporting...' : 'Export PDF'}
-          </button>
-          <button className="btn btn-ghost" onClick={handleExport} disabled={!data || loading}>
-            <Icon name="download" size={16} /> Excel
-          </button>
-        </div>
-      </div>
+      <style>{`
+        .spa-hero { position:relative; overflow:hidden; border-radius:18px; margin-bottom:20px; background:linear-gradient(135deg,#0A1729 0%,#122842 55%,#0F1F3D 100%); padding:24px 26px; color:#fff; }
+        .spa-hero::before { content:''; position:absolute; top:-60px; right:-50px; width:230px; height:230px; background:radial-gradient(circle,rgba(232,93,36,.30),transparent 70%); border-radius:50%; }
+        .spa-hero-in { position:relative; z-index:1; }
+        .spa-htop { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+        .spa-title { font-size:24px; font-weight:750; letter-spacing:-.6px; margin:0; }
+        .spa-sub { font-size:13px; color:rgba(255,255,255,.55); margin:6px 0 0; }
+        .spa-btn { display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:650; border-radius:9px; padding:9px 14px; cursor:pointer; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:#fff; transition:background .15s; }
+        .spa-btn:hover:not(:disabled){ background:rgba(255,255,255,.18); } .spa-btn:disabled{ opacity:.5; cursor:not-allowed; }
+        .spa-btn.accent{ background:#E85D24; border-color:#E85D24; } .spa-btn.accent:hover{ background:#D9521C; }
+        .spa-filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-top:18px; }
+        .spa-field { display:flex; flex-direction:column; gap:5px; min-width:160px; }
+        .spa-field label { font-size:10.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:rgba(255,255,255,.45); }
+        .spa-input { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; border-radius:9px; padding:9px 12px; font-size:13px; outline:none; cursor:pointer; }
+        .spa-input option { color:#16243C; } .spa-input:disabled { opacity:.45; }
+        .spa-card { background:#fff; border:1px solid #E5E8ED; border-radius:14px; box-shadow:0 1px 2px rgba(15,31,61,.06); }
+        .spa-stat { background:#fff; border:1px solid #E5E8ED; border-radius:13px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:16px 18px; }
+        .spa-stat-label { font-size:12px; color:#6B7790; font-weight:600; }
+        .spa-stat-val { font-size:22px; font-weight:750; letter-spacing:-.5px; font-family:'Spline Sans Mono',monospace; color:#16243C; margin-top:8px; }
+        .spa-stat-sub { font-size:11.5px; color:#93A0B5; margin-top:4px; }
+        .spa-ctitle { font-size:14.5px; font-weight:720; color:#16243C; margin:0; }
+        .spa-csub { font-size:12.5px; color:#6B7790; margin:3px 0 0; }
+      `}</style>
 
-      {/* Filters */}
-      <div className="filterbar" style={{ marginBottom: 20 }}>
-        <div className="filter-field">
-          <label>Agency</label>
-          <select className="select" value={agencyId} onChange={e => setAgencyId(e.target.value)}>
-            <option value="">All Agencies</option>
-            {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
+      {/* Navy hero with filters */}
+      <div className="spa-hero">
+        <div className="spa-hero-in">
+          <div className="spa-htop">
+            <div>
+              <h1 className="spa-title">Spend Analytics</h1>
+              <p className="spa-sub">Budget allocation by media group, medium, channel, client &amp; agency</p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="spa-btn accent" onClick={handlePdfExport} disabled={!data || loading || exporting}>
+                <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Export PDF'}
+              </button>
+              <button className="spa-btn" onClick={handleExport} disabled={!data || loading}>
+                <Icon name="file" size={15} /> Excel
+              </button>
+            </div>
+          </div>
+          <div className="spa-filters">
+            <div className="spa-field">
+              <label>Agency</label>
+              <select className="spa-input" value={agencyId} onChange={e => setAgencyId(e.target.value)}>
+                <option value="">All Agencies</option>
+                {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="spa-field">
+              <label>Client</label>
+              <select className="spa-input" value={clientId} onChange={e => setClientId(e.target.value)} disabled={!agencyId}>
+                <option value="">All Clients</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="spa-field">
+              <label>From</label>
+              <input type="month" className="spa-input" value={monthFrom} onChange={e => setMonthFrom(e.target.value)} />
+            </div>
+            <div className="spa-field">
+              <label>To</label>
+              <input type="month" className="spa-input" value={monthTo} onChange={e => setMonthTo(e.target.value)} />
+            </div>
+            {(agencyId || monthFrom || monthTo) && (
+              <button className="spa-btn" onClick={() => { setAgencyId(''); setClientId(''); setMonthFrom(''); setMonthTo(''); }}>
+                <Icon name="x" size={14} /> Clear
+              </button>
+            )}
+          </div>
         </div>
-        <div className="filter-field">
-          <label>Client</label>
-          <select className="select" value={clientId} onChange={e => setClientId(e.target.value)} disabled={!agencyId}>
-            <option value="">All Clients</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="filter-field">
-          <label>From</label>
-          <input type="month" className="input" value={monthFrom} onChange={e => setMonthFrom(e.target.value)} />
-        </div>
-        <div className="filter-field">
-          <label>To</label>
-          <input type="month" className="input" value={monthTo} onChange={e => setMonthTo(e.target.value)} />
-        </div>
-        {(agencyId || monthFrom || monthTo) && (
-          <button className="btn btn-ghost btn-sm" onClick={() => { setAgencyId(''); setClientId(''); setMonthFrom(''); setMonthTo(''); }} style={{ alignSelf: 'flex-end', marginBottom: 2 }}>
-            <Icon name="x" size={14} /> Clear
-          </button>
-        )}
       </div>
 
       {error && (
@@ -411,53 +454,101 @@ export default function SpendAnalyticsPage() {
       {!loading && data && (
         <>
           {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
-            <div className="section-card" style={{ padding: '16px 20px' }}>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Total Entries</span>
-                  <span className="stat-ico" style={{ color: 'var(--blue-700, #1d4ed8)' }}><Icon name="database" size={18} /></span>
-                </div>
-                <div className="stat-val">{data.totalEntries.toLocaleString()}</div>
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 22 }}>
+            <div className="spa-stat">
+              <div className="spa-stat-label">Total Schedule Value</div>
+              <div className="spa-stat-val">LKR {fmtShort(data.totalValue)}</div>
+              <div className="spa-stat-sub">{data.totalEntries.toLocaleString()} entries</div>
             </div>
-            <div className="section-card" style={{ padding: '16px 20px' }}>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Total Schedule Value</span>
-                  <span className="stat-ico" style={{ color: 'var(--green-600, #059669)' }}><Icon name="bar-chart" size={18} /></span>
-                </div>
-                <div className="stat-val mono">LKR {fmtShort(data.totalValue)}</div>
-              </div>
+            <div className="spa-stat">
+              <div className="spa-stat-label">Total With VAT (18%)</div>
+              <div className="spa-stat-val" style={{ color: '#15814B' }}>LKR {fmtShort(data.totalWithVat ?? data.totalValue * 1.18)}</div>
+              <div className="spa-stat-sub">incl. tax</div>
             </div>
-            <div className="section-card" style={{ padding: '16px 20px' }}>
-              <div className="stat">
-                <div className="stat-top">
-                  <span className="stat-label">Media Groups</span>
-                  <span className="stat-ico" style={{ color: 'var(--purple-600, #7c3aed)' }}><Icon name="grid" size={18} /></span>
-                </div>
-                <div className="stat-val">{data.byMediaGroup.length}</div>
-              </div>
+            <div className="spa-stat">
+              <div className="spa-stat-label">Avg / Month</div>
+              <div className="spa-stat-val">LKR {fmtShort(insights?.avgMonth || 0)}</div>
+              <div className="spa-stat-sub">{insights?.months || 0} months</div>
+            </div>
+            <div className="spa-stat">
+              <div className="spa-stat-label">Channels</div>
+              <div className="spa-stat-val">{data.byChannel.length}</div>
+              <div className="spa-stat-sub">{data.byMediaGroup.length} media groups</div>
+            </div>
+            <div className="spa-stat">
+              <div className="spa-stat-label">Top Channel</div>
+              <div className="spa-stat-val" style={{ fontSize: 16, lineHeight: 1.2 }}>{insights?.topChannel?.name || '—'}</div>
+              <div className="spa-stat-sub">{insights?.topChannel ? fmtLKR(insights.topChannel.value) : ''}</div>
             </div>
           </div>
 
-          {/* Monthly Trend Chart */}
+          {/* Monthly Trend Chart (value vs VAT, with bars + line) */}
           {chartMonthly.length > 0 && (
-            <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Monthly Spend Trend</h3>
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                <div>
+                  <h3 className="spa-ctitle">Monthly Spend Trend</h3>
+                  <p className="spa-csub">Schedule value (bars) vs. value with VAT (line){insights?.peak ? ` · peak ${fmtMonth(insights.peak.month)}` : ''}</p>
+                </div>
+              </div>
               <div ref={chartMonthlyRef}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={chartMonthly} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={chartMonthly} margin={{ top: 8, right: 16, bottom: 5, left: 8 }}>
+                    <defs>
+                      <linearGradient id="spaVat" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#E85D24" stopOpacity={0.18} />
+                        <stop offset="100%" stopColor="#E85D24" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={48} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="Schedule Value" fill="#1e3a5f" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="value" name="Schedule Value" fill="#0A1729" radius={[4, 4, 0, 0]} maxBarSize={46} />
+                    <Area type="monotone" dataKey="valueWithVat" name="With VAT (18%)" stroke="#E85D24" strokeWidth={2.2} fill="url(#spaVat)" dot={false} />
+                    {chartMonthly.length > 6 && <Brush dataKey="label" height={18} stroke="#E85D24" travellerWidth={8} />}
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
           )}
+
+          {/* Cumulative spend + Spend by Agency */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            {chartMonthly.length > 1 && (
+              <div className="spa-card" style={{ padding: '20px' }}>
+                <h3 className="spa-ctitle">Cumulative Spend</h3>
+                <p className="spa-csub" style={{ marginBottom: 12 }}>Running total of committed media value</p>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={chartMonthly} margin={{ top: 8, right: 16, bottom: 5, left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={48} />
+                    <Tooltip formatter={(v) => [fmtLKR(v), 'Cumulative']} labelFormatter={l => l} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Line type="monotone" dataKey="cumulative" name="Cumulative" stroke="#1F5BB5" strokeWidth={2.6} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {(data.byAgency?.length > 0) && (
+              <div className="spa-card" style={{ padding: '20px' }}>
+                <h3 className="spa-ctitle">Spend by Agency</h3>
+                <p className="spa-csub" style={{ marginBottom: 12 }}>Committed value across agencies</p>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={data.byAgency.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
+                    <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                      {data.byAgency.slice(0, 8).map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
 
           {/* Medium & Media Group charts side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
@@ -473,7 +564,9 @@ export default function SpendAnalyticsPage() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
+                      innerRadius={55}
                       outerRadius={90}
+                      paddingAngle={2}
                       label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       labelLine={{ strokeWidth: 1 }}
                     >
@@ -513,7 +606,9 @@ export default function SpendAnalyticsPage() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
+                      innerRadius={55}
                       outerRadius={90}
+                      paddingAngle={2}
                       label={({ name, percent }) => percent > 0.05 ? `${name.length > 12 ? name.slice(0, 12) + '...' : name} ${(percent * 100).toFixed(0)}%` : ''}
                       labelLine={{ strokeWidth: 1 }}
                     >
@@ -621,6 +716,25 @@ export default function SpendAnalyticsPage() {
               </table>
             </div>
           </div>
+
+          {/* Top Clients bar chart */}
+          {data.byClient.length > 1 && (
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+              <h3 className="spa-ctitle">Top Clients by Spend</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Highest committed media value (top 12)</p>
+              <ResponsiveContainer width="100%" height={Math.min(420, data.byClient.slice(0, 12).length * 30 + 30)}>
+                <BarChart data={data.byClient.slice(0, 12)} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={140} />
+                  <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {data.byClient.slice(0, 12).map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* By Client Table */}
           {data.byClient.length > 1 && (

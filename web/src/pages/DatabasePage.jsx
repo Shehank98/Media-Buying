@@ -4,6 +4,17 @@ import Icon from '../components/Icon';
 import RecentUploads from '../components/RecentUploads';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
+} from 'recharts';
+
+const fmtShort = (v) => {
+  const n = Number(v) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return String(Math.round(n));
+};
+const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B' };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -100,6 +111,16 @@ export default function DatabasePage() {
   // Focus tracking for column paste
   const [focusedCol, setFocusedCol] = useState(null);
   const [focusedRowIdx, setFocusedRowIdx] = useState(null);
+
+  // Client analytics summary (overview cards + mini chart)
+  const [clientStats, setClientStats] = useState(null);
+
+  useEffect(() => {
+    if (!selectedClientId || !selectedAgencyId) { setClientStats(null); return; }
+    api.get('/database/analytics', { params: { agencyId: selectedAgencyId, clientId: selectedClientId } })
+      .then(r => setClientStats(r.data))
+      .catch(() => setClientStats(null));
+  }, [selectedAgencyId, selectedClientId, saveResult]);
 
   useEffect(() => {
     api.get('/agencies').then(r => {
@@ -456,10 +477,21 @@ export default function DatabasePage() {
 
   return (
     <div className="fade-in" onPaste={handlePaste}>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Schedule Database</h1>
-          <p className="page-sub">Enter data like a spreadsheet - paste columns or upload Excel</p>
+      <style>{`
+        .db-hero { position:relative; overflow:hidden; border-radius:16px; margin-bottom:16px; background:linear-gradient(135deg,#0A1729 0%,#122842 60%,#0F1F3D 100%); padding:20px 24px; color:#fff; }
+        .db-hero::before { content:''; position:absolute; top:-50px; right:-40px; width:190px; height:190px; background:radial-gradient(circle,rgba(232,93,36,.28),transparent 70%); border-radius:50%; }
+        .db-hero-in { position:relative; z-index:1; }
+        .db-title { font-size:22px; font-weight:750; letter-spacing:-.5px; margin:0; }
+        .db-sub { font-size:13px; color:rgba(255,255,255,.55); margin:5px 0 0; }
+        .db-stat { background:#fff; border:1px solid #E5E8ED; border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; }
+        .db-stat-label { font-size:11.5px; color:#6B7790; font-weight:600; }
+        .db-stat-val { font-size:19px; font-weight:750; letter-spacing:-.4px; font-family:'Spline Sans Mono',monospace; color:#16243C; margin-top:6px; }
+        .db-card { background:#fff; border:1px solid #E5E8ED; border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); }
+      `}</style>
+      <div className="db-hero">
+        <div className="db-hero-in">
+          <h1 className="db-title">Schedule Database</h1>
+          <p className="db-sub">Enter data like a spreadsheet — paste columns or upload Excel</p>
         </div>
       </div>
 
@@ -524,6 +556,41 @@ export default function DatabasePage() {
               </div>
             )}
           </div>
+
+          {/* Client overview cards + monthly mini chart */}
+          {clientStats && clientStats.totalEntries > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr)) 2fr', gap: 12, marginBottom: 12 }}>
+              <div className="db-stat">
+                <div className="db-stat-label">Records</div>
+                <div className="db-stat-val">{clientStats.totalEntries.toLocaleString()}</div>
+              </div>
+              <div className="db-stat">
+                <div className="db-stat-label">Schedule Value</div>
+                <div className="db-stat-val">{fmtShort(clientStats.totalValue)}</div>
+              </div>
+              <div className="db-stat">
+                <div className="db-stat-label">With VAT</div>
+                <div className="db-stat-val" style={{ color: '#15814B' }}>{fmtShort(clientStats.totalWithVat ?? clientStats.totalValue * 1.18)}</div>
+              </div>
+              <div className="db-stat">
+                <div className="db-stat-label">Months · Channels</div>
+                <div className="db-stat-val">{(clientStats.byMonth?.length || 0)} · {(clientStats.byChannel?.length || 0)}</div>
+              </div>
+              <div className="db-card" style={{ padding: '10px 14px 6px' }}>
+                <div style={{ fontSize: 11.5, color: '#6B7790', fontWeight: 600, marginBottom: 2 }}>Monthly schedule value</div>
+                {clientStats.byMonth?.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={70}>
+                    <BarChart data={clientStats.byMonth.map(m => ({ ...m, label: fmtMonth(m.month) }))} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                      <Tooltip formatter={(v) => ['LKR ' + Math.round(v).toLocaleString('en-US'), 'Value']} labelFormatter={(l, p) => (p && p[0] ? fmtMonth(p[0].payload.month) : l)} contentStyle={{ borderRadius: 8, border: '1px solid #E5E8ED', fontSize: 11 }} />
+                      <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                        {clientStats.byMonth.map((m, i) => <Cell key={i} fill={MEDIUM_COLORS[m.medium] || '#1F5BB5'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <div style={{ height: 70 }} />}
+              </div>
+            </div>
+          )}
 
           {/* Upload Batches */}
           {canWrite && uploadBatches.length > 0 && (

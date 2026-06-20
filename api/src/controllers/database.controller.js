@@ -275,6 +275,7 @@ export async function getAnalytics(req, res) {
     const byMonth = {};
     const byClient = {};
     const byBrand = {};
+    const byAgency = {};
     let totalValue = 0;
     let totalWithVat = 0;
 
@@ -314,6 +315,11 @@ export async function getAnalytics(req, res) {
       if (!byBrand[brand]) byBrand[brand] = { name: brand, value: 0, count: 0 };
       byBrand[brand].value += val;
       byBrand[brand].count++;
+
+      const agency = log.agency?.name || 'Unknown';
+      if (!byAgency[agency]) byAgency[agency] = { name: agency, value: 0, count: 0 };
+      byAgency[agency].value += val;
+      byAgency[agency].count++;
     }
 
     return res.json({
@@ -326,6 +332,7 @@ export async function getAnalytics(req, res) {
       byMonth: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
       byClient: Object.values(byClient).sort((a, b) => b.value - a.value),
       byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+      byAgency: Object.values(byAgency).sort((a, b) => b.value - a.value),
     });
   } catch (error) {
     console.error('Get analytics error:', error);
