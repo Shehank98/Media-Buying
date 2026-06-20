@@ -16,7 +16,7 @@ The API serves all routes under `/api/*`. The React build (`web/dist`) is served
 - **Backend:** Node.js 20+, Express v5, Prisma ORM v5, PostgreSQL
 - **Frontend:** React 19, Vite 8, Tailwind CSS v4, custom CSS design system
 - **Auth:** JWT access tokens (15min) + refresh tokens (7 days), bcrypt passwords (12 salt rounds)
-- **Charts:** Recharts (Bar, Pie, Line, Area, Composed)
+- **Charts:** Recharts (Bar, Pie/Donut, Line, Area, Composed, Scatter/Bubble, RadialBar/Gauge, stacked-area). Loading states use the branded `OrbitLoader` component everywhere (not plain text).
 - **Export:** ExcelJS (Excel server-side), XLSX/SheetJS (Excel client-side), jsPDF + jspdf-autotable + html2canvas (PDF client-side), PDFKit (PDF server-side)
 - **Deploy:** Railway (single service via railway.toml), PostgreSQL plugin
 - **HTTP Client:** Axios with token refresh interceptor
@@ -34,7 +34,9 @@ Media-Buying/
 │   ├── .env.example
 │   ├── prisma/
 │   │   ├── schema.prisma     # Full database schema (20+ models)
-│   │   ├── seed.js           # Seeds admin user, agencies, media groups, channels
+│   │   ├── seed.js           # Seeds admin, agencies, media groups, channels, clients, categories
+│   │   ├── channel-seed-data.js  # MEDIA_GROUPS (60) + CHANNEL_MASTERS (154) from client sheet
+│   │   ├── client-seed-data.js   # CLIENTS (75) from client sheet
 │   │   └── phase1-migration.sql
 │   └── src/
 │       ├── index.js          # Express app entry point
@@ -64,6 +66,8 @@ Media-Buying/
         ├── components/
         │   ├── Icon.jsx         # 43+ SVG icons, Avatar, TypeBadge, RoleBadge, fmtLKR
         │   ├── Layout.jsx       # Sidebar + topbar + breadcrumbs + notifications
+        │   ├── OrbitLoader.jsx  # Branded animated loading spinner (used everywhere)
+        │   ├── RecentUploads.jsx # Recent upload batches list
         │   └── ProtectedRoute.jsx  # Auth guard + role enforcement
         └── pages/            # 18 page components
 ```
@@ -176,8 +180,16 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 
 - **Admin:** `shehan.kavishka@ogilvy.com` / `Shehan@98`
 - **Agencies (3):** RedWorks Media, Ogilvy Media, Geometry Media
-- **Media Groups (6):** Maharaja Group, Capital Maharaja Group, Hiru Group, Rupavahini Group, Independent, Other
-- **Channel Masters:** 30+ predefined TV/Radio/Print channels with aliases
+- **Media Groups (60):** client-provided list (Power House Limited, MTV Channel (Pvt) LTD, Wijeya Newspapers, …) — from `api/prisma/channel-seed-data.js`
+- **Channel Masters (154):** client-provided TV/Radio/Print channels — from `api/prisma/channel-seed-data.js` (deduped by unique name)
+- **Clients (75):** client-provided list under Ogilvy Media (68) + Geometry Media (7) — from `api/prisma/client-seed-data.js`
+- **Property categories (6):** Frequency/Drama/News/Reality/Event Sponsorship, Others
+
+**Seed data modules** (generated from client spreadsheets, imported by `seed.js`):
+- `api/prisma/channel-seed-data.js` → `MEDIA_GROUPS`, `CHANNEL_MASTERS`
+- `api/prisma/client-seed-data.js` → `CLIENTS`
+
+**One-time replace:** `seed.js` upserts the provided media groups/channels/clients, and on first run (detected by the presence of the *old* default groups like "Maharaja Group") it removes the legacy default channel masters/media groups. Records still referenced by schedule logs are deactivated instead of deleted so startup never fails. This wipe runs once, then never again (so admin-added channels survive future restarts).
 
 ## Roles & Access Control
 
@@ -248,7 +260,8 @@ GET    /api/database/metadata            (AUTH)
 GET    /api/database/analytics           (AUTH + SUPER_ADMIN|MANAGER)
 GET    /api/database/batches             (AUTH)
 POST   /api/database                     (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)
-POST   /api/database/bulk                (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)
+POST   /api/database/bulk                (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)   client-scoped, pre-resolved IDs
+POST   /api/database/import-all          (AUTH + SUPER_ADMIN)   multi-client import, resolves agency/client/channel BY NAME, combines Year+month-name, optional create-missing-clients, chunked insert (≤60k rows)
 PUT    /api/database/:id                 (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)
 DELETE /api/database/:id                 (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)
 DELETE /api/database/batches/:batchId    (AUTH + SUPER_ADMIN|GROUP_HEAD|PLANNER)
@@ -291,14 +304,22 @@ GET    /api/analytics/channel/:channelMasterId/monthly-spend
 GET    /api/analytics/channel/:channelMasterId/clients
 GET    /api/analytics/channel/:channelMasterId/property-history
 
-GET    /api/analytics/dashboard/summary          (AUTH + SUPER_ADMIN|MANAGER)
-GET    /api/analytics/dashboard/agency-comparison
-GET    /api/analytics/dashboard/top-clients
-GET    /api/analytics/dashboard/top-channels
-GET    /api/analytics/dashboard/medium-split
-GET    /api/analytics/dashboard/monthly-trend
+GET    /api/analytics/dashboard/summary          (AUTH + SUPER_ADMIN|MANAGER)   ?agencyId &year
+GET    /api/analytics/dashboard/agency-comparison                                ?year
+GET    /api/analytics/dashboard/top-clients                                      ?year   (returns 6-mo spark series)
+GET    /api/analytics/dashboard/top-channels                                     ?year
+GET    /api/analytics/dashboard/medium-split      (?agencyId &year)
+GET    /api/analytics/dashboard/monthly-trend                                    ?year
 GET    /api/analytics/dashboard/activity-log     (AUTH + SUPER_ADMIN)
 GET    /api/analytics/dashboard/recent-uploads
+GET    /api/analytics/deep-dashboard             (AUTH + SUPER_ADMIN|MANAGER)   ?agencyId &clientId &channelMasterId
+
+# Year / period anchoring (analytics.controller.js → refPeriod(where, year)):
+#  - ?year=YYYY  -> locked to that calendar year (Jan–Dec).
+#  - no year ("All") -> ALL-TIME combined (ys reaches earliest data); "this month" metrics
+#    anchor to the latest month that has data. YoY chips always compare the current/selected
+#    full year vs the previous full year. `availableYears` is derived live from the data, so
+#    uploading new years (2025/2026) auto-surfaces year buttons and rolls into "All" everywhere.
 ```
 
 ### Admin (SUPER_ADMIN only)
@@ -370,6 +391,48 @@ GET    /api/notifications/master-sheet           (AUTH + SUPER_ADMIN|MANAGER)
 | PackagesPage | `/packages` | SUPER_ADMIN | Build packages (card grid), send to team heads, track responses |
 | MyPackagesPage | `/my-packages` | GROUP_HEAD | Inbox of shared packages; reply Interested/Negotiate/Not interested |
 
+## Analytics, Dashboards & Charts
+
+How charts work: page calls an `/analytics/*` or `/database/analytics` endpoint → saves the
+array to state → passes it into a Recharts component as `data`. Spend data comes from
+`ScheduleLog` rows. Every chart's `dataKey` matches a field the endpoint returns (audited).
+A standalone reference also lives in `docs/DASHBOARDS_AND_CHARTS.md`.
+
+### Home Dashboard (`/`, DashboardPage.jsx) — exec view, year-filtered
+- **Year buttons** (All + each year from `summary.availableYears`) → re-fetch all widgets with `?year`.
+- **Stat cards** (`/dashboard/summary`): Total Media Spend (`billingsYTD` = all-time when "All"), Active Clients, Channels Tracked, Schedule Logs.
+- **Monthly Spend Trend** — AreaChart (`/dashboard/monthly-trend` `combined[].scheduleValue`) + a **3-month rolling-average** Line overlay.
+- **Medium Split** — donut (`/dashboard/medium-split` `ytd[]`); center shows total spend.
+- **Spend Velocity** — RadialBar gauge (`summary.velocityPct` = this month vs same month last year).
+- **Top Clients by Spend** — table with **6-month inline sparklines** (`/dashboard/top-clients` `spark[]`).
+- **Recent Activity** (`/dashboard/recent-uploads`), **Spend by Agency** bars (`/dashboard/agency-comparison` `ytdBillings`), **Top Channels** ranked bars (`/dashboard/top-channels` `ytdSpend`, colored by medium).
+- Non-exec roles get a compact quick-links view (no charts).
+
+### Executive Dashboard (`/executive-dashboard`)
+- KPI cards; **Monthly Billing Trend** (Combined Area / By-Agency multi-Line toggle); **Top 10 Clients / Channels** ranked bars (YTD + this-month + MoM/YoY); **Agency Comparison** grouped bars + cards; **Medium Split** two donuts (this-month + YTD with per-medium YoY); **Activity Log** table; **Recent Uploads**. "Export summary" → branded jsPDF + autoTable. Loading uses skeletons.
+
+### Deep Dashboard (`/deep-dashboard`)
+- One call `/analytics/deep-dashboard` (agency/client/channel filters). KPIs; **Multi-Year Monthly Spend Trend** (one Line per year + Brush); **Client Investment Contribution** bars; **Channel Performance Insights** / **Client Investment History** metric tiles; **Property Performance** sortable table incl. a computed **Bonus Yield %** (bonus ÷ value) column, Excel + PDF export.
+
+### Spend Analytics (`/spend-analytics`)
+- One call `/database/analytics` (filters: agency, client, monthFrom/To). Returns `totalValue`, `totalWithVat`, and arrays `byMonth`, `byMedium`, `byMediaGroup`, `byChannel`, `byClient`, `byBrand`, `byAgency`, plus derived `byMonthMedium`, `brandTrend`+`brandTrendKeys`, `clientTenure`, `clientFlighting`+`flightingMonths`.
+- Charts: 5 summary tiles; **Monthly Trend** (Composed bars + VAT area + Brush); **Cumulative Spend** Line; **Spend by Agency** bars; **Medium Mix Shift** (100% stacked area, TV/Radio/Print); **Brand Spend Trend** (multi-line, top 6); **Client Tenure & Value** bubble (Scatter, size = avg/month); **Agency Efficiency** bars (spend per entry); **Flighting Calendar** (client×month active grid); Medium/Media-Group **donuts**; **Spend by Channel** bars; **Top Clients** bars; grouped breakdown table (with %-of-total bars); client/brand tables.
+- **Cross-filter:** click a slice in the Medium donut → filters the Channel chart + breakdown table.
+- **Comparison mode:** "Compare" toggle reveals Period B date range → side-by-side totals, delta %, by-medium grouped bars.
+- Excel (SheetJS, sheet per group) + PDF (jsPDF, charts via html2canvas) export.
+
+### Channel Intelligence (`/channel-masters/:id`)
+- Four endpoints keyed by channel master id: `/summary`, `/monthly-spend`, `/clients`, `/property-history`.
+- Stat cards (compact, page-scoped sizing — NOT the global 33px `.stat-val`); **Monthly Spend Trend** Line (schedule value vs with-VAT); **Clients on this Channel** table; **Property History Timeline** (vertical timeline of deal terms + the real `PropertyHistory` audit-trail diffs). `getChannelPropertyHistory` also matches free-text client channels by name/alias when `channelMasterId` is null.
+
+### Database (`/database`)
+- When a client is selected, an overview strip + monthly mini bar chart from `/database/analytics?agencyId&clientId`. Plus the spreadsheet editor and bulk import (below).
+
+## Data Ingestion / Bulk Import
+
+- **Per-client paste/upload** (DatabasePage): SheetJS parse, column auto-map, preview into the grid, save via `POST /api/database/bulk` (pre-resolved client/channel IDs).
+- **Bulk import — all clients** (SUPER_ADMIN): one file for every client via `POST /api/database/import-all`. Columns (matched by name, order-independent): **Year, RO, Sch: Month, Client, Brand, Medium, Media Group, Channel, Schedule Value** (no Agency column needed). Resolves client by name across agencies; resolves channel by name/alias; combines the separate **Year** column with a month *name* ("Jan") into `YYYY-MM`; derives medium/mediaGroup from the channel master; computes VAT (18%); optionally creates missing clients; inserts in chunks of 1000 (≤60k rows). Express JSON body limit raised to 50mb. Per-row errors are reported, not fatal. The whole import is one `UploadBatch` (deletable in one go).
+
 ## Design System
 
 Custom CSS variables in `web/src/index.css`:
@@ -409,6 +472,8 @@ Custom CSS variables in `web/src/index.css`:
 | ProtectedRoute | `web/src/components/ProtectedRoute.jsx` | Auth guard + role check, redirects to /login or / |
 | AuthContext | `web/src/contexts/AuthContext.jsx` | Provides user, token, login(), logout(), refreshToken(), changePassword() |
 | api | `web/src/lib/api.js` | Axios instance: base `/api`, Bearer token interceptor, 401 auto-refresh |
+| OrbitLoader | `web/src/components/OrbitLoader.jsx` | Branded animated loader (coral planet orbiting a navy core). Used for EVERY loading state app-wide incl. `ProtectedRoute` init. Props: `size`, `label`, `fullHeight` |
+| RecentUploads | `web/src/components/RecentUploads.jsx` | Recent upload batches list (used on Database empty state) |
 
 ## Property Types
 
@@ -485,12 +550,21 @@ Group/filter by canonical **channel master** (spans agencies), agency, client, o
 
 ## Known Gaps / Suggested Features
 
-> Audit as of 2026-06. Candidate work, not yet implemented:
+> Candidate work, not yet implemented:
 
-- **Property `bonusPct` & `sponsorshipDetails` are not editable or history-tracked.** `property.controller.js` create/update only handle `name/type/cost/notes`, and history records only those. Bonus % (added value) and sponsorship details can't be set via the API, and bonus changes don't appear in the rate timeline. **Recommend** adding these to create/update + `PropertyHistory` so the rate-history export reflects both rate and added-value evolution.
 - **Global topbar search is non-functional** — the search input in `Layout.jsx` is decorative (no handler/results). Either wire it to a search endpoint or remove it.
 - **Two schedule-log surfaces:** `/api/database/*` (used by DatabasePage spreadsheet) and `/api/schedule-logs/*` (client-scoped CRUD). Overlapping; consider consolidating.
 - **Campaign model** has controller/routes (`brand.controller.js`) but little/no UI surface.
 - **No automated tests or CI** (`npm test` is a placeholder).
 - **Decision Center was removed** (nav, route, page, and `/api/decisions` backend) — do not re-add references.
 - **Auth is stateless JWT:** logout is client-side; refresh tokens aren't revoked server-side.
+- **Annotation layer & empty-state ghost charts** were proposed but not built.
+- `bulk-import` always inserts (no dedupe vs existing rows) — re-importing the same file duplicates; delete the batch from Upload History to redo.
+
+### Recently implemented (do NOT re-report as gaps)
+
+- **Property dates:** `startDate`/`endDate` (null end = ongoing) on `Property`, editable in the Add/Edit form, shown on the channel table, Deep Dashboard, and property-report exports.
+- **Property bonus:** `bonusValue`, `bonusCount`, plus `bonusPct`/`sponsorshipDetails` exist on the model; Deep Dashboard shows a computed **Bonus Yield %**; Channel Intelligence surfaces the `PropertyHistory` audit trail.
+- **Dashboard year filter** (replaces the old decorative 30D/QTD/YTD toggle) + **all-time "All"** + latest-month anchoring (`refPeriod`).
+- **Bulk multi-client import** (`/api/database/import-all`), **channel/client seed modules**, **OrbitLoader everywhere**, and the **new analytics charts** (medium mix shift, brand trend, tenure bubble, agency efficiency, flighting calendar, velocity gauge, sparklines, cross-filter, comparison mode).
+- **Agencies list** returns `totalSpend` + `channelCount` per agency.
