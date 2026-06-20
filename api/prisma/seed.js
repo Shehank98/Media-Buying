@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { MEDIA_GROUPS, CHANNEL_MASTERS } from './channel-seed-data.js';
+import { CLIENTS } from './client-seed-data.js';
 
 const prisma = new PrismaClient();
 
@@ -171,6 +172,24 @@ async function main() {
     });
     console.log(`Property category created/found: ${cat.name} (id: ${cat.id})`);
   }
+
+  // ── Clients (provided list) ──────────────────────────────────────────────────
+  console.log('\nSeeding clients...');
+  const agencyByName = {};
+  for (const a of agencies) agencyByName[a.name.toLowerCase()] = a;
+
+  let clientsCreated = 0, clientsSkipped = 0;
+  for (const c of CLIENTS) {
+    const agency = agencyByName[c.agency.toLowerCase()];
+    if (!agency) { console.warn(`  ! Agency not found for client "${c.name}": ${c.agency}`); clientsSkipped++; continue; }
+    await prisma.client.upsert({
+      where: { agencyId_name: { agencyId: agency.id, name: c.name } },
+      update: {},
+      create: { agencyId: agency.id, name: c.name },
+    });
+    clientsCreated++;
+  }
+  console.log(`Clients upserted: ${clientsCreated}${clientsSkipped ? `, skipped: ${clientsSkipped}` : ''}`);
 
   console.log('\nSeeding complete!');
 }
