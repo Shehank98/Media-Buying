@@ -461,9 +461,11 @@ export default function ExecutiveDashboardPage() {
         .rank-meta { font-size: 11px; color: #93A0B5; flex-shrink: 0; }
         .rank-bar-track { height: 8px; border-radius: 5px; background: #EEF0F3; overflow: hidden; }
         .rank-bar-fill { height: 100%; border-radius: 5px; transition: width .4s ease; }
-        .rank-side { flex-shrink: 0; text-align: right; min-width: 92px; }
-        .rank-val { font-size: 12.5px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; color: #16243C; }
-        .rank-delta { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 3px; justify-content: flex-end; margin-top: 2px; }
+        .rank-side { flex-shrink: 0; text-align: right; min-width: 124px; }
+        .rank-val { font-size: 12.5px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; color: #16243C; display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+        .rank-sub { font-size: 11.5px; font-weight: 600; font-family: 'Spline Sans Mono', monospace; color: #6B7790; display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 2px; }
+        .rank-tag { font-size: 8.5px; font-weight: 700; letter-spacing: .5px; color: #93A0B5; background: #EEF0F3; border-radius: 4px; padding: 1px 4px; }
+        .rank-delta { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 3px; justify-content: flex-end; margin-top: 3px; }
 
         /* Upload detail rows */
         .ed-upload-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 1px solid #EEF0F3; }
@@ -658,10 +660,11 @@ export default function ExecutiveDashboardPage() {
                         <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
                       </div>
                       <div className="rank-side">
-                        <div className="rank-val">{fmtLKR(c.ytdBilling)}</div>
+                        <div className="rank-val"><span className="rank-tag">YTD</span>{fmtLKR(c.ytdBilling)}</div>
+                        <div className="rank-sub"><span className="rank-tag">MO</span>{fmtLKR(c.currentMonthBilling || 0)}</div>
                         <div className="rank-delta" style={{ color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? 'var(--red-600)' : 'var(--muted)' }}>
                           {trendIcon(c.momDirection)}
-                          {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '-'}
+                          {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '% MoM' : 'no MoM'}
                         </div>
                       </div>
                     </div>
@@ -701,9 +704,10 @@ export default function ExecutiveDashboardPage() {
                         <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
                       </div>
                       <div className="rank-side">
-                        <div className="rank-val">{fmtLKR(c.ytdSpend)}</div>
+                        <div className="rank-val"><span className="rank-tag">YTD</span>{fmtLKR(c.ytdSpend)}</div>
+                        <div className="rank-sub"><span className="rank-tag">MO</span>{fmtLKR(c.currentMonthSpend || 0)}</div>
                         <div className="rank-delta" style={{ color: c.yoyChange == null ? 'var(--muted)' : c.yoyChange >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>
-                          {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '% YoY' : '-'}
+                          {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '% YoY' : 'no YoY'}
                         </div>
                       </div>
                     </div>

@@ -189,6 +189,7 @@ export async function getTopClients(req, res) {
         agencyId: client?.agency?.id,
         agencyName: client?.agency?.name || 'Unknown',
         ytdBilling: safeNum(g._sum.scheduleValue) || 0,
+        currentMonthBilling: curr,
         momTrend,
         momDirection,
       };
@@ -208,6 +209,10 @@ export async function getTopChannels(req, res) {
     const base = { isDeleted: false, scheduleMonth: { gte: yearStart() } };
     if (ids) base.agencyId = { in: ids };
 
+    const ym = currentYM();
+    const lys = lastYearStart();
+    const lycm = lastYearCurrentMonth();
+
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['channelMasterId'],
       where: base,
@@ -218,14 +223,22 @@ export async function getTopChannels(req, res) {
 
     const result = await Promise.all(grouped.map(async (g, idx) => {
       const cm = await prisma.channelMaster.findUnique({ where: { id: g.channelMasterId }, include: { mediaGroup: { select: { name: true } } } });
-      const clients = await prisma.scheduleLog.findMany({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: yearStart() } }, select: { clientId: true }, distinct: ['clientId'] });
+      const [clients, currAgg, lastYearAgg] = await Promise.all([
+        prisma.scheduleLog.findMany({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: yearStart() } }, select: { clientId: true }, distinct: ['clientId'] }),
+        prisma.scheduleLog.aggregate({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: ym, ...(ids ? { agencyId: { in: ids } } : {}) }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { channelMasterId: g.channelMasterId, isDeleted: false, scheduleMonth: { gte: lys, lte: lycm }, ...(ids ? { agencyId: { in: ids } } : {}) }, _sum: { scheduleValue: true } }),
+      ]);
+      const ytd = safeNum(g._sum.scheduleValue) || 0;
+      const ly = safeNum(lastYearAgg._sum.scheduleValue) || 0;
       return {
         rank: idx + 1,
         channelMasterId: g.channelMasterId,
         channelName: cm?.name || 'Unknown',
         medium: cm?.medium || '',
         mediaGroup: cm?.mediaGroup?.name || '',
-        ytdSpend: safeNum(g._sum.scheduleValue) || 0,
+        ytdSpend: ytd,
+        currentMonthSpend: safeNum(currAgg._sum.scheduleValue) || 0,
+        yoyChange: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
         clientCount: clients.length,
       };
     }));
