@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Line,
+  CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Line, LineChart,
   RadialBarChart, RadialBar, PolarAngleAxis,
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
