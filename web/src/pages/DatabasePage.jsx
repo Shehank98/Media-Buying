@@ -440,23 +440,26 @@ export default function DatabasePage() {
   // ── Bulk import across all clients ──
   const downloadImportTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Agency', 'Client', 'Channel', 'Month', 'RO Number', 'Brand', 'Schedule Value'],
-      ['RedWorks Media', 'Sample Client', 'Hiru TV', '2023-01', 'RO-1001', 'Sample Brand', 250000],
-      ['Ogilvy Media', 'Another Client', 'Sirasa TV', 'Feb 2024', 'RO-1002', '', 480000.5],
+      ['Year', 'RO', 'Sch: Month', 'Client', 'Brand', 'Medium', 'Media Group', 'Channel', 'Schedule Value'],
+      [2023, 'RO-1001', 'Jan', 'Maliban', 'Maliban Milk', 'TV', 'Power House Limited', 'TV Derana', 250000],
+      [2024, 'RO-1002', 'Feb', 'Nestle', '', 'TV', 'MTV Channel (Pvt) LTD', 'Sirasa TV', 480000.5],
     ]);
-    ws['!cols'] = [{ wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Schedule Data');
     XLSX.writeFile(wb, 'bulk-import-template.xlsx');
   };
 
-  const pick = (row, keys) => {
+  // Exact-header lookup (handles "Sch: Month", trailing spaces, case) with fallbacks.
+  const buildHeaderMap = (row) => {
+    const m = {};
     for (const [k, v] of Object.entries(row)) {
-      const kk = k.toLowerCase().trim();
-      if (keys.some(t => kk === t || kk.includes(t))) return String(v).trim();
+      const nk = String(k).toLowerCase().replace(/:/g, '').replace(/\s+/g, ' ').trim();
+      m[nk] = String(v ?? '').trim();
     }
-    return '';
+    return m;
   };
+  const firstOf = (m, ...keys) => { for (const k of keys) { if (m[k] != null && m[k] !== '') return m[k]; } return ''; };
 
   const handleImportFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -469,15 +472,19 @@ export default function DatabasePage() {
         const wb = XLSX.read(evt.target.result, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        const rows = json.map(row => ({
-          agency: pick(row, ['agency']),
-          client: pick(row, ['client', 'advertiser']),
-          channel: pick(row, ['channel']),
-          scheduleMonth: pick(row, ['month', 'sch']),
-          roNumber: pick(row, ['ro number', 'ro', 'estimate']),
-          brand: pick(row, ['brand']),
-          scheduleValue: pick(row, ['value', 'amount']).replace(/[^0-9.\-]/g, ''),
-        })).filter(r => r.agency || r.client || r.channel || r.scheduleValue);
+        const rows = json.map(row => {
+          const m = buildHeaderMap(row);
+          return {
+            year: firstOf(m, 'year'),
+            agency: firstOf(m, 'agency'),
+            client: firstOf(m, 'client', 'advertiser'),
+            channel: firstOf(m, 'channel'),
+            scheduleMonth: firstOf(m, 'sch month', 'schedule month', 'month'),
+            roNumber: firstOf(m, 'ro', 'ro number', 'channel estimate', 'estimate'),
+            brand: firstOf(m, 'brand'),
+            scheduleValue: firstOf(m, 'schedule value', 'value', 'amount').replace(/[^0-9.\-]/g, ''),
+          };
+        }).filter(r => r.client || r.channel || r.scheduleValue);
         setImportRows(rows);
         setShowImport(true);
       } catch {
@@ -1049,21 +1056,21 @@ export default function DatabasePage() {
               {!importResult ? (
                 <>
                   <div style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#3B4A63', marginBottom: 14 }}>
-                    Expected columns: <b>Agency</b>, <b>Client</b>, <b>Channel</b>, <b>Month</b> (e.g. 2023-01 or "Jan 2023"), <b>RO Number</b>, <b>Brand</b>, <b>Schedule Value</b>. Agency, client and channel are matched by name; VAT (18%) is computed automatically.
+                    Expected columns: <b>Year</b>, <b>RO</b>, <b>Sch: Month</b> (e.g. Jan, Feb…), <b>Client</b>, <b>Brand</b>, <b>Medium</b>, <b>Media Group</b>, <b>Channel</b>, <b>Schedule Value</b>. Client and channel are matched by name (no agency column needed); medium &amp; media group come from the channel; VAT (18%) is computed automatically.
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={importCreateClients} onChange={e => setImportCreateClients(e.target.checked)} />
-                    Create clients that don't exist yet (under the matched agency)
+                    Create clients that don't exist yet (needs an Agency column to know where)
                   </label>
                   <div className="tbl-wrap" style={{ maxHeight: 300, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                     <table className="tbl" style={{ margin: 0, fontSize: 12 }}>
-                      <thead><tr><th>#</th><th>Agency</th><th>Client</th><th>Channel</th><th>Month</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
+                      <thead><tr><th>#</th><th>Year</th><th>Month</th><th>Client</th><th>Channel</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
                       <tbody>
                         {importRows.slice(0, 50).map((r, i) => (
                           <tr key={i}>
                             <td style={{ color: 'var(--muted)' }}>{i + 1}</td>
-                            <td>{r.agency}</td><td>{r.client}</td><td>{r.channel}</td>
-                            <td>{r.scheduleMonth}</td><td>{r.roNumber}</td><td>{r.brand}</td>
+                            <td>{r.year}</td><td>{r.scheduleMonth}</td><td>{r.client}</td><td>{r.channel}</td>
+                            <td>{r.roNumber}</td><td>{r.brand}</td>
                             <td style={{ textAlign: 'right' }} className="mono">{r.scheduleValue}</td>
                           </tr>
                         ))}

@@ -551,6 +551,28 @@ function normalizeMonthServer(raw) {
 
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 
+// Combine a separate Year column with a "Sch: Month" value that may be a month
+// name ("Jan"), a number ("1"), or already a full YYYY-MM / "Jan 2023".
+function combineYearMonth(year, month) {
+  const m = String(month ?? '').trim();
+  if (!m) return '';
+  // Already a full month value
+  if (/^\d{4}-\d{2}$/.test(m) || /[A-Za-z]{3,}[\s\-/]+\d{4}/.test(m) || /\d{1,2}[/\-.]\d{4}/.test(m) || /\d{4}[/\-.]\d{1,2}/.test(m)) {
+    return normalizeMonthServer(m);
+  }
+  const y = String(year ?? '').trim().match(/\d{4}/)?.[0];
+  if (!y) return normalizeMonthServer(m);
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const nameIdx = MONTHS.indexOf(m.slice(0, 3).toLowerCase());
+  if (nameIdx >= 0) return `${y}-${String(nameIdx + 1).padStart(2, '0')}`;
+  const numMatch = m.match(/^(\d{1,2})$/);
+  if (numMatch) {
+    const mm = parseInt(numMatch[1]);
+    if (mm >= 1 && mm <= 12) return `${y}-${String(mm).padStart(2, '0')}`;
+  }
+  return normalizeMonthServer(m);
+}
+
 export async function importAllScheduleLogs(req, res) {
   try {
     const { rows, fileName, createMissingClients = true } = req.body;
@@ -570,7 +592,15 @@ export async function importAllScheduleLogs(req, res) {
     ]);
 
     const agencyByName = new Map(agencies.map((a) => [norm(a.name), a]));
+    const agencyById = new Map(agencies.map((a) => [a.id, a]));
     const clientByKey = new Map(clients.map((c) => [`${c.agencyId}::${norm(c.name)}`, c]));
+    // Client name -> list of clients (for resolving when no agency column is given)
+    const clientsByName = new Map();
+    for (const c of clients) {
+      const k = norm(c.name);
+      if (!clientsByName.has(k)) clientsByName.set(k, []);
+      clientsByName.get(k).push(c);
+    }
     const channelByName = new Map();
     for (const ch of channels) {
       channelByName.set(norm(ch.name), ch);
@@ -588,36 +618,54 @@ export async function importAllScheduleLogs(req, res) {
       const agencyName = r.agency ?? r.agencyName;
       const clientName = r.client ?? r.clientName;
       const channelName = r.channel ?? r.channelName;
-      const scheduleMonth = normalizeMonthServer(r.scheduleMonth ?? r.month);
+      // Month may arrive pre-normalized (YYYY-MM) or as a month name with a
+      // separate year column (e.g. "Jan" + 2023).
+      const scheduleMonth = combineYearMonth(r.year, r.scheduleMonth ?? r.month);
       const roNumber = r.roNumber ?? r.ro ?? '';
       const brandName = r.brand ?? r.brandName ?? null;
       const rawValue = r.scheduleValue ?? r.value;
 
-      if (!agencyName || !clientName || !channelName) {
-        errors.push({ row: i + 1, error: 'Missing agency, client or channel' }); continue;
+      if (!clientName || !channelName) {
+        errors.push({ row: i + 1, error: 'Missing client or channel' }); continue;
       }
       if (!/^\d{4}-\d{2}$/.test(scheduleMonth)) {
-        errors.push({ row: i + 1, error: `Invalid month "${r.scheduleMonth ?? r.month}"` }); continue;
+        errors.push({ row: i + 1, error: `Invalid month "${r.scheduleMonth ?? r.month}"${r.year ? ` (year ${r.year})` : ''}` }); continue;
       }
       const value = parseFloat(String(rawValue).replace(/,/g, ''));
       if (Number.isNaN(value)) { errors.push({ row: i + 1, error: 'Invalid schedule value' }); continue; }
 
-      const agency = agencyByName.get(norm(agencyName));
-      if (!agency) { errors.push({ row: i + 1, error: `Agency not found: "${agencyName}"` }); continue; }
+      // Resolve agency (optional) + client.
+      let agency = agencyName ? agencyByName.get(norm(agencyName)) : null;
+      if (agencyName && !agency) { errors.push({ row: i + 1, error: `Agency not found: "${agencyName}"` }); continue; }
 
-      const clientKey = `${agency.id}::${norm(clientName)}`;
-      let client = clientByKey.get(clientKey);
-      if (!client) {
-        if (!createMissingClients) { errors.push({ row: i + 1, error: `Client not found: "${clientName}"` }); continue; }
-        try {
-          client = await prisma.client.create({ data: { agencyId: agency.id, name: String(clientName).trim() } });
-          clientByKey.set(clientKey, client);
-          createdClients.push({ agency: agency.name, client: client.name });
-        } catch {
-          // Unique race or other — re-fetch
-          client = await prisma.client.findFirst({ where: { agencyId: agency.id, name: String(clientName).trim() } });
-          if (!client) { errors.push({ row: i + 1, error: `Could not create client "${clientName}"` }); continue; }
-          clientByKey.set(clientKey, client);
+      let client;
+      if (agency) {
+        const clientKey = `${agency.id}::${norm(clientName)}`;
+        client = clientByKey.get(clientKey);
+        if (!client) {
+          if (!createMissingClients) { errors.push({ row: i + 1, error: `Client not found: "${clientName}"` }); continue; }
+          try {
+            client = await prisma.client.create({ data: { agencyId: agency.id, name: String(clientName).trim() } });
+            clientByKey.set(clientKey, client);
+            (clientsByName.get(norm(clientName)) || clientsByName.set(norm(clientName), []).get(norm(clientName))).push(client);
+            createdClients.push({ agency: agency.name, client: client.name });
+          } catch {
+            client = await prisma.client.findFirst({ where: { agencyId: agency.id, name: String(clientName).trim() } });
+            if (!client) { errors.push({ row: i + 1, error: `Could not create client "${clientName}"` }); continue; }
+            clientByKey.set(clientKey, client);
+          }
+        }
+      } else {
+        // No agency column — resolve client by name across all agencies.
+        const matches = clientsByName.get(norm(clientName)) || [];
+        if (matches.length === 1) {
+          client = matches[0];
+          agency = agencyById.get(client.agencyId);
+        } else if (matches.length === 0) {
+          errors.push({ row: i + 1, error: `Client not found: "${clientName}" (add it first, or include an Agency column)` }); continue;
+        } else {
+          const agencyNames = matches.map((m) => agencyById.get(m.agencyId)?.name).filter(Boolean).join(', ');
+          errors.push({ row: i + 1, error: `Client "${clientName}" exists under multiple agencies (${agencyNames}); add an Agency column` }); continue;
         }
       }
 
