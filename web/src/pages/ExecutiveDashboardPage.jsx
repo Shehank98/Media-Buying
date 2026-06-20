@@ -5,6 +5,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, PieChart, Pie, Cell, ComposedChart,
 } from 'recharts';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -256,6 +258,134 @@ export default function ExecutiveDashboardPage() {
     summary.manualEntriesThisMonth != null && { key: 'manual', icon: 'edit', label: 'Manual entries', value: String(summary.manualEntriesThisMonth) },
   ].filter(Boolean) : [];
 
+  const [exporting, setExporting] = useState(false);
+
+  const exportSummaryPdf = () => {
+    setExporting(true);
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const margin = 40;
+      const agencyName = agencyId ? (agencies.find((a) => String(a.id) === String(agencyId))?.name || 'Selected agency') : 'All agencies';
+
+      // Branded header band
+      doc.setFillColor(10, 23, 41);
+      doc.rect(0, 0, pageW, 70, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+      doc.text('Ogilvy Orbit — Executive Summary', margin, 32);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      doc.setTextColor(200, 210, 224);
+      doc.text(`${agencyName}  ·  Generated ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, 50);
+
+      let y = 96;
+
+      // KPI section
+      if (kpis.length) {
+        doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text('Key Metrics', margin, y); y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['Metric', 'Value']],
+          body: kpis.map((k) => [k.label, String(k.value)]),
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [22, 36, 60] },
+          columnStyles: { 1: { halign: 'right', font: 'courier' } },
+          margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 22;
+      }
+
+      // Top clients
+      if (topClients.length) {
+        doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text('Top Clients (YTD Billing)', margin, y); y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['#', 'Client', 'Agency', 'YTD Billing', 'MoM']],
+          body: topClients.slice(0, 10).map((c) => [
+            c.rank, c.clientName, c.agencyName || '-', fmtLKR(c.ytdBilling),
+            c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [22, 36, 60] },
+          columnStyles: { 0: { cellWidth: 26 }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+          margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 22;
+      }
+
+      // Top channels
+      if (topChannels.length) {
+        if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
+        doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text('Top Channels (YTD Spend)', margin, y); y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['#', 'Channel', 'Medium', 'Clients', 'YTD Spend', 'YoY']],
+          body: topChannels.slice(0, 10).map((c) => [
+            c.rank, c.channelName, c.medium || '-', c.clientCount ?? '-', fmtLKR(c.ytdSpend),
+            c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [22, 36, 60] },
+          columnStyles: { 0: { cellWidth: 26 }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+          margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 22;
+      }
+
+      // Agency comparison
+      if (agencyComparison.length) {
+        if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
+        doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text('Agency Comparison', margin, y); y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['Agency', 'YTD Billings', 'Active Clients', 'Active Channels', 'YTD Growth']],
+          body: agencyComparison.map((ag) => [
+            ag.agencyName, fmtLKR(ag.ytdBillings), ag.activeClients ?? '-', ag.activeChannels ?? '-',
+            ag.ytdGrowthPct != null ? (ag.ytdGrowthPct >= 0 ? '+' : '') + ag.ytdGrowthPct.toFixed(1) + '%' : '-',
+          ]),
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [22, 36, 60] },
+          columnStyles: { 1: { halign: 'right' }, 4: { halign: 'right' } },
+          margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 22;
+      }
+
+      // Medium split (YTD)
+      const ytdMedium = mediumSplit?.ytd || [];
+      if (ytdMedium.length) {
+        if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); y = 50; }
+        doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text('Medium Split (Year to Date)', margin, y); y += 8;
+        autoTable(doc, {
+          startY: y,
+          head: [['Medium', 'Value', 'Share']],
+          body: ytdMedium.map((m) => [m.medium, fmtLKR(m.value), m.pct != null ? m.pct.toFixed(1) + '%' : '-']),
+          styles: { fontSize: 9, cellPadding: 5 },
+          headStyles: { fillColor: [22, 36, 60] },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+          margin: { left: margin, right: margin },
+        });
+      }
+
+      // Footer page numbers
+      const pages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pages; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 160, 176);
+        doc.text(`Page ${i} of ${pages}`, pageW - margin, doc.internal.pageSize.getHeight() - 20, { align: 'right' });
+      }
+
+      doc.save(`executive-summary-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       <style>{`
@@ -309,9 +439,9 @@ export default function ExecutiveDashboardPage() {
               </select>
             </>
           )}
-          <button className="ed-secondary-btn" onClick={() => window.print()}>
-            <Icon name="upload" size={15} />
-            Export summary
+          <button className="ed-secondary-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
+            <Icon name="download" size={15} />
+            {exporting ? 'Exporting…' : 'Export summary'}
           </button>
           <button className="btn btn-primary" onClick={() => navigate('/deep-dashboard')}>
             <Icon name="bar-chart" size={15} />
