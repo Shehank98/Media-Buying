@@ -21,30 +21,48 @@ const fmtShort = (v) => {
 };
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
 
-const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
 const YEAR_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#D9521C'];
 const CAT_COLORS = ['#1F5BB5', '#E85D24', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#93A0B5'];
-const COL_HEAD = { textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#6B7790', padding: '11px 16px', background: '#F5F6F8', borderBottom: '1px solid #E5E8ED', cursor: 'pointer', whiteSpace: 'nowrap' };
-const CELL = { padding: '11px 16px', borderBottom: '1px solid #EEF0F3', whiteSpace: 'nowrap' };
 
-function Kpi({ icon, tone, label, value, sub, subColor }) {
+function Chip({ dir = 'flat', children }) {
+  const palette = {
+    up: { color: '#15814B', bg: '#ECF8F1' },
+    down: { color: '#C5391F', bg: '#FBE0DA' },
+    flat: { color: '#6B7790', bg: '#EEF0F3' },
+  };
+  const p = palette[dir] || palette.flat;
   return (
-    <div style={{ ...CARD, padding: '18px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: tone[0], color: tone[1] }}><Icon name={icon} size={18} /></div>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#6B7790' }}>{label}</div>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 700,
+      padding: '3px 9px', borderRadius: 7, color: p.color, background: p.bg,
+      fontFamily: "'Spline Sans Mono', monospace",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Kpi({ icon, tone, label, value, chip }) {
+  return (
+    <div className="dd-kpi">
+      <div className="dd-kpi-top">
+        <div className="dd-kpi-ico" style={{ background: tone[0], color: tone[1] }}><Icon name={icon} size={18} /></div>
+        {chip}
       </div>
-      <div style={{ fontSize: 26, fontWeight: 750, letterSpacing: '-.5px', fontFamily: "'Spline Sans Mono', monospace", color: '#16243C', lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, marginTop: 8, fontWeight: 700, color: subColor || '#93A0B5' }}>{sub}</div>}
+      <div className="dd-kpi-val">{value}</div>
+      <div className="dd-kpi-label">{label}</div>
     </div>
   );
 }
 
-function Metric({ label, value, accent }) {
+function Metric({ label, value, accent, dot }) {
   return (
-    <div style={{ background: '#FAFBFC', border: '1px solid #EEF0F3', borderRadius: 11, padding: '13px 15px' }}>
-      <div style={{ fontSize: 11.5, color: '#6B7790', marginBottom: 5 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: accent || '#16243C', fontFamily: "'Spline Sans Mono', monospace" }}>{value}</div>
+    <div className="dd-metric">
+      {dot && <span className="dd-metric-dot" style={{ background: dot }} />}
+      <div style={{ flex: 1 }}>
+        <div className="dd-metric-label">{label}</div>
+        <div className="dd-metric-val" style={accent ? { color: accent } : undefined}>{value}</div>
+      </div>
     </div>
   );
 }
@@ -161,43 +179,107 @@ export default function DeepDashboardPage() {
   };
 
   const yoyUp = (kpis.yoyValue || 0) >= 0;
+  const activeFilterCount = [agencyId, clientId, channelMasterId].filter(Boolean).length;
 
   return (
-    <div className="fade-in" style={{ maxWidth: 1440, margin: '0 auto' }}>
-      {/* Header */}
-      <div className="page-head">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/executive-dashboard')}><Icon name="chevL" size={14} /> Executive</button>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: '10px 0 0' }}>Deep Dashboard</h1>
-          <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Sponsorship investment, spend trends & property performance</p>
-        </div>
-      </div>
+    <div className="fade-in dd-page" style={{ maxWidth: 1440, margin: '0 auto' }}>
+      <style>{`
+        .dd-hero {
+          position: relative; overflow: hidden; border-radius: 18px; margin-bottom: 20px;
+          background: linear-gradient(135deg, #0A1729 0%, #122842 55%, #0F1F3D 100%);
+          padding: 26px 28px; color: #fff;
+        }
+        .dd-hero::before {
+          content: ''; position: absolute; top: -60px; right: -60px; width: 240px; height: 240px;
+          background: radial-gradient(circle, rgba(232,93,36,.30), transparent 70%); border-radius: 50%;
+        }
+        .dd-hero::after {
+          content: ''; position: absolute; bottom: -80px; left: 20%; width: 200px; height: 200px;
+          background: radial-gradient(circle, rgba(31,91,181,.22), transparent 70%); border-radius: 50%;
+        }
+        .dd-hero-inner { position: relative; z-index: 1; }
+        .dd-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.65); background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 6px 11px; cursor: pointer; transition: background .15s; }
+        .dd-back:hover { background: rgba(255,255,255,.16); color: #fff; }
+        .dd-title { font-size: 25px; font-weight: 750; letter-spacing: -.6px; margin: 14px 0 0; }
+        .dd-sub { font-size: 13.5px; color: rgba(255,255,255,.55); margin: 6px 0 0; }
+        .dd-filters { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+        .dd-field { display: flex; flex-direction: column; gap: 5px; min-width: 180px; }
+        .dd-field label { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: rgba(255,255,255,.45); }
+        .dd-select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #fff; border-radius: 9px; padding: 9px 12px; font-size: 13px; font-weight: 500; outline: none; cursor: pointer; }
+        .dd-select option { color: #16243C; }
+        .dd-select:disabled { opacity: .45; cursor: not-allowed; }
+        .dd-filter-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: #E85D24; background: rgba(232,93,36,.16); border: 1px solid rgba(232,93,36,.3); border-radius: 7px; padding: 4px 10px; align-self: flex-start; margin-top: 21px; }
 
-      {/* Filters */}
-      <div style={{ ...CARD, padding: 16, marginBottom: 18 }}>
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="field" style={{ margin: 0, minWidth: 180 }}>
-            <label className="field-label">Agency</label>
-            <select className="select" value={agencyId} onChange={(e) => setAgencyId(e.target.value)}>
-              <option value="">All agencies</option>
-              {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-          <div className="field" style={{ margin: 0, minWidth: 180 }}>
-            <label className="field-label">Client</label>
-            <select className="select" value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!agencyId}>
-              <option value="">All clients</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="field" style={{ margin: 0, minWidth: 180 }}>
-            <label className="field-label">Channel</label>
-            <select className="select" value={channelMasterId} onChange={(e) => setChannelMasterId(e.target.value)}>
-              <option value="">All channels</option>
-              {channelMasters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+        .dd-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .dd-kpi { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 18px 20px; transition: box-shadow .15s, transform .15s; }
+        .dd-kpi:hover { box-shadow: 0 6px 16px rgba(15,31,61,.10); transform: translateY(-1px); }
+        .dd-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .dd-kpi-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; }
+        .dd-kpi-val { font-size: 25px; font-weight: 750; letter-spacing: -.5px; font-family: 'Spline Sans Mono', monospace; color: #16243C; line-height: 1; }
+        .dd-kpi-label { font-size: 12px; font-weight: 600; color: #6B7790; margin-top: 8px; }
+
+        .dd-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); margin-bottom: 20px; overflow: hidden; }
+        .dd-card-head { padding: 17px 22px 4px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .dd-card-title { font-size: 14.5px; font-weight: 720; margin: 0; letter-spacing: -.2px; color: #16243C; }
+        .dd-card-sub { font-size: 12.5px; color: #6B7790; margin: 4px 0 0; }
+        .dd-export-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; padding: 7px 12px; border-radius: 8px; border: 1px solid #D5DAE2; background: #fff; color: #3B4A63; cursor: pointer; transition: background .15s, border-color .15s; }
+        .dd-export-btn:hover { background: #F5F6F8; border-color: #C2C9D4; }
+        .dd-export-btn.primary { background: #16243C; border-color: #16243C; color: #fff; }
+        .dd-export-btn.primary:hover { background: #0F1F3D; }
+
+        .dd-metric-grid { padding: 14px 22px 22px; display: grid; gap: 11px; }
+        .dd-metric { display: flex; align-items: center; gap: 11px; background: #FAFBFC; border: 1px solid #EEF0F3; border-radius: 11px; padding: 12px 14px; }
+        .dd-metric-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .dd-metric-label { font-size: 11.5px; color: #6B7790; margin-bottom: 4px; }
+        .dd-metric-val { font-size: 15.5px; font-weight: 700; color: #16243C; font-family: 'Spline Sans Mono', monospace; }
+
+        .dd-search { display: flex; align-items: center; gap: 8px; background: #EEF0F3; border-radius: 9px; padding: 8px 12px; width: 250px; }
+        .dd-search input { border: none; background: none; outline: none; flex: 1; font-size: 13px; color: #16243C; }
+        .dd-th { text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #6B7790; padding: 12px 16px; background: #F5F6F8; border-bottom: 1px solid #E5E8ED; cursor: pointer; white-space: nowrap; user-select: none; transition: color .15s; }
+        .dd-th:hover { color: #16243C; }
+        .dd-td { padding: 12px 16px; border-bottom: 1px solid #EEF0F3; white-space: nowrap; }
+        .dd-row:hover { background: #F7F8FA; }
+        .dd-cat-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #3B4A63; }
+        .dd-cat-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+        @media (max-width: 1100px) { .dd-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 900px) { .dd-insights-grid { grid-template-columns: 1fr !important; } }
+      `}</style>
+
+      {/* Hero header with filters */}
+      <div className="dd-hero">
+        <div className="dd-hero-inner">
+          <button className="dd-back" onClick={() => navigate('/executive-dashboard')}><Icon name="chevL" size={13} /> Executive Dashboard</button>
+          <h1 className="dd-title">Deep Dashboard</h1>
+          <p className="dd-sub">Sponsorship investment, spend trends &amp; property performance</p>
+
+          <div className="dd-filters">
+            <div className="dd-field">
+              <label>Agency</label>
+              <select className="dd-select" value={agencyId} onChange={(e) => setAgencyId(e.target.value)}>
+                <option value="">All agencies</option>
+                {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="dd-field">
+              <label>Client</label>
+              <select className="dd-select" value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!agencyId}>
+                <option value="">All clients</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="dd-field">
+              <label>Channel</label>
+              <select className="dd-select" value={channelMasterId} onChange={(e) => setChannelMasterId(e.target.value)}>
+                <option value="">All channels</option>
+                {channelMasters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            {activeFilterCount > 0 && (
+              <div className="dd-filter-badge">
+                <Icon name="filter" size={12} /> {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} applied
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -207,30 +289,29 @@ export default function DeepDashboardPage() {
       ) : (
         <>
           {/* KPI cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 18 }}>
-            <Kpi icon="money" tone={['#FDF1EB', '#D9521C']} label="Total Spend" value={fmtShort(kpis.totalSpend)} sub="From schedule logs" />
-            <Kpi icon="calendar" tone={['#EDF3FD', '#1F5BB5']} label={`${latestYear} Spend`} value={fmtShort(kpis.currentYearSpend)} sub="Latest year" />
-            <Kpi icon="calendar" tone={['#ECF8F1', '#15814B']} label={`${previousYear} Spend`} value={fmtShort(kpis.previousYearSpend)} sub="Previous year" />
+          <div className="dd-kpi-grid">
+            <Kpi icon="money" tone={['#FDF1EB', '#D9521C']} label="Total Spend" value={fmtShort(kpis.totalSpend)} chip={<Chip dir="flat">All time</Chip>} />
+            <Kpi icon="calendar" tone={['#EDF3FD', '#1F5BB5']} label={`${latestYear} Spend`} value={fmtShort(kpis.currentYearSpend)} chip={<Chip dir="flat">Latest</Chip>} />
+            <Kpi icon="calendar" tone={['#ECF8F1', '#15814B']} label={`${previousYear} Spend`} value={fmtShort(kpis.previousYearSpend)} chip={<Chip dir="flat">Previous</Chip>} />
             <Kpi
               icon={yoyUp ? 'trending-up' : 'trending-down'}
               tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
               label="YoY Growth"
-              value={kpis.yoyPct == null ? '-' : `${yoyUp ? '↑' : '↓'} ${Math.abs(kpis.yoyPct)}%`}
-              sub={kpis.yoyPct == null ? 'No prior year' : `${yoyUp ? '+' : '-'}${fmtShort(Math.abs(kpis.yoyValue))} vs prev year`}
-              subColor={yoyUp ? '#15814B' : '#C5391F'}
+              value={kpis.yoyPct == null ? '-' : `${yoyUp ? '+' : ''}${kpis.yoyPct}%`}
+              chip={kpis.yoyPct == null ? <Chip dir="flat">No prior year</Chip> : <Chip dir={yoyUp ? 'up' : 'down'}>{fmtShort(Math.abs(kpis.yoyValue))}</Chip>}
             />
           </div>
 
           {/* Multi-year monthly trend */}
-          <div style={{ ...CARD, marginBottom: 18 }}>
-            <div style={{ padding: '16px 20px 4px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div className="dd-card">
+            <div className="dd-card-head">
               <div>
-                <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: '-.2px' }}>Multi-Year Monthly Spend Trend</h3>
-                <p style={{ fontSize: 12.5, color: '#6B7790', margin: '4px 0 0' }}>Monthly committed media value by year — drag the slider below to zoom</p>
+                <h3 className="dd-card-title">Multi-Year Monthly Spend Trend</h3>
+                <p className="dd-card-sub">Monthly committed media value by year — drag the slider below to zoom</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => exportChart('png')}><Icon name="download" size={14} /> PNG</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => exportChart('pdf')}><Icon name="file" size={14} /> PDF</button>
+                <button className="dd-export-btn" onClick={() => exportChart('png')}><Icon name="download" size={14} /> PNG</button>
+                <button className="dd-export-btn" onClick={() => exportChart('pdf')}><Icon name="file" size={14} /> PDF</button>
               </div>
             </div>
             <div ref={chartRef} style={{ padding: '8px 14px 18px', background: '#fff' }}>
@@ -255,10 +336,12 @@ export default function DeepDashboardPage() {
           </div>
 
           {/* Client-wise investment contribution */}
-          <div style={{ ...CARD, marginBottom: 18 }}>
-            <div style={{ padding: '16px 20px 4px' }}>
-              <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Client Investment Contribution</h3>
-              <p style={{ fontSize: 12.5, color: '#6B7790', margin: '4px 0 0' }}>How media investment is distributed across clients (from schedule logs)</p>
+          <div className="dd-card">
+            <div className="dd-card-head" style={{ paddingBottom: 4 }}>
+              <div>
+                <h3 className="dd-card-title">Client Investment Contribution</h3>
+                <p className="dd-card-sub">How media investment is distributed across clients (from schedule logs)</p>
+              </div>
             </div>
             <div style={{ padding: '10px 16px 18px' }}>
               {clientDistribution.length === 0 ? (
@@ -280,75 +363,78 @@ export default function DeepDashboardPage() {
           </div>
 
           {/* Channel insights + Client history */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 18 }}>
-            <div style={CARD}>
-              <div style={{ padding: '16px 20px 4px' }}><h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Channel Performance Insights</h3></div>
-              <div style={{ padding: '12px 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <Metric label="Total properties" value={insights.totalProperties ?? 0} />
-                <Metric label="Total bonus value" value={fmtShort(insights.totalBonusValue)} accent="#15814B" />
-                <Metric label="Avg property value" value={fmtShort(insights.avgPropertyValue)} />
-                <Metric label="Top category" value={insights.mostPurchasedCategory || '-'} />
-                <Metric label="Highest property" value={insights.highestProperty ? fmtShort(insights.highestProperty.value) : '-'} accent="#D9521C" />
+          <div className="dd-insights-grid" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 0 }}>
+            <div className="dd-card" style={{ marginBottom: 20 }}>
+              <div className="dd-card-head" style={{ paddingBottom: 4 }}><h3 className="dd-card-title">Channel Performance Insights</h3></div>
+              <div className="dd-metric-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <Metric label="Total properties" value={insights.totalProperties ?? 0} dot="#1F5BB5" />
+                <Metric label="Total bonus value" value={fmtShort(insights.totalBonusValue)} accent="#15814B" dot="#15814B" />
+                <Metric label="Avg property value" value={fmtShort(insights.avgPropertyValue)} dot="#6B3FB5" />
+                <Metric label="Top category" value={insights.mostPurchasedCategory || '-'} dot="#9A5B00" />
+                <Metric label="Highest property" value={insights.highestProperty ? fmtShort(insights.highestProperty.value) : '-'} accent="#D9521C" dot="#D9521C" />
               </div>
             </div>
-            <div style={CARD}>
-              <div style={{ padding: '16px 20px 4px' }}><h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0 }}>Client Investment History</h3></div>
-              <div style={{ padding: '12px 20px 20px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                <Metric label="First sponsorship" value={fmtDate(history.firstDate)} />
-                <Metric label="Latest sponsorship" value={fmtDate(history.latestDate)} />
-                <Metric label="Years active" value={history.yearsActive ?? 0} />
-                <Metric label="Total properties" value={history.totalProperties ?? 0} />
-                <Metric label="Lifetime spend" value={fmtShort(history.lifetimeSpend)} accent="#D9521C" />
-                <Metric label="Lifetime bonus" value={fmtShort(history.lifetimeBonusValue)} accent="#15814B" />
+            <div className="dd-card" style={{ marginBottom: 20 }}>
+              <div className="dd-card-head" style={{ paddingBottom: 4 }}><h3 className="dd-card-title">Client Investment History</h3></div>
+              <div className="dd-metric-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                <Metric label="First sponsorship" value={fmtDate(history.firstDate)} dot="#1F5BB5" />
+                <Metric label="Latest sponsorship" value={fmtDate(history.latestDate)} dot="#15814B" />
+                <Metric label="Years active" value={history.yearsActive ?? 0} dot="#6B3FB5" />
+                <Metric label="Total properties" value={history.totalProperties ?? 0} dot="#9A5B00" />
+                <Metric label="Lifetime spend" value={fmtShort(history.lifetimeSpend)} accent="#D9521C" dot="#D9521C" />
+                <Metric label="Lifetime bonus" value={fmtShort(history.lifetimeBonusValue)} accent="#15814B" dot="#15814B" />
               </div>
             </div>
           </div>
 
           {/* Property performance table */}
-          <div style={{ ...CARD, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <h3 style={{ fontSize: 14.5, fontWeight: 700, margin: 0, flex: 1 }}>Property Performance ({tableRows.length})</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#EEF0F3', borderRadius: 9, padding: '7px 11px', width: 240 }}>
+          <div className="dd-card" style={{ marginBottom: 0 }}>
+            <div style={{ padding: '15px 22px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h3 className="dd-card-title" style={{ flex: 1 }}>Property Performance <span style={{ color: '#93A0B5', fontWeight: 600 }}>({tableRows.length})</span></h3>
+              <div className="dd-search">
                 <Icon name="search" size={15} style={{ color: '#6B7790' }} />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search properties…" style={{ border: 'none', background: 'none', outline: 'none', flex: 1, fontSize: 13, color: '#16243C' }} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search properties…" />
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={exportTablePdf}><Icon name="file" size={14} /> PDF</button>
-              <button className="btn btn-primary btn-sm" onClick={exportExcel}><Icon name="download" size={14} /> Excel</button>
+              <button className="dd-export-btn" onClick={exportTablePdf}><Icon name="file" size={14} /> PDF</button>
+              <button className="dd-export-btn primary" onClick={exportExcel}><Icon name="download" size={14} /> Excel</button>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 860 }}>
                 <thead>
                   <tr>
-                    <th style={COL_HEAD} onClick={() => sortBy('year')}>Year{sortArrow('year')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('channel')}>Channel{sortArrow('channel')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('client')}>Client{sortArrow('client')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('category')}>Category{sortArrow('category')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('type')}>Type{sortArrow('type')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('name')}>Property Name{sortArrow('name')}</th>
-                    <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('value')}>Value{sortArrow('value')}</th>
-                    <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusValue')}>Bonus Value{sortArrow('bonusValue')}</th>
-                    <th style={{ ...COL_HEAD, textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus %{sortArrow('bonusCount')}</th>
-                    <th style={COL_HEAD} onClick={() => sortBy('startDate')}>Duration{sortArrow('startDate')}</th>
+                    <th className="dd-th" onClick={() => sortBy('year')}>Year{sortArrow('year')}</th>
+                    <th className="dd-th" onClick={() => sortBy('channel')}>Channel{sortArrow('channel')}</th>
+                    <th className="dd-th" onClick={() => sortBy('client')}>Client{sortArrow('client')}</th>
+                    <th className="dd-th" onClick={() => sortBy('category')}>Category{sortArrow('category')}</th>
+                    <th className="dd-th" onClick={() => sortBy('type')}>Type{sortArrow('type')}</th>
+                    <th className="dd-th" onClick={() => sortBy('name')}>Property Name{sortArrow('name')}</th>
+                    <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('value')}>Value{sortArrow('value')}</th>
+                    <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('bonusValue')}>Bonus Value{sortArrow('bonusValue')}</th>
+                    <th className="dd-th" style={{ textAlign: 'right' }} onClick={() => sortBy('bonusCount')}>Bonus %{sortArrow('bonusCount')}</th>
+                    <th className="dd-th" onClick={() => sortBy('startDate')}>Duration{sortArrow('startDate')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tableRows.length === 0 && <tr><td colSpan={10} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
-                  {tableRows.map((r, i) => (
-                    <tr key={i} onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F8FA'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
-                      <td style={{ ...CELL, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{r.year}</td>
-                      <td style={{ ...CELL, color: '#3B4A63' }}>{r.channel || '-'}</td>
-                      <td style={{ ...CELL, color: '#3B4A63' }}>{r.client || '-'}</td>
-                      <td style={CELL}>{r.category}</td>
-                      <td style={{ ...CELL, color: '#3B4A63' }}>{r.type || '-'}</td>
-                      <td style={{ ...CELL, fontWeight: 600, color: '#16243C' }}>{r.name}</td>
-                      <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600 }}>{fmtLKR(r.value)}</td>
-                      <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>{r.bonusValue > 0 ? fmtLKR(r.bonusValue) : '-'}</td>
-                      <td style={{ ...CELL, textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount ? r.bonusCount + '%' : '-'}</td>
-                      <td style={{ ...CELL, fontSize: 12, color: '#3B4A63' }}>
-                        {r.startDate ? <>{fmtDate(r.startDate)} &rarr; {r.endDate ? fmtDate(r.endDate) : <span style={{ color: '#15814B', fontWeight: 600 }}>Ongoing</span>}</> : '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {tableRows.length === 0 && <tr><td colSpan={10} className="dd-td" style={{ textAlign: 'center', color: '#93A0B5' }}>No properties for the selected filters.</td></tr>}
+                  {tableRows.map((r, i) => {
+                    const catColor = CAT_COLORS[Math.abs((r.category || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % CAT_COLORS.length];
+                    return (
+                      <tr key={i} className="dd-row">
+                        <td className="dd-td" style={{ fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{r.year}</td>
+                        <td className="dd-td" style={{ color: '#3B4A63' }}>{r.channel || '-'}</td>
+                        <td className="dd-td" style={{ color: '#3B4A63' }}>{r.client || '-'}</td>
+                        <td className="dd-td"><span className="dd-cat-pill"><span className="dd-cat-dot" style={{ background: catColor }} />{r.category}</span></td>
+                        <td className="dd-td" style={{ color: '#3B4A63' }}>{r.type || '-'}</td>
+                        <td className="dd-td" style={{ fontWeight: 600, color: '#16243C' }}>{r.name}</td>
+                        <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", fontWeight: 600 }}>{fmtLKR(r.value)}</td>
+                        <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>{r.bonusValue > 0 ? fmtLKR(r.bonusValue) : '-'}</td>
+                        <td className="dd-td" style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{r.bonusCount ? r.bonusCount + '%' : '-'}</td>
+                        <td className="dd-td" style={{ fontSize: 12, color: '#3B4A63' }}>
+                          {r.startDate ? <>{fmtDate(r.startDate)} &rarr; {r.endDate ? fmtDate(r.endDate) : <span style={{ color: '#15814B', fontWeight: 600 }}>Ongoing</span>}</> : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
