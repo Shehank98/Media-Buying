@@ -506,30 +506,53 @@ export async function getChannelPropertyHistory(req, res) {
       include: {
         channel: { select: { name: true, client: { select: { name: true, agency: { select: { name: true } } } } } },
         creator: { select: { name: true } },
+        history: {
+          include: { changer: { select: { name: true } } },
+          orderBy: { changedAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    const toDate = (d) => (d == null ? null : d instanceof Date ? d.toISOString() : d);
 
     const grouped = {};
     for (const p of properties) {
       const key = p.name;
       if (!grouped[key]) grouped[key] = [];
+      // Audit-trail rate/term changes from PropertyHistory
+      const changes = (p.history || []).map((h) => ({
+        changedAt: toDate(h.changedAt),
+        changedBy: h.changer?.name || 'Unknown',
+        note: h.changeNote || '',
+        previous: h.previousValues || {},
+        next: h.newValues || {},
+      }));
       grouped[key].push({
         id: p.id,
         type: p.type,
+        category: p.category || null,
         cost: safeNum(p.cost) || 0,
+        bonusValue: safeNum(p.bonusValue) || 0,
+        bonusCount: Number(p.bonusCount || 0),
         bonusPct: safeNum(p.bonusPct),
+        sponsorshipDetails: p.sponsorshipDetails || null,
+        startDate: toDate(p.startDate),
+        endDate: toDate(p.endDate),
+        ongoing: !!p.startDate && !p.endDate,
         notes: p.notes || null,
         year: p.createdAt instanceof Date ? p.createdAt.getFullYear() : new Date(p.createdAt).getFullYear(),
         clientName: p.channel?.client?.name || '',
         agencyName: p.channel?.client?.agency?.name || '',
         creatorName: p.creator?.name || '',
-        createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+        createdAt: toDate(p.createdAt),
+        updatedAt: toDate(p.updatedAt),
+        changes,
       });
     }
 
     const result = Object.entries(grouped).map(([name, entries]) => {
-      entries.sort((a, b) => a.year - b.year);
+      entries.sort((a, b) => a.year - b.year || new Date(a.createdAt) - new Date(b.createdAt));
       for (let i = 1; i < entries.length; i++) {
         const prev = entries[i - 1].cost;
         const curr = entries[i].cost;
@@ -539,7 +562,24 @@ export async function getChannelPropertyHistory(req, res) {
           entries[i].changeDirection = pct > 0 ? 'up' : pct < 0 ? 'down' : 'same';
         }
       }
-      return { propertyName: name, entries };
+      const costs = entries.map((e) => e.cost).filter((c) => c > 0);
+      const clientsSet = new Set(entries.map((e) => e.clientName).filter(Boolean));
+      const totalChanges = entries.reduce((s, e) => s + (e.changes?.length || 0), 0);
+      return {
+        propertyName: name,
+        entries,
+        summary: {
+          entryCount: entries.length,
+          clientCount: clientsSet.size,
+          clients: [...clientsSet],
+          firstYear: entries[0]?.year ?? null,
+          latestYear: entries[entries.length - 1]?.year ?? null,
+          latestCost: entries[entries.length - 1]?.cost ?? 0,
+          minCost: costs.length ? Math.min(...costs) : 0,
+          maxCost: costs.length ? Math.max(...costs) : 0,
+          totalChanges,
+        },
+      };
     });
 
     return res.json(result);
