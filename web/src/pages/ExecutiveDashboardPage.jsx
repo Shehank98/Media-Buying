@@ -451,6 +451,20 @@ export default function ExecutiveDashboardPage() {
         .ed-hero-stat-label { font-size: 11px; color: rgba(255,255,255,.55); font-weight: 600; }
         .ed-hero-stat-val { font-size: 20px; font-weight: 750; letter-spacing: -.4px; font-family: 'Spline Sans Mono', monospace; margin-top: 6px; }
 
+        /* Ranked visual bars */
+        .rank-row { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-radius: 9px; cursor: pointer; transition: background .12s; }
+        .rank-row:hover { background: #F5F6F8; }
+        .rank-num { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; }
+        .rank-main { flex: 1; min-width: 0; }
+        .rank-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+        .rank-name { font-size: 12.5px; font-weight: 650; color: #16243C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rank-meta { font-size: 11px; color: #93A0B5; flex-shrink: 0; }
+        .rank-bar-track { height: 8px; border-radius: 5px; background: #EEF0F3; overflow: hidden; }
+        .rank-bar-fill { height: 100%; border-radius: 5px; transition: width .4s ease; }
+        .rank-side { flex-shrink: 0; text-align: right; min-width: 92px; }
+        .rank-val { font-size: 12.5px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; color: #16243C; }
+        .rank-delta { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 3px; justify-content: flex-end; margin-top: 2px; }
+
         /* Upload detail rows */
         .ed-upload-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 1px solid #EEF0F3; }
         .ed-upload-row:last-child { border-bottom: none; }
@@ -614,96 +628,90 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 3: Top Clients + Top Channels */}
+      {/* Section 3: Top Clients + Top Channels (visual ranked bars) */}
       <div className="dash-section two-col-grid">
         {/* Top Clients */}
         <div className="chart-card">
           <div className="chart-card-title">Top 10 Clients</div>
-          <div className="chart-card-sub">By YTD billing</div>
+          <div className="chart-card-sub">By YTD billing — bar length is share of the top client</div>
           {topClientsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={36} />)}
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
             </div>
           ) : !topClients.length ? (
             <ChartEmpty />
-          ) : (
-            <div className="tbl-wrap" style={{ margin: 0 }}>
-              <table className="tbl" style={{ fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 32 }}>#</th>
-                    <th>Client</th>
-                    <th>YTD</th>
-                    <th>Trend</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topClients.slice(0, 10).map(c => (
-                    <tr key={c.clientId} className="clickable" onClick={() => navigate(`/clients/${c.clientId}`)}>
-                      <td style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 12 }}>{c.rank}</td>
-                      <td>
-                        <div className="strong" style={{ fontSize: 12.5 }}>{c.clientName}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div>
-                      </td>
-                      <td className="mono" style={{ fontSize: 12 }}>{fmtLKR(c.ytdBilling)}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                          {trendIcon(c.momDirection)}
-                          <span style={{ color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? 'var(--red-600)' : 'var(--muted)' }}>
-                            {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '-'}
-                          </span>
+          ) : (() => {
+            const max = Math.max(...topClients.map(c => c.ytdBilling || 0), 1);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                {topClients.slice(0, 10).map((c, i) => {
+                  const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
+                  const pct = Math.max(2, Math.round((c.ytdBilling / max) * 100));
+                  return (
+                    <div key={c.clientId} className="rank-row" onClick={() => navigate(`/clients/${c.clientId}`)}>
+                      <span className="rank-num" style={{ background: i < 3 ? color : '#EEF0F3', color: i < 3 ? '#fff' : '#6B7790' }}>{c.rank}</span>
+                      <div className="rank-main">
+                        <div className="rank-name-row">
+                          <span className="rank-name">{c.clientName}</span>
+                          <span className="rank-meta">· {c.agencyName}</span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
+                      </div>
+                      <div className="rank-side">
+                        <div className="rank-val">{fmtLKR(c.ytdBilling)}</div>
+                        <div className="rank-delta" style={{ color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? 'var(--red-600)' : 'var(--muted)' }}>
+                          {trendIcon(c.momDirection)}
+                          {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '%' : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Top Channels */}
         <div className="chart-card">
           <div className="chart-card-title">Top 10 Channels</div>
-          <div className="chart-card-sub">By YTD spend</div>
+          <div className="chart-card-sub">By YTD spend — bar length is share of the top channel</div>
           {topChannelsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={36} />)}
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
             </div>
           ) : !topChannels.length ? (
             <ChartEmpty />
-          ) : (
-            <div className="tbl-wrap" style={{ margin: 0 }}>
-              <table className="tbl" style={{ fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: 32 }}>#</th>
-                    <th>Channel</th>
-                    <th>YTD</th>
-                    <th>YoY</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topChannels.slice(0, 10).map(c => (
-                    <tr key={c.channelMasterId} className="clickable" onClick={() => navigate(`/channel-masters/${c.channelMasterId}`)}>
-                      <td style={{ color: 'var(--muted)', fontWeight: 700, fontSize: 12 }}>{c.rank}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span className="strong" style={{ fontSize: 12.5 }}>{c.channelName}</span>
+          ) : (() => {
+            const max = Math.max(...topChannels.map(c => c.ytdSpend || 0), 1);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                {topChannels.slice(0, 10).map((c, i) => {
+                  const color = MEDIUM_COLORS[c.medium] || AGENCY_COLORS[i % AGENCY_COLORS.length];
+                  const pct = Math.max(2, Math.round((c.ytdSpend / max) * 100));
+                  return (
+                    <div key={c.channelMasterId} className="rank-row" onClick={() => navigate(`/channel-masters/${c.channelMasterId}`)}>
+                      <span className="rank-num" style={{ background: i < 3 ? color : '#EEF0F3', color: i < 3 ? '#fff' : '#6B7790' }}>{c.rank}</span>
+                      <div className="rank-main">
+                        <div className="rank-name-row">
+                          <span className="rank-name">{c.channelName}</span>
                           <MediumBadge medium={c.medium} />
+                          <span className="rank-meta">· {c.clientCount} clients</span>
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{c.clientCount} clients</div>
-                      </td>
-                      <td className="mono" style={{ fontSize: 12 }}>{fmtLKR(c.ytdSpend)}</td>
-                      <td style={{ fontSize: 12, color: c.yoyChange >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>
-                        {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '%' : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                        <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
+                      </div>
+                      <div className="rank-side">
+                        <div className="rank-val">{fmtLKR(c.ytdSpend)}</div>
+                        <div className="rank-delta" style={{ color: c.yoyChange == null ? 'var(--muted)' : c.yoyChange >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>
+                          {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '% YoY' : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -920,17 +928,6 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 8: Outstanding Schedules Placeholder */}
-      <div className="dash-section">
-        <div className="placeholder-card">
-          <Icon name="calendar" size={36} style={{ color: 'var(--muted-2)', marginBottom: 12 }} />
-          <div style={{ fontSize: 16, fontWeight: 720, color: 'var(--ink)', marginBottom: 8 }}>Payment Tracking</div>
-          <div style={{ fontSize: 13.5, color: 'var(--muted)', maxWidth: 420, margin: '0 auto' }}>
-            Outstanding schedule vs. invoice reconciliation and payment tracking is coming soon.
-            You'll be able to flag unpaid invoices and track overdue amounts here.
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
