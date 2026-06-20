@@ -225,6 +225,22 @@ export async function getTopClients(req, res) {
       take: 10,
     });
 
+    // 6-month spark series for the top clients (one query, pivoted in memory).
+    const clientIds = grouped.map((g) => g.clientId);
+    const sparkStart = monthsBefore(ym, 5);
+    const sparkMonths = Array.from({ length: 6 }, (_, i) => monthsBefore(ym, 5 - i));
+    const sparkRows = clientIds.length
+      ? await prisma.scheduleLog.groupBy({
+          by: ['clientId', 'scheduleMonth'],
+          where: { ...scope, clientId: { in: clientIds }, scheduleMonth: { gte: sparkStart, lte: ym } },
+          _sum: { scheduleValue: true },
+        })
+      : [];
+    const sparkMap = {};
+    for (const r of sparkRows) {
+      (sparkMap[r.clientId] ||= {})[r.scheduleMonth] = safeNum(r._sum.scheduleValue) || 0;
+    }
+
     const result = await Promise.all(grouped.map(async (g, idx) => {
       const client = await prisma.client.findUnique({ where: { id: g.clientId }, include: { agency: { select: { id: true, name: true } } } });
       const [currAgg, prevAgg] = await Promise.all([
@@ -245,6 +261,7 @@ export async function getTopClients(req, res) {
         currentMonthBilling: curr,
         momTrend,
         momDirection,
+        spark: sparkMonths.map((m) => ({ m, v: sparkMap[g.clientId]?.[m] || 0 })),
       };
     }));
 

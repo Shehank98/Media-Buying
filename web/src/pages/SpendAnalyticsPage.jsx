@@ -46,6 +46,7 @@ export default function SpendAnalyticsPage() {
   const [clientId, setClientId] = useState('');
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
+  const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
 
   const chartMonthlyRef = useRef(null);
   const chartMediumRef = useRef(null);
@@ -685,7 +686,8 @@ export default function SpendAnalyticsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             {/* By Medium - Pie */}
             <div className="section-card" style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Medium</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Spend by Medium</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Click a slice to filter the channel views below{mediumFilter ? ` · filtering: ${mediumFilter}` : ''}</p>
               <div ref={chartMediumRef}>
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
@@ -698,11 +700,12 @@ export default function SpendAnalyticsPage() {
                       innerRadius={55}
                       outerRadius={90}
                       paddingAngle={2}
+                      onClick={(d) => setMediumFilter((f) => (f === d.name ? '' : d.name))}
                       label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       labelLine={{ strokeWidth: 1 }}
                     >
                       {data.byMedium.map((entry, idx) => (
-                        <Cell key={idx} fill={MEDIUM_COLORS[entry.name] || COLORS[idx % COLORS.length]} />
+                        <Cell key={idx} cursor="pointer" opacity={mediumFilter && mediumFilter !== entry.name ? 0.3 : 1} stroke={mediumFilter === entry.name ? '#16243C' : 'none'} strokeWidth={2} fill={MEDIUM_COLORS[entry.name] || COLORS[idx % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(val) => fmtLKR(val)} />
@@ -770,24 +773,36 @@ export default function SpendAnalyticsPage() {
           </div>
 
           {/* By Channel - Full width bar chart + table */}
-          <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Channel (Top 15)</h3>
-            <div ref={chartChannelRef}>
-              <ResponsiveContainer width="100%" height={Math.min(400, data.byChannel.slice(0, 15).length * 32 + 40)}>
-                <BarChart data={data.byChannel.slice(0, 15)} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 120 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
-                  <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="value" name="Schedule Value" radius={[0, 4, 4, 0]}>
-                    {data.byChannel.slice(0, 15).map((ch, idx) => (
-                      <Cell key={idx} fill={MEDIUM_COLORS[ch.medium] || COLORS[idx % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          {(() => {
+            const channelsView = (mediumFilter ? data.byChannel.filter(c => c.medium === mediumFilter) : data.byChannel).slice(0, 15);
+            return (
+            <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Spend by Channel (Top 15)</h3>
+                {mediumFilter && (
+                  <button onClick={() => setMediumFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: MEDIUM_COLORS[mediumFilter] || '#16243C', background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}>
+                    {mediumFilter} <Icon name="x" size={12} />
+                  </button>
+                )}
+              </div>
+              <div ref={chartChannelRef}>
+                <ResponsiveContainer width="100%" height={Math.min(400, channelsView.length * 32 + 40)}>
+                  <BarChart data={channelsView} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 120 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
+                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="value" name="Schedule Value" radius={[0, 4, 4, 0]}>
+                      {channelsView.map((ch, idx) => (
+                        <Cell key={idx} fill={MEDIUM_COLORS[ch.medium] || COLORS[idx % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
+            );
+          })()}
 
           {/* Grouped Breakdown: Media Group → Channels */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
@@ -807,7 +822,8 @@ export default function SpendAnalyticsPage() {
                 </thead>
                 <tbody>
                   {data.byMediaGroup.map((mg, mgIdx) => {
-                    const channels = data.byChannel.filter(ch => ch.mediaGroup === mg.name);
+                    const channels = data.byChannel.filter(ch => ch.mediaGroup === mg.name && (!mediumFilter || ch.medium === mediumFilter));
+                    if (mediumFilter && channels.length === 0) return null;
                     const mgPct = data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '-';
                     return (
                       <Fragment key={mg.name}>

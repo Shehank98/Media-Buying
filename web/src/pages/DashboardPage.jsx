@@ -377,13 +377,14 @@ export default function DashboardPage() {
               <tr>
                 <th style={COL_HEAD}>Client</th>
                 <th style={COL_HEAD}>Agency</th>
+                <th style={{ ...COL_HEAD, textAlign: 'center' }}>6-mo</th>
                 <th style={{ ...COL_HEAD, textAlign: 'right' }}>Spend</th>
                 <th style={{ ...COL_HEAD, textAlign: 'right' }}>MoM</th>
               </tr>
             </thead>
             <tbody>
               {clients.length === 0 && (
-                <tr><td colSpan={4} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No client billings yet.</td></tr>
+                <tr><td colSpan={5} style={{ ...CELL, textAlign: 'center', color: '#93A0B5' }}>No client billings yet.</td></tr>
               )}
               {clients.map((c, i) => {
                 const dot = DOTS[i % DOTS.length];
@@ -397,6 +398,15 @@ export default function DashboardPage() {
                       </div>
                     </td>
                     <td style={{ ...CELL, color: '#3B4A63' }}>{c.agencyName}</td>
+                    <td style={{ ...CELL, padding: '6px 12px' }}>
+                      {c.spark?.length ? (
+                        <ResponsiveContainer width={84} height={28}>
+                          <LineChart data={c.spark} margin={{ top: 4, right: 2, bottom: 4, left: 2 }}>
+                            <Line type="monotone" dataKey="v" stroke={kind === 'down' ? '#C5391F' : '#15814B'} strokeWidth={1.6} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : <span style={{ color: '#C7D0DD' }}>-</span>}
+                    </td>
                     <td style={{ ...CELL, textAlign: 'right', fontWeight: 600, color: '#16243C', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtRs(c.ytdBilling)}</td>
                     <td style={{ ...CELL, textAlign: 'right' }}>
                       {c.momTrend != null ? <span style={trendChip(kind)}>{kind === 'down' ? '▼' : '▲'} {Math.abs(c.momTrend)}%</span> : <span style={{ color: '#93A0B5' }}>-</span>}
