@@ -119,7 +119,8 @@ export async function getDashboardSummary(req, res) {
     const { ym, ys, lys, lycm } = await refPeriod(where, year);
     const years = await availableYears(where);
 
-    const [billingsThisMonth, billingsYTD, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth] =
+    const sameMonthLastYear = `${parseInt(ym.slice(0, 4)) - 1}-${ym.slice(5)}`;
+    const [billingsThisMonth, billingsYTD, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth, sameMonthLY] =
       await Promise.all([
         prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: { gte: ys, lte: ym } }, _sum: { scheduleValue: true } }),
@@ -129,11 +130,15 @@ export async function getDashboardSummary(req, res) {
         prisma.scheduleLog.findMany({ where: { ...where, scheduleMonth: ym }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
         prisma.uploadBatch.count({ where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
         prisma.scheduleLog.count({ where: { ...where, scheduleMonth: ym, uploadBatchId: null } }),
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: sameMonthLastYear }, _sum: { scheduleValue: true } }),
       ]);
 
     const ytd = safeNum(billingsYTD._sum.scheduleValue) || 0;
     const ly = safeNum(lastYearYTD._sum.scheduleValue) || 0;
     const yoy = ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null;
+    const thisMonthVal = safeNum(billingsThisMonth._sum.scheduleValue) || 0;
+    const sameMonthLYVal = safeNum(sameMonthLY._sum.scheduleValue) || 0;
+    const velocityPct = sameMonthLYVal > 0 ? Number(((thisMonthVal / sameMonthLYVal) * 100).toFixed(0)) : null;
 
     return res.json({
       billingsThisMonth: safeNum(billingsThisMonth._sum.scheduleValue) || 0,
@@ -147,6 +152,8 @@ export async function getDashboardSummary(req, res) {
       availableYears: years,
       selectedYear: year && /^\d{4}$/.test(String(year)) ? parseInt(year) : null,
       referenceMonth: ym,
+      sameMonthLastYear: sameMonthLYVal,
+      velocityPct,
     });
   } catch (error) {
     console.error('getDashboardSummary error:', error);

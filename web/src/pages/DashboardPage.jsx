@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Line,
+  RadialBarChart, RadialBar, PolarAngleAxis,
 } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
@@ -253,8 +254,8 @@ export default function DashboardPage() {
         {stats.map((s, i) => <StatCard key={i} {...s} />)}
       </div>
 
-      {/* trend + donut */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.62fr 1fr', gap: 18, marginBottom: 20 }}>
+      {/* trend + donut + velocity */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.78fr', gap: 18, marginBottom: 20 }}>
         <div style={CARD}>
           <CardHead
             title="Monthly Spend Trend" sub="Total committed media value · last 12 months"
@@ -332,6 +333,36 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Spend velocity gauge */}
+        {(() => {
+          const vel = summary?.velocityPct;
+          const velColor = vel == null ? '#93A0B5' : vel >= 100 ? '#15814B' : '#C5391F';
+          return (
+            <div style={CARD}>
+              <CardHead title="Spend Velocity" sub="vs. same month last year" />
+              <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '100%', height: 126 }}>
+                  <ResponsiveContainer width="100%" height={126}>
+                    <RadialBarChart innerRadius="66%" outerRadius="100%" data={[{ value: Math.min(vel ?? 0, 200) }]} startAngle={210} endAngle={-30}>
+                      <PolarAngleAxis type="number" domain={[0, 200]} tick={false} />
+                      <RadialBar dataKey="value" cornerRadius={10} fill={velColor} background={{ fill: '#EEF0F3' }} />
+                    </RadialBarChart>
+                  </ResponsiveContainer>
+                  <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
+                    <div style={{ textAlign: 'center', marginTop: 16 }}>
+                      <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 25, fontWeight: 750, color: velColor, lineHeight: 1 }}>{vel == null ? '-' : vel + '%'}</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#93A0B5', marginTop: 3 }}>of last year</div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: velColor, textAlign: 'center' }}>
+                  {vel == null ? 'No prior-year month' : vel >= 100 ? `Pacing ${vel - 100}% ahead` : `Pacing ${100 - vel}% behind`}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* top clients + activity */}

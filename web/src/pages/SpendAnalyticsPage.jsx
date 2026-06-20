@@ -654,6 +654,33 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
+          {/* Flighting calendar — which clients were active each month */}
+          {(data.clientFlighting?.length > 0 && data.flightingMonths?.length > 0) && (
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
+              <h3 className="spa-ctitle">Flighting Calendar</h3>
+              <p className="spa-csub" style={{ marginBottom: 14 }}>Active months per client (top 15 by spend) — filled = had spend that month</p>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `minmax(150px, 1.4fr) repeat(${data.flightingMonths.length}, minmax(26px, 1fr))`, gap: 3, minWidth: 600 }}>
+                  <div />
+                  {data.flightingMonths.map(m => (
+                    <div key={m} style={{ fontSize: 9, color: '#93A0B5', textAlign: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)', height: 46, margin: '0 auto', fontWeight: 600 }}>{fmtMonth(m)}</div>
+                  ))}
+                  {data.clientFlighting.map((c) => {
+                    const active = new Set(c.months);
+                    return (
+                      <Fragment key={c.name}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#16243C', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: 6 }} title={c.name}>{c.name}</div>
+                        {data.flightingMonths.map(m => (
+                          <div key={m} title={`${c.name} · ${fmtMonth(m)}`} style={{ height: 20, borderRadius: 4, background: active.has(m) ? '#E85D24' : '#EEF0F3' }} />
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Medium & Media Group charts side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
             {/* By Medium - Pie */}

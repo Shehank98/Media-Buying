@@ -359,6 +359,13 @@ export async function getAnalytics(req, res) {
       return { name: c.name, months, value: Math.round(c.value), avgMonth: months ? Math.round(c.value / months) : Math.round(c.value), entries: c.count };
     }).sort((a, b) => b.value - a.value);
 
+    // Flighting: which months each top client was active (Gantt-style grid).
+    const clientFlighting = Object.values(byClient).sort((a, b) => b.value - a.value).slice(0, 15).map((c) => ({
+      name: c.name,
+      value: Math.round(c.value),
+      months: [...(clientMonths[c.name] || [])].sort(),
+    }));
+
     return res.json({
       totalEntries: logs.length,
       totalValue: Math.round(totalValue * 100) / 100,
@@ -374,6 +381,8 @@ export async function getAnalytics(req, res) {
       brandTrend,
       brandTrendKeys: topBrands,
       clientTenure,
+      clientFlighting,
+      flightingMonths: sortedMonths,
     });
   } catch (error) {
     console.error('Get analytics error:', error);
