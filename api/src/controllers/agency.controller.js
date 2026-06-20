@@ -50,7 +50,7 @@ export async function list(req, res) {
         _sum: { scheduleValue: true },
       }),
       prisma.scheduleLog.findMany({
-        where: { agencyId: { in: agencyIds }, isDeleted: false, channelMasterId: { not: null } },
+        where: { agencyId: { in: agencyIds }, isDeleted: false },
         select: { agencyId: true, channelMasterId: true },
         distinct: ['agencyId', 'channelMasterId'],
       }),
