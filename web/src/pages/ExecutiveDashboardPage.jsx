@@ -628,7 +628,7 @@ export default function ExecutiveDashboardPage() {
                   const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
                   const pct = Math.max(2, Math.round((c.ytdBilling / max) * 100));
                   return (
-                    <div key={c.clientId} className="rank-row" onClick={() => navigate(`/clients/${c.clientId}`)}>
+                    <div key={c.clientId} className="rank-row" onClick={() => navigate(`/clients/${c.clientId}/dashboard`)}>
                       <span className="rank-num" style={{ background: i < 3 ? color : '#EEF0F3', color: i < 3 ? '#fff' : '#6B7790' }}>{c.rank}</span>
                       <div className="rank-main">
                         <div className="rank-name-row">

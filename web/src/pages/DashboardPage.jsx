@@ -390,7 +390,7 @@ export default function DashboardPage() {
                 const dot = DOTS[i % DOTS.length];
                 const kind = c.momDirection === 'up' ? 'up' : c.momDirection === 'down' ? 'down' : 'flat';
                 return (
-                  <tr key={c.clientId} onClick={() => go(`/clients/${c.clientId}`)} style={{ cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+                  <tr key={c.clientId} onClick={() => go(`/clients/${c.clientId}/dashboard`)} style={{ cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.background = '#F5F6F8'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
                     <td style={CELL}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ width: 28, height: 28, borderRadius: 8, background: dot[0], color: dot[1], display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flex: 'none' }}>{initials(c.clientName)}</span>
