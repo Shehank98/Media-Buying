@@ -89,7 +89,6 @@ export default function ClientDashboardPage() {
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 28 }}>
         <Stat label="Total Spend" value={fmtLKR(data.totalValue)} sub={`${data.totalEntries} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
-        <Stat label="With VAT (18%)" value={fmtLKR(data.totalWithVat)} tone={['#ECF8F1', '#15814B']} icon="dollar" accent="#15814B" />
         <Stat label="First Active" value={fmtMonth(data.firstMonth)} tone={['#EDF3FD', '#1F5BB5']} icon="calendar" />
         <Stat label="Last Active" value={fmtMonth(data.lastMonth)} sub={`${data.monthsActive} months active`} tone={['#EDF3FD', '#1F5BB5']} icon="clock" />
         <Stat label="Channels Used" value={data.channelCount ?? 0} tone={['#E8DEF8', '#6B3FB5']} icon="tv" />

@@ -532,16 +532,11 @@ export default function SpendAnalyticsPage() {
       {!loading && data && (
         <>
           {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 22 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
             <div className="spa-stat">
               <div className="spa-stat-label">Total Schedule Value</div>
               <div className="spa-stat-val">LKR {fmtShort(data.totalValue)}</div>
               <div className="spa-stat-sub">{data.totalEntries.toLocaleString()} entries</div>
-            </div>
-            <div className="spa-stat">
-              <div className="spa-stat-label">Total With VAT (18%)</div>
-              <div className="spa-stat-val" style={{ color: '#15814B' }}>LKR {fmtShort(data.totalWithVat ?? data.totalValue * 1.18)}</div>
-              <div className="spa-stat-sub">incl. tax</div>
             </div>
             <div className="spa-stat">
               <div className="spa-stat-label">Avg / Month</div>
@@ -656,7 +651,7 @@ export default function SpendAnalyticsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                 <div>
                   <h3 className="spa-ctitle">Monthly Spend Trend</h3>
-                  <p className="spa-csub">Schedule value (bars) vs. value with VAT (line){insights?.peak ? ` · peak ${fmtMonth(insights.peak.month)}` : ''}</p>
+                  <p className="spa-csub">Committed schedule value by month{insights?.peak ? ` · peak ${fmtMonth(insights.peak.month)}` : ''}</p>
                 </div>
               </div>
               <div ref={chartMonthlyRef}>
@@ -674,7 +669,6 @@ export default function SpendAnalyticsPage() {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="value" name="Schedule Value" fill="#0A1729" radius={[4, 4, 0, 0]} maxBarSize={46} />
-                    <Area type="monotone" dataKey="valueWithVat" name="With VAT (18%)" stroke="#E85D24" strokeWidth={2.2} fill="url(#spaVat)" dot={false} />
                     {chartMonthly.length > 6 && <Brush dataKey="label" height={18} stroke="#E85D24" travellerWidth={8} />}
                   </ComposedChart>
                 </ResponsiveContainer>

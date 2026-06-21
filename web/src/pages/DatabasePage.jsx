@@ -657,7 +657,7 @@ export default function DatabasePage() {
 
           {/* Client overview cards + monthly mini chart */}
           {clientStats && clientStats.totalEntries > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr)) 2fr', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr)) 2fr', gap: 12, marginBottom: 12 }}>
               <div className="db-stat">
                 <div className="db-stat-label">Records</div>
                 <div className="db-stat-val">{clientStats.totalEntries.toLocaleString()}</div>
@@ -665,10 +665,6 @@ export default function DatabasePage() {
               <div className="db-stat">
                 <div className="db-stat-label">Schedule Value</div>
                 <div className="db-stat-val">{fmtShort(clientStats.totalValue)}</div>
-              </div>
-              <div className="db-stat">
-                <div className="db-stat-label">With VAT</div>
-                <div className="db-stat-val" style={{ color: '#15814B' }}>{fmtShort(clientStats.totalWithVat ?? clientStats.totalValue * 1.18)}</div>
               </div>
               <div className="db-stat">
                 <div className="db-stat-label">Months · Channels</div>

@@ -65,7 +65,7 @@ export default function ChannelIntelligencePage() {
   const [propClientFilter, setPropClientFilter] = useState('');
   const [expandedProps, setExpandedProps] = useState({});
 
-  const [clientSort, setClientSort] = useState({ field: 'totalScheduleValueWithVat', dir: 'desc' });
+  const [clientSort, setClientSort] = useState({ field: 'totalScheduleValue', dir: 'desc' });
 
   const [agencyMonthly, setAgencyMonthly] = useState({ agencies: [], data: [] });
 
@@ -223,7 +223,7 @@ export default function ChannelIntelligencePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           <div>
             <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Schedule value vs. value with VAT (18%) across all recorded months</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Committed schedule value across all recorded months</p>
           </div>
           {monthlyInsights && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -252,7 +252,6 @@ export default function ChannelIntelligencePage() {
               <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={l => l} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="scheduleValue" name="Schedule Value" stroke="#0A1729" strokeWidth={2.4} dot={{ r: 2 }} activeDot={{ r: 5 }} fill="url(#ciFill)" />
-              <Line type="monotone" dataKey="withVat" name="With VAT (18%)" stroke="#E85D24" strokeWidth={2} dot={false} strokeDasharray="5 3" activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -292,7 +291,6 @@ export default function ChannelIntelligencePage() {
                   { key: 'clientName', label: 'Client' },
                   { key: 'agencyName', label: 'Agency' },
                   { key: 'totalScheduleValue', label: 'Schedule Value' },
-                  { key: 'totalScheduleValueWithVat', label: 'With VAT' },
                   { key: 'entryCount', label: 'Entries' },
                   { key: 'monthsActive', label: 'Months Active' },
                   { key: 'lastActive', label: 'Last Active' },
@@ -308,7 +306,6 @@ export default function ChannelIntelligencePage() {
                     <td className="strong">{c.clientName}</td>
                     <td style={{ color: 'var(--muted)' }}>{c.agencyName}</td>
                     <td className="mono">{fmtLKR(c.totalScheduleValue)}</td>
-                    <td className="mono">{fmtLKR(c.totalScheduleValueWithVat)}</td>
                     <td style={{ textAlign: 'center' }}>{c.entryCount ?? '-'}</td>
                     <td style={{ textAlign: 'center' }}>{c.monthsActive}</td>
                     <td style={{ color: 'var(--muted)' }}>{fmtMonth(c.lastActive)}</td>
