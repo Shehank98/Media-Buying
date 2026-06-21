@@ -31,6 +31,8 @@ const fmtMonth = (ym) => {
 const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
 const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B' };
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
+const YEAR_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#D9521C'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function Stat({ label, value, sub, tone, icon, accent }) {
   return (
@@ -70,7 +72,24 @@ export default function ClientDashboardPage() {
   if (!data) return null;
 
   const c = data.client || {};
-  const trend = (data.byMonth || []).map(m => ({ ...m, label: fmtMonth(m.month) }));
+
+  // Pivot monthly spend into one series per year (X axis = Jan–Dec) so peak
+  // months are comparable across years.
+  const yearMap = {}; const yearsSet = new Set();
+  (data.byMonth || []).forEach(m => {
+    const mm = String(m.month).match(/^(\d{4})-(\d{2})$/);
+    if (!mm) return;
+    const y = mm[1], mi = parseInt(mm[2]) - 1;
+    yearsSet.add(y);
+    (yearMap[mi] ||= {})[y] = (yearMap[mi][y] || 0) + (m.value || 0);
+  });
+  const trendYears = [...yearsSet].sort();
+  const yearTrend = MONTHS.map((name, i) => {
+    const row = { month: name };
+    trendYears.forEach(y => { row[y] = yearMap[i]?.[y] || 0; });
+    return row;
+  });
+
   const topChannels = (data.byChannel || []).slice(0, 12);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
   const avgMonth = data.monthsActive ? data.totalValue / data.monthsActive : 0;
@@ -101,20 +120,23 @@ export default function ClientDashboardPage() {
         <Stat label="Avg / Month" value={fmtLKR(avgMonth)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
       </div>
 
-      {/* Monthly spend trend */}
+      {/* Monthly spend trend — one line per year so peak months are comparable */}
       <div style={{ ...CARD, padding: 24, marginBottom: 24 }}>
         <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Committed media value per month, all channels</p>
-        {trend.length === 0 ? (
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year — compare peak months across years</p>
+        {trendYears.length === 0 ? (
           <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend recorded</div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={trend} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+            <LineChart data={yearTrend} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval="preserveStartEnd" />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
               <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
-              <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
-              <Line type="monotone" dataKey="value" name="Spend" stroke="#E85D24" strokeWidth={2.4} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+              <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              {trendYears.map((y, i) => (
+                <Line key={y} type="monotone" dataKey={y} name={y} stroke={YEAR_COLORS[i % YEAR_COLORS.length]} strokeWidth={2.4} dot={{ r: 2.5 }} activeDot={{ r: 5 }} />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         )}
