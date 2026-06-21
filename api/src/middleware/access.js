@@ -176,8 +176,9 @@ export async function getAccessibleClientIds(userId, role) {
     }
   }
 
-  // PLANNER: direct client access only
-  if (role === 'PLANNER') {
+  // PLANNER (direct only) and GROUP_HEAD (direct, on top of team clients):
+  // honour client assignments made directly in Admin → Users.
+  if (role === 'PLANNER' || role === 'GROUP_HEAD') {
     const directAccess = await prisma.userClientAccess.findMany({
       where: { userId },
       select: { clientId: true },
