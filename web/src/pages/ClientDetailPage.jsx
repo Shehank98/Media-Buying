@@ -77,9 +77,9 @@ export default function ClientDetailPage() {
     fetchData();
   }, [clientId, refreshKey]);
 
-  // Load channel masters when schedule tab active
+  // Load channel masters (needed by the Add Channel form on TV/Radio/Print tabs
+  // AND the schedule-log form) — load regardless of which tab is active.
   useEffect(() => {
-    if (activeTab !== 'SCHEDULE') return;
     const load = async () => {
       try {
         const cmRes = await api.get('/masterdata/channel-masters');
@@ -87,7 +87,7 @@ export default function ClientDetailPage() {
       } catch { /* ignore */ }
     };
     load();
-  }, [activeTab, clientId]);
+  }, [clientId]);
 
   // Load schedule logs when filters change
   useEffect(() => {
@@ -356,9 +356,11 @@ export default function ClientDetailPage() {
                 <label className="field-label">Channel<span className="req">*</span></label>
                 <select className="select" value={chForm.channelMasterId} onChange={e => setChForm(p => ({ ...p, channelMasterId: e.target.value }))}>
                   <option value="">Select a channel…</option>
-                  {channelMasters.filter(cm => cm.isActive !== false).map(cm => (
-                    <option key={cm.id} value={cm.id}>{cm.name} ({cm.medium})</option>
-                  ))}
+                  {channelMasters
+                    .filter(cm => cm.isActive !== false && (activeTab === 'SCHEDULE' || cm.medium === activeTab))
+                    .map(cm => (
+                      <option key={cm.id} value={cm.id}>{cm.name} ({cm.medium})</option>
+                    ))}
                 </select>
                 <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
                   Channels are managed in User Management → Channels.
