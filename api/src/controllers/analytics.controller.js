@@ -454,7 +454,9 @@ export async function getActivityLog(req, res) {
 
 export async function getRecentUploads(req, res) {
   try {
+    const ids = await agencyIdsForUser(req.user);
     const batches = await prisma.uploadBatch.findMany({
+      where: ids ? { agencyId: { in: ids } } : {},
       include: {
         uploader: { select: { name: true } },
         agency: { select: { name: true } },
@@ -490,6 +492,9 @@ export async function getChannelSummary(req, res) {
     if (!channel) return res.status(404).json({ error: 'Channel master not found' });
 
     const base = { channelMasterId, isDeleted: false };
+    // Scope to the user's accessible agencies (MANAGER sees only their agencies).
+    const ids = await agencyIdsForUser(req.user);
+    if (ids) base.agencyId = { in: ids };
     // Anchor to the latest year that has data on this channel (not the calendar year).
     const { lys, lycm, cys, cye, year } = await refPeriod(base);
 
@@ -523,6 +528,8 @@ export async function getChannelMonthlySpend(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const base = { channelMasterId, isDeleted: false };
+    const ids = await agencyIdsForUser(req.user);
+    if (ids) base.agencyId = { in: ids };
 
     const rows = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
@@ -547,6 +554,8 @@ export async function getChannelAgencyMonthly(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const base = { channelMasterId, isDeleted: false };
+    const ids = await agencyIdsForUser(req.user);
+    if (ids) base.agencyId = { in: ids };
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['agencyId', 'scheduleMonth'],
@@ -585,10 +594,12 @@ export async function getChannelAgencyMonthly(req, res) {
 export async function getChannelClients(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
+    const ids = await agencyIdsForUser(req.user);
+    const scope = { channelMasterId, isDeleted: false, ...(ids ? { agencyId: { in: ids } } : {}) };
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['clientId'],
-      where: { channelMasterId, isDeleted: false },
+      where: scope,
       _sum: { scheduleValue: true, scheduleValueWithVat: true },
       _count: true,
     });
@@ -643,8 +654,14 @@ export async function getChannelPropertyHistory(req, res) {
       ? { OR: [{ channelMasterId }, { channelMasterId: null, OR: nameMatch }] }
       : { channelMasterId };
 
+    // Scope to the user's accessible agencies (MANAGER sees only their agencies' properties).
+    const ids = await agencyIdsForUser(req.user);
+    const propertyWhere = ids
+      ? { channel: { AND: [channelWhere, { client: { agencyId: { in: ids } } }] } }
+      : { channel: channelWhere };
+
     const properties = await prisma.property.findMany({
-      where: { channel: channelWhere },
+      where: propertyWhere,
       include: {
         channel: { select: { name: true, client: { select: { name: true, agency: { select: { name: true } } } } } },
         creator: { select: { name: true } },
