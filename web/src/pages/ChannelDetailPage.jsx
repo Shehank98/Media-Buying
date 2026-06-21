@@ -423,14 +423,20 @@ export default function ChannelDetailPage() {
       {/* Add/Edit Property Modal */}
       {showModal && (
         <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
-          <div className="modal" style={{ width: 500 }}>
-            <div className="modal-head">
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>
-                  {editingProperty ? 'Edit property' : 'Add property'}
+          <div className="modal" style={{ width: 560, position: 'relative', overflow: 'hidden' }}>
+            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #E85D24, rgba(232,93,36,.12) 70%, transparent)' }} />
+            <div className="modal-head" style={{ alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #FDF1EB, #fff)', color: '#D9521C', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #D9521C22', flex: 'none' }}>
+                  <Icon name={editingProperty ? 'edit' : 'plus'} size={19} />
                 </div>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
-                  {clientName} &middot; {channel?.name}
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>
+                    {editingProperty ? 'Edit property' : 'Add property'}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+                    {clientName} &middot; {channel?.name}
+                  </div>
                 </div>
               </div>
               <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => setShowModal(false)}>
@@ -445,6 +451,10 @@ export default function ChannelDetailPage() {
                     {formError}
                   </div>
                 )}
+
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: '#93A0B5', margin: '2px 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>Classification</span><span style={{ flex: 1, height: 1, background: '#EEF0F3' }} />
+                </div>
 
                 <div className="field">
                   <label className="field-label">
@@ -496,6 +506,10 @@ export default function ChannelDetailPage() {
                   />
                 </div>
 
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>Commercials</span><span style={{ flex: 1, height: 1, background: '#EEF0F3' }} />
+                </div>
+
                 <div className="field-grid2">
                   <div className="field">
                     <label className="field-label">
@@ -525,18 +539,18 @@ export default function ChannelDetailPage() {
                   </div>
                 </div>
 
-                <div className="field">
-                  <label className="field-label">Bonus value (auto-calculated)</label>
-                  <input
-                    className="input"
-                    type="text"
-                    readOnly
-                    value={fmtLKR((Number(propertyForm.cost) || 0) * (Number(propertyForm.bonusCount) || 0) / 100)}
-                    style={{ background: 'var(--bg-sunken)', color: 'var(--ink-soft)' }}
-                  />
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
-                    Property value × bonus count (%) ÷ 100
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#F1F8F4', border: '1px solid #cdebd9', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#15814B' }}>Bonus value</div>
+                    <div style={{ fontSize: 11, color: '#6B7790', marginTop: 2 }}>Property value × bonus % ÷ 100</div>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: '#15814B' }}>
+                    {fmtLKR((Number(propertyForm.cost) || 0) * (Number(propertyForm.bonusCount) || 0) / 100)}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: '#93A0B5', margin: '4px 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>Flight dates</span><span style={{ flex: 1, height: 1, background: '#EEF0F3' }} />
                 </div>
 
                 <div className="field-grid2">

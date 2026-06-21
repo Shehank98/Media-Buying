@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
-import Icon from '../components/Icon';
+import Icon, { fmtLKR } from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+
+const AVATAR = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#38527E'];
 
 export default function AgencyDetailPage() {
   const { agencyId } = useParams();
@@ -130,53 +132,53 @@ export default function AgencyDetailPage() {
         )}
       </div>
 
-      <div className="tbl-wrap">
-        {clients.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)' }}>
-            No clients yet. Add one to get started.
-          </div>
-        ) : (
-          <table className="tbl">
-            <thead><tr>
-              <th>Client</th>
-              <th>Channels</th>
-              {canManage && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
-              <th style={{ width: 40 }}></th>
-            </tr></thead>
-            <tbody>
-              {clients.map(c => {
-                const count = c._count?.channels || c.channelCount || 0;
-                return (
-                  <tr key={c.id} className="clickable" onClick={() => navigate(`/clients/${c.id}`)}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--bg-sunken)', color: 'var(--navy-800)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 13, flex: 'none' }}>{c.name[0]}</div>
-                        <span className="strong">{c.name}</span>
-                      </div>
-                    </td>
-                    <td><span className="count-badge">{count} channel{count !== 1 ? 's' : ''}</span></td>
-                    {canManage && (
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="row-actions">
-                          <button className="act-btn" title="Edit client" onClick={e => openEdit(c, e)}>
-                            <Icon name="edit" size={15} />
-                          </button>
-                          {isSuperAdmin && (
-                            <button className="act-btn" title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }} onClick={e => openDelete(c, e)}>
-                              <Icon name="x" size={15} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+      {clients.length === 0 ? (
+        <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>
+          No clients yet. Add one to get started.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))', gap: 16 }}>
+          {clients.map((c, i) => {
+            const count = c._count?.channels || c.channelCount || 0;
+            const color = AVATAR[(c.name.charCodeAt(0) + i) % AVATAR.length];
+            return (
+              <div
+                key={c.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/clients/${c.id}/dashboard`)}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#C7D0DD'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E8ED'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,31,61,.06)'; e.currentTarget.style.transform = 'none'; }}
+                style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 20, cursor: 'pointer', transition: 'transform .16s ease, box-shadow .16s ease, border-color .16s ease' }}
+              >
+                <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${color}, ${color}1A 70%, transparent)` }} />
+                {canManage && (
+                  <div className="row-actions" style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 4 }}>
+                    <button className="act-btn" title="Edit client" onClick={e => openEdit(c, e)}><Icon name="edit" size={14} /></button>
+                    {isSuperAdmin && (
+                      <button className="act-btn" title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }} onClick={e => openDelete(c, e)}><Icon name="x" size={14} /></button>
                     )}
-                    <td><Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 750, fontSize: 17, flex: 'none', boxShadow: `0 2px 8px ${color}55` }}>{c.name[0]?.toUpperCase()}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14.5, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</div>
+                    <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 2 }}>{count} channel{count !== 1 ? 's' : ''}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5' }}>Total spend</div>
+                    <div style={{ fontSize: 18, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C', marginTop: 3 }}>{c.totalSpend ? fmtLKR(c.totalSpend) : '-'}</div>
+                  </div>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C' }}>Dashboard <Icon name="chevR" size={14} /></span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add / Edit modal */}
       {showModal && (

@@ -88,7 +88,15 @@ export async function getClients(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    return res.json(clients);
+    // Total spend (all-time schedule value) per client.
+    const ids = clients.map((c) => c.id);
+    const spendRows = ids.length
+      ? await prisma.scheduleLog.groupBy({ by: ['clientId'], where: { clientId: { in: ids }, isDeleted: false }, _sum: { scheduleValue: true } })
+      : [];
+    const spendMap = {};
+    spendRows.forEach((r) => { spendMap[r.clientId] = Number(r._sum.scheduleValue) || 0; });
+
+    return res.json(clients.map((c) => ({ ...c, totalSpend: spendMap[c.id] || 0 })));
   } catch (error) {
     console.error('Get clients error:', error);
     return res.status(500).json({ error: 'Failed to get clients' });
