@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge } from './Icon';
 import api from '../lib/api';
+import { hasPageAccess } from '../lib/permissions';
 
 const NAV = [
   { key: '/', label: 'Dashboard', icon: 'grid' },
@@ -118,8 +119,8 @@ export default function Layout() {
   const userName = user?.name || 'User';
   const userRole = user?.role || 'PLANNER';
 
-  const filteredNav = NAV.filter(n => !n.roles || n.roles.includes(userRole));
-  const filteredAdminNav = NAV_ADMIN.filter(n => !n.roles || n.roles.includes(userRole));
+  const filteredNav = NAV.filter(n => (!n.roles || n.roles.includes(userRole)) && hasPageAccess(user, n.key));
+  const filteredAdminNav = NAV_ADMIN.filter(n => (!n.roles || n.roles.includes(userRole)) && hasPageAccess(user, n.key));
 
   return (
     <div className="app">

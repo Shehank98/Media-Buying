@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import OrbitLoader from './OrbitLoader';
+import { hasPageAccess, TOGGLEABLE_PAGES } from '../lib/permissions';
 
 export default function ProtectedRoute({ children, requiredRoles }) {
   const { isAuthenticated, loading, user } = useAuth();
@@ -26,6 +27,12 @@ export default function ProtectedRoute({ children, requiredRoles }) {
     if (!requiredRoles.includes(user?.role)) {
       return <Navigate to="/" replace />;
     }
+  }
+
+  // Per-user page-access restriction (SUPER_ADMIN/empty access = unrestricted).
+  if (!hasPageAccess(user, location.pathname)) {
+    const firstAllowed = TOGGLEABLE_PAGES.find((p) => hasPageAccess(user, p.key))?.key || '/profile';
+    return <Navigate to={firstAllowed} replace />;
   }
 
   return children;

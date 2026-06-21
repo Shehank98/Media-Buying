@@ -10,6 +10,7 @@ import autoTable from 'jspdf-autotable';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { canExport } from '../lib/permissions';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -503,10 +504,12 @@ export default function ExecutiveDashboardPage() {
                   </select>
                 </div>
               )}
-              <button className="ed-hero-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
-                <Icon name="download" size={15} />
-                {exporting ? 'Exporting…' : 'Export summary'}
-              </button>
+              {canExport(user) && (
+                <button className="ed-hero-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
+                  <Icon name="download" size={15} />
+                  {exporting ? 'Exporting…' : 'Export summary'}
+                </button>
+              )}
               <button className="ed-hero-btn accent" onClick={() => navigate('/deep-dashboard')}>
                 <Icon name="bar-chart" size={15} />
                 Deep Dashboard

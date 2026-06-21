@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { canExport } from '../lib/permissions';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
   Cell, BarChart, Bar,
@@ -77,6 +79,7 @@ function Metric({ label, value, accent, dot }) {
 
 export default function DeepDashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const chartRef = useRef(null);
 
   const [agencies, setAgencies] = useState([]);
@@ -323,8 +326,8 @@ export default function DeepDashboardPage() {
                 <p className="dd-card-sub">Monthly committed media value by year - drag the slider below to zoom</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="dd-export-btn" onClick={() => exportChart('png')}><Icon name="download" size={14} /> PNG</button>
-                <button className="dd-export-btn" onClick={() => exportChart('pdf')}><Icon name="file" size={14} /> PDF</button>
+                {canExport(user) && <button className="dd-export-btn" onClick={() => exportChart('png')}><Icon name="download" size={14} /> PNG</button>}
+                {canExport(user) && <button className="dd-export-btn" onClick={() => exportChart('pdf')}><Icon name="file" size={14} /> PDF</button>}
               </div>
             </div>
             <div ref={chartRef} style={{ padding: '8px 14px 18px', background: '#fff' }}>
@@ -408,8 +411,8 @@ export default function DeepDashboardPage() {
                 <Icon name="search" size={15} style={{ color: '#6B7790' }} />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search properties…" />
               </div>
-              <button className="dd-export-btn" onClick={exportTablePdf}><Icon name="file" size={14} /> PDF</button>
-              <button className="dd-export-btn primary" onClick={exportExcel}><Icon name="download" size={14} /> Excel</button>
+              {canExport(user) && <button className="dd-export-btn" onClick={exportTablePdf}><Icon name="file" size={14} /> PDF</button>}
+              {canExport(user) && <button className="dd-export-btn primary" onClick={exportExcel}><Icon name="download" size={14} /> Excel</button>}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 860 }}>

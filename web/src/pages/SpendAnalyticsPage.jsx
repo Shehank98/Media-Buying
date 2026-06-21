@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { canExport } from '../lib/permissions';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
@@ -466,12 +467,16 @@ export default function SpendAnalyticsPage() {
               <p className="spa-sub">Budget allocation by media group, medium, channel, client &amp; agency</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="spa-btn accent" onClick={handlePdfExport} disabled={!data || loading || exporting}>
-                <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Export PDF'}
-              </button>
-              <button className="spa-btn" onClick={handleExport} disabled={!data || loading}>
-                <Icon name="file" size={15} /> Excel
-              </button>
+              {canExport(user) && (
+                <>
+                  <button className="spa-btn accent" onClick={handlePdfExport} disabled={!data || loading || exporting}>
+                    <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Export PDF'}
+                  </button>
+                  <button className="spa-btn" onClick={handleExport} disabled={!data || loading}>
+                    <Icon name="file" size={15} /> Excel
+                  </button>
+                </>
+              )}
               <button className="spa-btn" onClick={() => setCompare(c => !c)} style={compare ? { background: '#E85D24', borderColor: '#E85D24' } : undefined}>
                 <Icon name="activity" size={15} /> Compare
               </button>

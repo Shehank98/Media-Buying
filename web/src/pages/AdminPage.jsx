@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
+import { TOGGLEABLE_PAGES } from '../lib/permissions';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -47,6 +48,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({
     name: '', email: '', password: '', role: 'PLANNER', agencyIds: [], clientIds: [],
+    pageAccess: [], canExport: true, readOnly: false,
   });
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [userError, setUserError] = useState('');
@@ -171,7 +173,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- User CRUD ---- */
   const openAddUser = () => {
     setEditingUser(null);
-    setUserForm({ name: '', email: '', password: '', role: 'PLANNER', agencyIds: [], clientIds: [] });
+    setUserForm({ name: '', email: '', password: '', role: 'PLANNER', agencyIds: [], clientIds: [], pageAccess: [], canExport: true, readOnly: false });
     setUserError('');
     setUserFieldErrors({});
     setShowUserModal(true);
@@ -185,6 +187,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       role: u.role,
       agencyIds: u.agencies?.map(a => a.id) || u.agencyIds || [],
       clientIds: u.clients?.map(c => c.id) || u.clientIds || [],
+      pageAccess: Array.isArray(u.pageAccess) ? u.pageAccess : [],
+      canExport: u.canExport !== false,
+      readOnly: !!u.readOnly,
     });
     setUserError('');
     setUserFieldErrors({});
@@ -951,6 +956,36 @@ export default function AdminPage({ initialTab = 'users' }) {
                       {userForm.agencyIds.length > 0 && allClients.filter(c => userForm.agencyIds.includes(c.agencyId)).length === 0 && (
                         <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients in selected agencies</span>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Permissions (not for Super Admin — they always have full access) */}
+                {userForm.role !== 'SUPER_ADMIN' && (
+                  <div className="field" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                    <label className="field-label">Page access</label>
+                    <span style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
+                      Pick the pages this user can open. Leave all unselected for full access (within their role).
+                    </span>
+                    <div className="chips">
+                      {TOGGLEABLE_PAGES.map(pg => {
+                        const on = userForm.pageAccess.includes(pg.key);
+                        return (
+                          <button key={pg.key} type="button" className={'chip' + (on ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, pageAccess: toggleArrayItem(p.pageAccess, pg.key) }))}>
+                            {pg.label}{on ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, cursor: 'pointer', margin: 0 }}>
+                        <input type="checkbox" checked={userForm.canExport} onChange={e => setUserForm(p => ({ ...p, canExport: e.target.checked }))} />
+                        Can export reports (PDF / Excel)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, cursor: 'pointer', margin: 0 }}>
+                        <input type="checkbox" checked={userForm.readOnly} onChange={e => setUserForm(p => ({ ...p, readOnly: e.target.checked }))} />
+                        Read-only — can view but not add, edit or delete anything
+                      </label>
                     </div>
                   </div>
                 )}
