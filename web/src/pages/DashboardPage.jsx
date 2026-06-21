@@ -306,7 +306,7 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '14px 22px 22px' }}>
             <div style={{ position: 'relative', width: 140, height: 140, flex: 'none' }}>
               {mediumData.length > 0 && (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width={140} height={140}>
                   <PieChart>
                     <Pie data={mediumData} dataKey="value" cx="50%" cy="50%" innerRadius={44} outerRadius={62} startAngle={90} endAngle={-270} stroke="none" paddingAngle={1.5}>
                       {mediumData.map((d) => <Cell key={d.name} fill={MEDIUM[d.name] || '#93A0B5'} />)}
