@@ -23,8 +23,12 @@ function fmtMonth(ym) {
   return `${MONTHS[parseInt(m) - 1]} ${y}`;
 }
 function fmtLKR(v) {
-  if (v == null) return '-';
-  return 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
+  if (v == null || v === '') return '-';
+  const n = Number(v) || 0; const a = Math.abs(n);
+  if (a >= 1e9) return 'LKR ' + (n / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return 'LKR ' + (n / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3) return 'LKR ' + (n / 1e3).toFixed(1) + 'K';
+  return 'LKR ' + Math.round(n).toLocaleString('en-US');
 }
 function fmtShort(v) {
   const n = Number(v);

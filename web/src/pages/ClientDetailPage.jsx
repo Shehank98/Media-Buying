@@ -16,7 +16,14 @@ const TAB_COLORS = {
   PRINT: { bg: 'var(--green-50,#ECFDF5)', fg: 'var(--green-600,#059669)' },
 };
 
-const fmtLKR = v => v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US');
+const fmtLKR = (v) => {
+  if (v == null || v === '') return '-';
+  const n = Number(v); const a = Math.abs(n);
+  if (a >= 1e9) return 'LKR ' + (n / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return 'LKR ' + (n / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3) return 'LKR ' + (n / 1e3).toFixed(1) + 'K';
+  return 'LKR ' + Math.round(n).toLocaleString('en-US');
+};
 const fmtMonth = ym => {
   if (!ym) return '-';
   const s = typeof ym === 'string' ? ym.slice(0, 7) : '';

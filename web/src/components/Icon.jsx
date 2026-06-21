@@ -125,6 +125,11 @@ export function RoleBadge({ role, small }) {
   );
 }
 
-export function fmtLKR(n) {
-  return 'Rs ' + Number(n).toLocaleString('en-LK');
+export function fmtLKR(v) {
+  if (v == null || v === '') return '-';
+  const n = Number(v); const a = Math.abs(n);
+  if (a >= 1e9) return 'LKR ' + (n / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return 'LKR ' + (n / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3) return 'LKR ' + (n / 1e3).toFixed(1) + 'K';
+  return 'LKR ' + Math.round(n).toLocaleString('en-US');
 }
