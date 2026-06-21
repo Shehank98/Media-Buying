@@ -86,6 +86,9 @@ export async function listUsers(req, res) {
         name: true,
         role: true,
         mustChangePassword: true,
+        pageAccess: true,
+        canExport: true,
+        readOnly: true,
         createdAt: true,
         agencyAccess: { include: { agency: { select: { id: true, name: true } } } },
         clientAccess: { include: { client: { select: { id: true, name: true } } } },
@@ -105,15 +108,20 @@ export async function listUsers(req, res) {
 
 export async function createUser(req, res) {
   try {
-    const { email, name, role, password, agencyIds, clientIds } = req.body;
+    const { email, name, role, password, agencyIds, clientIds, pageAccess, canExport, readOnly } = req.body;
     if (!email || !name || !role) return res.status(400).json({ error: 'Email, name, and role are required' });
 
     const tempPassword = password || 'TempPass@123';
     const passwordHash = await hashPassword(tempPassword);
 
     const user = await prisma.user.create({
-      data: { email, name, role, passwordHash, mustChangePassword: true },
-      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, createdAt: true },
+      data: {
+        email, name, role, passwordHash, mustChangePassword: true,
+        pageAccess: Array.isArray(pageAccess) ? pageAccess : [],
+        canExport: canExport !== false,
+        readOnly: !!readOnly,
+      },
+      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, pageAccess: true, canExport: true, readOnly: true, createdAt: true },
     });
 
     if (Array.isArray(agencyIds) && agencyIds.length > 0) {
@@ -149,18 +157,21 @@ export async function createUser(req, res) {
 export async function updateUser(req, res) {
   try {
     const { id } = req.params;
-    const { name, role, password, agencyIds, clientIds } = req.body;
+    const { name, role, password, agencyIds, clientIds, pageAccess, canExport, readOnly } = req.body;
     const userId = parseInt(id);
 
     const data = {};
     if (name !== undefined) data.name = name;
     if (role !== undefined) data.role = role;
     if (password) data.passwordHash = await hashPassword(password);
+    if (Array.isArray(pageAccess)) data.pageAccess = pageAccess;
+    if (canExport !== undefined) data.canExport = !!canExport;
+    if (readOnly !== undefined) data.readOnly = !!readOnly;
 
     const user = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, createdAt: true },
+      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, pageAccess: true, canExport: true, readOnly: true, createdAt: true },
     });
 
     if (Array.isArray(agencyIds)) {

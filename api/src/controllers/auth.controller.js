@@ -45,6 +45,9 @@ export async function login(req, res) {
         name: user.name,
         role: user.role,
         mustChangePassword: user.mustChangePassword,
+        pageAccess: user.pageAccess || [],
+        canExport: user.canExport !== false,
+        readOnly: !!user.readOnly,
       },
     });
   } catch (error) {
@@ -193,7 +196,7 @@ export async function getProfile(req, res) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { id: true, email: true, name: true, role: true, mustChangePassword: true },
+      select: { id: true, email: true, name: true, role: true, mustChangePassword: true, pageAccess: true, canExport: true, readOnly: true },
     });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

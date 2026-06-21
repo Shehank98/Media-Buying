@@ -54,6 +54,9 @@ model User {
   name                  String
   role                  Role
   mustChangePassword    Boolean              @default(true) @map("must_change_password")
+  pageAccess            String[]             @default([]) @map("page_access")
+  canExport             Boolean              @default(true) @map("can_export")
+  readOnly              Boolean              @default(false) @map("read_only")
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
   agencyAccess          UserAgencyAccess[]

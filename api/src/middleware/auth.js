@@ -35,6 +35,14 @@ export async function authenticate(req, res, next) {
       }
     }
 
+    // Read-only accounts cannot perform any write operation (except auth itself).
+    if (user.readOnly && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+      const path = (req.originalUrl || '').split('?')[0];
+      if (!path.startsWith('/api/auth/')) {
+        return res.status(403).json({ error: 'Your account is read-only — changes are not permitted.' });
+      }
+    }
+
     req.user = user;
     next();
   } catch (error) {
