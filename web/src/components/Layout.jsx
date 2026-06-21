@@ -10,7 +10,6 @@ const NAV = [
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
-  { key: '/clients', label: 'Clients', icon: 'folder' },
   { key: '/my-packages', label: 'Media Packages', icon: 'mail', roles: ['GROUP_HEAD'] },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
@@ -32,9 +31,10 @@ function Breadcrumbs({ go }) {
   if (path === '/database') return <>{home}{sep}<b>Database</b></>;
   if (path === '/agencies') return <>{home}{sep}<b>Agencies</b></>;
   if (path.startsWith('/agencies/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Agency</b></>;
-  if (path === '/clients') return <>{home}{sep}<b>Clients</b></>;
-  if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Client</b></>;
-  if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/clients')}>Clients</a>{sep}<b>Channel</b></>;
+  if (path === '/clients') return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Clients</b></>;
+  if (path.startsWith('/clients/') && path.endsWith('/dashboard')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Client Dashboard</b></>;
+  if (path.startsWith('/clients/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Client</b></>;
+  if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Channel</b></>;
   if (path.startsWith('/channel-masters/')) return <>{home}{sep}<b>Channel Intelligence</b></>;
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
@@ -110,8 +110,10 @@ export default function Layout() {
     return location.pathname.startsWith(key);
   };
 
-  const isClientOrChannel = location.pathname.startsWith('/clients/') || location.pathname.startsWith('/channels/');
-  const clientsActive = location.pathname === '/clients' || isClientOrChannel;
+  // Clients & channels live under Agencies now (no separate Clients tab).
+  const agenciesActive = location.pathname.startsWith('/agencies')
+    || location.pathname.startsWith('/clients')
+    || location.pathname.startsWith('/channels/');
 
   const userName = user?.name || 'User';
   const userRole = user?.role || 'PLANNER';
@@ -139,7 +141,7 @@ export default function Layout() {
           {filteredNav.map(n => (
             <button
               key={n.key}
-              className={`nav-item${n.key === '/clients' ? (clientsActive ? ' active' : '') : (activeKey(n.key) ? ' active' : '')}`}
+              className={`nav-item${n.key === '/agencies' ? (agenciesActive ? ' active' : '') : (activeKey(n.key) ? ' active' : '')}`}
               onClick={() => go(n.key)}
             >
               <Icon name={n.icon} size={18} />
