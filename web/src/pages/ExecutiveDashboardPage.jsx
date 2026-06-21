@@ -251,27 +251,30 @@ export default function ExecutiveDashboardPage() {
     );
   };
 
+  // Latest month that actually has data (cards reflect this, not the calendar month).
+  const refLabel = summary?.referenceMonth ? fmtMonth(summary.referenceMonth) : 'latest month';
+
   // Build KPI list from real summary data (only metrics with data)
   const kpis = summary ? [
     {
-      key: 'billingsThisMonth', icon: 'dollar', label: 'Billings this month',
+      key: 'billingsThisMonth', icon: 'dollar', label: `Billings · ${refLabel}`,
       value: fmtLKR(summary.billingsThisMonth),
       chip: summary.yoyGrowthPct != null
         ? { dir: summary.yoyGrowthPct >= 0 ? 'up' : 'down', text: (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%' }
         : { dir: 'flat', text: 'YoY' },
     },
-    { key: 'billingsYTD', icon: 'trending-up', label: 'YTD Billings', value: fmtLKR(summary.billingsYTD) },
+    { key: 'billingsYTD', icon: 'trending-up', label: 'Total Billings (all years)', value: fmtLKR(summary.billingsYTD) },
     summary.yoyGrowthPct != null && {
-      key: 'yoy', icon: 'bar-chart', label: 'YoY Growth',
+      key: 'yoy', icon: 'bar-chart', label: `YoY Growth (${summary.referenceMonth ? summary.referenceMonth.slice(0, 4) : ''})`,
       value: (summary.yoyGrowthPct >= 0 ? '+' : '') + summary.yoyGrowthPct.toFixed(1) + '%',
       valueColor: summary.yoyGrowthPct >= 0 ? '#15814B' : '#C5391F',
       chip: { dir: summary.yoyGrowthPct >= 0 ? 'up' : 'down', text: summary.yoyGrowthPct >= 0 ? 'up' : 'down' },
     },
     summary.activeClients != null && { key: 'activeClients', icon: 'users', label: 'Active Clients', value: String(summary.activeClients) },
-    summary.logsThisMonth != null && { key: 'logsThisMonth', icon: 'calendar', label: 'Logs this month', value: String(summary.logsThisMonth) },
-    summary.activeChannelsThisMonth != null && { key: 'activeChannels', icon: 'tv', label: 'Active Channels', value: String(summary.activeChannelsThisMonth) },
+    summary.logsThisMonth != null && { key: 'logsThisMonth', icon: 'calendar', label: `Logs · ${refLabel}`, value: String(summary.logsThisMonth) },
+    summary.activeChannelsThisMonth != null && { key: 'activeChannels', icon: 'tv', label: `Active Channels · ${refLabel}`, value: String(summary.activeChannelsThisMonth) },
     summary.uploadsThisMonth != null && { key: 'uploads', icon: 'upload', label: 'Uploads this month', value: String(summary.uploadsThisMonth) },
-    summary.manualEntriesThisMonth != null && { key: 'manual', icon: 'edit', label: 'Manual entries', value: String(summary.manualEntriesThisMonth) },
+    summary.manualEntriesThisMonth != null && { key: 'manual', icon: 'edit', label: `Manual entries · ${refLabel}`, value: String(summary.manualEntriesThisMonth) },
   ].filter(Boolean) : [];
 
   const [exporting, setExporting] = useState(false);
@@ -487,7 +490,7 @@ export default function ExecutiveDashboardPage() {
             <div>
               <h1 className="ed-hero-title">Executive Dashboard</h1>
               <p className="ed-hero-sub">
-                Billings overview across {agencyId ? (agencies.find(a => String(a.id) === String(agencyId))?.name || 'selected agency') : 'all agencies'} · {new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+                Billings overview across {agencyId ? (agencies.find(a => String(a.id) === String(agencyId))?.name || 'selected agency') : 'all agencies'}{summary?.referenceMonth ? ` · latest data: ${fmtMonth(summary.referenceMonth)}` : ''}
               </p>
             </div>
             <div className="ed-hero-actions">
