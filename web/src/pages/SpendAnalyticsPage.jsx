@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart, ComposedChart,
-  ScatterChart, Scatter, ZAxis,
+  ScatterChart, Scatter, ZAxis, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush,
 } from 'recharts';
 
@@ -47,6 +47,7 @@ export default function SpendAnalyticsPage() {
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
+  const [paretoMode, setParetoMode] = useState('channel'); // 'channel' | 'client'
   const [compare, setCompare] = useState(false);
   const [cmpFrom, setCmpFrom] = useState('');
   const [cmpTo, setCmpTo] = useState('');
@@ -128,6 +129,37 @@ export default function SpendAnalyticsPage() {
     const topChannel = data.byChannel?.[0] || null;
     const topClient = data.byClient?.[0] || null;
     return { months, avgMonth, peak, topChannel, topClient };
+  }, [data]);
+
+  // Pareto: top 20 of channels/clients with running cumulative % of total
+  const paretoData = useMemo(() => {
+    if (!data) return [];
+    const src = paretoMode === 'client' ? (data.byClient || []) : (data.byChannel || []);
+    const total = data.totalValue || src.reduce((s, x) => s + (x.value || 0), 0) || 1;
+    let run = 0;
+    return src.slice(0, 20).map((x) => {
+      run += x.value || 0;
+      return { name: x.name, value: x.value, medium: x.medium, cumPct: Number(((run / total) * 100).toFixed(1)) };
+    });
+  }, [data, paretoMode]);
+
+  // How many entries make up 80% of spend (the "vital few")
+  const paretoVitalFew = useMemo(() => paretoData.findIndex((d) => d.cumPct >= 80) + 1 || paretoData.length, [paretoData]);
+
+  // Seasonality: year (rows) × month (cols) grid + per-year totals + max for shading
+  const seasonality = useMemo(() => {
+    if (!data?.byMonth?.length) return null;
+    const grid = {}; let max = 0;
+    for (const m of data.byMonth) {
+      const mm = String(m.month).match(/^(\d{4})-(\d{2})$/);
+      if (!mm) continue;
+      const y = mm[1], mi = parseInt(mm[2]);
+      (grid[y] ||= { total: 0 })[mi] = (grid[y][mi] || 0) + (m.value || 0);
+      grid[y].total += m.value || 0;
+      if (grid[y][mi] > max) max = grid[y][mi];
+    }
+    const years = Object.keys(grid).sort().reverse();
+    return { grid, years, max: max || 1 };
   }, [data]);
 
   const handleExport = () => {
@@ -536,6 +568,18 @@ export default function SpendAnalyticsPage() {
               A: Math.round(data.byMedium.find(m => m.name === name)?.value || 0),
               B: Math.round(cmpData.byMedium.find(m => m.name === name)?.value || 0),
             }));
+            // Waterfall B -> A by medium (base = invisible offset, value = visible bar)
+            const wf = [{ name: 'Period B', base: 0, value: Math.round(b), fill: '#0F1F3D' }];
+            let run = b;
+            for (const name of mediums) {
+              const av = data.byMedium.find(m => m.name === name)?.value || 0;
+              const bv = cmpData.byMedium.find(m => m.name === name)?.value || 0;
+              const d = av - bv;
+              if (d >= 0) wf.push({ name, base: Math.round(run), value: Math.round(d), delta: d, fill: '#15814B' });
+              else wf.push({ name, base: Math.round(run + d), value: Math.round(-d), delta: d, fill: '#C5391F' });
+              run += d;
+            }
+            wf.push({ name: 'Period A', base: 0, value: Math.round(a), fill: '#0F1F3D' });
             return (
               <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
                 <h3 className="spa-ctitle">Period Comparison</h3>
@@ -566,6 +610,35 @@ export default function SpendAnalyticsPage() {
                       <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => (v === 'A' ? 'Period A' : 'Period B')} />
                       <Bar dataKey="A" fill="#E85D24" radius={[4, 4, 0, 0]} maxBarSize={40} />
                       <Bar dataKey="B" fill="#1F5BB5" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Waterfall: what drove the change from B to A (by medium) */}
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF0F3' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#16243C', marginBottom: 2 }}>What changed (B → A)</div>
+                  <p className="spa-csub" style={{ marginBottom: 12 }}>Green = medium grew, red = medium shrank; bars bridge Period B to Period A</p>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={wf} margin={{ top: 6, right: 12, bottom: 4, left: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
+                      <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={46} />
+                      <Tooltip cursor={{ fill: 'rgba(15,31,61,.04)' }} content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const p = payload.find(x => x.dataKey === 'value')?.payload;
+                        if (!p) return null;
+                        const isTotal = p.name === 'Period A' || p.name === 'Period B';
+                        return (
+                          <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 2 }}>{p.name}</div>
+                            {isTotal ? <div>{fmtLKR(p.value)}</div> : <div style={{ color: p.delta >= 0 ? '#15814B' : '#C5391F' }}>{p.delta >= 0 ? '+' : ''}{fmtLKR(p.delta)}</div>}
+                          </div>
+                        );
+                      }} />
+                      <Bar dataKey="base" stackId="w" fill="transparent" />
+                      <Bar dataKey="value" stackId="w" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                        {wf.map((r, i) => <Cell key={i} fill={r.fill} />)}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -640,6 +713,67 @@ export default function SpendAnalyticsPage() {
               </div>
             )}
           </div>
+
+          {/* Pareto (80/20) — vital few partners driving spend */}
+          {paretoData.length > 0 && (
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <div>
+                  <h3 className="spa-ctitle">Spend Concentration (Pareto 80/20)</h3>
+                  <p className="spa-csub">Top {paretoMode === 'client' ? 'clients' : 'channels'} by spend with running cumulative share · <b>{paretoVitalFew}</b> drive 80% of spend</p>
+                </div>
+                <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 9, padding: 3 }}>
+                  {['channel', 'client'].map((m) => (
+                    <button key={m} onClick={() => setParetoMode(m)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: paretoMode === m ? '#fff' : 'transparent', color: paretoMode === m ? '#16243C' : '#6B7790', boxShadow: paretoMode === m ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{m === 'channel' ? 'Channels' : 'Clients'}</button>
+                  ))}
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={320}>
+                <ComposedChart data={paretoData} margin={{ top: 6, right: 16, bottom: 60, left: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} angle={-40} textAnchor="end" interval={0} height={70} />
+                  <YAxis yAxisId="left" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={44} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={40} />
+                  <Tooltip formatter={(v, n) => (n === 'cumPct' ? [`${v}%`, 'Cumulative'] : [fmtLKR(v), 'Spend'])} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <ReferenceLine yAxisId="right" y={80} stroke="#C5391F" strokeDasharray="5 4" label={{ value: '80%', position: 'right', fill: '#C5391F', fontSize: 11 }} />
+                  <Bar yAxisId="left" dataKey="value" name="Spend" radius={[4, 4, 0, 0]} maxBarSize={42}>
+                    {paretoData.map((d, i) => <Cell key={i} fill={paretoMode === 'channel' ? (MEDIUM_COLORS[d.medium] || COLORS[i % COLORS.length]) : COLORS[i % COLORS.length]} />)}
+                  </Bar>
+                  <Line yAxisId="right" type="monotone" dataKey="cumPct" name="cumPct" stroke="#16243C" strokeWidth={2.4} dot={{ r: 2.5 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Seasonality heatmap — year × month spend intensity */}
+          {seasonality && (
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
+              <h3 className="spa-ctitle">Seasonality Heatmap</h3>
+              <p className="spa-csub" style={{ marginBottom: 14 }}>Spend intensity by month and year — darker = higher spend</p>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `52px repeat(12, minmax(34px, 1fr)) 78px`, gap: 4, minWidth: 640 }}>
+                  <div />
+                  {MONTHS.map((m) => <div key={m} style={{ fontSize: 10.5, color: '#93A0B5', textAlign: 'center', fontWeight: 600 }}>{m}</div>)}
+                  <div style={{ fontSize: 10.5, color: '#6B7790', textAlign: 'right', fontWeight: 700 }}>Total</div>
+                  {seasonality.years.map((y) => (
+                    <Fragment key={y}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#16243C', display: 'flex', alignItems: 'center' }}>{y}</div>
+                      {MONTHS.map((_, mi) => {
+                        const v = seasonality.grid[y][mi + 1] || 0;
+                        const op = v > 0 ? 0.12 + 0.88 * (v / seasonality.max) : 0;
+                        return (
+                          <div key={mi} title={`${MONTHS[mi]} ${y}: ${fmtLKR(v)}`} style={{ height: 30, borderRadius: 5, background: v > 0 ? `rgba(232,93,36,${op.toFixed(2)})` : '#F1F2F5', display: 'grid', placeItems: 'center' }}>
+                            {v > 0 && <span style={{ fontSize: 9, fontWeight: 600, color: op > 0.55 ? '#fff' : '#6B7790' }}>{fmtShort(v)}</span>}
+                          </div>
+                        );
+                      })}
+                      <div className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: '#16243C', textAlign: 'right', alignSelf: 'center' }}>{fmtShort(seasonality.grid[y].total)}</div>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Medium Mix Shift + Brand Trend */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
