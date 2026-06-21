@@ -34,12 +34,17 @@ const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706'
 
 function Stat({ label, value, sub, tone, icon, accent }) {
   return (
-    <div style={{ ...CARD, padding: '16px 18px' }}>
+    <div
+      style={{ ...CARD, padding: '16px 18px', position: 'relative', overflow: 'hidden', transition: 'transform .16s ease, box-shadow .16s ease' }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = CARD.boxShadow; }}
+    >
+      <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tone[1]}, ${tone[1]}1A 70%, transparent)` }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: tone[0], color: tone[1] }}><Icon name={icon} size={15} /></div>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: '#6B7790' }}>{label}</span>
+        <div style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${tone[0]}, #ffffff)`, color: tone[1], boxShadow: `inset 0 0 0 1px ${tone[1]}22` }}><Icon name={icon} size={15} /></div>
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5' }}>{label}</span>
       </div>
-      <div style={{ fontSize: 19, fontWeight: 720, letterSpacing: '-.3px', fontFamily: "'Spline Sans Mono', monospace", color: accent || '#16243C', lineHeight: 1.15, wordBreak: 'break-word' }}>{value}</div>
+      <div style={{ fontSize: 19, fontWeight: 750, letterSpacing: '-.3px', fontFamily: "'Spline Sans Mono', monospace", color: accent || '#16243C', lineHeight: 1.15, wordBreak: 'break-word' }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: '#93A0B5', marginTop: 4 }}>{sub}</div>}
     </div>
   );

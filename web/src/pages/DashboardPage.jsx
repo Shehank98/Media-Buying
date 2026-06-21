@@ -12,12 +12,12 @@ import api from '../lib/api';
 
 // ── formatting ────────────────────────────────────────────────────────────
 const fmtRs = (v) => {
-  if (v == null) return 'Rs 0';
+  if (v == null) return 'LKR 0';
   const n = Number(v);
-  if (Math.abs(n) >= 1e9) return 'Rs ' + (n / 1e9).toFixed(2) + 'B';
-  if (Math.abs(n) >= 1e6) { const m = n / 1e6; return 'Rs ' + (Math.abs(m) >= 100 ? Math.round(m) : m.toFixed(1)) + 'M'; }
-  if (Math.abs(n) >= 1e3) return 'Rs ' + Math.round(n).toLocaleString('en-US');
-  return 'Rs ' + Math.round(n);
+  if (Math.abs(n) >= 1e9) return 'LKR ' + (n / 1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) { const m = n / 1e6; return 'LKR ' + (Math.abs(m) >= 100 ? Math.round(m) : m.toFixed(2)) + 'M'; }
+  if (Math.abs(n) >= 1e3) return 'LKR ' + (n / 1e3).toFixed(1) + 'K';
+  return 'LKR ' + Math.round(n);
 };
 const fmtNum = (v) => (v == null ? '0' : Number(v).toLocaleString('en-US'));
 const mShort = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short' }); };
@@ -48,15 +48,20 @@ const CELL = { padding: '12px 22px', borderBottom: '1px solid #E5E8ED' };
 
 function StatCard({ tone, icon, value, label, meta, trend, trendKind }) {
   return (
-    <div style={{ ...CARD, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+    <div
+      style={{ ...CARD, padding: '18px 20px', position: 'relative', overflow: 'hidden', transition: 'transform .16s ease, box-shadow .16s ease' }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = CARD.boxShadow; }}
+    >
+      <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tone[1]}, ${tone[1]}1A 70%, transparent)` }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: tone[0], color: tone[1] }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${tone[0]}, #ffffff)`, color: tone[1], boxShadow: `inset 0 0 0 1px ${tone[1]}22` }}>
           <Icon name={icon} size={19} />
         </div>
         {trend && <span style={trendChip(trendKind)}>{trend}</span>}
       </div>
-      <div style={{ fontSize: 31, fontWeight: 700, letterSpacing: '-1px', lineHeight: 1, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{value}</div>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#6B7790', marginTop: 9 }}>{label}</div>
+      <div style={{ fontSize: 30, fontWeight: 750, letterSpacing: '-.8px', lineHeight: 1, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', marginTop: 10 }}>{label}</div>
       {meta && <div style={{ fontSize: 12, color: '#93A0B5', marginTop: 4 }}>{meta}</div>}
     </div>
   );
@@ -456,7 +461,7 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height={Math.max(180, Math.min(agencyComp.length, 8) * 40 + 20)}>
                 <BarChart data={[...agencyComp].sort((a, b) => b.ytdBillings - a.ytdBillings).slice(0, 8)} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(v) => fmtRs(v).replace('Rs ', '')} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
+                  <XAxis type="number" tickFormatter={(v) => fmtRs(v).replace('LKR ', '')} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="agencyName" tick={{ fontSize: 11.5, fill: '#16243C' }} axisLine={false} tickLine={false} width={120} />
                   <Tooltip formatter={(v) => [fmtRs(v), 'YTD Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
                   <Bar dataKey="ytdBillings" radius={[0, 6, 6, 0]}>

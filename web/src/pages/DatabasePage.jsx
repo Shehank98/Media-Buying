@@ -571,7 +571,9 @@ export default function DatabasePage() {
         .db-hero-in { position:relative; z-index:1; }
         .db-title { font-size:22px; font-weight:750; letter-spacing:-.5px; margin:0; }
         .db-sub { font-size:13px; color:rgba(255,255,255,.55); margin:5px 0 0; }
-        .db-stat { background:#fff; border:1px solid #E5E8ED; border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; }
+        .db-stat { position:relative; overflow:hidden; background:#fff; border:1px solid #E5E8ED; border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; transition:transform .16s ease, box-shadow .16s ease; }
+        .db-stat::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#E85D24,rgba(232,93,36,.1) 70%,transparent); }
+        .db-stat:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(15,31,61,.10); }
         .db-stat-label { font-size:11.5px; color:#6B7790; font-weight:600; }
         .db-stat-val { font-size:19px; font-weight:750; letter-spacing:-.4px; font-family:'Spline Sans Mono',monospace; color:#16243C; margin-top:6px; }
         .db-card { background:#fff; border:1px solid #E5E8ED; border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); }
@@ -675,7 +677,7 @@ export default function DatabasePage() {
                 {clientStats.byMonth?.length > 0 ? (
                   <ResponsiveContainer width="100%" height={70}>
                     <BarChart data={clientStats.byMonth.map(m => ({ ...m, label: fmtMonth(m.month) }))} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                      <Tooltip formatter={(v) => ['LKR ' + Math.round(v).toLocaleString('en-US'), 'Value']} labelFormatter={(l, p) => (p && p[0] ? fmtMonth(p[0].payload.month) : l)} contentStyle={{ borderRadius: 8, border: '1px solid #E5E8ED', fontSize: 11 }} />
+                      <Tooltip formatter={(v) => ['LKR ' + fmtShort(v), 'Value']} labelFormatter={(l, p) => (p && p[0] ? fmtMonth(p[0].payload.month) : l)} contentStyle={{ borderRadius: 8, border: '1px solid #E5E8ED', fontSize: 11 }} />
                       <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                         {clientStats.byMonth.map((m, i) => <Cell key={i} fill={MEDIUM_COLORS[m.medium] || '#1F5BB5'} />)}
                       </Bar>

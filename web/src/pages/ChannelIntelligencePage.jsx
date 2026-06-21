@@ -172,7 +172,9 @@ export default function ChannelIntelligencePage() {
     <div className="content-narrow fade-in">
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        .ci-stat { background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; }
+        .ci-stat { position:relative; overflow:hidden; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:14px 16px; transition:transform .16s ease, box-shadow .16s ease; }
+        .ci-stat::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#E85D24,rgba(232,93,36,.1) 70%,transparent); }
+        .ci-stat:hover { transform:translateY(-3px); box-shadow:0 10px 26px rgba(15,31,61,.10); }
         .ci-stat-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
         .ci-stat-ico { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; color:#fff; flex:none; }
         .ci-stat-label { font-size:11.5px; font-weight:600; color:var(--muted); }

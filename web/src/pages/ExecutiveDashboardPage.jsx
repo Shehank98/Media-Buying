@@ -410,7 +410,9 @@ export default function ExecutiveDashboardPage() {
         .dash-section-title { font-size: 15px; font-weight: 720; color: var(--ink); margin-bottom: 14px; letter-spacing: -0.3px; }
         .ed-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); }
         .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
-        .kpi-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 13px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 16px 18px; }
+        .kpi-card { position: relative; overflow: hidden; background: #fff; border: 1px solid #E5E8ED; border-radius: 13px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 16px 18px; transition: transform .16s ease, box-shadow .16s ease; }
+        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg,#E85D24,rgba(232,93,36,.1) 70%,transparent); }
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(15,31,61,.10); }
         .kpi-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .kpi-val { font-size: 23px; font-weight: 700; letter-spacing: -.6px; font-family: 'Spline Sans Mono', monospace; color: #16243C; }
         .kpi-label { font-size: 12px; color: #6B7790; margin-top: 5px; }

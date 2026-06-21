@@ -223,7 +223,8 @@ export default function DeepDashboardPage() {
         .dd-filter-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: #E85D24; background: rgba(232,93,36,.16); border: 1px solid rgba(232,93,36,.3); border-radius: 7px; padding: 4px 10px; align-self: flex-start; margin-top: 21px; }
 
         .dd-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
-        .dd-kpi { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 18px 20px; transition: box-shadow .15s, transform .15s; }
+        .dd-kpi { position: relative; overflow: hidden; background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); padding: 18px 20px; transition: box-shadow .15s, transform .15s; }
+        .dd-kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg,#E85D24,rgba(232,93,36,.1) 70%,transparent); }
         .dd-kpi:hover { box-shadow: 0 6px 16px rgba(15,31,61,.10); transform: translateY(-1px); }
         .dd-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
         .dd-kpi-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; }

@@ -446,7 +446,10 @@ export default function SpendAnalyticsPage() {
         .spa-input { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; border-radius:9px; padding:9px 12px; font-size:13px; outline:none; cursor:pointer; }
         .spa-input option { color:#16243C; } .spa-input:disabled { opacity:.45; }
         .spa-card { background:#fff; border:1px solid #E5E8ED; border-radius:14px; box-shadow:0 1px 2px rgba(15,31,61,.06); }
-        .spa-stat { background:#fff; border:1px solid #E5E8ED; border-radius:13px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:16px 18px; }
+        .spa-stat { position:relative; overflow:hidden; background:#fff; border:1px solid #E5E8ED; border-radius:13px; box-shadow:0 1px 2px rgba(15,31,61,.06); padding:16px 18px; transition:transform .16s ease, box-shadow .16s ease; }
+        .spa-stat::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#E85D24,rgba(232,93,36,.1) 70%,transparent); }
+        .spa-stat:hover { transform:translateY(-3px); box-shadow:0 10px 26px rgba(15,31,61,.10); }
+        .spa-stat-label { text-transform:uppercase; letter-spacing:.5px; }
         .spa-stat-label { font-size:12px; color:#6B7790; font-weight:600; }
         .spa-stat-val { font-size:22px; font-weight:750; letter-spacing:-.5px; font-family:'Spline Sans Mono',monospace; color:#16243C; margin-top:8px; }
         .spa-stat-sub { font-size:11.5px; color:#93A0B5; margin-top:4px; }
