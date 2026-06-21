@@ -129,6 +129,16 @@ export default function ClientDetailPage() {
     finally { setChSubmitting(false); }
   };
 
+  const canManageChannels = ['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role);
+  const handleDeleteChannel = async (ch, e) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${ch.name}" from this client? This also removes its properties and history.`)) return;
+    try {
+      await api.delete(`/clients/channels/${ch.id}`);
+      setRefreshKey(k => k + 1);
+    } catch (err) { alert(err.response?.data?.error || 'Failed to delete channel.'); }
+  };
+
   const openAddLog = () => {
     setEditingLog(null);
     const now = new Date();
@@ -263,7 +273,16 @@ export default function ClientDetailPage() {
                         </div></td>
                         <td style={{ textAlign: 'center' }}><span className="count-badge">{ch.propertyCount || ch._count?.properties || 0} properties</span></td>
                         <td style={{ color: 'var(--muted)' }}>{ch.type}</td>
-                        <td><Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} /></td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div className="row-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {canManageChannels && (
+                              <button className="act-btn" title="Remove channel" style={{ color: 'var(--red-600,#dc2626)' }} onClick={e => handleDeleteChannel(ch, e)}>
+                                <Icon name="trash" size={15} />
+                              </button>
+                            )}
+                            <Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} />
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}

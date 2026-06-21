@@ -19,6 +19,6 @@ router.delete('/:clientId', authenticate, requireRole('SUPER_ADMIN'), checkClien
 router.get('/:clientId/channels', authenticate, checkClientAccess, getChannels);
 router.post('/:clientId/channels', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'), checkClientAccess, createChannel);
 router.put('/channels/:id', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), checkChannelAccess, updateChannel);
-router.delete('/channels/:id', authenticate, requireRole('SUPER_ADMIN'), checkChannelAccess, deleteChannel);
+router.delete('/channels/:id', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), checkChannelAccess, deleteChannel);
 
 export default router;
