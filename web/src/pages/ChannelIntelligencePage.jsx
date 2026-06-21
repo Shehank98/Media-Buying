@@ -28,6 +28,7 @@ const MediumBadge = ({ medium }) => {
   return <span style={{ background: bg, color: fg, borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>{medium}</span>;
 };
 
+const AGENCY_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2'];
 const TYPE_LABELS = { BOUGHT_AIRTIME: 'Bought Airtime', SPONSORSHIP: 'Sponsorship', BONUS_COMMERCIAL: 'Bonus Commercial', OTHER: 'Other' };
 const FIELD_LABELS = { cost: 'Rate', name: 'Name', type: 'Type', category: 'Category', notes: 'Notes', bonusValue: 'Bonus Value', bonusCount: 'Bonus %', bonusPct: 'Bonus %', sponsorshipDetails: 'Sponsorship', startDate: 'Start Date', endDate: 'End Date' };
 
@@ -59,14 +60,17 @@ export default function ChannelIntelligencePage() {
 
   const [clientSort, setClientSort] = useState({ field: 'totalScheduleValueWithVat', dir: 'desc' });
 
+  const [agencyMonthly, setAgencyMonthly] = useState({ agencies: [], data: [] });
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [sumRes, monthRes, clientRes, propRes] = await Promise.all([
+        const [sumRes, monthRes, clientRes, propRes, agRes] = await Promise.all([
           api.get(`/analytics/channel/${id}/summary`),
           api.get(`/analytics/channel/${id}/monthly-spend`),
           api.get(`/analytics/channel/${id}/clients`),
           api.get(`/analytics/channel/${id}/property-history`),
+          api.get(`/analytics/channel/${id}/agency-monthly`),
         ]);
         setSummary(sumRes.data);
         setMonthly(Array.isArray(monthRes.data) ? monthRes.data : []);
@@ -76,6 +80,7 @@ export default function ChannelIntelligencePage() {
         const exp = {};
         raw.forEach(g => { exp[g.propertyName] = true; });
         setExpandedProps(exp);
+        setAgencyMonthly(agRes.data && Array.isArray(agRes.data.agencies) ? agRes.data : { agencies: [], data: [] });
       } catch {
         setError('Failed to load channel intelligence data.');
       } finally {
@@ -146,8 +151,8 @@ export default function ChannelIntelligencePage() {
   }));
 
   const statCards = [
-    { label: 'YTD Spend', value: fmtLKR(summary?.ytdSpend), icon: 'dollar' },
-    { label: 'Last Year', value: fmtLKR(summary?.lastYearSpend), icon: 'calendar' },
+    { label: summary?.latestYear ? `${summary.latestYear} Spend` : 'Latest Year', value: fmtLKR(summary?.ytdSpend), icon: 'dollar' },
+    { label: summary?.previousYear ? `${summary.previousYear} Spend` : 'Previous Year', value: fmtLKR(summary?.lastYearSpend), icon: 'calendar' },
     { label: 'YoY Growth', value: summary?.yoyGrowthPct != null ? `${summary.yoyGrowthPct >= 0 ? '+' : ''}${summary.yoyGrowthPct.toFixed(1)}%` : '-', icon: summary?.yoyGrowthPct >= 0 ? 'trending-up' : 'trending-down', color: summary?.yoyGrowthPct >= 0 ? 'var(--green-600)' : 'var(--red-600)' },
     { label: 'Active Clients', value: summary?.activeClientsCount ?? 0, icon: 'users' },
     { label: 'Total Log Entries', value: (summary?.totalEntries ?? 0).toLocaleString(), icon: 'database' },
@@ -246,9 +251,30 @@ export default function ChannelIntelligencePage() {
         )}
       </div>
 
+      {/* Spend by Agency over time */}
+      {agencyMonthly.agencies.length > 0 && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 32 }}>
+          <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Spend by Agency Over Time</h3>
+          <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>How much each agency spent on this channel, month by month</p>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={agencyMonthly.data.map(r => ({ ...r, label: fmtMonth(r.month) }))} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval="preserveStartEnd" />
+              <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
+              <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              {agencyMonthly.agencies.map((a, i) => (
+                <Line key={a} type="monotone" dataKey={a} stroke={AGENCY_COLORS[i % AGENCY_COLORS.length]} strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Client Breakdown */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 32 }}>
-        <h3 style={{ margin: '0 0 16px', fontWeight: 700, color: 'var(--ink)' }}>Clients on this Channel</h3>
+        <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Clients on this Channel</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Click a client to open their full dashboard</p>
         {sortedClients.length === 0 ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No client data available.</div>
         ) : (
@@ -271,7 +297,7 @@ export default function ChannelIntelligencePage() {
               </tr></thead>
               <tbody>
                 {sortedClients.map(c => (
-                  <tr key={c.clientId} className="clickable" onClick={() => navigate(`/clients/${c.clientId}`)}>
+                  <tr key={c.clientId} className="clickable" onClick={() => navigate(`/clients/${c.clientId}/dashboard`)}>
                     <td className="strong">{c.clientName}</td>
                     <td style={{ color: 'var(--muted)' }}>{c.agencyName}</td>
                     <td className="mono">{fmtLKR(c.totalScheduleValue)}</td>

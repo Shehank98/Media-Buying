@@ -13,6 +13,7 @@ import AgenciesPage from './pages/AgenciesPage';
 import AgencyDetailPage from './pages/AgencyDetailPage';
 import ClientsPage from './pages/ClientsPage';
 import ClientDetailPage from './pages/ClientDetailPage';
+import ClientDashboardPage from './pages/ClientDashboardPage';
 import ChannelDetailPage from './pages/ChannelDetailPage';
 import ReportsPage from './pages/ReportsPage';
 import AdminPage from './pages/AdminPage';
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/agencies" element={<AgenciesPage />} />
             <Route path="/agencies/:agencyId" element={<AgencyDetailPage />} />
             <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/clients/:clientId/dashboard" element={<ClientDashboardPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
             <Route

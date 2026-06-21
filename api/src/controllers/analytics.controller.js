@@ -489,23 +489,24 @@ export async function getChannelSummary(req, res) {
     const channel = await prisma.channelMaster.findUnique({ where: { id: channelMasterId }, include: { mediaGroup: { select: { name: true } } } });
     if (!channel) return res.status(404).json({ error: 'Channel master not found' });
 
-    const ys = yearStart();
-    const lys = lastYearStart();
-    const lycm = lastYearCurrentMonth();
     const base = { channelMasterId, isDeleted: false };
+    // Anchor to the latest year that has data on this channel (not the calendar year).
+    const { lys, lycm, cys, cye, year } = await refPeriod(base);
 
-    const [ytdAgg, lyAgg, activeClients, totalEntries] = await Promise.all([
-      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: ys } }, _sum: { scheduleValue: true } }),
+    const [curYearAgg, lyAgg, activeClients, totalEntries] = await Promise.all([
+      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: cye } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
-      prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys } }, select: { clientId: true }, distinct: ['clientId'] }),
+      prisma.scheduleLog.findMany({ where: base, select: { clientId: true }, distinct: ['clientId'] }),
       prisma.scheduleLog.count({ where: base }),
     ]);
 
-    const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
+    const ytd = safeNum(curYearAgg._sum.scheduleValue) || 0;
     const ly = safeNum(lyAgg._sum.scheduleValue) || 0;
 
     return res.json({
       channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
+      latestYear: year,
+      previousYear: year - 1,
       ytdSpend: ytd,
       lastYearSpend: ly,
       yoyGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
@@ -538,6 +539,46 @@ export async function getChannelMonthlySpend(req, res) {
   } catch (error) {
     console.error('getChannelMonthlySpend error:', error);
     return res.status(500).json({ error: 'Failed to get monthly spend', detail: error.message });
+  }
+}
+
+// Per-agency monthly spend on this channel (pivoted for a multi-line chart).
+export async function getChannelAgencyMonthly(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const base = { channelMasterId, isDeleted: false };
+
+    const grouped = await prisma.scheduleLog.groupBy({
+      by: ['agencyId', 'scheduleMonth'],
+      where: base,
+      _sum: { scheduleValue: true },
+      orderBy: { scheduleMonth: 'asc' },
+    });
+    if (!grouped.length) return res.json({ agencies: [], data: [] });
+
+    const agencyIds = [...new Set(grouped.map(g => g.agencyId))];
+    const agencyRecs = await prisma.agency.findMany({ where: { id: { in: agencyIds } }, select: { id: true, name: true } });
+    const nameById = new Map(agencyRecs.map(a => [a.id, a.name]));
+
+    // Pivot: one row per month with a column per agency name.
+    const months = [...new Set(grouped.map(g => g.scheduleMonth))].sort();
+    const byMonth = {};
+    for (const m of months) byMonth[m] = { month: m };
+    for (const g of grouped) {
+      const name = nameById.get(g.agencyId) || 'Unknown';
+      byMonth[g.scheduleMonth][name] = safeNum(g._sum.scheduleValue) || 0;
+    }
+    // Agencies ordered by total spend (so the legend leads with the biggest).
+    const totals = {};
+    for (const g of grouped) { const n = nameById.get(g.agencyId) || 'Unknown'; totals[n] = (totals[n] || 0) + (safeNum(g._sum.scheduleValue) || 0); }
+    const agencies = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+    // Fill gaps with 0 so lines are continuous.
+    const data = months.map(m => { const row = byMonth[m]; for (const a of agencies) if (row[a] == null) row[a] = 0; return row; });
+
+    return res.json({ agencies, data });
+  } catch (error) {
+    console.error('getChannelAgencyMonthly error:', error);
+    return res.status(500).json({ error: 'Failed to get agency monthly', detail: error.message });
   }
 }
 
@@ -687,6 +728,63 @@ export async function getChannelPropertyHistory(req, res) {
   } catch (error) {
     console.error('getChannelPropertyHistory error:', error);
     return res.status(500).json({ error: 'Failed to get property history', detail: error.message });
+  }
+}
+
+// Client overview/dashboard: lifetime spend, tenure, and breakdowns by channel/medium/brand.
+export async function getClientOverview(req, res) {
+  try {
+    const clientId = parseInt(req.params.clientId);
+    const client = await prisma.client.findUnique({ where: { id: clientId }, include: { agency: { select: { id: true, name: true } } } });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const logs = await prisma.scheduleLog.findMany({
+      where: { clientId, isDeleted: false },
+      select: {
+        scheduleMonth: true, scheduleValue: true, scheduleValueWithVat: true,
+        medium: true, brandName: true,
+        channelMaster: { select: { id: true, name: true, medium: true } },
+      },
+    });
+
+    let total = 0, totalVat = 0;
+    const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
+    const months = new Set();
+    for (const l of logs) {
+      const v = safeNum(l.scheduleValue) || 0;
+      total += v; totalVat += safeNum(l.scheduleValueWithVat) || 0;
+      const m = l.scheduleMonth;
+      if (/^\d{4}-\d{2}$/.test(m)) {
+        months.add(m);
+        (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++;
+      }
+      const ch = l.channelMaster?.name || 'Unknown';
+      (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+      const med = l.medium || 'Unknown';
+      (byMedium[med] ||= { name: med, value: 0 }).value += v;
+      const br = l.brandName || 'Unbranded';
+      (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+    }
+    const sortedMonths = [...months].sort();
+
+    return res.json({
+      client: { id: client.id, name: client.name, agencyId: client.agency?.id, agencyName: client.agency?.name },
+      totalValue: Math.round(total),
+      totalWithVat: Math.round(totalVat),
+      totalEntries: logs.length,
+      firstMonth: sortedMonths[0] || null,
+      lastMonth: sortedMonths[sortedMonths.length - 1] || null,
+      monthsActive: sortedMonths.length,
+      channelCount: Object.keys(byChannel).length,
+      brandCount: Object.keys(byBrand).filter(b => b !== 'Unbranded').length,
+      byMonth: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+      byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
+      byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
+      byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+    });
+  } catch (error) {
+    console.error('getClientOverview error:', error);
+    return res.status(500).json({ error: 'Failed to get client overview', detail: error.message });
   }
 }
 
