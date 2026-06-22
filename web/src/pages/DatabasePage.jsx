@@ -112,6 +112,7 @@ export default function DatabasePage() {
   const [importCreateClients, setImportCreateClients] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [importCheck, setImportCheck] = useState(null); // dry-run result (new vs duplicate)
   const importInputRef = useRef(null);
 
   // Upload batches
@@ -487,6 +488,8 @@ export default function DatabasePage() {
           };
         }).filter(r => r.client || r.channel || r.scheduleValue);
         setImportRows(rows);
+        setImportResult(null);
+        setImportCheck(null);
         setShowImport(true);
       } catch {
         alert('Failed to read the file. Please use the template format.');
@@ -496,17 +499,46 @@ export default function DatabasePage() {
     e.target.value = '';
   };
 
+  // Step 1: dry-run check — how many rows are new vs already in the database.
+  // Nothing is written. If there are no duplicates we import straight away;
+  // otherwise we ask the user how to proceed.
   const submitImport = async () => {
     if (!importRows.length || importing) return;
     setImporting(true);
     setImportResult(null);
+    setImportCheck(null);
     try {
       const { data } = await api.post('/database/import-all', {
         rows: importRows,
         fileName: importFileName,
         createMissingClients: importCreateClients,
+        dryRun: true,
+      });
+      if (data.duplicates > 0) {
+        setImportCheck(data); // ask: upload only new, or re-upload everything
+        setImporting(false);
+      } else {
+        // No duplicates — just import (allowDuplicates is irrelevant).
+        await runImport(false);
+      }
+    } catch (err) {
+      setImportResult({ error: err.response?.data?.error || 'Import failed' });
+      setImporting(false);
+    }
+  };
+
+  // Step 2: actually import. allowDuplicates=false → only new rows; true → all rows.
+  const runImport = async (allowDuplicates) => {
+    setImporting(true);
+    try {
+      const { data } = await api.post('/database/import-all', {
+        rows: importRows,
+        fileName: importFileName,
+        createMissingClients: importCreateClients,
+        allowDuplicates,
       });
       setImportResult(data);
+      setImportCheck(null);
       if (selectedClientId) { fetchLogs(); fetchBatches(); }
     } catch (err) {
       setImportResult({ error: err.response?.data?.error || 'Import failed' });
@@ -1053,7 +1085,7 @@ export default function DatabasePage() {
               <button className="act-btn" onClick={() => !importing && setShowImport(false)}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body">
-              {!importResult ? (
+              {(!importResult && !importCheck) ? (
                 <>
                   <div style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#3B4A63', marginBottom: 14 }}>
                     Expected columns: <b>Year</b>, <b>RO</b>, <b>Sch: Month</b> (e.g. Jan, Feb…), <b>Client</b>, <b>Brand</b>, <b>Medium</b>, <b>Media Group</b>, <b>Channel</b>, <b>Schedule Value</b>. Client and channel are matched by name (no agency column needed); medium &amp; media group come from the channel; VAT (18%) is computed automatically.
@@ -1079,6 +1111,36 @@ export default function DatabasePage() {
                   </div>
                   {importRows.length > 50 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>Showing first 50 of {importRows.length} rows.</p>}
                 </>
+              ) : (importCheck && !importResult) ? (
+                <div>
+                  <div style={{ background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#9A5B00', marginBottom: 4 }}>
+                      {importCheck.duplicates} of {importCheck.total} row{importCheck.total === 1 ? '' : 's'} are already in the database
+                    </div>
+                    <div style={{ fontSize: 13, color: '#6B5A3C' }}>
+                      {importCheck.newRows} row{importCheck.newRows === 1 ? ' is' : 's are'} new. How do you want to proceed?
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <div style={{ flex: 1, background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: '#15814B', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.newRows}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>new rows</div>
+                    </div>
+                    <div style={{ flex: 1, background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: '#9A5B00', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.duplicates}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>duplicates</div>
+                    </div>
+                    {importCheck.failed > 0 && (
+                      <div style={{ flex: 1, background: '#FBE0DA', border: '1px solid #f6c9bb', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 22, fontWeight: 750, color: '#C5391F', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.failed}</div>
+                        <div style={{ fontSize: 12, color: '#3B4A63' }}>rows with errors</div>
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '12px 0 0' }}>
+                    <b>Upload only new</b> skips the duplicates. <b>Re-upload everything</b> inserts every row, creating duplicate records.
+                  </p>
+                </div>
               ) : importResult.error ? (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px', color: '#b91c1c', fontSize: 13 }}>{importResult.error}</div>
               ) : (
@@ -1120,15 +1182,25 @@ export default function DatabasePage() {
             <div className="modal-foot">
               <button className="btn btn-ghost btn-sm" onClick={downloadImportTemplate} style={{ marginRight: 'auto' }}><Icon name="download" size={14} /> Template</button>
               <div style={{ display: 'flex', gap: 8 }}>
-                {!importResult ? (
+                {importResult ? (
+                  <button className="btn btn-primary" onClick={() => setShowImport(false)}>Done</button>
+                ) : importCheck ? (
                   <>
-                    <button className="btn btn-ghost" onClick={() => setShowImport(false)} disabled={importing}>Cancel</button>
-                    <button className="btn btn-primary" onClick={submitImport} disabled={importing || !importRows.length}>
-                      {importing ? 'Importing…' : `Import ${importRows.length} rows`}
+                    <button className="btn btn-ghost" onClick={() => setImportCheck(null)} disabled={importing}>Back</button>
+                    <button className="btn btn-ghost" onClick={() => runImport(true)} disabled={importing} title="Insert every row, including duplicates">
+                      {importing ? 'Working…' : 'Re-upload everything'}
+                    </button>
+                    <button className="btn btn-primary" onClick={() => runImport(false)} disabled={importing}>
+                      {importing ? 'Working…' : `Upload ${importCheck.newRows} new only`}
                     </button>
                   </>
                 ) : (
-                  <button className="btn btn-primary" onClick={() => setShowImport(false)}>Done</button>
+                  <>
+                    <button className="btn btn-ghost" onClick={() => setShowImport(false)} disabled={importing}>Cancel</button>
+                    <button className="btn btn-primary" onClick={submitImport} disabled={importing || !importRows.length}>
+                      {importing ? 'Checking…' : `Import ${importRows.length} rows`}
+                    </button>
+                  </>
                 )}
               </div>
             </div>

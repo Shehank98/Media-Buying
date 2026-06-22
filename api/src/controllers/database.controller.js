@@ -666,7 +666,7 @@ function combineYearMonth(year, month) {
 
 export async function importAllScheduleLogs(req, res) {
   try {
-    const { rows, fileName, createMissingClients = true } = req.body;
+    const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
@@ -703,6 +703,7 @@ export async function importAllScheduleLogs(req, res) {
     const candidates = [];
     const usedClientIds = new Set();
     const usedAgencyIds = new Set();
+    let pendingNewClientRows = 0; // dry-run: rows for a not-yet-created client (always "new")
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -735,6 +736,9 @@ export async function importAllScheduleLogs(req, res) {
         client = clientByKey.get(clientKey);
         if (!client) {
           if (!createMissingClients) { errors.push({ row: i + 1, error: `Client not found: "${clientName}"` }); continue; }
+          // Dry-run must not mutate the DB. A row for a not-yet-created client
+          // is always brand new (no existing logs), so just count it.
+          if (dryRun) { pendingNewClientRows++; continue; }
           try {
             client = await prisma.client.create({ data: { agencyId: agency.id, name: String(clientName).trim() } });
             clientByKey.set(clientKey, client);
@@ -781,7 +785,25 @@ export async function importAllScheduleLogs(req, res) {
 
     // Skip rows already in the DB (re-import) instead of duplicating them, then
     // derive the batch's agency/client lists from what actually gets inserted.
-    const { unique: toInsert, duplicates } = await splitDuplicates(candidates);
+    const { unique, duplicates } = await splitDuplicates(candidates);
+
+    // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop —
+    // nothing is written, so the UI can ask how to proceed.
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        total: candidates.length + pendingNewClientRows,
+        newRows: unique.length + pendingNewClientRows,
+        duplicates,
+        failed: errors.length,
+        errors: errors.slice(0, 200),
+      });
+    }
+
+    // "Re-upload everything" inserts all valid rows (duplicates included);
+    // otherwise insert only the rows not already present.
+    const toInsert = allowDuplicates ? candidates : unique;
+    const reportedDuplicates = allowDuplicates ? 0 : duplicates;
     for (const t of toInsert) { usedAgencyIds.add(t.agencyId); usedClientIds.add(t.clientId); }
 
     // One batch record for the whole import.
@@ -824,7 +846,7 @@ export async function importAllScheduleLogs(req, res) {
     return res.status(201).json({
       created: createdCount,
       failed: errors.length,
-      duplicates,
+      duplicates: reportedDuplicates,
       createdClients,
       errors: errors.slice(0, 200),
       batchId: uploadBatch?.id || null,
