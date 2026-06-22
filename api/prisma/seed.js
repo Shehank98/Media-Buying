@@ -191,6 +191,24 @@ async function main() {
   }
   console.log(`Clients upserted: ${clientsCreated}${clientsSkipped ? `, skipped: ${clientsSkipped}` : ''}`);
 
+  // ── Reconcile denormalized agency IDs ────────────────────────────────────────
+  // ScheduleLog/UploadBatch store agency_id at insert time. If a client was moved
+  // between agencies, realign its spend so agency-level totals are correct. Cheap
+  // and idempotent (only touches mismatched rows).
+  try {
+    const fixedLogs = await prisma.$executeRaw`
+      UPDATE schedule_logs sl SET agency_id = c.agency_id
+      FROM clients c
+      WHERE sl.client_id = c.id AND sl.agency_id <> c.agency_id`;
+    const fixedBatches = await prisma.$executeRaw`
+      UPDATE upload_batches ub SET agency_id = c.agency_id
+      FROM clients c
+      WHERE array_length(ub.client_ids, 1) = 1 AND ub.client_ids[1] = c.id AND ub.agency_id <> c.agency_id`;
+    console.log(`Agency reconcile: ${fixedLogs} schedule log(s), ${fixedBatches} upload batch(es) realigned`);
+  } catch (e) {
+    console.warn('Agency reconcile skipped:', e.message);
+  }
+
   console.log('\nSeeding complete!');
 }
 
