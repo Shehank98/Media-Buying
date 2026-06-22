@@ -257,37 +257,40 @@ export default function ClientDetailPage() {
               <div style={{ fontSize: 13 }}>Add a {activeTab.toLowerCase()} channel to get started.</div>
             </div>
           ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead><tr><th>Channel</th><th style={{ textAlign: 'center' }}>Properties</th><th>Type</th><th style={{ width: 40 }}></th></tr></thead>
-                <tbody>
-                  {filteredChannels.map(ch => {
-                    const tc = TAB_COLORS[activeTab] || TAB_COLORS.TV;
-                    return (
-                      <tr key={ch.id} className="clickable" onClick={() => navigate(`/channels/${ch.id}`)}>
-                        <td><div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 9, background: tc.bg, color: tc.fg, display: 'grid', placeItems: 'center', flex: 'none' }}>
-                            <Icon name={CHANNEL_TABS.find(t => t.key === activeTab)?.icon || 'tv'} size={17} />
-                          </div>
-                          <span className="strong">{ch.name}</span>
-                        </div></td>
-                        <td style={{ textAlign: 'center' }}><span className="count-badge">{ch.propertyCount || ch._count?.properties || 0} properties</span></td>
-                        <td style={{ color: 'var(--muted)' }}>{ch.type}</td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <div className="row-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {canManageChannels && (
-                              <button className="act-btn" title="Remove channel" style={{ color: 'var(--red-600,#dc2626)' }} onClick={e => handleDeleteChannel(ch, e)}>
-                                <Icon name="trash" size={15} />
-                              </button>
-                            )}
-                            <Icon name="chevR" size={16} style={{ color: 'var(--muted-2)' }} />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14 }}>
+              {filteredChannels.map(ch => {
+                const tc = TAB_COLORS[activeTab] || TAB_COLORS.TV;
+                const props = ch.propertyCount || ch._count?.properties || 0;
+                return (
+                  <div
+                    key={ch.id}
+                    onClick={() => navigate(`/channels/${ch.id}`)}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#C7D0DD'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E8ED'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,31,61,.06)'; e.currentTarget.style.transform = 'none'; }}
+                    style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 13, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 16, cursor: 'pointer', transition: 'transform .16s ease, box-shadow .16s ease, border-color .16s ease' }}
+                  >
+                    <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tc.fg}, ${tc.fg}1A 70%, transparent)` }} />
+                    {canManageChannels && (
+                      <button className="act-btn" title="Remove channel" style={{ position: 'absolute', top: 10, right: 10, color: 'var(--red-600,#dc2626)' }} onClick={e => handleDeleteChannel(ch, e)}>
+                        <Icon name="trash" size={14} />
+                      </button>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14, paddingRight: canManageChannels ? 28 : 0 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 11, background: tc.bg, color: tc.fg, display: 'grid', placeItems: 'center', flex: 'none' }}>
+                        <Icon name={CHANNEL_TABS.find(t => t.key === activeTab)?.icon || 'tv'} size={18} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.name}>{ch.name}</div>
+                        <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 1 }}>{ch.type}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#3B4A63' }}>{props} propert{props === 1 ? 'y' : 'ies'}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: tc.fg }}>Open <Icon name="chevR" size={13} /></span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

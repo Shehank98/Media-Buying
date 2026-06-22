@@ -319,9 +319,9 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               )}
               <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 18, fontWeight: 700, color: '#16243C', lineHeight: 1 }}>{fmtRs(mediumTotal)}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: '#93A0B5', marginTop: 3 }}>total spend</div>
+                <div style={{ textAlign: 'center', lineHeight: 1.1 }}>
+                  <div style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 15, fontWeight: 750, color: '#16243C', lineHeight: 1 }}>{fmtRs(mediumTotal).replace('LKR ', '')}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: '#93A0B5', marginTop: 3, letterSpacing: '.3px' }}>LKR · total</div>
                 </div>
               </div>
             </div>
@@ -364,8 +364,18 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: velColor, textAlign: 'center' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: velColor, textAlign: 'center', marginBottom: 14 }}>
                   {vel == null ? 'No prior-year month' : vel >= 100 ? `Pacing ${vel - 100}% ahead` : `Pacing ${100 - vel}% behind`}
+                </div>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #EEF0F3', paddingTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, color: '#6B7790' }}>{summary?.referenceMonth ? mFull(summary.referenceMonth) : 'This month'}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtRs(summary?.billingsThisMonth)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, color: '#6B7790' }}>Same month last year</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{fmtRs(summary?.sameMonthLastYear)}</span>
+                  </div>
                 </div>
               </div>
             </div>

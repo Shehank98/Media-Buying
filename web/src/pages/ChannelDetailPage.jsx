@@ -11,6 +11,14 @@ const CHANNEL_ICON = {
   PRINT: { icon: 'print', bg: 'var(--green-50)', fg: 'var(--green-600)' },
 };
 
+// Accent tone per property type: [accent, shadowTint]
+const PROP_TONE = {
+  BOUGHT_AIRTIME:   ['#1F5BB5', '#1F5BB5'],
+  SPONSORSHIP:      ['#6B3FB5', '#6B3FB5'],
+  BONUS_COMMERCIAL: ['#15814B', '#15814B'],
+  OTHER:            ['#9A5B00', '#9A5B00'],
+};
+
 const canModify = (role) =>
   ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN'].includes(role);
 
@@ -270,88 +278,92 @@ export default function ChannelDetailPage() {
         )}
       </div>
 
-      {/* Properties table */}
-      <div className="tbl-wrap">
-        {properties.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5 }}>
-            No properties yet. Add one to get started.
-          </div>
-        ) : (
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>Property name</th>
-                <th>Type</th>
-                <th className="num">Value (LKR)</th>
-                <th>Duration</th>
-                <th>Added by</th>
-                <th>Date</th>
-                <th className="num">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {properties.map((property) => (
-                <tr key={property.id}>
-                  <td>{property.category || <span style={{ color: 'var(--muted-2)' }}>-</span>}</td>
-                  <td className="strong">{property.name}</td>
-                  <td><TypeBadge type={property.type} /></td>
-                  <td className="num mono">
-                    {Number(property.cost) === 0
-                      ? <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Added value</span>
-                      : fmtLKR(property.cost)}
-                    {Number(property.bonusValue) > 0 && (
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtLKR(property.bonusValue)} bonus ({property.bonusCount || 0}%)</span>
+      {/* Properties cards */}
+      {properties.length === 0 ? (
+        <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>
+          No properties yet. Add one to get started.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+            {properties.map((property) => {
+              const tone = PROP_TONE[property.type] || PROP_TONE.OTHER;
+              const addedValue = Number(property.cost) === 0;
+              const canEdit = canModify(user?.role);
+              const canDelete = ['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role);
+              return (
+                <div
+                  key={property.id}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#C7D0DD'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; e.currentTarget.style.transform = 'translateY(-3px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E8ED'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,31,61,.06)'; e.currentTarget.style.transform = 'none'; }}
+                  style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 18, transition: 'transform .16s ease, box-shadow .16s ease, border-color .16s ease', display: 'flex', flexDirection: 'column' }}
+                >
+                  <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tone[0]}, ${tone[0]}1A 70%, transparent)` }} />
+                  <div className="row-actions" style={{ position: 'absolute', top: 11, right: 11, display: 'flex', gap: 4 }}>
+                    {canEdit && (
+                      <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}><Icon name="edit" size={14} /></button>
                     )}
-                  </td>
-                  <td style={{ fontSize: 12.5 }}>
-                    {property.startDate ? (
-                      <>
-                        {fmtDate(property.startDate)}
-                        {' '}&rarr;{' '}
-                        {property.endDate
-                          ? fmtDate(property.endDate)
-                          : <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>Ongoing</span>}
-                      </>
-                    ) : <span style={{ color: 'var(--muted-2)' }}>-</span>}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar name={property.createdBy?.name || property.createdByName || '-'} size={24} />
-                      <span>{property.createdBy?.name || property.createdByName || '-'}</span>
+                    {canDelete && (
+                      <button className="act-btn" title="Delete" style={{ color: 'var(--red-600,#dc2626)' }} onClick={() => { setDeletingProperty(property); setShowDeleteModal(true); }}><Icon name="trash" size={14} /></button>
+                    )}
+                    <button className="act-btn" title="History" onClick={() => openHistory(property)}><Icon name="history" size={14} /></button>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14, paddingRight: 82 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 11, background: `linear-gradient(135deg, ${tone[0]}, #fff)`, boxShadow: `inset 0 0 0 1px ${tone[1]}22`, color: tone[0], display: 'grid', placeItems: 'center', flex: 'none' }}>
+                      <Icon name="sparkle" size={19} />
                     </div>
-                  </td>
-                  <td>{fmtDate(property.createdAt)}</td>
-                  <td>
-                    <div className="row-actions">
-                      {canModify(user?.role) && (
-                        <button className="act-btn" title="Edit" onClick={() => openEditModal(property)}>
-                          <Icon name="edit" size={16} />
-                        </button>
-                      )}
-                      {['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role) && (
-                        <button className="act-btn" title="Delete" onClick={() => { setDeletingProperty(property); setShowDeleteModal(true); }}>
-                          <Icon name="trash" size={16} />
-                        </button>
-                      )}
-                      <button className="act-btn" title="History" onClick={() => openHistory(property)}>
-                        <Icon name="history" size={16} />
-                      </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14.5, color: '#16243C', lineHeight: 1.25 }} title={property.name}>{property.name}</div>
+                      <div style={{ marginTop: 5 }}><TypeBadge type={property.type} /></div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={2}>Total committed</td>
-                <td className="num mono">{fmtLKR(totalCost)}</td>
-                <td colSpan={4} />
-              </tr>
-            </tfoot>
-          </table>
-        )}
-      </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5' }}>Value</div>
+                      <div style={{ fontSize: 19, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: addedValue ? 'var(--green-600)' : '#16243C', marginTop: 3 }}>
+                        {addedValue ? 'Added value' : fmtLKR(property.cost)}
+                      </div>
+                      {Number(property.bonusValue) > 0 && (
+                        <div style={{ fontSize: 11.5, color: 'var(--green-600)', fontWeight: 600, marginTop: 2 }}>+{fmtLKR(property.bonusValue)} bonus ({property.bonusCount || 0}%)</div>
+                      )}
+                    </div>
+                    {property.category && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7790', background: '#F2F4F7', borderRadius: 6, padding: '3px 8px', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={property.category}>{property.category}</span>
+                    )}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #EEF0F3', paddingTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ color: '#93A0B5', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="calendar" size={13} />Duration</span>
+                      <span style={{ color: '#3B4A63', fontWeight: 600, textAlign: 'right' }}>
+                        {property.startDate ? (
+                          <>
+                            {fmtDate(property.startDate)}{' → '}
+                            {property.endDate ? fmtDate(property.endDate) : <span style={{ color: 'var(--green-600)' }}>Ongoing</span>}
+                          </>
+                        ) : '-'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ color: '#93A0B5', display: 'inline-flex', alignItems: 'center', gap: 5 }}>Added by</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#3B4A63', fontWeight: 600 }}>
+                        <Avatar name={property.createdBy?.name || property.createdByName || '-'} size={20} />
+                        {property.createdBy?.name || property.createdByName || '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginTop: 16, padding: '12px 18px', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5' }}>Total committed</span>
+            <span style={{ fontSize: 18, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtLKR(totalCost)}</span>
+          </div>
+        </>
+      )}
 
       {/* History slide-out panel */}
       <div className={`scrim${panel ? ' show' : ''}`} onClick={() => setPanel(null)} />
