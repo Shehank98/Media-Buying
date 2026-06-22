@@ -442,11 +442,11 @@ export default function DatabasePage() {
   // ── Bulk import across all clients ──
   const downloadImportTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Year', 'RO', 'Sch: Month', 'Client', 'Brand', 'Medium', 'Media Group', 'Channel', 'Schedule Value'],
-      [2023, 'RO-1001', 'Jan', 'Maliban', 'Maliban Milk', 'TV', 'Power House Limited', 'TV Derana', 250000],
-      [2024, 'RO-1002', 'Feb', 'Nestle', '', 'TV', 'MTV Channel (Pvt) LTD', 'Sirasa TV', 480000.5],
+      ['Year', 'RO', 'Sch: Month', 'Agency', 'Client', 'Brand', 'Medium', 'Media Group', 'Channel', 'Schedule Value'],
+      [2023, 'RO-1001', 'Jan', 'Ogilvy Media', 'Maliban', 'Maliban Milk', 'TV', 'Power House Limited', 'TV Derana', 250000],
+      [2024, 'RO-1002', 'Feb', 'RedWorks Media', 'Nestle', '', 'TV', 'MTV Channel (Pvt) LTD', 'Sirasa TV', 480000.5],
     ]);
-    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 10 }, { wch: 24 }, { wch: 20 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Schedule Data');
     XLSX.writeFile(wb, 'bulk-import-template.xlsx');
@@ -514,11 +514,13 @@ export default function DatabasePage() {
         createMissingClients: importCreateClients,
         dryRun: true,
       });
-      if (data.duplicates > 0) {
-        setImportCheck(data); // ask: upload only new, or re-upload everything
+      if (data.duplicates > 0 || data.failed > 0) {
+        // Duplicates and/or rows that can't be imported (e.g. ambiguous client) —
+        // show the breakdown + error list and let the user decide.
+        setImportCheck(data);
         setImporting(false);
       } else {
-        // No duplicates — just import (allowDuplicates is irrelevant).
+        // All rows new and valid — just import.
         await runImport(false);
       }
     } catch (err) {
@@ -1088,7 +1090,7 @@ export default function DatabasePage() {
               {(!importResult && !importCheck) ? (
                 <>
                   <div style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#3B4A63', marginBottom: 14 }}>
-                    Expected columns: <b>Year</b>, <b>RO</b>, <b>Sch: Month</b> (e.g. Jan, Feb…), <b>Client</b>, <b>Brand</b>, <b>Medium</b>, <b>Media Group</b>, <b>Channel</b>, <b>Schedule Value</b>. Client and channel are matched by name (no agency column needed); medium &amp; media group come from the channel; VAT (18%) is computed automatically.
+                    Expected columns: <b>Year</b>, <b>RO</b>, <b>Sch: Month</b> (e.g. Jan, Feb…), <b>Agency</b> (optional), <b>Client</b>, <b>Brand</b>, <b>Medium</b>, <b>Media Group</b>, <b>Channel</b>, <b>Schedule Value</b>. Client and channel are matched by name; medium &amp; media group come from the channel; VAT (18%) is computed automatically. Add the <b>Agency</b> column when a client (e.g. Nestle, Godrej) exists under more than one agency, so the right one is used.
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 14, cursor: 'pointer' }}>
                     <input type="checkbox" checked={importCreateClients} onChange={e => setImportCreateClients(e.target.checked)} />
@@ -1096,12 +1098,14 @@ export default function DatabasePage() {
                   </label>
                   <div className="tbl-wrap" style={{ maxHeight: 300, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                     <table className="tbl" style={{ margin: 0, fontSize: 12 }}>
-                      <thead><tr><th>#</th><th>Year</th><th>Month</th><th>Client</th><th>Channel</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
+                      <thead><tr><th>#</th><th>Year</th><th>Month</th><th>Agency</th><th>Client</th><th>Channel</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
                       <tbody>
                         {importRows.slice(0, 50).map((r, i) => (
                           <tr key={i}>
                             <td style={{ color: 'var(--muted)' }}>{i + 1}</td>
-                            <td>{r.year}</td><td>{r.scheduleMonth}</td><td>{r.client}</td><td>{r.channel}</td>
+                            <td>{r.year}</td><td>{r.scheduleMonth}</td>
+                            <td style={{ color: r.agency ? 'inherit' : 'var(--muted-2)' }}>{r.agency || '-'}</td>
+                            <td>{r.client}</td><td>{r.channel}</td>
                             <td>{r.roNumber}</td><td>{r.brand}</td>
                             <td style={{ textAlign: 'right' }} className="mono">{r.scheduleValue}</td>
                           </tr>
@@ -1115,10 +1119,13 @@ export default function DatabasePage() {
                 <div>
                   <div style={{ background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#9A5B00', marginBottom: 4 }}>
-                      {importCheck.duplicates} of {importCheck.total} row{importCheck.total === 1 ? '' : 's'} are already in the database
+                      {importCheck.newRows} of {importCheck.total} row{importCheck.total === 1 ? '' : 's'} can be imported
                     </div>
                     <div style={{ fontSize: 13, color: '#6B5A3C' }}>
-                      {importCheck.newRows} row{importCheck.newRows === 1 ? ' is' : 's are'} new. How do you want to proceed?
+                      {importCheck.duplicates > 0 && `${importCheck.duplicates} already in the database`}
+                      {importCheck.duplicates > 0 && importCheck.failed > 0 && ' · '}
+                      {importCheck.failed > 0 && `${importCheck.failed} can't be imported (see below)`}
+                      . How do you want to proceed?
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -1133,12 +1140,27 @@ export default function DatabasePage() {
                     {importCheck.failed > 0 && (
                       <div style={{ flex: 1, background: '#FBE0DA', border: '1px solid #f6c9bb', borderRadius: 10, padding: '14px 16px' }}>
                         <div style={{ fontSize: 22, fontWeight: 750, color: '#C5391F', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.failed}</div>
-                        <div style={{ fontSize: 12, color: '#3B4A63' }}>rows with errors</div>
+                        <div style={{ fontSize: 12, color: '#3B4A63' }}>can't be imported</div>
                       </div>
                     )}
                   </div>
+                  {importCheck.errors?.length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#C5391F', marginBottom: 6 }}>Rows that can't be imported</div>
+                      <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', background: '#fff' }}>
+                        {importCheck.errors.map((e, i) => (
+                          <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
+                        ))}
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
+                        Tip: clients that exist under more than one agency need an <b>Agency</b> column in your file to know which one. Add it (download the Template for the exact columns) and re-upload.
+                      </p>
+                    </div>
+                  )}
                   <p style={{ fontSize: 12, color: 'var(--muted)', margin: '12px 0 0' }}>
-                    <b>Upload only new</b> skips the duplicates. <b>Re-upload everything</b> inserts every row, creating duplicate records.
+                    {importCheck.duplicates > 0
+                      ? <><b>Upload only new</b> skips duplicates &amp; error rows. <b>Re-upload everything</b> also re-inserts the {importCheck.duplicates} duplicate{importCheck.duplicates === 1 ? '' : 's'}.</>
+                      : <>Proceeding imports the {importCheck.newRows} valid row{importCheck.newRows === 1 ? '' : 's'} and skips the rest. Fix the file first if you'd rather not skip them.</>}
                   </p>
                 </div>
               ) : importResult.error ? (
@@ -1187,11 +1209,13 @@ export default function DatabasePage() {
                 ) : importCheck ? (
                   <>
                     <button className="btn btn-ghost" onClick={() => setImportCheck(null)} disabled={importing}>Back</button>
-                    <button className="btn btn-ghost" onClick={() => runImport(true)} disabled={importing} title="Insert every row, including duplicates">
-                      {importing ? 'Working…' : 'Re-upload everything'}
-                    </button>
-                    <button className="btn btn-primary" onClick={() => runImport(false)} disabled={importing}>
-                      {importing ? 'Working…' : `Upload ${importCheck.newRows} new only`}
+                    {importCheck.duplicates > 0 && (
+                      <button className="btn btn-ghost" onClick={() => runImport(true)} disabled={importing} title="Insert every row, including duplicates">
+                        {importing ? 'Working…' : 'Re-upload everything'}
+                      </button>
+                    )}
+                    <button className="btn btn-primary" onClick={() => runImport(false)} disabled={importing || importCheck.newRows === 0}>
+                      {importing ? 'Working…' : importCheck.duplicates > 0 ? `Upload ${importCheck.newRows} new only` : `Import ${importCheck.newRows} valid row${importCheck.newRows === 1 ? '' : 's'}`}
                     </button>
                   </>
                 ) : (
