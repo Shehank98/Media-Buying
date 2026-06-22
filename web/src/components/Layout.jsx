@@ -104,6 +104,21 @@ export default function Layout() {
     } catch {}
   };
 
+  // Where a notification should take the user when clicked.
+  const notifLink = (n) => {
+    switch (n?.type) {
+      case 'PACKAGE_SHARED': return '/my-packages';
+      case 'PACKAGE_RESPONSE': return '/packages';
+      default: return null;
+    }
+  };
+
+  const openNotif = (n) => {
+    if (!n.isRead) markRead(n.id);
+    const to = notifLink(n);
+    if (to) { setShowNotifs(false); navigate(to); }
+  };
+
   const go = (path) => { navigate(path); window.scrollTo?.(0, 0); setShowNotifs(false); };
 
   const activeKey = (key) => {
@@ -257,7 +272,7 @@ export default function Layout() {
                     ) : notifications.slice(0, 20).map(n => (
                       <div
                         key={n.id}
-                        onClick={() => { if (!n.isRead) markRead(n.id); }}
+                        onClick={() => openNotif(n)}
                         style={{
                           padding: '10px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer',
                           background: n.isRead ? 'transparent' : 'var(--coral-50, #fff7ed)',
