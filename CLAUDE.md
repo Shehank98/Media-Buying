@@ -191,6 +191,8 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 
 **One-time replace:** `seed.js` upserts the provided media groups/channels/clients, and on first run (detected by the presence of the *old* default groups like "Maharaja Group") it removes the legacy default channel masters/media groups. Records still referenced by schedule logs are deactivated instead of deleted so startup never fails. This wipe runs once, then never again (so admin-added channels survive future restarts).
 
+**Client seeding respects moves:** a seed client is only created if its name doesn't already exist under *any* agency (so a client moved to a different agency is never recreated under its original one). On each run the seed also removes **duplicate empty client shells** — same name under multiple agencies where the duplicate has no channels/logs — keeping the record that holds the data. (This self-heals the old bug where moving a client duplicated it under its seed agency, causing bulk-import "exists under multiple agencies" errors.)
+
 ## Roles & Access Control
 
 | Role | Access |

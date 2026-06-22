@@ -182,14 +182,51 @@ async function main() {
   for (const c of CLIENTS) {
     const agency = agencyByName[c.agency.toLowerCase()];
     if (!agency) { console.warn(`  ! Agency not found for client "${c.name}": ${c.agency}`); clientsSkipped++; continue; }
-    await prisma.client.upsert({
-      where: { agencyId_name: { agencyId: agency.id, name: c.name } },
-      update: {},
-      create: { agencyId: agency.id, name: c.name },
+    // Only seed clients that don't exist ANYWHERE yet. A client may have been
+    // intentionally moved to a different agency — recreating it under its
+    // original (seed) agency would produce a duplicate "exists under multiple
+    // agencies" record, so skip if the name already exists under any agency.
+    const existing = await prisma.client.findFirst({
+      where: { name: { equals: c.name, mode: 'insensitive' } },
+      select: { id: true },
     });
+    if (existing) { clientsSkipped++; continue; }
+    await prisma.client.create({ data: { agencyId: agency.id, name: c.name } });
     clientsCreated++;
   }
-  console.log(`Clients upserted: ${clientsCreated}${clientsSkipped ? `, skipped: ${clientsSkipped}` : ''}`);
+  console.log(`Clients created: ${clientsCreated}${clientsSkipped ? `, skipped (already exist): ${clientsSkipped}` : ''}`);
+
+  // ── Clean up duplicate client shells ─────────────────────────────────────────
+  // Older seeds recreated default clients under their original agency, so moving
+  // a client between agencies could leave a second, EMPTY copy of the same name.
+  // Keep the record that actually has data (channels/logs) and delete the empty
+  // duplicates. Names that genuinely have data under two agencies are left alone.
+  try {
+    const dupScan = await prisma.client.findMany({
+      select: { id: true, name: true, _count: { select: { channels: true, scheduleLogs: true } } },
+    });
+    const byName = {};
+    for (const c of dupScan) {
+      const k = c.name.trim().toLowerCase();
+      (byName[k] ||= []).push(c);
+    }
+    const hasData = (c) => c._count.channels > 0 || c._count.scheduleLogs > 0;
+    let removedDupes = 0;
+    for (const list of Object.values(byName)) {
+      if (list.length < 2) continue;
+      const empties = list.filter(c => !hasData(c));
+      const withData = list.filter(hasData);
+      // If something has data, delete every empty dup; if all are empty, keep one.
+      const toDelete = withData.length >= 1 ? empties : list.slice(1);
+      for (const c of toDelete) {
+        try { await prisma.client.delete({ where: { id: c.id } }); removedDupes++; }
+        catch (e) { console.warn(`  ! Could not delete duplicate client "${c.name}" (#${c.id}): ${e.message}`); }
+      }
+    }
+    if (removedDupes) console.log(`Removed ${removedDupes} duplicate empty client record(s)`);
+  } catch (e) {
+    console.warn('Duplicate-client cleanup skipped:', e.message);
+  }
 
   // ── Reconcile denormalized agency IDs ────────────────────────────────────────
   // ScheduleLog/UploadBatch store agency_id at insert time. If a client was moved
