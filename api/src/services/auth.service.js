@@ -6,7 +6,9 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 export function generateTokens(user) {
-  const payload = { id: user.id, email: user.email, role: user.role };
+  // tv (token version) lets us revoke all of a user's existing tokens by
+  // bumping User.tokenVersion (on logout / password change / reset).
+  const payload = { id: user.id, email: user.email, role: user.role, tv: user.tokenVersion ?? 0 };
 
   const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });

@@ -90,6 +90,14 @@ export function AuthProvider({ children }) {
       newPassword,
     });
 
+    // The server re-issues tokens (other sessions are revoked); keep this
+    // device signed in by storing the fresh tokens.
+    if (data.accessToken) {
+      localStorage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      setToken(data.accessToken);
+    }
+
     // Update user if mustChangePassword was cleared
     if (data.user) {
       setUser(data.user);

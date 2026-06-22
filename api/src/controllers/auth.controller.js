@@ -9,6 +9,9 @@ import {
 } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 
+const MAX_FAILED_LOGINS = 5;
+const LOCK_MINUTES = 15;
+
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
@@ -22,9 +25,33 @@ export async function login(req, res) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Account lockout: too many recent failures temporarily blocks sign-in.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
+      return res.status(429).json({ error: `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.` });
+    }
+
     const valid = await comparePassword(password, user.passwordHash);
     if (!valid) {
+      // Count the failure; lock the account once the threshold is reached.
+      const failed = (user.failedLogins || 0) + 1;
+      const lock = failed >= MAX_FAILED_LOGINS;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLogins: lock ? 0 : failed,
+          lockedUntil: lock ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000) : user.lockedUntil,
+        },
+      });
+      if (lock) {
+        return res.status(429).json({ error: `Too many failed attempts. Try again in ${LOCK_MINUTES} minutes.` });
+      }
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Successful login clears any failure/lock state.
+    if (user.failedLogins || user.lockedUntil) {
+      await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
     }
 
     const { accessToken, refreshToken } = generateTokens(user);
@@ -69,6 +96,11 @@ export async function refresh(req, res) {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Reject refresh tokens that were revoked (logout / password change).
+    if (decoded.tv !== undefined && decoded.tv !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: 'Session expired, please sign in again' });
+    }
+
     const { accessToken, refreshToken } = generateTokens(user);
 
     res.cookie('refreshToken', refreshToken, {
@@ -87,6 +119,18 @@ export async function refresh(req, res) {
 
 export async function logout(req, res) {
   try {
+    // Bump tokenVersion so the just-issued access/refresh tokens are revoked
+    // server-side (logout is otherwise client-side only). Best-effort.
+    const token = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (token) {
+      try {
+        const decoded = verifyRefreshToken(token);
+        if (decoded?.id) {
+          await prisma.user.update({ where: { id: decoded.id }, data: { tokenVersion: { increment: 1 } } });
+        }
+      } catch { /* invalid token — nothing to revoke */ }
+    }
+
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -177,7 +221,7 @@ export async function resetPassword(req, res) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash, mustChangePassword: false },
+        data: { passwordHash, mustChangePassword: false, tokenVersion: { increment: 1 }, failedLogins: 0, lockedUntil: null },
       }),
       prisma.passwordResetToken.update({
         where: { id: resetToken.id },
@@ -228,12 +272,36 @@ export async function changePassword(req, res) {
 
     const passwordHash = await hashPassword(newPassword);
 
-    await prisma.user.update({
+    // Bump tokenVersion to revoke any OTHER active sessions, then re-issue
+    // fresh tokens so this device stays signed in.
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, mustChangePassword: false },
+      data: { passwordHash, mustChangePassword: false, tokenVersion: { increment: 1 } },
     });
 
-    return res.json({ message: 'Password changed successfully' });
+    const { accessToken, refreshToken } = generateTokens(updated);
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      message: 'Password changed successfully',
+      accessToken,
+      refreshToken,
+      user: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        role: updated.role,
+        mustChangePassword: false,
+        pageAccess: updated.pageAccess || [],
+        canExport: updated.canExport !== false,
+        readOnly: !!updated.readOnly,
+      },
+    });
   } catch (error) {
     console.error('Change password error:', error);
     return res.status(500).json({ error: 'Internal server error' });

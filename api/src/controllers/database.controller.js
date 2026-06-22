@@ -463,6 +463,44 @@ export async function createScheduleLog(req, res) {
 
 // ── bulkCreateScheduleLogs ──
 
+// A schedule log is treated as a duplicate of an existing (non-deleted) row
+// when all of these match. This lets re-importing the same file skip rows
+// already present instead of silently doubling the data.
+function dedupeKey(o) {
+  const v = Number(o.scheduleValue);
+  return [
+    o.clientId,
+    o.channelMasterId,
+    o.scheduleMonth,
+    String(o.brandName ?? '').trim().toLowerCase(),
+    Number.isFinite(v) ? v.toFixed(2) : '',
+    String(o.roNumber ?? '').trim().toLowerCase(),
+  ].join('||');
+}
+
+// Split validated candidate rows into the ones to actually insert vs. a count
+// of duplicates — checked against existing DB rows AND earlier rows in the same
+// batch (so a file that repeats a line only inserts it once).
+async function splitDuplicates(candidates) {
+  if (candidates.length === 0) return { unique: [], duplicates: 0 };
+  const clientIds = [...new Set(candidates.map(c => c.clientId))];
+  const months = [...new Set(candidates.map(c => c.scheduleMonth))];
+  const existing = await prisma.scheduleLog.findMany({
+    where: { clientId: { in: clientIds }, scheduleMonth: { in: months }, isDeleted: false },
+    select: { clientId: true, channelMasterId: true, scheduleMonth: true, brandName: true, scheduleValue: true, roNumber: true },
+  });
+  const seen = new Set(existing.map(dedupeKey));
+  const unique = [];
+  let duplicates = 0;
+  for (const c of candidates) {
+    const k = dedupeKey(c);
+    if (seen.has(k)) { duplicates++; continue; }
+    seen.add(k);
+    unique.push(c);
+  }
+  return { unique, duplicates };
+}
+
 export async function bulkCreateScheduleLogs(req, res) {
   try {
     const { rows, fileName } = req.body;
@@ -517,7 +555,7 @@ export async function bulkCreateScheduleLogs(req, res) {
     }
 
     // Validate every row and build the insert payload.
-    const toInsert = [];
+    const candidates = [];
     for (let i = 0; i < rows.length; i++) {
       const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName } = rows[i];
 
@@ -532,7 +570,7 @@ export async function bulkCreateScheduleLogs(req, res) {
       const value = parseFloat(scheduleValue);
       if (Number.isNaN(value)) { errors.push({ row: i, error: 'Invalid schedule value' }); continue; }
 
-      toInsert.push({
+      candidates.push({
         agencyId: ci.agencyId,
         clientId: parseInt(clientId),
         channelMasterId: ch.id,
@@ -549,7 +587,10 @@ export async function bulkCreateScheduleLogs(req, res) {
       });
     }
 
-    // Single bulk insert for everything that validated.
+    // Skip rows already present (re-import) instead of duplicating them.
+    const { unique: toInsert, duplicates } = await splitDuplicates(candidates);
+
+    // Single bulk insert for everything that validated and isn't a duplicate.
     let createdCount = 0;
     if (toInsert.length > 0) {
       const result = await prisma.scheduleLog.createMany({ data: toInsert });
@@ -563,12 +604,12 @@ export async function bulkCreateScheduleLogs(req, res) {
         data: {
           successfulRows: createdCount,
           failedRows: errors.length,
-          status: createdCount === 0 ? 'FAILED' : 'COMPLETE',
+          status: createdCount === 0 && duplicates === 0 ? 'FAILED' : 'COMPLETE',
         },
       });
     }
 
-    return res.status(201).json({ created: createdCount, createdCount, errors, batchId: uploadBatch?.id || null });
+    return res.status(201).json({ created: createdCount, createdCount, duplicates, errors, batchId: uploadBatch?.id || null });
   } catch (error) {
     console.error('Bulk create error:', error);
     return res.status(500).json({ error: 'Failed to bulk create', detail: error.message });
@@ -659,7 +700,7 @@ export async function importAllScheduleLogs(req, res) {
 
     const errors = [];
     const createdClients = [];
-    const toInsert = [];
+    const candidates = [];
     const usedClientIds = new Set();
     const usedAgencyIds = new Set();
 
@@ -722,9 +763,7 @@ export async function importAllScheduleLogs(req, res) {
       const channel = channelByName.get(norm(channelName));
       if (!channel) { errors.push({ row: i + 1, error: `Channel not found: "${channelName}"` }); continue; }
 
-      usedAgencyIds.add(agency.id);
-      usedClientIds.add(client.id);
-      toInsert.push({
+      candidates.push({
         agencyId: agency.id,
         clientId: client.id,
         channelMasterId: channel.id,
@@ -739,6 +778,11 @@ export async function importAllScheduleLogs(req, res) {
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
       });
     }
+
+    // Skip rows already in the DB (re-import) instead of duplicating them, then
+    // derive the batch's agency/client lists from what actually gets inserted.
+    const { unique: toInsert, duplicates } = await splitDuplicates(candidates);
+    for (const t of toInsert) { usedAgencyIds.add(t.agencyId); usedClientIds.add(t.clientId); }
 
     // One batch record for the whole import.
     let uploadBatch = null;
@@ -780,6 +824,7 @@ export async function importAllScheduleLogs(req, res) {
     return res.status(201).json({
       created: createdCount,
       failed: errors.length,
+      duplicates,
       createdClients,
       errors: errors.slice(0, 200),
       batchId: uploadBatch?.id || null,

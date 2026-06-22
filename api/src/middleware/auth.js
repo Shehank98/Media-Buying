@@ -23,6 +23,14 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // Revocation: a token whose version is behind the user's current
+    // tokenVersion has been invalidated (logout / password change). Tokens
+    // issued before this field existed (decoded.tv undefined) are allowed
+    // through so a deploy doesn't force-logout everyone mid-session.
+    if (decoded.tv !== undefined && decoded.tv !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: 'Session expired, please sign in again' });
+    }
+
     // Forced password change is enforced server-side, not just by the
     // frontend redirect, so direct API calls are blocked too.
     if (user.mustChangePassword) {

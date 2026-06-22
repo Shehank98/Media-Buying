@@ -557,9 +557,7 @@ Group/filter by canonical **channel master** (spans agencies), agency, client, o
 - **Campaign model** has controller/routes (`brand.controller.js`) but little/no UI surface.
 - **No automated tests or CI** (`npm test` is a placeholder).
 - **Decision Center was removed** (nav, route, page, and `/api/decisions` backend) — do not re-add references.
-- **Auth is stateless JWT:** logout is client-side; refresh tokens aren't revoked server-side.
 - **Annotation layer & empty-state ghost charts** were proposed but not built.
-- `bulk-import` always inserts (no dedupe vs existing rows) — re-importing the same file duplicates; delete the batch from Upload History to redo.
 
 ### Recently implemented (do NOT re-report as gaps)
 
@@ -568,3 +566,5 @@ Group/filter by canonical **channel master** (spans agencies), agency, client, o
 - **Dashboard year filter** (replaces the old decorative 30D/QTD/YTD toggle) + **all-time "All"** + latest-month anchoring (`refPeriod`).
 - **Bulk multi-client import** (`/api/database/import-all`), **channel/client seed modules**, **OrbitLoader everywhere**, and the **new analytics charts** (medium mix shift, brand trend, tenure bubble, agency efficiency, flighting calendar, velocity gauge, sparklines, cross-filter, comparison mode).
 - **Agencies list** returns `totalSpend` + `channelCount` per agency.
+- **Auth hardening:** per-IP rate limiting on auth routes (`express-rate-limit`), per-account lockout (`User.failedLogins`/`lockedUntil`, 5 fails → 15 min), and revocable tokens via `User.tokenVersion` (bumped on logout / password change / reset; embedded as `tv` in JWTs and checked in `middleware/auth.js` + refresh). `changePassword` re-issues fresh tokens so the current device stays signed in.
+- **Bulk-import dedupe:** `/api/database/bulk` and `/import-all` skip rows already present (key: client+channel+month+brand+value+RO, vs non-deleted rows and within the same batch) and report a `duplicates` count; the Database import UI shows "duplicates skipped".

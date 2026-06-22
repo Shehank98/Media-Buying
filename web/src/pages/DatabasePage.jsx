@@ -254,7 +254,7 @@ export default function DatabasePage() {
       const { data } = await api.post('/database/bulk', { rows: payload, fileName: uploadFileName || null });
       const createdCount = data.createdCount ?? (Array.isArray(data.created) ? data.created.length : (data.created || 0));
       const errorCount = data.errors?.length || 0;
-      setSaveResult({ created: createdCount, errors: errorCount });
+      setSaveResult({ created: createdCount, errors: errorCount, duplicates: data.duplicates || 0 });
 
       if (createdCount > 0) {
         if (errorCount > 0) {
@@ -749,6 +749,7 @@ export default function DatabasePage() {
               border: `1px solid ${saveResult.errors > 0 ? '#fcd34d' : '#86efac'}`,
             }}>
               {saveResult.created > 0 && <span>{saveResult.created} rows saved successfully. </span>}
+              {saveResult.duplicates > 0 && <span>{saveResult.duplicates} duplicate{saveResult.duplicates === 1 ? '' : 's'} skipped. </span>}
               {saveResult.errors > 0 && <span>{saveResult.errors} rows had errors. </span>}
               {saveResult.message && <span>{saveResult.message}</span>}
               <button onClick={() => setSaveResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: 'inherit' }}>Dismiss</button>
@@ -1091,11 +1092,20 @@ export default function DatabasePage() {
                       <div style={{ fontSize: 22, fontWeight: 750, color: importResult.failed ? '#C5391F' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.failed}</div>
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>rows skipped</div>
                     </div>
+                    <div style={{ flex: 1, background: importResult.duplicates ? '#FEF6E7' : '#F5F6F8', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ fontSize: 22, fontWeight: 750, color: importResult.duplicates ? '#9A5B00' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.duplicates || 0}</div>
+                      <div style={{ fontSize: 12, color: '#3B4A63' }}>duplicates skipped</div>
+                    </div>
                     <div style={{ flex: 1, background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 10, padding: '14px 16px' }}>
                       <div style={{ fontSize: 22, fontWeight: 750, color: '#1F5BB5', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.createdClients?.length || 0}</div>
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>new clients created</div>
                     </div>
                   </div>
+                  {importResult.duplicates > 0 && (
+                    <div style={{ fontSize: 12, color: '#9A5B00', background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+                      {importResult.duplicates} row{importResult.duplicates === 1 ? ' was' : 's were'} already in the database and skipped to avoid duplicates.
+                    </div>
+                  )}
                   {importResult.errors?.length > 0 && (
                     <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Skipped rows</div>

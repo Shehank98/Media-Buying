@@ -29,6 +29,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Behind Railway's proxy — trust the first hop so req.ip is the real client
+// IP (used by the auth rate limiter), not the proxy's address.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
