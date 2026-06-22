@@ -254,7 +254,7 @@ export default function SpendAnalyticsPage() {
         pdf.text(title, margin, 22);
         pdf.setFontSize(10);
         pdf.setTextColor(100);
-        pdf.text(`Period: ${dateLabel}  |  Total: LKR ${fmtShort(data.totalValue)}`, margin, 30);
+        pdf.text(`Period: ${dateLabel}  |  Total: ${fmtLKR(data.totalValue)}`, margin, 30);
         pdf.setDrawColor(232, 93, 36);
         pdf.setLineWidth(0.5);
         pdf.line(margin, 33, pageW - margin, 33);
@@ -543,12 +543,12 @@ export default function SpendAnalyticsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
             <div className="spa-stat">
               <div className="spa-stat-label">Total Schedule Value</div>
-              <div className="spa-stat-val">LKR {fmtShort(data.totalValue)}</div>
+              <div className="spa-stat-val">{fmtLKR(data.totalValue)}</div>
               <div className="spa-stat-sub">{data.totalEntries.toLocaleString()} entries</div>
             </div>
             <div className="spa-stat">
               <div className="spa-stat-label">Avg / Month</div>
-              <div className="spa-stat-val">LKR {fmtShort(insights?.avgMonth || 0)}</div>
+              <div className="spa-stat-val">{fmtLKR(insights?.avgMonth || 0)}</div>
               <div className="spa-stat-sub">{insights?.months || 0} months</div>
             </div>
             <div className="spa-stat">
