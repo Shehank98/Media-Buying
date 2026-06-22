@@ -422,8 +422,8 @@ A standalone reference also lives in `docs/DASHBOARDS_AND_CHARTS.md`.
 - Excel (SheetJS, sheet per group) + PDF (jsPDF, charts via html2canvas) export.
 
 ### Channel Intelligence (`/channel-masters/:id`)
-- Four endpoints keyed by channel master id: `/summary`, `/monthly-spend`, `/clients`, `/property-history`.
-- Stat cards (compact, page-scoped sizing — NOT the global 33px `.stat-val`); **Monthly Spend Trend** Line (schedule value vs with-VAT); **Clients on this Channel** table; **Property History Timeline** (vertical timeline of deal terms + the real `PropertyHistory` audit-trail diffs). `getChannelPropertyHistory` also matches free-text client channels by name/alias when `channelMasterId` is null.
+- Five endpoints keyed by channel master id: `/summary` (incl. a per-year `byYear[]` breakdown → one spend card per year), `/monthly-spend`, `/clients`, `/agency-monthly`, `/property-history`.
+- Stat cards (compact, page-scoped sizing — NOT the global 33px `.stat-val`); **Monthly Spend Trend** Line (schedule value vs with-VAT); **Spend by Agency Over Time** multi-line (`/agency-monthly`); **Client Spend Concentration** Pareto (ComposedChart: per-client spend bars + cumulative-% line + 80% reference line, built client-side from `/clients`); **Clients on this Channel** table; **Property History Timeline** (vertical timeline of deal terms + the real `PropertyHistory` audit-trail diffs). `getChannelPropertyHistory` also matches free-text client channels by name/alias when `channelMasterId` is null.
 
 ### Database (`/database`)
 - When a client is selected, an overview strip + monthly mini bar chart from `/database/analytics?agencyId&clientId`. Plus the spreadsheet editor and bulk import (below).

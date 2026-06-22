@@ -7,6 +7,7 @@ import api from '../lib/api';
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ComposedChart, Bar, Cell, ReferenceLine,
 } from 'recharts';
 
 const fmtLKR = (v) => {
@@ -103,6 +104,24 @@ export default function ChannelIntelligencePage() {
       return (a[clientSort.field] > b[clientSort.field] ? v : -v);
     });
   }, [clients, clientSort]);
+
+  // Client spend concentration on this channel: top clients as bars + a running
+  // cumulative-% line (Pareto). cumPct is over ALL clients' spend so the curve
+  // and the 80% reference line read true even though we only show the top bars.
+  const clientPareto = useMemo(() => {
+    const ranked = [...clients].sort((a, b) => (b.totalScheduleValue || 0) - (a.totalScheduleValue || 0));
+    const total = ranked.reduce((s, c) => s + (c.totalScheduleValue || 0), 0) || 1;
+    let run = 0;
+    return ranked.slice(0, 12).map(c => {
+      run += c.totalScheduleValue || 0;
+      return {
+        name: c.clientName,
+        value: c.totalScheduleValue || 0,
+        share: Number((((c.totalScheduleValue || 0) / total) * 100).toFixed(1)),
+        cumPct: Number(((run / total) * 100).toFixed(1)),
+      };
+    });
+  }, [clients]);
 
   const filteredProps = useMemo(() => {
     return propGroups
@@ -283,6 +302,28 @@ export default function ChannelIntelligencePage() {
                 <Line key={a} type="monotone" dataKey={a} stroke={AGENCY_COLORS[i % AGENCY_COLORS.length]} strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />
               ))}
             </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Client spend concentration (Pareto) */}
+      {clientPareto.length > 0 && (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 32 }}>
+          <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Client Spend Concentration</h3>
+          <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Which clients drive this channel's spend — bars are each client's spend, the line is the running share of the total (dashed = 80%)</p>
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart data={clientPareto} margin={{ top: 8, right: 16, bottom: 64, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval={0} angle={-35} textAnchor="end" height={70} />
+              <YAxis yAxisId="left" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
+              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={40} />
+              <Tooltip formatter={(v, n) => (n === 'cumPct' ? [`${v}%`, 'Cumulative share'] : [fmtLKR(v), 'Spend'])} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
+              <ReferenceLine yAxisId="right" y={80} stroke="#C5391F" strokeDasharray="5 4" />
+              <Bar yAxisId="left" dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={46}>
+                {clientPareto.map((_, i) => <Cell key={i} fill={AGENCY_COLORS[i % AGENCY_COLORS.length]} fillOpacity={0.85} />)}
+              </Bar>
+              <Line yAxisId="right" type="monotone" dataKey="cumPct" name="cumPct" stroke="#0A1729" strokeWidth={2.4} dot={{ r: 2.5 }} activeDot={{ r: 5 }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
