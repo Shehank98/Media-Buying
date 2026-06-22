@@ -123,7 +123,7 @@ export default function ClientDashboardPage() {
       {/* Monthly spend trend — one line per year so peak months are comparable */}
       <div style={{ ...CARD, padding: 24, marginBottom: 24 }}>
         <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year — compare peak months across years</p>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year · compare peak months across years</p>
         {trendYears.length === 0 ? (
           <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend recorded</div>
         ) : (

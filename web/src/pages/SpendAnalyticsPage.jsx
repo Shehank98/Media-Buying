@@ -755,7 +755,7 @@ export default function SpendAnalyticsPage() {
           {seasonality && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
               <h3 className="spa-ctitle">Seasonality Heatmap</h3>
-              <p className="spa-csub" style={{ marginBottom: 14 }}>Spend intensity by month and year — darker = higher spend</p>
+              <p className="spa-csub" style={{ marginBottom: 14 }}>Spend intensity by month and year · darker = higher spend</p>
               <div style={{ overflowX: 'auto' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: `52px repeat(12, minmax(34px, 1fr)) 78px`, gap: 4, minWidth: 640 }}>
                   <div />
@@ -828,7 +828,7 @@ export default function SpendAnalyticsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, marginBottom: 20 }}>
             <div className="spa-card" style={{ padding: '20px' }}>
               <h3 className="spa-ctitle">Client Tenure &amp; Value</h3>
-              <p className="spa-csub" style={{ marginBottom: 12 }}>Months active vs. total spend — bubble size = avg monthly spend</p>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Months active vs. total spend · bubble size = avg monthly spend</p>
               {(data.clientTenure?.length > 0) ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 8 }}>
@@ -879,7 +879,7 @@ export default function SpendAnalyticsPage() {
           {(data.clientFlighting?.length > 0 && data.flightingMonths?.length > 0) && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
               <h3 className="spa-ctitle">Flighting Calendar</h3>
-              <p className="spa-csub" style={{ marginBottom: 14 }}>Active months per client (top 15 by spend) — filled = had spend that month</p>
+              <p className="spa-csub" style={{ marginBottom: 14 }}>Active months per client (top 15 by spend) · filled = had spend that month</p>
               <div style={{ overflowX: 'auto' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: `minmax(150px, 1.4fr) repeat(${data.flightingMonths.length}, minmax(26px, 1fr))`, gap: 3, minWidth: 600 }}>
                   <div />

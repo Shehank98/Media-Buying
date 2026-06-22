@@ -1087,7 +1087,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13.5, cursor: 'pointer', margin: 0 }}>
                         <input type="checkbox" checked={userForm.readOnly} onChange={e => setUserForm(p => ({ ...p, readOnly: e.target.checked }))} />
-                        Read-only — can view but not add, edit or delete anything
+                        Read-only · can view but not add, edit or delete anything
                       </label>
                     </div>
                   </div>

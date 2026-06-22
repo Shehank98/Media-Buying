@@ -1046,7 +1046,7 @@ export default function DatabasePage() {
           <div className="modal" style={{ maxWidth: 760 }} onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <div>
-                <h3 style={{ margin: 0 }}>Bulk import — all clients</h3>
+                <h3 style={{ margin: 0 }}>Bulk import · all clients</h3>
                 <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{importFileName} · {importRows.length} rows</p>
               </div>
               <button className="act-btn" onClick={() => !importing && setShowImport(false)}><Icon name="x" size={18} /></button>
