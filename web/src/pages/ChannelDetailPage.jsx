@@ -9,6 +9,7 @@ const CHANNEL_ICON = {
   TV:    { icon: 'tv',    bg: 'var(--blue-50)',  fg: 'var(--blue-700)' },
   RADIO: { icon: 'radio', bg: 'var(--coral-50)', fg: 'var(--coral-700)' },
   PRINT: { icon: 'print', bg: 'var(--green-50)', fg: 'var(--green-600)' },
+  DIGITAL: { icon: 'digital', bg: '#efe9fb', fg: '#6B3FB5' },
 };
 
 // Accent tone per property type: [accent, shadowTint]

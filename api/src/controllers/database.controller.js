@@ -340,7 +340,7 @@ export async function getAnalytics(req, res) {
     // ── Derived series for the richer charts ──
     const sortedMonths = Object.keys(monthMedium).sort();
     const byMonthMedium = sortedMonths.map((m) => {
-      const row = { month: m, TV: 0, RADIO: 0, PRINT: 0 };
+      const row = { month: m, TV: 0, RADIO: 0, PRINT: 0, DIGITAL: 0 };
       for (const [med, v] of Object.entries(monthMedium[m])) row[med] = Math.round(v);
       return row;
     });

@@ -18,6 +18,7 @@ enum ChannelType {
   TV
   RADIO
   PRINT
+  DIGITAL
 }
 
 enum UploadStatus {

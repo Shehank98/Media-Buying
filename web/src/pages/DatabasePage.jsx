@@ -15,7 +15,7 @@ const fmtShort = (v) => {
   if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
   return String(Math.round(n));
 };
-const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B' };
+const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B', DIGITAL: '#6B3FB5' };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 

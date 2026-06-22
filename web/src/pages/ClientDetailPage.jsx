@@ -9,11 +9,13 @@ const CHANNEL_TABS = [
   { key: 'TV', label: 'TV Channels', icon: 'tv' },
   { key: 'RADIO', label: 'Radio Channels', icon: 'radio' },
   { key: 'PRINT', label: 'Print', icon: 'print' },
+  { key: 'DIGITAL', label: 'Digital', icon: 'digital' },
 ];
 const TAB_COLORS = {
   TV:    { bg: 'var(--blue-50,#EFF6FF)',  fg: 'var(--blue-700,#1D4ED8)' },
   RADIO: { bg: 'var(--coral-50,#FFF5F0)', fg: 'var(--coral-600,#D4541E)' },
   PRINT: { bg: 'var(--green-50,#ECFDF5)', fg: 'var(--green-600,#059669)' },
+  DIGITAL: { bg: '#efe9fb', fg: '#6B3FB5' },
 };
 
 const fmtLKR = (v) => {

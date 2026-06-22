@@ -6,7 +6,7 @@ import { TOGGLEABLE_PAGES } from '../lib/permissions';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
-const MEDIUMS = ['TV', 'RADIO', 'PRINT'];
+const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL'];
 
 const ROLE_DESC = {
   SUPER_ADMIN: 'Full access; manages agencies, users & assignments',

@@ -39,6 +39,7 @@ const MediumBadge = ({ medium }) => {
     TV: ['#1e3a5f', '#dbeafe'],
     RADIO: ['#E85D24', '#fff5f0'],
     PRINT: ['#059669', '#ecfdf5'],
+    DIGITAL: ['#6B3FB5', '#efe9fb'],
   };
   const [fg, bg] = colors[medium] || ['#6b7280', '#f3f4f6'];
   return (
@@ -53,7 +54,7 @@ const Skeleton = ({ w = '100%', h = 20 }) => (
 );
 
 const AGENCY_COLORS = ['#0A1729', '#E85D24', '#0891b2', '#7c3aed', '#065f46'];
-const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669' };
+const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5' };
 
 const ChartEmpty = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)' }}>
