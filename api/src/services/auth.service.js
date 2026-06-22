@@ -5,6 +5,12 @@ import crypto from 'crypto';
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
+// Fail fast on a misconfigured deploy: signing/verifying with an undefined
+// secret would silently weaken auth, so require both to be set.
+if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error('JWT_SECRET and JWT_REFRESH_SECRET environment variables are required');
+}
+
 export function generateTokens(user) {
   // tv (token version) lets us revoke all of a user's existing tokens by
   // bumping User.tokenVersion (on logout / password change / reset).

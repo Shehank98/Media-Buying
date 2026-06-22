@@ -2,6 +2,8 @@ import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 
+const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
+
 // ── shared include/map helpers ──
 
 const teamIncludes = {
@@ -110,6 +112,7 @@ export async function createUser(req, res) {
   try {
     const { email, name, role, password, agencyIds, clientIds, pageAccess, canExport, readOnly } = req.body;
     if (!email || !name || !role) return res.status(400).json({ error: 'Email, name, and role are required' });
+    if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
 
     const tempPassword = password || 'TempPass@123';
     const passwordHash = await hashPassword(tempPassword);
@@ -162,7 +165,10 @@ export async function updateUser(req, res) {
 
     const data = {};
     if (name !== undefined) data.name = name;
-    if (role !== undefined) data.role = role;
+    if (role !== undefined) {
+      if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+      data.role = role;
+    }
     if (password) data.passwordHash = await hashPassword(password);
     if (Array.isArray(pageAccess)) data.pageAccess = pageAccess;
     if (canExport !== undefined) data.canExport = !!canExport;

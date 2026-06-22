@@ -924,8 +924,8 @@ export default function SpendAnalyticsPage() {
                       outerRadius={90}
                       paddingAngle={2}
                       onClick={(d) => setMediumFilter((f) => (f === d.name ? '' : d.name))}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      labelLine={{ strokeWidth: 1 }}
+                      label={({ name, percent }) => percent >= 0.05 ? `${name} ${(percent * 100).toFixed(0)}%` : null}
+                      labelLine={false}
                     >
                       {data.byMedium.map((entry, idx) => (
                         <Cell key={idx} cursor="pointer" opacity={mediumFilter && mediumFilter !== entry.name ? 0.3 : 1} stroke={mediumFilter === entry.name ? '#16243C' : 'none'} strokeWidth={2} fill={MEDIUM_COLORS[entry.name] || COLORS[idx % COLORS.length]} />
@@ -966,8 +966,8 @@ export default function SpendAnalyticsPage() {
                       innerRadius={55}
                       outerRadius={90}
                       paddingAngle={2}
-                      label={({ name, percent }) => percent > 0.05 ? `${name.length > 12 ? name.slice(0, 12) + '...' : name} ${(percent * 100).toFixed(0)}%` : ''}
-                      labelLine={{ strokeWidth: 1 }}
+                      label={({ name, percent }) => percent >= 0.05 ? `${name.length > 12 ? name.slice(0, 12) + '...' : name} ${(percent * 100).toFixed(0)}%` : null}
+                      labelLine={false}
                     >
                       {data.byMediaGroup.slice(0, 8).map((_, idx) => (
                         <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
