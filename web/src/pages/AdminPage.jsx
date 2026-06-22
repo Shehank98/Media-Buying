@@ -43,6 +43,13 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [agencySubmitting, setAgencySubmitting] = useState(false);
   const [agencyError, setAgencyError] = useState('');
 
+  /* ---- client modal ---- */
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
+  const [clientForm, setClientForm] = useState({ name: '', agencyId: '' });
+  const [clientSubmitting, setClientSubmitting] = useState(false);
+  const [clientError, setClientError] = useState('');
+
   /* ---- user modal ---- */
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -170,6 +177,40 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- Client CRUD ---- */
+  const openAddClient = () => {
+    setEditingClient(null);
+    setClientForm({ name: '', agencyId: agencies[0]?.id ? String(agencies[0].id) : '' });
+    setClientError('');
+    setShowClientModal(true);
+  };
+  const openEditClient = c => {
+    setEditingClient(c);
+    setClientForm({ name: c.name, agencyId: String(c.agencyId || '') });
+    setClientError('');
+    setShowClientModal(true);
+  };
+  const handleClientSubmit = async e => {
+    e.preventDefault();
+    setClientError('');
+    if (!clientForm.name.trim()) { setClientError('Client name is required.'); return; }
+    if (!clientForm.agencyId) { setClientError('Please select an agency.'); return; }
+    setClientSubmitting(true);
+    try {
+      if (editingClient) {
+        await api.put(`/clients/${editingClient.id}`, { name: clientForm.name.trim(), agencyId: parseInt(clientForm.agencyId) });
+      } else {
+        await api.post(`/agencies/${clientForm.agencyId}/clients`, { name: clientForm.name.trim() });
+      }
+      setShowClientModal(false);
+      await fetchData();
+    } catch (err) {
+      setClientError(err.response?.data?.error || err.response?.data?.message || 'Failed to save client.');
+    } finally {
+      setClientSubmitting(false);
+    }
+  };
+
   /* ---- User CRUD ---- */
   const openAddUser = () => {
     setEditingUser(null);
@@ -275,6 +316,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const deletePath = (type, id) => {
     if (type === 'channels') return `/masterdata/channel-masters/${id}`;
     if (type === 'media-groups') return `/masterdata/media-groups/${id}`;
+    if (type === 'clients') return `/clients/${id}`;
     return `/admin/${type}/${id}`;
   };
   const handleDelete = async () => {
@@ -434,6 +476,15 @@ export default function AdminPage({ initialTab = 'users' }) {
     agencies.filter(a => a.name.toLowerCase().includes(search.toLowerCase())),
     [agencies, search]);
 
+  const filteredClients = useMemo(() =>
+    allClients
+      .filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        (c.agencyName || '').toLowerCase().includes(search.toLowerCase())
+      )
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [allClients, search]);
+
   const filteredTeams = useMemo(() =>
     teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
     [teams, search]);
@@ -462,6 +513,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const tabs = [
     { key: 'users', label: 'Users', count: users.length },
     { key: 'agencies', label: 'Agencies', count: agencies.length },
+    { key: 'clients', label: 'Clients', count: allClients.length },
     { key: 'teams', label: 'Teams', count: teams.length },
     { key: 'channels', label: 'Channels', count: channelMasters.length },
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
@@ -528,6 +580,11 @@ export default function AdminPage({ initialTab = 'users' }) {
         {activeTab === 'agencies' && (
           <button className="btn btn-primary" onClick={openAddAgency} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Agency
+          </button>
+        )}
+        {activeTab === 'clients' && (
+          <button className="btn btn-primary" onClick={openAddClient} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Add Client
           </button>
         )}
         {activeTab === 'teams' && (
@@ -663,6 +720,52 @@ export default function AdminPage({ initialTab = 'users' }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ============ CLIENTS TABLE ============ */}
+      {activeTab === 'clients' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Agency</th>
+                <th>Channels</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClients.map(c => (
+                <tr key={c.id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <Avatar name={c.name} size={32} />
+                      <span className="strong">{c.name}</span>
+                    </div>
+                  </td>
+                  <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
+                  <td>{c._count?.channels ?? c.channelCount ?? '-'}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button className="act-btn" onClick={() => confirmDelete(c, 'clients')} title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }}>
+                        <Icon name="x" size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredClients.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+              <Icon name="search" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+              <p>No clients found</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1020,6 +1123,45 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAgencyModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={agencySubmitting}>{agencySubmitting ? 'Saving...' : editingAgency ? 'Save Changes' : 'Add Agency'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ CLIENT MODAL ============ */}
+      {showClientModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowClientModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingClient ? 'Edit Client' : 'Add Client'}</h2>
+              <button className="act-btn" onClick={() => setShowClientModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleClientSubmit}>
+              <div className="modal-body">
+                {clientError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{clientError}</div>
+                )}
+                <div className="field">
+                  <label className="field-label">Client Name <span className="req">*</span></label>
+                  <input className="input" type="text" value={clientForm.name} onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Dialog Axiata" autoFocus />
+                </div>
+                <div className="field">
+                  <label className="field-label">Agency <span className="req">*</span></label>
+                  <select className="select" value={clientForm.agencyId} onChange={e => setClientForm(p => ({ ...p, agencyId: e.target.value }))}>
+                    <option value="">Select agency...</option>
+                    {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  {editingClient && (
+                    <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                      Changing the agency moves this client (and all its channels &amp; properties) to the selected agency.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowClientModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={clientSubmitting}>{clientSubmitting ? 'Saving...' : editingClient ? 'Save Changes' : 'Add Client'}</button>
               </div>
             </form>
           </div>

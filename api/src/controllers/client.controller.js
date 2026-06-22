@@ -29,11 +29,21 @@ export async function getClient(req, res) {
 export async function updateClient(req, res) {
   try {
     const { clientId } = req.params;
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: 'Client name is required' });
+    const { name, agencyId } = req.body;
+    const data = {};
+    if (name !== undefined) {
+      if (!name || !String(name).trim()) return res.status(400).json({ error: 'Client name is required' });
+      data.name = String(name).trim();
+    }
+    if (agencyId !== undefined && agencyId !== null && agencyId !== '') {
+      const agency = await prisma.agency.findUnique({ where: { id: parseInt(agencyId) }, select: { id: true } });
+      if (!agency) return res.status(400).json({ error: 'Selected agency was not found' });
+      data.agencyId = agency.id;
+    }
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Nothing to update' });
     const client = await prisma.client.update({
       where: { id: parseInt(clientId) },
-      data: { name },
+      data,
       include: { agency: { select: { id: true, name: true } }, _count: { select: { channels: true } } },
     });
     return res.json({ client: { ...client, agencyName: client.agency?.name } });

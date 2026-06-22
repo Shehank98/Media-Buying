@@ -25,7 +25,7 @@ export async function listAgencies(req, res) {
     const agencies = await prisma.agency.findMany({
       orderBy: { name: 'asc' },
       include: {
-        clients: { select: { id: true, name: true } },
+        clients: { select: { id: true, name: true, _count: { select: { channels: true } } } },
         _count: { select: { clients: true, users: true } },
       },
     });
