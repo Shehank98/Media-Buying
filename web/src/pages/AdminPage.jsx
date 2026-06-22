@@ -723,50 +723,67 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-      {/* ============ CLIENTS TABLE ============ */}
+      {/* ============ CLIENTS (grouped by agency) ============ */}
       {activeTab === 'clients' && (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Agency</th>
-                <th>Channels</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.map(c => (
-                <tr key={c.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar name={c.name} size={32} />
-                      <span className="strong">{c.name}</span>
-                    </div>
-                  </td>
-                  <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
-                  <td>{c._count?.channels ?? c.channelCount ?? '-'}</td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
-                        <Icon name="edit" size={15} />
-                      </button>
-                      <button className="act-btn" onClick={() => confirmDelete(c, 'clients')} title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }}>
-                        <Icon name="x" size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredClients.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
-              <Icon name="search" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
-              <p>No clients found</p>
-            </div>
-          )}
-        </div>
+        filteredClients.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
+            <Icon name="search" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+            <p>No clients found</p>
+          </div>
+        ) : (
+          (() => {
+            // Group the (already search-filtered) clients by agency.
+            const groups = {};
+            for (const c of filteredClients) {
+              const key = c.agencyName || 'Unassigned';
+              (groups[key] ||= []).push(c);
+            }
+            const agencyNames = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+            return agencyNames.map(ag => (
+              <div key={ag} style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, margin: '0 0 8px 2px' }}>
+                  <Icon name="building" size={15} style={{ color: 'var(--muted)' }} />
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>{ag}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: '#EEF0F3', color: '#93A0B5' }}>{groups[ag].length}</span>
+                </div>
+                <div className="tbl-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Channels</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groups[ag].map(c => (
+                        <tr key={c.id}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <Avatar name={c.name} size={32} />
+                              <span className="strong">{c.name}</span>
+                            </div>
+                          </td>
+                          <td>{c._count?.channels ?? c.channelCount ?? '-'}</td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
+                                <Icon name="edit" size={15} />
+                              </button>
+                              <button className="act-btn" onClick={() => confirmDelete(c, 'clients')} title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }}>
+                                <Icon name="x" size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ));
+          })()
+        )
       )}
 
       {/* ============ TEAMS TABLE ============ */}
