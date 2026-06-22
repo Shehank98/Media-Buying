@@ -21,7 +21,6 @@ const fmtRs = (v) => {
   return 'LKR ' + Math.round(n);
 };
 const fmtNum = (v) => (v == null ? '0' : Number(v).toLocaleString('en-US'));
-const mShort = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short' }); };
 const mFull = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); };
 const initials = (name) => (name ? name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?');
 const timeAgo = (iso) => {
@@ -113,7 +112,7 @@ export default function DashboardPage() {
     const params = year ? { year } : {};
     Promise.allSettled([
       api.get('/analytics/dashboard/summary', { params }).then(({ data }) => setSummary(data)),
-      api.get('/analytics/dashboard/monthly-trend', { params }).then(({ data }) => setTrend((data.combined || []).slice(-12))),
+      api.get('/analytics/dashboard/monthly-trend', { params }).then(({ data }) => setTrend(data.combined || [])),
       api.get('/analytics/dashboard/medium-split', { params }).then(({ data }) => setMedium((data.ytd || []).filter(d => d.value > 0))),
       api.get('/analytics/dashboard/top-clients', { params }).then(({ data }) => setClients((data || []).slice(0, 6))),
       api.get('/analytics/dashboard/recent-uploads').then(({ data }) => setUploads((data || []).slice(0, 5))),
@@ -139,6 +138,15 @@ export default function DashboardPage() {
     const avg = slice.reduce((s, x) => s + (Number(x.scheduleValue) || 0), 0) / slice.length;
     return { ...d, avg3: avg };
   });
+  // Month-only ticks within a single year; include a 2-digit year across "All".
+  const trendTick = (ym) => {
+    if (!ym) return '';
+    const [y, m] = ym.split('-');
+    const d = new Date(+y, +m - 1, 1);
+    return year
+      ? d.toLocaleDateString('en-US', { month: 'short' })
+      : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  };
   const channelsCenter = summary?.activeChannelsThisMonth ?? mediumData.length;
 
   const yoy = summary?.yoyGrowthPct;
@@ -266,7 +274,7 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 0.78fr', gap: 18, marginBottom: 20 }}>
         <div style={CARD}>
           <CardHead
-            title="Monthly Spend Trend" sub="Total committed media value · last 12 months"
+            title="Monthly Spend Trend" sub={`Total committed media value · ${year ? year : 'all years'}`}
             right={(
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", letterSpacing: '-.5px' }}>{fmtRs(summary?.billingsYTD)}</div>
@@ -288,7 +296,7 @@ export default function DashboardPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid vertical={false} stroke="#EEF0F3" />
-                  <XAxis dataKey="month" tickFormatter={mShort} tick={{ fontSize: 10.5, fill: '#93A0B5', fontWeight: 600 }} axisLine={{ stroke: '#E5E8ED' }} tickLine={false} interval="preserveStartEnd" minTickGap={4} />
+                  <XAxis dataKey="month" tickFormatter={trendTick} tick={{ fontSize: 10.5, fill: '#93A0B5', fontWeight: 600 }} axisLine={{ stroke: '#E5E8ED' }} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
                   <YAxis hide domain={['dataMin', 'dataMax']} />
                   <Tooltip formatter={(v, n) => [fmtRs(v), n === 'avg3' ? '3-mo avg' : 'Spend']} labelFormatter={mFull} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
                   <Area type="monotone" dataKey="scheduleValue" name="Spend" stroke="#E85D24" strokeWidth={2.5} fill="url(#obArea)" dot={false} activeDot={{ r: 4.5, fill: '#fff', stroke: '#E85D24', strokeWidth: 2.5 }} />
