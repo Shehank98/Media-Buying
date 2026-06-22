@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
-import { canExport, isReadOnly } from '../lib/permissions';
+import { canExport } from '../lib/permissions';
 
 // ── formatting ────────────────────────────────────────────────────────────
 const fmtRs = (v) => {
@@ -174,11 +174,6 @@ export default function DashboardPage() {
         {isExec && canExport(user) && (
           <button onClick={() => go('/reports')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, fontSize: 13, fontWeight: 600, padding: '9px 14px', border: '1px solid #D5DAE2', background: '#fff', color: '#3B4A63', boxShadow: '0 1px 2px rgba(15,31,61,.06)', cursor: 'pointer' }}>
             <Icon name="download" size={16} />Export
-          </button>
-        )}
-        {!isReadOnly(user) && (
-          <button onClick={() => go('/database')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, fontSize: 13, fontWeight: 600, padding: '9px 15px', border: 'none', background: '#E85D24', color: '#fff', boxShadow: '0 1px 2px rgba(232,93,36,.4)', cursor: 'pointer' }}>
-            <Icon name="plus" size={16} />Add record
           </button>
         )}
       </div>
