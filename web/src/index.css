@@ -522,3 +522,5 @@ input, select, textarea { font-family: inherit; }
 .medium-tag[data-medium="RADIO"] { background: #fff5f0; color: #E85D24; }
 .medium-tag[data-medium="PRINT"] { background: #ecfdf5; color: #059669; }
 .medium-tag[data-medium="DIGITAL"] { background: #efe9fb; color: #6B3FB5; }
+.medium-tag[data-medium="CINEMA"] { background: #fce7f0; color: #C2185B; }
+.medium-tag[data-medium="OOH"] { background: #e0f4f8; color: #0E7490; }

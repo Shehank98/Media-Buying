@@ -10,6 +10,8 @@ const CHANNEL_ICON = {
   RADIO: { icon: 'radio', bg: 'var(--coral-50)', fg: 'var(--coral-700)' },
   PRINT: { icon: 'print', bg: 'var(--green-50)', fg: 'var(--green-600)' },
   DIGITAL: { icon: 'digital', bg: '#efe9fb', fg: '#6B3FB5' },
+  CINEMA: { icon: 'cinema', bg: '#fce7f0', fg: '#C2185B' },
+  OOH: { icon: 'ooh', bg: '#e0f4f8', fg: '#0E7490' },
 };
 
 // Accent tone per property type: [accent, shadowTint]

@@ -127,7 +127,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 ### Enums
 
 - **Role:** SUPER_ADMIN, MANAGER, GROUP_HEAD, PLANNER
-- **ChannelType:** TV, RADIO, PRINT, DIGITAL
+- **ChannelType:** TV, RADIO, PRINT, DIGITAL, CINEMA, OOH
 - **PropertyType:** BOUGHT_AIRTIME, SPONSORSHIP, BONUS_COMMERCIAL, OTHER
 - **UploadStatus:** PENDING, PROCESSING, REVIEW, COMPLETE, FAILED
 - **RowStatus:** OK, NEEDS_REVIEW, FAILED

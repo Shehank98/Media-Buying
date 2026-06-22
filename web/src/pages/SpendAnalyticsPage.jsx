@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
-const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5' };
+const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtMonth(ym) {
@@ -799,6 +799,8 @@ export default function SpendAnalyticsPage() {
                     <Area type="monotone" dataKey="RADIO" stackId="1" stroke={MEDIUM_COLORS.RADIO} fill={MEDIUM_COLORS.RADIO} fillOpacity={0.85} />
                     <Area type="monotone" dataKey="PRINT" stackId="1" stroke={MEDIUM_COLORS.PRINT} fill={MEDIUM_COLORS.PRINT} fillOpacity={0.85} />
                     <Area type="monotone" dataKey="DIGITAL" stackId="1" stroke={MEDIUM_COLORS.DIGITAL} fill={MEDIUM_COLORS.DIGITAL} fillOpacity={0.85} />
+                    <Area type="monotone" dataKey="CINEMA" stackId="1" stroke={MEDIUM_COLORS.CINEMA} fill={MEDIUM_COLORS.CINEMA} fillOpacity={0.85} />
+                    <Area type="monotone" dataKey="OOH" stackId="1" stroke={MEDIUM_COLORS.OOH} fill={MEDIUM_COLORS.OOH} fillOpacity={0.85} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : <div style={{ height: 260, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No monthly data</div>}

@@ -36,8 +36,8 @@ const timeAgo = (iso) => {
 
 // ── design tokens ─────────────────────────────────────────────────────────
 const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
-const MEDIUM = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B', DIGITAL: '#6B3FB5' };
-const MEDIUM_LABEL = { TV: 'Television', RADIO: 'Radio', PRINT: 'Print', DIGITAL: 'Digital' };
+const MEDIUM = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
+const MEDIUM_LABEL = { TV: 'Television', RADIO: 'Radio', PRINT: 'Print', DIGITAL: 'Digital', CINEMA: 'Cinema', OOH: 'OOH' };
 const DOTS = [['#FDF1EB', '#D9521C'], ['#EDF3FD', '#1F5BB5'], ['#ECF8F1', '#15814B'], ['#E8DEF8', '#6B3FB5'], ['#FCF4E2', '#9A5B00'], ['#FBE0DA', '#C5391F']];
 const trendChip = (kind) => {
   const c = kind === 'up' ? ['#15814B', '#ECF8F1'] : kind === 'down' ? ['#C5391F', '#FBE0DA'] : ['#6B7790', '#EEF0F3'];

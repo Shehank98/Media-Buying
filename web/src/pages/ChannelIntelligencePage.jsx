@@ -31,7 +31,7 @@ const fmtMonth = ym => {
 };
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
 const MediumBadge = ({ medium }) => {
-  const c = { TV: ['#1e3a5f', '#dbeafe'], RADIO: ['#E85D24', '#fff5f0'], PRINT: ['#059669', '#ecfdf5'], DIGITAL: ['#6B3FB5', '#efe9fb'] };
+  const c = { TV: ['#1e3a5f', '#dbeafe'], RADIO: ['#E85D24', '#fff5f0'], PRINT: ['#059669', '#ecfdf5'], DIGITAL: ['#6B3FB5', '#efe9fb'], CINEMA: ['#C2185B', '#fce7f0'], OOH: ['#0E7490', '#e0f4f8'] };
   const [fg, bg] = c[medium] || ['#6b7280', '#f3f4f6'];
   return <span style={{ background: bg, color: fg, borderRadius: 5, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>{medium}</span>;
 };

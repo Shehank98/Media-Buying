@@ -19,6 +19,8 @@ enum ChannelType {
   RADIO
   PRINT
   DIGITAL
+  CINEMA
+  OOH
 }
 
 enum UploadStatus {

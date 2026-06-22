@@ -20,6 +20,8 @@ const MEDIUM_OPTIONS = [
   { value: 'RADIO', label: 'Radio' },
   { value: 'PRINT', label: 'Print' },
   { value: 'DIGITAL', label: 'Digital' },
+  { value: 'CINEMA', label: 'Cinema' },
+  { value: 'OOH', label: 'OOH' },
 ];
 
 const PROPERTY_TYPE_OPTIONS = [
@@ -34,6 +36,8 @@ const CHANNEL_TYPE_OPTIONS = [
   { value: 'RADIO', label: 'Radio' },
   { value: 'PRINT', label: 'Print' },
   { value: 'DIGITAL', label: 'Digital' },
+  { value: 'CINEMA', label: 'Cinema' },
+  { value: 'OOH', label: 'OOH' },
 ];
 
 function fmtLKR(v) {
@@ -361,6 +365,8 @@ export default function ReportsPage() {
       RADIO: { bg: 'var(--purple-100)', color: 'var(--purple-700)' },
       PRINT: { bg: 'var(--amber-100)', color: 'var(--amber-700)' },
       DIGITAL: { bg: '#efe9fb', color: '#6B3FB5' },
+      CINEMA: { bg: '#fce7f0', color: '#C2185B' },
+      OOH: { bg: '#e0f4f8', color: '#0E7490' },
     };
     const s = map[m] || { bg: 'var(--navy-100)', color: 'var(--navy-700)' };
     return (
