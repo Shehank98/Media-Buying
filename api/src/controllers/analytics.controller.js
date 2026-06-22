@@ -531,15 +531,28 @@ export async function getChannelSummary(req, res) {
     // Anchor to the latest year that has data on this channel (not the calendar year).
     const { lys, lycm, cys, cye, year } = await refPeriod(base);
 
-    const [curYearAgg, lyAgg, activeClients, totalEntries] = await Promise.all([
+    const [curYearAgg, lyAgg, activeClients, totalEntries, monthAgg] = await Promise.all([
       prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: cye } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.findMany({ where: base, select: { clientId: true }, distinct: ['clientId'] }),
       prisma.scheduleLog.count({ where: base }),
+      prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where: base, _sum: { scheduleValue: true } }),
     ]);
 
     const ytd = safeNum(curYearAgg._sum.scheduleValue) || 0;
     const ly = safeNum(lyAgg._sum.scheduleValue) || 0;
+
+    // Per-year spend, one entry per year that has data (auto-expands as new
+    // years are uploaded). Newest year first.
+    const yearTotals = {};
+    for (const r of monthAgg) {
+      const y = String(r.scheduleMonth || '').slice(0, 4);
+      if (!/^\d{4}$/.test(y)) continue;
+      yearTotals[y] = (yearTotals[y] || 0) + (safeNum(r._sum.scheduleValue) || 0);
+    }
+    const byYear = Object.keys(yearTotals)
+      .sort((a, b) => Number(b) - Number(a))
+      .map(y => ({ year: Number(y), spend: yearTotals[y] }));
 
     return res.json({
       channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
@@ -550,6 +563,7 @@ export async function getChannelSummary(req, res) {
       yoyGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
       activeClientsCount: activeClients.length,
       totalEntries,
+      byYear,
     });
   } catch (error) {
     console.error('getChannelSummary error:', error);

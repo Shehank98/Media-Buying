@@ -157,9 +157,17 @@ export default function ChannelIntelligencePage() {
     withVat: Number(m.scheduleValueWithVat || 0),
   }));
 
+  // One spend card per year that has data (auto-expands as new years arrive).
+  const yearCards = (summary?.byYear?.length
+    ? summary.byYear
+    : [
+        summary?.latestYear ? { year: summary.latestYear, spend: summary.ytdSpend } : null,
+        summary?.previousYear ? { year: summary.previousYear, spend: summary.lastYearSpend } : null,
+      ].filter(Boolean)
+  ).map(y => ({ label: `${y.year} Spend`, value: fmtLKR(y.spend), icon: 'dollar' }));
+
   const statCards = [
-    { label: summary?.latestYear ? `${summary.latestYear} Spend` : 'Latest Year', value: fmtLKR(summary?.ytdSpend), icon: 'dollar' },
-    { label: summary?.previousYear ? `${summary.previousYear} Spend` : 'Previous Year', value: fmtLKR(summary?.lastYearSpend), icon: 'calendar' },
+    ...yearCards,
     { label: 'YoY Growth', value: summary?.yoyGrowthPct != null ? `${summary.yoyGrowthPct >= 0 ? '+' : ''}${summary.yoyGrowthPct.toFixed(1)}%` : '-', icon: summary?.yoyGrowthPct >= 0 ? 'trending-up' : 'trending-down', color: summary?.yoyGrowthPct >= 0 ? 'var(--green-600)' : 'var(--red-600)' },
     { label: 'Active Clients', value: summary?.activeClientsCount ?? 0, icon: 'users' },
     { label: 'Total Log Entries', value: (summary?.totalEntries ?? 0).toLocaleString(), icon: 'database' },
