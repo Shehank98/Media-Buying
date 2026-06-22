@@ -446,7 +446,7 @@ export async function createScheduleLog(req, res) {
         medium: channelMasterRec.medium,
         mediaGroup: channelMasterRec.mediaGroup.name,
         brandName: brandName || null,
-        scheduleValue: value,
+        scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat,
       },
       include: logIncludes,
@@ -468,12 +468,16 @@ export async function createScheduleLog(req, res) {
 // already present instead of silently doubling the data.
 function dedupeKey(o) {
   const v = Number(o.scheduleValue);
+  // Compare on integer cents so the JS number (candidate) and the Decimal(14,2)
+  // read back from the DB key identically — otherwise float/round-trip quirks
+  // make a row look "new" on every re-upload.
+  const cents = Number.isFinite(v) ? Math.round(v * 100) : '';
   return [
     o.clientId,
     o.channelMasterId,
     o.scheduleMonth,
     String(o.brandName ?? '').trim().toLowerCase(),
-    Number.isFinite(v) ? v.toFixed(2) : '',
+    cents,
     String(o.roNumber ?? '').trim().toLowerCase(),
   ].join('||');
 }
@@ -582,7 +586,7 @@ export async function bulkCreateScheduleLogs(req, res) {
         medium: ch.medium,
         mediaGroup: ch.mediaGroup.name,
         brandName: brandName || null,
-        scheduleValue: value,
+        scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
       });
     }
@@ -778,7 +782,7 @@ export async function importAllScheduleLogs(req, res) {
         medium: channel.medium,
         mediaGroup: channel.mediaGroup.name,
         brandName: brandName ? String(brandName).trim() : null,
-        scheduleValue: value,
+        scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
       });
     }
@@ -790,13 +794,26 @@ export async function importAllScheduleLogs(req, res) {
     // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop —
     // nothing is written, so the UI can ask how to proceed.
     if (dryRun) {
+      // A readable sample of the rows it considers new, for transparency.
+      const clientById = new Map(clients.map(c => [c.id, c.name]));
+      const channelById = new Map(channels.map(ch => [ch.id, ch.name]));
+      const newSample = unique.slice(0, 20).map(u => ({
+        client: clientById.get(u.clientId) || `#${u.clientId}`,
+        channel: channelById.get(u.channelMasterId) || `#${u.channelMasterId}`,
+        month: u.scheduleMonth,
+        brand: u.brandName || '',
+        ro: u.roNumber,
+        value: u.scheduleValue,
+      }));
       return res.json({
         dryRun: true,
         total: candidates.length + pendingNewClientRows,
         newRows: unique.length + pendingNewClientRows,
+        newClientRows: pendingNewClientRows,
         duplicates,
         failed: errors.length,
         errors: errors.slice(0, 200),
+        newSample,
       });
     }
 

@@ -1144,6 +1144,28 @@ export default function DatabasePage() {
                       </div>
                     )}
                   </div>
+                  {importCheck.newRows > 0 && importCheck.newSample?.length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#15814B', marginBottom: 6 }}>
+                        Rows it sees as new{importCheck.newRows > importCheck.newSample.length ? ` (showing ${importCheck.newSample.length} of ${importCheck.newRows})` : ''}
+                        {importCheck.newClientRows > 0 ? ` · ${importCheck.newClientRows} are for clients not yet created` : ''}
+                      </div>
+                      <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                        <table className="tbl" style={{ margin: 0, fontSize: 11.5 }}>
+                          <thead><tr><th>Client</th><th>Channel</th><th>Month</th><th>RO</th><th>Brand</th><th style={{ textAlign: 'right' }}>Value</th></tr></thead>
+                          <tbody>
+                            {importCheck.newSample.map((r, i) => (
+                              <tr key={i}>
+                                <td>{r.client}</td><td>{r.channel}</td><td>{r.month}</td>
+                                <td>{r.ro}</td><td>{r.brand || '-'}</td>
+                                <td style={{ textAlign: 'right' }} className="mono">{r.value}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                   {importCheck.errors?.length > 0 && (
                     <div style={{ marginTop: 14 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#C5391F', marginBottom: 6 }}>Rows that can't be imported</div>
