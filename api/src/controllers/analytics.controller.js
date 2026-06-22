@@ -132,7 +132,26 @@ export async function getDashboardSummary(req, res) {
     const years = await availableYears(where);
 
     const sameMonthLastYear = `${parseInt(ym.slice(0, 4)) - 1}-${ym.slice(5)}`;
-    const [billingsThisMonth, billingsTotal, curYearAgg, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth, sameMonthLY] =
+
+    // Spend Velocity is anchored to the CURRENT calendar month (e.g. June),
+    // not the latest data month. We pick the most recent year that actually has
+    // data for that calendar month (within scope) so the card reads as
+    // "this June vs last June". When a year filter is set, lock to that year.
+    const calMM = String(new Date().getMonth() + 1).padStart(2, '0');
+    let velMonth;
+    if (year && /^\d{4}$/.test(String(year))) {
+      velMonth = `${parseInt(year)}-${calMM}`;
+    } else {
+      const vRow = await prisma.scheduleLog.findFirst({
+        where: { ...where, scheduleMonth: { endsWith: `-${calMM}` } },
+        orderBy: { scheduleMonth: 'desc' },
+        select: { scheduleMonth: true },
+      });
+      velMonth = vRow?.scheduleMonth || ym;
+    }
+    const velPrevMonth = `${parseInt(velMonth.slice(0, 4)) - 1}-${velMonth.slice(5)}`;
+
+    const [billingsThisMonth, billingsTotal, curYearAgg, lastYearYTD, activeClients, logsThisMonth, activeChannels, uploadsThisMonth, manualThisMonth, sameMonthLY, velThisMonthAgg, velPrevMonthAgg] =
       await Promise.all([
         prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
         // Headline total: all-time (All) or the selected year.
@@ -146,15 +165,18 @@ export async function getDashboardSummary(req, res) {
         prisma.uploadBatch.count({ where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } }),
         prisma.scheduleLog.count({ where: { ...where, scheduleMonth: ym, uploadBatchId: null } }),
         prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: sameMonthLastYear }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: velMonth }, _sum: { scheduleValue: true } }),
+        prisma.scheduleLog.aggregate({ where: { ...where, scheduleMonth: velPrevMonth }, _sum: { scheduleValue: true } }),
       ]);
 
     const total = safeNum(billingsTotal._sum.scheduleValue) || 0;
     const curYear = safeNum(curYearAgg._sum.scheduleValue) || 0;
     const ly = safeNum(lastYearYTD._sum.scheduleValue) || 0;
     const yoy = ly > 0 ? Number(((curYear - ly) / ly * 100).toFixed(2)) : null;
-    const thisMonthVal = safeNum(billingsThisMonth._sum.scheduleValue) || 0;
     const sameMonthLYVal = safeNum(sameMonthLY._sum.scheduleValue) || 0;
-    const velocityPct = sameMonthLYVal > 0 ? Number(((thisMonthVal / sameMonthLYVal) * 100).toFixed(0)) : null;
+    const velThisMonthVal = safeNum(velThisMonthAgg._sum.scheduleValue) || 0;
+    const velPrevMonthVal = safeNum(velPrevMonthAgg._sum.scheduleValue) || 0;
+    const velocityPct = velPrevMonthVal > 0 ? Number(((velThisMonthVal / velPrevMonthVal) * 100).toFixed(0)) : null;
 
     return res.json({
       billingsThisMonth: safeNum(billingsThisMonth._sum.scheduleValue) || 0,
@@ -170,6 +192,9 @@ export async function getDashboardSummary(req, res) {
       referenceMonth: ym,
       sameMonthLastYear: sameMonthLYVal,
       velocityPct,
+      velocityMonth: velMonth,
+      velocityThisMonth: velThisMonthVal,
+      velocitySameMonthLastYear: velPrevMonthVal,
     });
   } catch (error) {
     console.error('getDashboardSummary error:', error);

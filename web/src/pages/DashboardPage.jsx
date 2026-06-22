@@ -369,12 +369,12 @@ export default function DashboardPage() {
                 </div>
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #EEF0F3', paddingTop: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: '#6B7790' }}>{summary?.referenceMonth ? mFull(summary.referenceMonth) : 'This month'}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtRs(summary?.billingsThisMonth)}</span>
+                    <span style={{ fontSize: 12, color: '#6B7790' }}>{summary?.velocityMonth ? mFull(summary.velocityMonth) : 'This month'}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#16243C' }}>{fmtRs(summary?.velocityThisMonth)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, color: '#6B7790' }}>Same month last year</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{fmtRs(summary?.sameMonthLastYear)}</span>
+                    <span style={{ fontSize: 12, color: '#6B7790' }}>{summary?.velocityMonth ? mFull(`${parseInt(summary.velocityMonth.slice(0,4)) - 1}-${summary.velocityMonth.slice(5)}`) : 'Same month last year'}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace", color: '#6B7790' }}>{fmtRs(summary?.velocitySameMonthLastYear)}</span>
                   </div>
                 </div>
               </div>
