@@ -7,6 +7,8 @@ import {
   getForecastEntry,
   submitForecast,
   forecastHistory,
+  requestClient,
+  requestChannel,
 } from '../controllers/forecasting.controller.js';
 
 const router = Router();
@@ -17,5 +19,7 @@ router.get('/channels', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GRO
 router.get('/entry', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getForecastEntry);
 router.post('/submit', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), submitForecast);
 router.get('/history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), forecastHistory);
+router.post('/request-client', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestClient);
+router.post('/request-channel', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestChannel);
 
 export default router;

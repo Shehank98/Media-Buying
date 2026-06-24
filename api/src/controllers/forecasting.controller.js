@@ -156,6 +156,57 @@ export async function submitForecast(req, res) {
   }
 }
 
+// Notify all super admins (best-effort) with a deep link.
+async function notifyAdmins(type, title, message, link) {
+  try {
+    const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
+    if (!admins.length) return;
+    await prisma.notification.createMany({ data: admins.map(a => ({ userId: a.id, type, title, message, link })) });
+  } catch (e) { console.error('notifyAdmins failed:', e.message); }
+}
+
+export async function requestClient(req, res) {
+  try {
+    const { clientName, agencyId, notes } = req.body;
+    if (!clientName || !String(clientName).trim()) return res.status(400).json({ error: 'Client name is required' });
+    const reqRow = await prisma.clientRequest.create({
+      data: {
+        requestedById: req.user.id,
+        clientName: String(clientName).trim(),
+        agencyId: agencyId ? parseInt(agencyId) : null,
+        notes: notes ? String(notes).slice(0, 500) : null,
+      },
+    });
+    await notifyAdmins('CLIENT_REQUEST', 'New client requested', `${req.user.name} requested client "${reqRow.clientName}".`, '/admin');
+    return res.status(201).json({ request: reqRow });
+  } catch (error) {
+    console.error('requestClient error:', error);
+    return res.status(500).json({ error: 'Failed to submit request', detail: error.message });
+  }
+}
+
+export async function requestChannel(req, res) {
+  try {
+    const { channelName, category, notes } = req.body;
+    const VALID = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
+    if (!channelName || !String(channelName).trim()) return res.status(400).json({ error: 'Channel name is required' });
+    if (!VALID.includes(category)) return res.status(400).json({ error: 'A valid category is required' });
+    const reqRow = await prisma.channelRequest.create({
+      data: {
+        requestedById: req.user.id,
+        channelName: String(channelName).trim(),
+        category,
+        notes: notes ? String(notes).slice(0, 500) : null,
+      },
+    });
+    await notifyAdmins('CHANNEL_REQUEST', 'New channel requested', `${req.user.name} requested channel "${reqRow.channelName}" (${category}).`, '/admin');
+    return res.status(201).json({ request: reqRow });
+  } catch (error) {
+    console.error('requestChannel error:', error);
+    return res.status(500).json({ error: 'Failed to submit request', detail: error.message });
+  }
+}
+
 // Read-only history for admins/managers.
 export async function forecastHistory(req, res) {
   try {

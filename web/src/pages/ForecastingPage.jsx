@@ -35,6 +35,13 @@ export default function ForecastingPage() {
   const [savedMsg, setSavedMsg] = useState('');
   const [history, setHistory] = useState(null);
 
+  // request modal
+  const [reqType, setReqType] = useState(null); // 'client' | 'channel'
+  const [reqForm, setReqForm] = useState({ name: '', agencyId: '', category: 'TV', notes: '' });
+  const [reqSubmitting, setReqSubmitting] = useState(false);
+  const [reqError, setReqError] = useState('');
+  const [reqMsg, setReqMsg] = useState('');
+
   const fetchClients = () => {
     setLoading(true);
     api.get('/forecasting/clients', { params: agencyFilter ? { agencyId: agencyFilter } : {} })
@@ -104,6 +111,26 @@ export default function ForecastingPage() {
     }
   };
 
+  const openReq = (type) => { setReqType(type); setReqForm({ name: '', agencyId: '', category: 'TV', notes: '' }); setReqError(''); setReqMsg(''); };
+  const submitReq = async () => {
+    setReqSubmitting(true); setReqError(''); setReqMsg('');
+    try {
+      if (reqType === 'client') {
+        if (!reqForm.name.trim()) { setReqError('Client name is required.'); setReqSubmitting(false); return; }
+        await api.post('/forecasting/request-client', { clientName: reqForm.name.trim(), agencyId: reqForm.agencyId || null, notes: reqForm.notes });
+      } else {
+        if (!reqForm.name.trim()) { setReqError('Channel name is required.'); setReqSubmitting(false); return; }
+        await api.post('/forecasting/request-channel', { channelName: reqForm.name.trim(), category: reqForm.category, notes: reqForm.notes });
+      }
+      setReqMsg('Request sent to the admin for review.');
+      setTimeout(() => setReqType(null), 900);
+    } catch (err) {
+      setReqError(err.response?.data?.error || 'Failed to send request.');
+    } finally {
+      setReqSubmitting(false);
+    }
+  };
+
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading forecasting…" /></div>;
 
   const periodLabel = period.month ? `${MONTHS[period.month - 1]} ${period.year}` : '';
@@ -128,6 +155,12 @@ export default function ForecastingPage() {
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
             <input className="input" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32, maxWidth: 240 }} />
           </div>
+          {!readOnly && (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -235,6 +268,52 @@ export default function ForecastingPage() {
               ) : (
                 <button className="btn btn-primary" onClick={closeEntry} style={{ marginLeft: 'auto' }}>Close</button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request new client / channel */}
+      {reqType && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setReqType(null); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2 style={{ margin: 0 }}>{reqType === 'client' ? 'Request new client' : 'Request new channel'}</h2>
+              <button className="act-btn" onClick={() => setReqType(null)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {reqError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>{reqError}</div>}
+              {reqMsg && <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15814B', marginBottom: 14 }}>{reqMsg}</div>}
+              <div className="field">
+                <label className="field-label">{reqType === 'client' ? 'Client name' : 'Channel name'} <span className="req">*</span></label>
+                <input className="input" value={reqForm.name} onChange={e => setReqForm(p => ({ ...p, name: e.target.value }))} autoFocus />
+              </div>
+              {reqType === 'client' ? (
+                agencies.length > 0 && (
+                  <div className="field">
+                    <label className="field-label">Agency (optional)</label>
+                    <select className="select" value={reqForm.agencyId} onChange={e => setReqForm(p => ({ ...p, agencyId: e.target.value }))}>
+                      <option value="">No preference</option>
+                      {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                )
+              ) : (
+                <div className="field">
+                  <label className="field-label">Category <span className="req">*</span></label>
+                  <select className="select" value={reqForm.category} onChange={e => setReqForm(p => ({ ...p, category: e.target.value }))}>
+                    {['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'].map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="field">
+                <label className="field-label">Notes (optional)</label>
+                <input className="input" value={reqForm.notes} onChange={e => setReqForm(p => ({ ...p, notes: e.target.value }))} placeholder="Any context for the admin" />
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-ghost" onClick={() => setReqType(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitReq} disabled={reqSubmitting}>{reqSubmitting ? 'Sending…' : 'Send request'}</button>
             </div>
           </div>
         </div>

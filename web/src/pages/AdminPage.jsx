@@ -98,6 +98,10 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [targetSubmitting, setTargetSubmitting] = useState(false);
   const [targetError, setTargetError] = useState('');
 
+  /* ---- forecasting requests ---- */
+  const [clientRequests, setClientRequests] = useState([]);
+  const [channelRequests, setChannelRequests] = useState([]);
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -109,7 +113,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes, catsRes, targetsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes, catsRes, targetsRes, clientReqRes, channelReqRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
@@ -117,10 +121,14 @@ export default function AdminPage({ initialTab = 'users' }) {
         api.get('/masterdata/channel-masters', { params: { includeInactive: 'true' } }),
         api.get('/masterdata/property-categories', { params: { includeInactive: 'true' } }),
         api.get('/admin/annual-targets'),
+        api.get('/admin/client-requests'),
+        api.get('/admin/channel-requests'),
       ]);
       if (targetsRes.status === 'fulfilled') {
         setAnnualTargets(Array.isArray(targetsRes.value.data) ? targetsRes.value.data : []);
       }
+      if (clientReqRes.status === 'fulfilled') setClientRequests(Array.isArray(clientReqRes.value.data) ? clientReqRes.value.data : []);
+      if (channelReqRes.status === 'fulfilled') setChannelRequests(Array.isArray(channelReqRes.value.data) ? channelReqRes.value.data : []);
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
         const agencyData = Array.isArray(rawAg) ? rawAg : [];
@@ -228,6 +236,20 @@ export default function AdminPage({ initialTab = 'users' }) {
       await fetchData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update client status.');
+    }
+  };
+  const reviewRequest = async (kind, r, status) => {
+    try {
+      const body = { status };
+      if (kind === 'client' && status === 'approved' && !r.agencyId) {
+        const aId = window.prompt('Agency ID to create this client under (see Agencies tab):');
+        if (!aId) return;
+        body.agencyId = parseInt(aId);
+      }
+      await api.put(`/admin/${kind === 'client' ? 'client-requests' : 'channel-requests'}/${r.id}`, body);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to review request.');
     }
   };
 
@@ -573,6 +595,8 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
     { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
     { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
+    { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
+    { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
   ];
 
   return (
@@ -1102,6 +1126,68 @@ export default function AdminPage({ initialTab = 'users' }) {
               <p>No annual targets set. Click "Set Target" to add one.</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ============ CLIENT REQUESTS TABLE ============ */}
+      {activeTab === 'client-requests' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr><th>Client Name</th><th>Agency</th><th>Requested By</th><th>Notes</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+            </thead>
+            <tbody>
+              {clientRequests.map(r => (
+                <tr key={r.id} style={{ opacity: r.status === 'pending' ? 1 : 0.6 }}>
+                  <td className="strong">{r.clientName}</td>
+                  <td style={{ color: 'var(--muted)' }}>{r.agencyName || '-'}</td>
+                  <td>{r.requestedByName}</td>
+                  <td style={{ color: 'var(--muted)' }}>{r.notes || '-'}</td>
+                  <td><span className="badge">{r.status}</span></td>
+                  <td>
+                    {r.status === 'pending' ? (
+                      <div className="row-actions">
+                        <button className="act-btn" title="Approve" style={{ color: 'var(--green-600)' }} onClick={() => reviewRequest('client', r, 'approved')}><Icon name="check" size={15} /></button>
+                        <button className="act-btn" title="Reject" style={{ color: 'var(--red-600,#dc2626)' }} onClick={() => reviewRequest('client', r, 'rejected')}><Icon name="x" size={15} /></button>
+                      </div>
+                    ) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.status}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {clientRequests.length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No client requests</p></div>}
+        </div>
+      )}
+
+      {/* ============ CHANNEL REQUESTS TABLE ============ */}
+      {activeTab === 'channel-requests' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr><th>Channel Name</th><th>Category</th><th>Requested By</th><th>Notes</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+            </thead>
+            <tbody>
+              {channelRequests.map(r => (
+                <tr key={r.id} style={{ opacity: r.status === 'pending' ? 1 : 0.6 }}>
+                  <td className="strong">{r.channelName}</td>
+                  <td><span className="medium-tag" data-medium={r.category}>{r.category}</span></td>
+                  <td>{r.requestedByName}</td>
+                  <td style={{ color: 'var(--muted)' }}>{r.notes || '-'}</td>
+                  <td><span className="badge">{r.status}</span></td>
+                  <td>
+                    {r.status === 'pending' ? (
+                      <div className="row-actions">
+                        <button className="act-btn" title="Approve" style={{ color: 'var(--green-600)' }} onClick={() => reviewRequest('channel', r, 'approved')}><Icon name="check" size={15} /></button>
+                        <button className="act-btn" title="Reject" style={{ color: 'var(--red-600,#dc2626)' }} onClick={() => reviewRequest('channel', r, 'rejected')}><Icon name="x" size={15} /></button>
+                      </div>
+                    ) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.status}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {channelRequests.length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No channel requests</p></div>}
         </div>
       )}
 

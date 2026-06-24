@@ -473,6 +473,34 @@ model MonthlyForecast {
   @@map("monthly_forecasts")
 }
 
+model ClientRequest {
+  id            Int       @id @default(autoincrement())
+  requestedById Int       @map("requested_by_id")
+  clientName    String    @map("client_name")
+  agencyId      Int?      @map("agency_id")
+  notes         String?
+  status        String    @default("pending") // pending | approved | rejected
+  reviewedById  Int?      @map("reviewed_by_id")
+  reviewedAt    DateTime? @map("reviewed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("client_requests")
+}
+
+model ChannelRequest {
+  id            Int         @id @default(autoincrement())
+  requestedById Int         @map("requested_by_id")
+  channelName   String      @map("channel_name")
+  category      ChannelType
+  notes         String?
+  status        String      @default("pending") // pending | approved | rejected
+  reviewedById  Int?        @map("reviewed_by_id")
+  reviewedAt    DateTime?   @map("reviewed_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("channel_requests")
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 model PasswordResetToken {

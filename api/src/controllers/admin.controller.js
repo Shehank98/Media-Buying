@@ -546,3 +546,90 @@ export async function toggleClientActive(req, res) {
     return res.status(500).json({ error: 'Failed to update client status' });
   }
 }
+
+// ── Client & Channel requests (forecasting) ──────────────────────────────────
+
+export async function listClientRequests(req, res) {
+  try {
+    const rows = await prisma.clientRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    const userIds = [...new Set(rows.map(r => r.requestedById))];
+    const agencyIds = [...new Set(rows.map(r => r.agencyId).filter(Boolean))];
+    const [users, agencies] = await Promise.all([
+      prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }),
+      prisma.agency.findMany({ where: { id: { in: agencyIds } }, select: { id: true, name: true } }),
+    ]);
+    const uMap = new Map(users.map(u => [u.id, u.name]));
+    const aMap = new Map(agencies.map(a => [a.id, a.name]));
+    return res.json(rows.map(r => ({ ...r, requestedByName: uMap.get(r.requestedById) || '', agencyName: r.agencyId ? aMap.get(r.agencyId) : null })));
+  } catch (error) {
+    console.error('List client requests error:', error);
+    return res.status(500).json({ error: 'Failed to list client requests' });
+  }
+}
+
+export async function reviewClientRequest(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const { status, agencyId } = req.body;
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'status must be approved or rejected' });
+    const reqRow = await prisma.clientRequest.findUnique({ where: { id } });
+    if (!reqRow) return res.status(404).json({ error: 'Request not found' });
+    if (reqRow.status !== 'pending') return res.status(409).json({ error: 'Request already reviewed' });
+
+    if (status === 'approved') {
+      const aId = agencyId ? parseInt(agencyId) : reqRow.agencyId;
+      if (!aId) return res.status(400).json({ error: 'An agency is required to approve' });
+      let client = await prisma.client.findFirst({ where: { name: { equals: reqRow.clientName, mode: 'insensitive' } }, select: { id: true } });
+      if (!client) client = await prisma.client.create({ data: { agencyId: aId, name: reqRow.clientName, isActive: true } });
+    }
+    await prisma.clientRequest.update({ where: { id }, data: { status, reviewedById: req.user.id, reviewedAt: new Date() } });
+    await prisma.notification.create({
+      data: { userId: reqRow.requestedById, type: 'CLIENT_REQUEST_RESULT', title: `Client request ${status}`, message: `Your request for "${reqRow.clientName}" was ${status}.`, link: '/forecasting' },
+    }).catch(() => {});
+    return res.json({ message: `Request ${status}` });
+  } catch (error) {
+    console.error('Review client request error:', error);
+    return res.status(500).json({ error: 'Failed to review request', detail: error.message });
+  }
+}
+
+export async function listChannelRequests(req, res) {
+  try {
+    const rows = await prisma.channelRequest.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    const userIds = [...new Set(rows.map(r => r.requestedById))];
+    const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
+    const uMap = new Map(users.map(u => [u.id, u.name]));
+    return res.json(rows.map(r => ({ ...r, requestedByName: uMap.get(r.requestedById) || '' })));
+  } catch (error) {
+    console.error('List channel requests error:', error);
+    return res.status(500).json({ error: 'Failed to list channel requests' });
+  }
+}
+
+export async function reviewChannelRequest(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'status must be approved or rejected' });
+    const reqRow = await prisma.channelRequest.findUnique({ where: { id } });
+    if (!reqRow) return res.status(404).json({ error: 'Request not found' });
+    if (reqRow.status !== 'pending') return res.status(409).json({ error: 'Request already reviewed' });
+
+    if (status === 'approved') {
+      const existing = await prisma.channelMaster.findFirst({ where: { name: { equals: reqRow.channelName, mode: 'insensitive' } }, select: { id: true } });
+      if (!existing) {
+        const group = await prisma.mediaGroup.findFirst({ select: { id: true } });
+        if (!group) return res.status(400).json({ error: 'No media group exists to attach the channel to' });
+        await prisma.channelMaster.create({ data: { name: reqRow.channelName, medium: reqRow.category, aliases: [], isActive: true, mediaGroupId: group.id, createdById: req.user.id } });
+      }
+    }
+    await prisma.channelRequest.update({ where: { id }, data: { status, reviewedById: req.user.id, reviewedAt: new Date() } });
+    await prisma.notification.create({
+      data: { userId: reqRow.requestedById, type: 'CHANNEL_REQUEST_RESULT', title: `Channel request ${status}`, message: `Your request for "${reqRow.channelName}" was ${status}.`, link: '/forecasting' },
+    }).catch(() => {});
+    return res.json({ message: `Request ${status}` });
+  } catch (error) {
+    console.error('Review channel request error:', error);
+    return res.status(500).json({ error: 'Failed to review request', detail: error.message });
+  }
+}

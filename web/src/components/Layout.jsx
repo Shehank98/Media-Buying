@@ -106,9 +106,14 @@ export default function Layout() {
 
   // Where a notification should take the user when clicked.
   const notifLink = (n) => {
+    if (n?.link) return n.link; // explicit deep link wins
     switch (n?.type) {
       case 'PACKAGE_SHARED': return '/my-packages';
       case 'PACKAGE_RESPONSE': return '/packages';
+      case 'CLIENT_REQUEST':
+      case 'CHANNEL_REQUEST': return '/admin';
+      case 'CLIENT_REQUEST_RESULT':
+      case 'CHANNEL_REQUEST_RESULT': return '/forecasting';
       default: return null;
     }
   };
