@@ -74,39 +74,40 @@ export async function generatePdf(data, title) {
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const colWidth = pageWidth / headers.length;
     const startX = doc.page.margins.left;
+    const cellPad = 4; // gutter between columns so text doesn't touch
+    const textW = colWidth - cellPad;
     let y = doc.y;
 
-    // Draw header row
+    // Draw header row (height-aware)
     doc.font('Helvetica-Bold').fontSize(9);
+    let headerH = 0;
     headers.forEach((header, i) => {
-      doc.text(header, startX + i * colWidth, y, {
-        width: colWidth,
-        align: 'left',
-      });
+      headerH = Math.max(headerH, doc.heightOfString(String(header), { width: textW }));
+      doc.text(String(header), startX + i * colWidth, y, { width: textW, align: 'left' });
     });
 
-    y += 20;
+    y += headerH + 6;
     doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
     y += 5;
 
-    // Draw data rows
+    // Draw data rows — advance by the TALLEST cell so wrapped text never
+    // overlaps the next row.
     doc.font('Helvetica').fontSize(8);
     for (const row of data) {
-      // Check if we need a new page
-      if (y > doc.page.height - doc.page.margins.bottom - 20) {
+      const values = headers.map((h) => (row[h] != null ? String(row[h]) : ''));
+      const rowH = values.reduce((m, v) => Math.max(m, doc.heightOfString(v || ' ', { width: textW })), 0);
+
+      // Page break using the actual row height.
+      if (y + rowH > doc.page.height - doc.page.margins.bottom - 10) {
         doc.addPage();
         y = doc.page.margins.top;
       }
 
-      headers.forEach((header, i) => {
-        const value = row[header] != null ? String(row[header]) : '';
-        doc.text(value, startX + i * colWidth, y, {
-          width: colWidth,
-          align: 'left',
-        });
+      values.forEach((value, i) => {
+        doc.text(value, startX + i * colWidth, y, { width: textW, align: 'left' });
       });
 
-      y += 18;
+      y += rowH + 6;
     }
 
     doc.end();
@@ -282,21 +283,25 @@ export async function generateGroupedTablePdf({ title, filtersText, columns, gro
     const drawColHeader = () => {
       const hy = doc.y;
       doc.font('Helvetica-Bold').fontSize(7.5).fillColor(PP.soft);
+      let hH = 0;
+      for (const c of cols) hH = Math.max(hH, doc.heightOfString(String(c.label).toUpperCase(), { width: c.width, align: c.align || 'left' }));
       for (const c of cols) doc.text(String(c.label).toUpperCase(), c.x, hy, { width: c.width, align: c.align || 'left' });
-      doc.y = hy + 11;
+      doc.y = hy + hH + 4;
       doc.moveTo(left, doc.y - 2).lineTo(right, doc.y - 2).strokeColor(PP.line).lineWidth(0.5).stroke();
     };
     const drawRow = (rowObj, { bold } = {}) => {
-      const paged = ensure(14);
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+      // Measure the tallest cell first so wrapped text never overlaps the next row.
+      const cells = cols.map((c) => trunc(rowObj[c.key] != null ? String(rowObj[c.key]) : '', c.align === 'right' ? 22 : 40));
+      const rowH = cells.reduce((m, v, i) => Math.max(m, doc.heightOfString(v || ' ', { width: cols[i].width, align: cols[i].align || 'left' })), 0);
+      const paged = ensure(rowH + 4);
       if (paged) drawColHeader();
       const ry = doc.y;
-      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor(bold ? PP.ink : PP.soft);
-      for (const c of cols) {
-        const v = rowObj[c.key] != null ? String(rowObj[c.key]) : '';
+      cols.forEach((c, i) => {
         doc.fillColor(bold ? PP.ink : (c.align === 'right' ? PP.ink : PP.soft));
-        doc.text(trunc(v, c.align === 'right' ? 22 : 40), c.x, ry, { width: c.width, align: c.align || 'left' });
-      }
-      doc.y = ry + 13;
+        doc.text(cells[i], c.x, ry, { width: c.width, align: c.align || 'left' });
+      });
+      doc.y = ry + rowH + 4;
     };
 
     if (!groups || groups.length === 0) {
