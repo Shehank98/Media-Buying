@@ -27,7 +27,7 @@ export async function listAgencies(req, res) {
     const agencies = await prisma.agency.findMany({
       orderBy: { name: 'asc' },
       include: {
-        clients: { select: { id: true, name: true, _count: { select: { channels: true } } } },
+        clients: { select: { id: true, name: true, isActive: true, _count: { select: { channels: true } } } },
         _count: { select: { clients: true, users: true } },
       },
     });
@@ -515,5 +515,34 @@ export async function deleteAnnualTarget(req, res) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Annual target not found' });
     console.error('Delete annual target error:', error);
     return res.status(500).json({ error: 'Failed to delete annual target' });
+  }
+}
+
+// ── Client active/hide (forecasting visibility) ──────────────────────────────
+
+export async function listAdminClients(req, res) {
+  try {
+    const clients = await prisma.client.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, isActive: true, agency: { select: { id: true, name: true } }, _count: { select: { channels: true } } },
+    });
+    return res.json(clients.map(c => ({ id: c.id, name: c.name, isActive: c.isActive, agencyId: c.agency?.id, agencyName: c.agency?.name, channelCount: c._count.channels })));
+  } catch (error) {
+    console.error('List admin clients error:', error);
+    return res.status(500).json({ error: 'Failed to list clients' });
+  }
+}
+
+export async function toggleClientActive(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.client.findUnique({ where: { id }, select: { isActive: true } });
+    if (!existing) return res.status(404).json({ error: 'Client not found' });
+    const client = await prisma.client.update({ where: { id }, data: { isActive: !existing.isActive }, select: { id: true, name: true, isActive: true } });
+    return res.json({ client });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
+    console.error('Toggle client error:', error);
+    return res.status(500).json({ error: 'Failed to update client status' });
   }
 }

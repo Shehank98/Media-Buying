@@ -24,6 +24,7 @@ import databaseRoutes from './routes/database.routes.js';
 import masterdataRoutes from './routes/masterdata.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import searchRoutes from './routes/search.routes.js';
+import forecastingRoutes from './routes/forecasting.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/database', databaseRoutes);
 app.use('/api/masterdata', masterdataRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/forecasting', forecastingRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

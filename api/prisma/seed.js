@@ -107,6 +107,40 @@ async function main() {
   }
   console.log(`Channel masters upserted: ${channelMasterData.length}`);
 
+  // ── Forecasting channel order ────────────────────────────────────────────────
+  // The Forecasting entry table lists channels in a fixed order per category.
+  // Assign sortOrder by name (creating any that don't exist yet under a fallback
+  // media group). Idempotent: re-running just re-sets sortOrder.
+  const FORECAST_TV = [
+    'Hiru TV', 'TV Derana', 'Sirasa TV - Programming', 'Sirasa TV News', 'ITN', 'Swarnavahini',
+    'Siyatha TV', 'Rupavahini', 'Derana 24X7', 'Supreme TV', 'TNL', 'Shakthi TV - Programming',
+    'Shakthi TV - News', 'Vasantham TV', 'ASK Media', 'UTV', 'Dialog TV', 'Peo TV', 'Channel Eye',
+    'Star Tamil', 'Capital TV', 'TV1',
+  ];
+  const FORECAST_RADIO = [
+    'FM Derana', 'Hiru FM', 'Neth FM', 'Sirasa FM', 'Siyatha FM', 'Y FM', 'Shaa FM', 'Shree FM',
+    'Sitha FM', 'Ran FM', 'SLBC', 'Rhythm FM', 'Lakhanda', 'Gold FM', 'Yes FM', 'E FM', 'Kiss FM',
+    'TNL Radio network', 'Sorriyan FM', 'Shakthi FM', 'Vasantham FM', 'Thamil FM', 'Capital FM',
+    'Sun FM', 'Fox FM', 'Legends FM',
+  ];
+  const fallbackGroup = Object.values(mediaGroupMap)[0];
+  const seedOrdered = async (names, medium, base) => {
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const sortOrder = base + i;
+      await prisma.channelMaster.upsert({
+        where: { name },
+        update: { sortOrder },
+        create: { name, medium, aliases: [], isActive: true, sortOrder, mediaGroupId: fallbackGroup.id, createdById: superAdmin.id },
+      });
+    }
+  };
+  if (fallbackGroup) {
+    await seedOrdered(FORECAST_TV, 'TV', 1);
+    await seedOrdered(FORECAST_RADIO, 'RADIO', 101);
+    console.log(`Forecasting channel order set: ${FORECAST_TV.length} TV, ${FORECAST_RADIO.length} radio`);
+  }
+
   // ── One-time replace: remove the old default master data ─────────────────────
   // Runs only while the legacy default media groups still exist, so this wipe
   // happens once (when migrating to the client-provided list) and never nukes

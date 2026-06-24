@@ -23,6 +23,7 @@ import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
 import UploadTrackerPage from './pages/UploadTrackerPage';
+import ForecastingPage from './pages/ForecastingPage';
 
 // Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
 function HomeRedirect() {
@@ -56,6 +57,14 @@ export default function App() {
           >
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/database" element={<DatabasePage />} />
+            <Route
+              path="/forecasting"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD']}>
+                  <ForecastingPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/spend-analytics"
               element={

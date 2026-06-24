@@ -222,6 +222,14 @@ export default function AdminPage({ initialTab = 'users' }) {
       setClientSubmitting(false);
     }
   };
+  const toggleClient = async c => {
+    try {
+      await api.put(`/admin/clients/${c.id}/toggle`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update client status.');
+    }
+  };
 
   /* ---- User CRUD ---- */
   const openAddUser = () => {
@@ -804,12 +812,13 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <tr>
                         <th>Client</th>
                         <th>Channels</th>
+                        <th>Status</th>
                         <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {groups[ag].map(c => (
-                        <tr key={c.id}>
+                        <tr key={c.id} style={{ opacity: c.isActive === false ? 0.55 : 1 }}>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <Avatar name={c.name} size={32} />
@@ -818,9 +827,19 @@ export default function AdminPage({ initialTab = 'users' }) {
                           </td>
                           <td>{c._count?.channels ?? c.channelCount ?? '-'}</td>
                           <td>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                              background: c.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)',
+                              color: c.isActive === false ? 'var(--muted)' : 'var(--green-600)',
+                            }}>{c.isActive === false ? 'Hidden' : 'Active'}</span>
+                          </td>
+                          <td>
                             <div className="row-actions">
                               <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
                                 <Icon name="edit" size={15} />
+                              </button>
+                              <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to group heads' : 'Hide from group heads'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
+                                <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
                               </button>
                               <button className="act-btn" onClick={() => confirmDelete(c, 'clients')} title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }}>
                                 <Icon name="x" size={15} />

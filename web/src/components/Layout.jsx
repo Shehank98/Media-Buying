@@ -7,6 +7,7 @@ import { hasPageAccess } from '../lib/permissions';
 
 const NAV = [
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { key: '/forecasting', label: 'Forecasting', icon: 'calendar', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'] },
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },

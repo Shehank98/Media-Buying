@@ -24,6 +24,8 @@ import {
   listAnnualTargets,
   upsertAnnualTarget,
   deleteAnnualTarget,
+  listAdminClients,
+  toggleClientActive,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -51,6 +53,10 @@ router.put('/teams/:id', updateTeam);
 router.delete('/teams/:id', deleteTeam);
 router.post('/teams/:id/members', assignTeamMembers);
 router.post('/teams/:id/clients', assignTeamClients);
+
+// Clients (active/hide for forecasting visibility)
+router.get('/clients', listAdminClients);
+router.put('/clients/:id/toggle', toggleClientActive);
 
 // Annual Targets (forecasting)
 router.get('/annual-targets', listAnnualTargets);
