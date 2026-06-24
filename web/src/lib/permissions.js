@@ -4,7 +4,6 @@
 
 // Top-level pages an admin can toggle for a user.
 export const TOGGLEABLE_PAGES = [
-  { key: '/', label: 'Dashboard' },
   { key: '/database', label: 'Database' },
   { key: '/agencies', label: 'Agencies & Clients' },
   { key: '/spend-analytics', label: 'Spend Analytics' },
@@ -34,6 +33,7 @@ export function pageKeyForPath(pathname) {
 export function hasPageAccess(user, pathname) {
   if (!user) return false;
   if (user.role === 'SUPER_ADMIN') return true;
+  if ((pathname || '/') === '/') return true; // home just redirects; target enforces access
   if (ALWAYS.some((a) => (pathname || '').startsWith(a))) return true;
   const access = user.pageAccess;
   if (!Array.isArray(access) || access.length === 0) return true; // no restriction set

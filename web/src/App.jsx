@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -8,7 +8,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import PackagesPage from './pages/PackagesPage';
 import MyPackagesPage from './pages/MyPackagesPage';
-import DashboardPage from './pages/DashboardPage';
 import AgenciesPage from './pages/AgenciesPage';
 import AgencyDetailPage from './pages/AgencyDetailPage';
 import ClientsPage from './pages/ClientsPage';
@@ -24,6 +23,13 @@ import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
 import UploadTrackerPage from './pages/UploadTrackerPage';
+
+// Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
+function HomeRedirect() {
+  const { user } = useAuth();
+  const target = ['SUPER_ADMIN', 'MANAGER'].includes(user?.role) ? '/executive-dashboard' : '/database';
+  return <Navigate to={target} replace />;
+}
 
 export default function App() {
   return (
@@ -48,7 +54,7 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<HomeRedirect />} />
             <Route path="/database" element={<DatabasePage />} />
             <Route
               path="/spend-analytics"

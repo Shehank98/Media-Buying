@@ -6,10 +6,9 @@ import api from '../lib/api';
 import { hasPageAccess } from '../lib/permissions';
 
 const NAV = [
-  { key: '/', label: 'Dashboard', icon: 'grid' },
+  { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
-  { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/my-packages', label: 'Media Packages', icon: 'mail', roles: ['GROUP_HEAD'] },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
