@@ -90,6 +90,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [catSubmitting, setCatSubmitting] = useState(false);
   const [catError, setCatError] = useState('');
 
+  /* ---- annual targets ---- */
+  const [annualTargets, setAnnualTargets] = useState([]);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [editingTarget, setEditingTarget] = useState(null);
+  const [targetForm, setTargetForm] = useState({ year: '', totalTargetMillions: '', remoteMonth: '' });
+  const [targetSubmitting, setTargetSubmitting] = useState(false);
+  const [targetError, setTargetError] = useState('');
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -101,14 +109,18 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes, catsRes] = await Promise.allSettled([
+      const [agenciesRes, usersRes, teamsRes, groupsRes, channelsRes, catsRes, targetsRes] = await Promise.allSettled([
         api.get('/admin/agencies'),
         api.get('/admin/users'),
         api.get('/admin/teams'),
         api.get('/masterdata/media-groups'),
         api.get('/masterdata/channel-masters', { params: { includeInactive: 'true' } }),
         api.get('/masterdata/property-categories', { params: { includeInactive: 'true' } }),
+        api.get('/admin/annual-targets'),
       ]);
+      if (targetsRes.status === 'fulfilled') {
+        setAnnualTargets(Array.isArray(targetsRes.value.data) ? targetsRes.value.data : []);
+      }
       if (agenciesRes.status === 'fulfilled') {
         const rawAg = agenciesRes.value.data.agencies || agenciesRes.value.data;
         const agencyData = Array.isArray(rawAg) ? rawAg : [];
@@ -462,7 +474,41 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- Annual Targets CRUD ---- */
+  const openAddTarget = () => {
+    setEditingTarget(null);
+    setTargetForm({ year: String(new Date().getFullYear()), totalTargetMillions: '', remoteMonth: '' });
+    setTargetError('');
+    setShowTargetModal(true);
+  };
+  const openEditTarget = t => {
+    setEditingTarget(t);
+    setTargetForm({ year: String(t.year), totalTargetMillions: String(t.totalTargetMillions), remoteMonth: String(t.remoteMonth) });
+    setTargetError('');
+    setShowTargetModal(true);
+  };
+  const handleTargetSubmit = async e => {
+    e.preventDefault();
+    setTargetError('');
+    if (!targetForm.year || !targetForm.totalTargetMillions || !targetForm.remoteMonth) { setTargetError('Year, target and remote month are required.'); return; }
+    setTargetSubmitting(true);
+    try {
+      await api.post('/admin/annual-targets', {
+        year: parseInt(targetForm.year),
+        totalTargetMillions: parseFloat(targetForm.totalTargetMillions),
+        remoteMonth: parseInt(targetForm.remoteMonth),
+      });
+      setShowTargetModal(false);
+      await fetchData();
+    } catch (err) {
+      setTargetError(err.response?.data?.error || 'Failed to save annual target.');
+    } finally {
+      setTargetSubmitting(false);
+    }
+  };
+
   /* ---- helpers ---- */
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -518,6 +564,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'channels', label: 'Channels', count: channelMasters.length },
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
     { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
+    { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
   ];
 
   return (
@@ -580,6 +627,11 @@ export default function AdminPage({ initialTab = 'users' }) {
         {activeTab === 'agencies' && (
           <button className="btn btn-primary" onClick={openAddAgency} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Agency
+          </button>
+        )}
+        {activeTab === 'annual-targets' && (
+          <button className="btn btn-primary" onClick={openAddTarget} style={{ marginLeft: 'auto' }}>
+            <Icon name="plus" size={16} /> Set Target
           </button>
         )}
         {activeTab === 'clients' && (
@@ -991,6 +1043,49 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
+      {/* ============ ANNUAL TARGETS TABLE ============ */}
+      {activeTab === 'annual-targets' && (
+        <div className="tbl-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Annual Target (LKR M)</th>
+                <th>Remote Month</th>
+                <th>Upto-Month Target (LKR M)</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {annualTargets.map(t => (
+                <tr key={t.id}>
+                  <td className="strong">{t.year}</td>
+                  <td className="mono">{Number(t.totalTargetMillions).toLocaleString('en-US')}M</td>
+                  <td>{MONTHS[t.remoteMonth - 1] || t.remoteMonth}</td>
+                  <td className="mono">{Math.round((Number(t.totalTargetMillions) / 12) * t.remoteMonth).toLocaleString('en-US')}M</td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="act-btn" onClick={() => openEditTarget(t)} title="Edit target">
+                        <Icon name="edit" size={15} />
+                      </button>
+                      <button className="act-btn" onClick={() => confirmDelete({ ...t, name: `${t.year} target` }, 'annual-targets')} title="Delete target" style={{ color: 'var(--red-600,#dc2626)' }}>
+                        <Icon name="x" size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {annualTargets.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+              <Icon name="bar-chart" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+              <p>No annual targets set. Click "Set Target" to add one.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ============ USER MODAL ============ */}
       {showUserModal && (
         <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowUserModal(false); }}>
@@ -1140,6 +1235,49 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAgencyModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={agencySubmitting}>{agencySubmitting ? 'Saving...' : editingAgency ? 'Save Changes' : 'Add Agency'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ ANNUAL TARGET MODAL ============ */}
+      {showTargetModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowTargetModal(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>{editingTarget ? `Edit ${editingTarget.year} Target` : 'Set Annual Target'}</h2>
+              <button className="act-btn" onClick={() => setShowTargetModal(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleTargetSubmit}>
+              <div className="modal-body">
+                {targetError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{targetError}</div>
+                )}
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">Year <span className="req">*</span></label>
+                    <input className="input" type="number" value={targetForm.year} disabled={!!editingTarget} onChange={e => setTargetForm(p => ({ ...p, year: e.target.value }))} placeholder="2026" />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Remote Month <span className="req">*</span></label>
+                    <select className="select" value={targetForm.remoteMonth} onChange={e => setTargetForm(p => ({ ...p, remoteMonth: e.target.value }))}>
+                      <option value="">Select…</option>
+                      {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="field-label">Annual Budget Target (LKR Millions) <span className="req">*</span></label>
+                  <input className="input" type="number" step="0.01" value={targetForm.totalTargetMillions} onChange={e => setTargetForm(p => ({ ...p, totalTargetMillions: e.target.value }))} placeholder="4200" />
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 0' }}>
+                  Remote month = the latest month that has only a forecast (not full actuals). The "upto target" bar = annual target ÷ 12 × remote month.
+                </p>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowTargetModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={targetSubmitting}>{targetSubmitting ? 'Saving…' : editingTarget ? 'Save Changes' : 'Set Target'}</button>
               </div>
             </form>
           </div>

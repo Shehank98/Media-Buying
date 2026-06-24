@@ -984,3 +984,136 @@ export async function getDeepDashboard(req, res) {
     return res.status(500).json({ error: 'Failed to build deep dashboard', detail: error.message });
   }
 }
+
+// ── Forecasting dashboard (Annual Achievement + Monthly spend w/ forecast) ────
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Pick the year to report on: explicit ?year, else latest year with data, else
+// the years that have a target, else the current calendar year.
+async function resolveYear(reqYear, dataYears) {
+  if (reqYear && /^\d{4}$/.test(String(reqYear))) return parseInt(reqYear);
+  if (dataYears.length) return parseInt(dataYears[0]);
+  const targetYears = await prisma.annualTarget.findMany({ select: { year: true }, orderBy: { year: 'desc' }, take: 1 });
+  if (targetYears.length) return targetYears[0].year;
+  return new Date().getFullYear();
+}
+
+// Years to offer in the selector = union of years with spend data and years with a target.
+async function selectableYears(dataYears) {
+  const targets = await prisma.annualTarget.findMany({ select: { year: true } });
+  const set = new Set(dataYears.map(Number));
+  for (const t of targets) set.add(t.year);
+  return [...set].sort((a, b) => b - a);
+}
+
+export async function getAchievement(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user); // null = unrestricted (non-MANAGER)
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const dataYears = await availableYears(scope);
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const target = await prisma.annualTarget.findUnique({ where: { year } });
+    const targetMillions = target ? Number(target.totalTargetMillions) : 0;
+    const remoteMonth = target ? target.remoteMonth : null; // null = no target set
+
+    // Actuals for the completed months (1 .. remoteMonth-1); when no target, the whole year.
+    const lastActualMonth = remoteMonth ? remoteMonth - 1 : 12;
+    let actualSum = 0;
+    if (lastActualMonth >= 1) {
+      const agg = await prisma.scheduleLog.aggregate({
+        where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(lastActualMonth).padStart(2, '0')}` } },
+        _sum: { scheduleValue: true },
+      });
+      actualSum = (safeNum(agg._sum.scheduleValue) || 0) / 1e6;
+    }
+    // Forecast for the remote month (sum of group-head submissions in scope).
+    let forecastSum = 0;
+    if (remoteMonth) {
+      const fWhere = { year, month: remoteMonth };
+      if (ids) fWhere.agencyId = { in: ids };
+      const fAgg = await prisma.monthlyForecast.aggregate({ where: fWhere, _sum: { amountMillions: true } });
+      forecastSum = safeNum(fAgg._sum.amountMillions) || 0;
+    }
+
+    const uptoTargetMillions = remoteMonth ? Number(((targetMillions / 12) * remoteMonth).toFixed(2)) : 0;
+    const actualMillions = Number((actualSum + forecastSum).toFixed(2));
+    const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
+
+    return res.json({
+      year,
+      hasTarget: !!target,
+      targetMillions,
+      remoteMonth,
+      uptoMonthLabel: remoteMonth ? MONTH_NAMES[remoteMonth - 1] : null,
+      uptoTargetMillions,
+      actualMillions,
+      forecastMillions: Number(forecastSum.toFixed(2)),
+      achievementPct,
+      availableYears: years,
+    });
+  } catch (error) {
+    console.error('getAchievement error:', error);
+    return res.status(500).json({ error: 'Failed to build achievement', detail: error.message });
+  }
+}
+
+export async function getForecastMonthly(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const dataYears = await availableYears(scope);
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const target = await prisma.annualTarget.findUnique({ where: { year } });
+    const remoteMonth = target ? target.remoteMonth : null;
+
+    // Actual monthly sums (→ millions).
+    const rows = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+      _sum: { scheduleValue: true },
+    });
+    const actualByMonth = {};
+    for (const r of rows) {
+      const m = parseInt(String(r.scheduleMonth).slice(5));
+      if (m >= 1 && m <= 12) actualByMonth[m] = (safeNum(r._sum.scheduleValue) || 0) / 1e6;
+    }
+
+    // Forecast total for the remote month.
+    let remoteForecast = 0;
+    if (remoteMonth) {
+      const fWhere = { year, month: remoteMonth };
+      if (ids) fWhere.agencyId = { in: ids };
+      const fAgg = await prisma.monthlyForecast.aggregate({ where: fWhere, _sum: { amountMillions: true } });
+      remoteForecast = safeNum(fAgg._sum.amountMillions) || 0;
+    }
+
+    const data = [];
+    for (let m = 1; m <= 12; m++) {
+      const month = `${year}-${String(m).padStart(2, '0')}`;
+      if (remoteMonth && m === remoteMonth) {
+        data.push({ month, label: MONTH_NAMES[m - 1], value: Number(remoteForecast.toFixed(2)), isForecast: true });
+      } else if (remoteMonth && m > remoteMonth) {
+        data.push({ month, label: MONTH_NAMES[m - 1], value: null, isForecast: false });
+      } else {
+        const v = actualByMonth[m];
+        data.push({ month, label: MONTH_NAMES[m - 1], value: v != null ? Number(v.toFixed(2)) : null, isForecast: false });
+      }
+    }
+
+    return res.json({ year, remoteMonth, availableYears: years, data });
+  } catch (error) {
+    console.error('getForecastMonthly error:', error);
+    return res.status(500).json({ error: 'Failed to build monthly forecast', detail: error.message });
+  }
+}

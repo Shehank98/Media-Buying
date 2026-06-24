@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, PieChart, Pie, Cell, ComposedChart,
+  Legend, PieChart, Pie, Cell, ComposedChart, LabelList,
 } from 'recharts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -80,6 +80,89 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
   );
 };
 
+// Format a value already expressed in LKR millions for chart labels.
+const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
+
+// Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
+function AchievementSection({ year, setYear, achievement, forecastMonthly, loading }) {
+  const years = achievement?.availableYears || [];
+  const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
+  const bars = achievement ? [
+    { name: 'Budget Forecast', value: achievement.targetMillions || 0, fill: '#1F5BB5' },
+    { name: `Upto ${achievement.uptoMonthLabel || '-'} Target`, value: achievement.uptoTargetMillions || 0, fill: '#9A5B00' },
+    { name: 'Actual', value: achievement.actualMillions || 0, fill: '#15814B' },
+  ] : [];
+  const fc = forecastMonthly?.data || [];
+
+  return (
+    <div className="dash-section">
+      <div className="chart-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">Annual Achievement</div>
+            <div className="chart-card-sub">
+              {achievement?.hasTarget
+                ? `Budget vs pacing vs actual (incl. ${achievement.uptoMonthLabel} forecast) · LKR millions`
+                : 'No annual target set for this year — add one in Admin → Annual Targets'}
+            </div>
+          </div>
+          <select className="select" value={String(year || achievement?.year || '')} onChange={e => setYear(e.target.value)} style={{ maxWidth: 130 }}>
+            {selYears.length === 0 && <option value="">—</option>}
+            {selYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        {loading ? <Skeleton h={210} /> : bars.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={bars} layout="vertical" margin={{ top: 6, right: 96, bottom: 6, left: 8 }}>
+              <CartesianGrid horizontal={false} stroke="var(--border)" />
+              <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }} />
+              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Bar dataKey="value" radius={[0, 5, 5, 0]} barSize={34}>
+                {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                <LabelList dataKey="value" position="right" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        {achievement?.achievementPct != null && (
+          <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13, fontWeight: 700, color: achievement.achievementPct >= 100 ? '#15814B' : '#C5391F' }}>
+            {achievement.achievementPct >= 100 ? '▲' : '▼'} {achievement.achievementPct}% of {achievement.uptoMonthLabel} target achieved
+          </div>
+        )}
+      </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-card-title">Monthly Spend</div>
+        <div className="chart-card-sub">
+          Actual spend by month{achievement?.uptoMonthLabel ? ` · ${achievement.uptoMonthLabel} is a forecast (orange / Est)` : ''} · LKR millions
+        </div>
+        {loading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : fc.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={270}>
+            <LineChart data={fc} margin={{ top: 26, right: 20, bottom: 6, left: 6 }}>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+              <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
+              <Tooltip formatter={(v, n, p) => [fmtM(v) + (p?.payload?.isForecast ? ' (Est)' : ''), 'Spend']} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Line
+                type="monotone" dataKey="value" stroke="#1F5BB5" strokeWidth={2.5} connectNulls={false} activeDot={{ r: 5 }}
+                dot={(props) => {
+                  const { cx, cy, payload, index } = props;
+                  if (cx == null || cy == null || payload?.value == null) return <g key={index} />;
+                  const f = payload.isForecast;
+                  return <circle key={index} cx={cx} cy={cy} r={f ? 5.5 : 3.5} fill={f ? '#E85D24' : '#1F5BB5'} stroke="#fff" strokeWidth={1.5} />;
+                }}
+              >
+                <LabelList dataKey="value" position="top" formatter={(v) => (v == null ? '' : Math.round(v))} style={{ fontSize: 10.5, fill: 'var(--muted)' }} />
+              </Line>
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ExecutiveDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -114,6 +197,12 @@ export default function ExecutiveDashboardPage() {
 
   const [recentUploads, setRecentUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(true);
+
+  // Forecasting: annual achievement + monthly spend-with-forecast
+  const [year, setYear] = useState('');
+  const [achievement, setAchievement] = useState(null);
+  const [achLoading, setAchLoading] = useState(true);
+  const [forecastMonthly, setForecastMonthly] = useState(null);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -175,6 +264,19 @@ export default function ExecutiveDashboardPage() {
       .catch(() => setAgencyComparison([]))
       .finally(() => setAgencyCompLoading(false));
   }, []);
+
+  // Annual achievement + monthly spend (with forecast for the remote month)
+  useEffect(() => {
+    setAchLoading(true);
+    const params = year ? { year } : {};
+    Promise.allSettled([
+      api.get('/analytics/dashboard/achievement', { params }),
+      api.get('/analytics/dashboard/forecast-monthly', { params }),
+    ]).then(([a, f]) => {
+      if (a.status === 'fulfilled') setAchievement(a.value.data); else setAchievement(null);
+      if (f.status === 'fulfilled') setForecastMonthly(f.value.data); else setForecastMonthly(null);
+    }).finally(() => setAchLoading(false));
+  }, [year]);
 
   // Medium split
   useEffect(() => {
@@ -522,32 +624,8 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 1: KPI Cards */}
-      <div className="kpi-grid">
-        {summaryLoading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="kpi-card">
-              <Skeleton h={12} w="60%" />
-              <div style={{ marginTop: 12 }}><Skeleton h={28} w="80%" /></div>
-            </div>
-          ))
-        ) : summary ? (
-          kpis.map(k => (
-            <div key={k.key} className="kpi-card">
-              <div className="kpi-top">
-                <span style={{ color: '#93A0B5', display: 'inline-flex' }}><Icon name={k.icon} size={18} /></span>
-                {k.chip && <Chip dir={k.chip.dir}>{k.chip.text}</Chip>}
-              </div>
-              <div className="kpi-val" style={k.valueColor ? { color: k.valueColor } : undefined}>{k.value}</div>
-              <div className="kpi-label">{k.label}</div>
-            </div>
-          ))
-        ) : (
-          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '30px 0', color: 'var(--muted)' }}>
-            Failed to load summary
-          </div>
-        )}
-      </div>
+      {/* Section 1: Annual Achievement + Monthly Spend (forecast) */}
+      <AchievementSection year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading} />
 
       {/* Section 2: Monthly Billing Trend */}
       <div className="dash-section">
@@ -620,95 +698,6 @@ export default function ExecutiveDashboardPage() {
               })()
             )
           )}
-        </div>
-      </div>
-
-      {/* Section 3: Top Clients + Top Channels (visual ranked bars) */}
-      <div className="dash-section two-col-grid">
-        {/* Top Clients */}
-        <div className="chart-card">
-          <div className="chart-card-title">Top 10 Clients</div>
-          <div className="chart-card-sub">By YTD billing - bar length is share of the top client</div>
-          {topClientsLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
-            </div>
-          ) : !topClients.length ? (
-            <ChartEmpty />
-          ) : (() => {
-            const max = Math.max(...topClients.map(c => c.ytdBilling || 0), 1);
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-                {topClients.slice(0, 10).map((c, i) => {
-                  const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
-                  const pct = Math.max(2, Math.round((c.ytdBilling / max) * 100));
-                  return (
-                    <div key={c.clientId} className="rank-row" onClick={() => navigate(`/clients/${c.clientId}/dashboard`)}>
-                      <span className="rank-num" style={{ background: i < 3 ? color : '#EEF0F3', color: i < 3 ? '#fff' : '#6B7790' }}>{c.rank}</span>
-                      <div className="rank-main">
-                        <div className="rank-name-row">
-                          <span className="rank-name">{c.clientName}</span>
-                          <span className="rank-meta">· {c.agencyName}</span>
-                        </div>
-                        <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
-                      </div>
-                      <div className="rank-side">
-                        <div className="rank-val"><span className="rank-tag">YTD</span>{fmtLKR(c.ytdBilling)}</div>
-                        <div className="rank-sub"><span className="rank-tag">MO</span>{fmtLKR(c.currentMonthBilling || 0)}</div>
-                        <div className="rank-delta" style={{ color: c.momDirection === 'up' ? 'var(--green-600)' : c.momDirection === 'down' ? 'var(--red-600)' : 'var(--muted)' }}>
-                          {trendIcon(c.momDirection)}
-                          {c.momTrend != null ? (c.momTrend >= 0 ? '+' : '') + c.momTrend.toFixed(1) + '% MoM' : 'no MoM'}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Top Channels */}
-        <div className="chart-card">
-          <div className="chart-card-title">Top 10 Channels</div>
-          <div className="chart-card-sub">By YTD spend - bar length is share of the top channel</div>
-          {topChannelsLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={40} />)}
-            </div>
-          ) : !topChannels.length ? (
-            <ChartEmpty />
-          ) : (() => {
-            const max = Math.max(...topChannels.map(c => c.ytdSpend || 0), 1);
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-                {topChannels.slice(0, 10).map((c, i) => {
-                  const color = MEDIUM_COLORS[c.medium] || AGENCY_COLORS[i % AGENCY_COLORS.length];
-                  const pct = Math.max(2, Math.round((c.ytdSpend / max) * 100));
-                  return (
-                    <div key={c.channelMasterId} className="rank-row" onClick={() => navigate(`/channel-masters/${c.channelMasterId}`)}>
-                      <span className="rank-num" style={{ background: i < 3 ? color : '#EEF0F3', color: i < 3 ? '#fff' : '#6B7790' }}>{c.rank}</span>
-                      <div className="rank-main">
-                        <div className="rank-name-row">
-                          <span className="rank-name">{c.channelName}</span>
-                          <MediumBadge medium={c.medium} />
-                          <span className="rank-meta">· {c.clientCount} clients</span>
-                        </div>
-                        <div className="rank-bar-track"><div className="rank-bar-fill" style={{ width: `${pct}%`, background: color }} /></div>
-                      </div>
-                      <div className="rank-side">
-                        <div className="rank-val"><span className="rank-tag">YTD</span>{fmtLKR(c.ytdSpend)}</div>
-                        <div className="rank-sub"><span className="rank-tag">MO</span>{fmtLKR(c.currentMonthSpend || 0)}</div>
-                        <div className="rank-delta" style={{ color: c.yoyChange == null ? 'var(--muted)' : c.yoyChange >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>
-                          {c.yoyChange != null ? (c.yoyChange >= 0 ? '+' : '') + c.yoyChange.toFixed(1) + '% YoY' : 'no YoY'}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
         </div>
       </div>
 

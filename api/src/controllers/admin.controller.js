@@ -473,3 +473,47 @@ export async function deleteChannelMaster(req, res) {
     return res.status(500).json({ error: 'Failed to deactivate channel master' });
   }
 }
+
+// ── Annual Targets (forecasting) ─────────────────────────────────────────────
+
+export async function listAnnualTargets(req, res) {
+  try {
+    const targets = await prisma.annualTarget.findMany({ orderBy: { year: 'desc' } });
+    return res.json(targets.map(t => ({ ...t, totalTargetMillions: Number(t.totalTargetMillions) })));
+  } catch (error) {
+    console.error('List annual targets error:', error);
+    return res.status(500).json({ error: 'Failed to list annual targets' });
+  }
+}
+
+export async function upsertAnnualTarget(req, res) {
+  try {
+    const { year, totalTargetMillions, remoteMonth } = req.body;
+    const y = parseInt(year);
+    const total = parseFloat(totalTargetMillions);
+    const rm = parseInt(remoteMonth);
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) return res.status(400).json({ error: 'A valid year is required' });
+    if (Number.isNaN(total) || total < 0) return res.status(400).json({ error: 'A valid target (in millions) is required' });
+    if (!Number.isInteger(rm) || rm < 1 || rm > 12) return res.status(400).json({ error: 'Remote month must be 1–12' });
+    const target = await prisma.annualTarget.upsert({
+      where: { year: y },
+      update: { totalTargetMillions: total, remoteMonth: rm, createdById: req.user.id },
+      create: { year: y, totalTargetMillions: total, remoteMonth: rm, createdById: req.user.id },
+    });
+    return res.json({ target: { ...target, totalTargetMillions: Number(target.totalTargetMillions) } });
+  } catch (error) {
+    console.error('Upsert annual target error:', error);
+    return res.status(500).json({ error: 'Failed to save annual target' });
+  }
+}
+
+export async function deleteAnnualTarget(req, res) {
+  try {
+    await prisma.annualTarget.delete({ where: { id: parseInt(req.params.id) } });
+    return res.json({ message: 'Annual target deleted' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Annual target not found' });
+    console.error('Delete annual target error:', error);
+    return res.status(500).json({ error: 'Failed to delete annual target' });
+  }
+}

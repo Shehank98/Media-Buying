@@ -116,6 +116,7 @@ model Client {
   id           Int                @id @default(autoincrement())
   agencyId     Int                @map("agency_id")
   name         String
+  isActive     Boolean            @default(true) @map("is_active")
   createdAt    DateTime           @default(now()) @map("created_at")
   agency       Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   users        UserClientAccess[]
@@ -124,6 +125,7 @@ model Client {
   brands       Brand[]
   campaigns    Campaign[]
   scheduleLogs ScheduleLog[]
+  forecasts    MonthlyForecast[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -197,6 +199,7 @@ model ChannelMaster {
   medium          ChannelType
   aliases         String[]         @default([])
   isActive        Boolean          @default(true) @map("is_active")
+  sortOrder       Int?             @map("sort_order")
   mediaGroupId    Int              @map("media_group_id")
   createdById     Int              @map("created_by_id")
   createdAt       DateTime         @default(now()) @map("created_at")
@@ -204,6 +207,7 @@ model ChannelMaster {
   channels        Channel[]
   scheduleLogs    ScheduleLog[]
   uploadBatchRows UploadBatchRow[]
+  forecasts       MonthlyForecast[]
   mediaGroup      MediaGroup       @relation(fields: [mediaGroupId], references: [id])
   creator         User             @relation("ChannelMasterCreator", fields: [createdById], references: [id])
 
@@ -425,12 +429,48 @@ model Notification {
   title     String
   message   String
   month     String?
+  link      String?
   isRead    Boolean  @default(false) @map("is_read")
   createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+// ─── Forecasting & Targets ──────────────────────────────────────────────────
+
+model AnnualTarget {
+  id                  Int      @id @default(autoincrement())
+  year                Int      @unique
+  totalTargetMillions Decimal  @map("total_target_millions") @db.Decimal(14, 2)
+  remoteMonth         Int      @map("remote_month") // 1=Jan … latest month with only a forecast
+  createdById         Int?     @map("created_by_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("annual_targets")
+}
+
+model MonthlyForecast {
+  id              Int      @id @default(autoincrement())
+  year            Int
+  month           Int // 1=Jan
+  clientId        Int      @map("client_id")
+  channelMasterId Int      @map("channel_master_id")
+  agencyId        Int      @map("agency_id")
+  amountMillions  Decimal  @map("amount_millions") @db.Decimal(14, 2)
+  notes           String?
+  submittedById   Int      @map("submitted_by_id")
+  submittedAt     DateTime @default(now()) @map("submitted_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  client        Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  channelMaster ChannelMaster @relation(fields: [channelMasterId], references: [id])
+
+  @@unique([year, month, clientId, channelMasterId])
+  @@index([year, month])
+  @@map("monthly_forecasts")
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────

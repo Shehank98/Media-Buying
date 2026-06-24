@@ -17,6 +17,8 @@ import {
   getActivityLog,
   getRecentUploads,
   getDeepDashboard,
+  getAchievement,
+  getForecastMonthly,
 } from '../controllers/analytics.controller.js';
 
 const router = Router();
@@ -41,5 +43,9 @@ router.get('/dashboard/monthly-trend', authenticate, requireRole('SUPER_ADMIN', 
 router.get('/dashboard/activity-log', authenticate, requireRole('SUPER_ADMIN'), getActivityLog);
 router.get('/dashboard/recent-uploads', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRecentUploads);
 router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getDeepDashboard);
+
+// Forecasting dashboard
+router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
+router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
 
 export default router;

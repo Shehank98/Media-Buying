@@ -21,6 +21,9 @@ import {
   createChannelMaster,
   updateChannelMaster,
   deleteChannelMaster,
+  listAnnualTargets,
+  upsertAnnualTarget,
+  deleteAnnualTarget,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -48,6 +51,11 @@ router.put('/teams/:id', updateTeam);
 router.delete('/teams/:id', deleteTeam);
 router.post('/teams/:id/members', assignTeamMembers);
 router.post('/teams/:id/clients', assignTeamClients);
+
+// Annual Targets (forecasting)
+router.get('/annual-targets', listAnnualTargets);
+router.post('/annual-targets', upsertAnnualTarget);
+router.delete('/annual-targets/:id', deleteAnnualTarget);
 
 // Channel Masters
 router.get('/channel-masters', listChannelMasters);
