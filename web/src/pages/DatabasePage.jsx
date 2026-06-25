@@ -452,6 +452,32 @@ export default function DatabasePage() {
     XLSX.writeFile(wb, 'bulk-import-template.xlsx');
   };
 
+  // Export a subset of the just-uploaded rows (by 1-based row number) back to
+  // Excel — the original columns, optionally with a Reason column — so the user
+  // can fix the failed/duplicate rows and re-upload just those.
+  const downloadImportSubset = (indices, filename, errMap) => {
+    if (!indices?.length) return;
+    const header = ['Year', 'RO', 'Sch: Month', 'Agency', 'Client', 'Brand', 'Channel', 'Schedule Value'];
+    if (errMap) header.push('Reason');
+    const aoa = [header];
+    for (const idx of indices) {
+      const r = importRows[idx - 1];
+      if (!r) continue;
+      const row = [r.year, r.roNumber, r.scheduleMonth, r.agency, r.client, r.brand, r.channel, r.scheduleValue];
+      if (errMap) row.push(errMap[idx] || '');
+      aoa.push(row);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rows');
+    XLSX.writeFile(wb, filename);
+  };
+  const downloadErrorRows = (errs) => {
+    const map = {};
+    (errs || []).forEach(e => { map[e.row] = e.error; });
+    downloadImportSubset((errs || []).map(e => e.row), 'rows-to-fix.xlsx', map);
+  };
+
   // Exact-header lookup (handles "Sch: Month", trailing spaces, case) with fallbacks.
   const buildHeaderMap = (row) => {
     const m = {};
@@ -1166,6 +1192,20 @@ export default function DatabasePage() {
                       </div>
                     </div>
                   )}
+                  {(importCheck.errors?.length > 0 || importCheck.duplicates > 0) && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+                      {importCheck.errors?.length > 0 && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => downloadErrorRows(importCheck.errors)}>
+                          <Icon name="download" size={14} /> Download rows to fix ({importCheck.errors.length})
+                        </button>
+                      )}
+                      {importCheck.duplicates > 0 && importCheck.duplicateRows?.length > 0 && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => downloadImportSubset(importCheck.duplicateRows, 'duplicate-rows.xlsx')}>
+                          <Icon name="download" size={14} /> Download duplicates ({importCheck.duplicateRows.length})
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {importCheck.errors?.length > 0 && (
                     <div style={{ marginTop: 14 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#C5391F', marginBottom: 6 }}>Rows that can't be imported</div>
@@ -1175,7 +1215,7 @@ export default function DatabasePage() {
                         ))}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
-                        Tip: clients that exist under more than one agency need an <b>Agency</b> column in your file to know which one. Add it (download the Template for the exact columns) and re-upload.
+                        A duplicate = same client, channel, month, brand, value <b>and</b> RO as another row (in the DB or earlier in this file). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
                       </p>
                     </div>
                   )}
@@ -1213,12 +1253,17 @@ export default function DatabasePage() {
                     </div>
                   )}
                   {importResult.errors?.length > 0 && (
-                    <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Skipped rows</div>
-                      {importResult.errors.map((e, i) => (
-                        <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
-                      ))}
-                    </div>
+                    <>
+                      <button className="btn btn-ghost btn-sm" style={{ marginBottom: 8 }} onClick={() => downloadErrorRows(importResult.errors)}>
+                        <Icon name="download" size={14} /> Download rows to fix ({importResult.errors.length})
+                      </button>
+                      <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Skipped rows</div>
+                        {importResult.errors.map((e, i) => (
+                          <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               )}

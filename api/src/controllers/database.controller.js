@@ -495,14 +495,15 @@ async function splitDuplicates(candidates) {
   });
   const seen = new Set(existing.map(dedupeKey));
   const unique = [];
+  const duplicateRows = []; // original 1-based row numbers flagged as duplicates
   let duplicates = 0;
   for (const c of candidates) {
     const k = dedupeKey(c);
-    if (seen.has(k)) { duplicates++; continue; }
+    if (seen.has(k)) { duplicates++; if (c._row != null) duplicateRows.push(c._row); continue; }
     seen.add(k);
     unique.push(c);
   }
-  return { unique, duplicates };
+  return { unique, duplicates, duplicateRows };
 }
 
 export async function bulkCreateScheduleLogs(req, res) {
@@ -772,6 +773,7 @@ export async function importAllScheduleLogs(req, res) {
       if (!channel) { errors.push({ row: i + 1, error: `Channel not found: "${channelName}"` }); continue; }
 
       candidates.push({
+        _row: i + 1, // original spreadsheet row (stripped before insert)
         agencyId: agency.id,
         clientId: client.id,
         channelMasterId: channel.id,
@@ -789,7 +791,7 @@ export async function importAllScheduleLogs(req, res) {
 
     // Skip rows already in the DB (re-import) instead of duplicating them, then
     // derive the batch's agency/client lists from what actually gets inserted.
-    const { unique, duplicates } = await splitDuplicates(candidates);
+    const { unique, duplicates, duplicateRows } = await splitDuplicates(candidates);
 
     // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop —
     // nothing is written, so the UI can ask how to proceed.
@@ -813,13 +815,14 @@ export async function importAllScheduleLogs(req, res) {
         duplicates,
         failed: errors.length,
         errors: errors.slice(0, 200),
+        duplicateRows,
         newSample,
       });
     }
 
     // "Re-upload everything" inserts all valid rows (duplicates included);
-    // otherwise insert only the rows not already present.
-    const toInsert = allowDuplicates ? candidates : unique;
+    // otherwise insert only the rows not already present. Strip the helper _row.
+    const toInsert = (allowDuplicates ? candidates : unique).map(({ _row, ...rest }) => rest);
     const reportedDuplicates = allowDuplicates ? 0 : duplicates;
     for (const t of toInsert) { usedAgencyIds.add(t.agencyId); usedClientIds.add(t.clientId); }
 
