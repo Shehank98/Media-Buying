@@ -491,10 +491,15 @@ export async function upsertAnnualTarget(req, res) {
     const { year, totalTargetMillions, remoteMonth } = req.body;
     const y = parseInt(year);
     const total = parseFloat(totalTargetMillions);
-    const rm = parseInt(remoteMonth);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) return res.status(400).json({ error: 'A valid year is required' });
     if (Number.isNaN(total) || total < 0) return res.status(400).json({ error: 'A valid target (in millions) is required' });
-    if (!Number.isInteger(rm) || rm < 1 || rm > 12) return res.status(400).json({ error: 'Remote month must be 1–12' });
+    // Remote month is optional: blank/0 = auto (dashboard tracks the latest month
+    // that has actual data). When given it must be 1–12.
+    let rm = null;
+    if (remoteMonth !== undefined && remoteMonth !== null && remoteMonth !== '') {
+      rm = parseInt(remoteMonth);
+      if (!Number.isInteger(rm) || rm < 1 || rm > 12) return res.status(400).json({ error: 'Remote month must be 1–12 (or left blank for auto)' });
+    }
     const target = await prisma.annualTarget.upsert({
       where: { year: y },
       update: { totalTargetMillions: total, remoteMonth: rm, createdById: req.user.id },

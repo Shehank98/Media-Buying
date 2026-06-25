@@ -513,20 +513,20 @@ export default function AdminPage({ initialTab = 'users' }) {
   };
   const openEditTarget = t => {
     setEditingTarget(t);
-    setTargetForm({ year: String(t.year), totalTargetMillions: String(t.totalTargetMillions), remoteMonth: String(t.remoteMonth) });
+    setTargetForm({ year: String(t.year), totalTargetMillions: String(t.totalTargetMillions), remoteMonth: t.remoteMonth ? String(t.remoteMonth) : '' });
     setTargetError('');
     setShowTargetModal(true);
   };
   const handleTargetSubmit = async e => {
     e.preventDefault();
     setTargetError('');
-    if (!targetForm.year || !targetForm.totalTargetMillions || !targetForm.remoteMonth) { setTargetError('Year, target and remote month are required.'); return; }
+    if (!targetForm.year || !targetForm.totalTargetMillions) { setTargetError('Year and annual target are required.'); return; }
     setTargetSubmitting(true);
     try {
       await api.post('/admin/annual-targets', {
         year: parseInt(targetForm.year),
         totalTargetMillions: parseFloat(targetForm.totalTargetMillions),
-        remoteMonth: parseInt(targetForm.remoteMonth),
+        remoteMonth: targetForm.remoteMonth ? parseInt(targetForm.remoteMonth) : null,
       });
       setShowTargetModal(false);
       await fetchData();
@@ -1094,7 +1094,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <tr>
                 <th>Year</th>
                 <th>Annual Target (LKR M)</th>
-                <th>Remote Month</th>
+                <th>Pacing Month</th>
                 <th>Upto-Month Target (LKR M)</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -1104,8 +1104,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <tr key={t.id}>
                   <td className="strong">{t.year}</td>
                   <td className="mono">{Number(t.totalTargetMillions).toLocaleString('en-US')}M</td>
-                  <td>{MONTHS[t.remoteMonth - 1] || t.remoteMonth}</td>
-                  <td className="mono">{Math.round((Number(t.totalTargetMillions) / 12) * t.remoteMonth).toLocaleString('en-US')}M</td>
+                  <td>{t.remoteMonth ? MONTHS[t.remoteMonth - 1] : <span style={{ color: 'var(--muted)' }}>Auto</span>}</td>
+                  <td className="mono">{t.remoteMonth ? `${Math.round((Number(t.totalTargetMillions) / 12) * t.remoteMonth).toLocaleString('en-US')}M` : <span style={{ color: 'var(--muted)' }}>Auto</span>}</td>
                   <td>
                     <div className="row-actions">
                       <button className="act-btn" onClick={() => openEditTarget(t)} title="Edit target">
@@ -1365,9 +1365,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <input className="input" type="number" value={targetForm.year} disabled={!!editingTarget} onChange={e => setTargetForm(p => ({ ...p, year: e.target.value }))} placeholder="2026" />
                   </div>
                   <div className="field">
-                    <label className="field-label">Remote Month <span className="req">*</span></label>
+                    <label className="field-label">Pacing month</label>
                     <select className="select" value={targetForm.remoteMonth} onChange={e => setTargetForm(p => ({ ...p, remoteMonth: e.target.value }))}>
-                      <option value="">Select…</option>
+                      <option value="">Auto (latest month with data)</option>
                       {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
                     </select>
                   </div>
@@ -1377,7 +1377,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <input className="input" type="number" step="0.01" value={targetForm.totalTargetMillions} onChange={e => setTargetForm(p => ({ ...p, totalTargetMillions: e.target.value }))} placeholder="4200" />
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 0' }}>
-                  Remote month = the latest month that has only a forecast (not full actuals). The "upto target" bar = annual target ÷ 12 × remote month.
+                  Set the full Jan–Dec target. Leave <b>pacing month</b> on <b>Auto</b> and the dashboard compares actuals against the target up to the latest month you have data for. Only pin a month if you want the upcoming month filled by group-head forecasts instead.
                 </p>
               </div>
               <div className="modal-foot">

@@ -444,7 +444,7 @@ model AnnualTarget {
   id                  Int      @id @default(autoincrement())
   year                Int      @unique
   totalTargetMillions Decimal  @map("total_target_millions") @db.Decimal(14, 2)
-  remoteMonth         Int      @map("remote_month") // 1=Jan … latest month with only a forecast
+  remoteMonth         Int?     @map("remote_month") // null = auto (latest month with actuals)
   createdById         Int?     @map("created_by_id")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")

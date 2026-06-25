@@ -1001,6 +1001,20 @@ async function resolveYear(reqYear, dataYears) {
   return new Date().getFullYear();
 }
 
+// The pacing ("upto") month for a year when the admin didn't pin one: the latest
+// month that has actual data for the year (so pacing tracks where actuals end),
+// else the current calendar month (current year) / December (a finished year).
+async function autoRemoteMonth(year, scope) {
+  const latest = await prisma.scheduleLog.findFirst({
+    where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+    orderBy: { scheduleMonth: 'desc' },
+    select: { scheduleMonth: true },
+  });
+  if (latest) return parseInt(String(latest.scheduleMonth).slice(5));
+  const now = new Date();
+  return year === now.getFullYear() ? now.getMonth() + 1 : 12;
+}
+
 // Years to offer in the selector = union of years with spend data and years with a target.
 async function selectableYears(dataYears) {
   const targets = await prisma.annualTarget.findMany({ select: { year: true } });
@@ -1022,7 +1036,9 @@ export async function getAchievement(req, res) {
 
     const target = await prisma.annualTarget.findUnique({ where: { year } });
     const targetMillions = target ? Number(target.totalTargetMillions) : 0;
-    const remoteMonth = target ? target.remoteMonth : null; // null = no target set
+    // With a target: use the pinned remote month, else auto-detect from actuals.
+    // No target: null (whole-year actuals, no pacing bars).
+    const remoteMonth = target ? (target.remoteMonth || await autoRemoteMonth(year, scope)) : null;
 
     // Forecast submitted for the remote month (group-head allocations).
     let forecastSum = 0;
@@ -1089,7 +1105,7 @@ export async function getForecastMonthly(req, res) {
     const years = await selectableYears(dataYears);
 
     const target = await prisma.annualTarget.findUnique({ where: { year } });
-    const remoteMonth = target ? target.remoteMonth : null;
+    const remoteMonth = target ? (target.remoteMonth || await autoRemoteMonth(year, scope)) : null;
 
     // Actual monthly sums (→ millions).
     const rows = await prisma.scheduleLog.groupBy({
