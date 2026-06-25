@@ -1040,16 +1040,7 @@ export async function getAchievement(req, res) {
     // No target: null (whole-year actuals, no pacing bars).
     const remoteMonth = target ? (target.remoteMonth || await autoRemoteMonth(year, scope)) : null;
 
-    // Forecast submitted for the remote month (group-head allocations).
-    let forecastSum = 0;
-    if (remoteMonth) {
-      const fWhere = { year, month: remoteMonth };
-      if (ids) fWhere.agencyId = { in: ids };
-      const fAgg = await prisma.monthlyForecast.aggregate({ where: fWhere, _sum: { amountMillions: true } });
-      forecastSum = safeNum(fAgg._sum.amountMillions) || 0;
-    }
-
-    // Per-month actuals (→ millions) for this year.
+    // Per-month actuals (→ millions).
     const aRows = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
       where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
@@ -1060,18 +1051,42 @@ export async function getAchievement(req, res) {
       const m = parseInt(String(r.scheduleMonth).slice(5));
       if (m >= 1 && m <= 12) actualByMonth[m] = (safeNum(r._sum.scheduleValue) || 0) / 1e6;
     }
+    // Per-month forecasts (→ millions), summed across all clients/channels in scope.
+    const fWhere = { year };
+    if (ids) fWhere.agencyId = { in: ids };
+    const fRows = await prisma.monthlyForecast.groupBy({ by: ['month'], where: fWhere, _sum: { amountMillions: true } });
+    const forecastByMonth = {};
+    for (const r of fRows) forecastByMonth[r.month] = safeNum(r._sum.amountMillions) || 0;
 
-    // "Actual" through the remote month: use real actuals wherever we have them,
-    // and only fall back to the remote month's forecast when that month has no
-    // actuals yet. (No target set → count the whole year's actuals.)
-    const lastMonth = remoteMonth || 12;
-    let actualSum = 0;
-    for (let m = 1; m <= lastMonth; m++) actualSum += (actualByMonth[m] || 0);
-    if (remoteMonth && !(actualByMonth[remoteMonth] > 0) && forecastSum > 0) {
-      actualSum += forecastSum;
+    // Each month contributes its real actual if it has one, otherwise the
+    // submitted forecast — so filled forecasts flow straight into the chart.
+    const monthValue = (m) => {
+      const a = actualByMonth[m];
+      if (a != null && a > 0) return { v: a, fc: false };
+      const f = forecastByMonth[m] || 0;
+      if (f > 0) return { v: f, fc: true };
+      return { v: a != null ? a : 0, fc: false, empty: a == null && f === 0 };
+    };
+
+    // Pacing month: the admin's pinned month, else the latest month with ANY
+    // data (actual or forecast). No target → whole year.
+    let positionMonth;
+    if (target && target.remoteMonth) {
+      positionMonth = target.remoteMonth;
+    } else {
+      let last = 0;
+      for (let m = 1; m <= 12; m++) if (!monthValue(m).empty) last = m;
+      positionMonth = last || (target ? remoteMonth : 12);
     }
 
-    const uptoTargetMillions = remoteMonth ? Number(((targetMillions / 12) * remoteMonth).toFixed(2)) : 0;
+    let actualSum = 0, forecastUsed = 0;
+    for (let m = 1; m <= positionMonth; m++) {
+      const mv = monthValue(m);
+      actualSum += mv.v;
+      if (mv.fc) forecastUsed += mv.v;
+    }
+
+    const uptoTargetMillions = target ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
     const actualMillions = Number(actualSum.toFixed(2));
     const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
 
@@ -1079,11 +1094,11 @@ export async function getAchievement(req, res) {
       year,
       hasTarget: !!target,
       targetMillions,
-      remoteMonth,
-      uptoMonthLabel: remoteMonth ? MONTH_NAMES[remoteMonth - 1] : null,
+      remoteMonth: target ? positionMonth : null,
+      uptoMonthLabel: target ? MONTH_NAMES[positionMonth - 1] : null,
       uptoTargetMillions,
       actualMillions,
-      forecastMillions: Number(forecastSum.toFixed(2)),
+      forecastMillions: Number(forecastUsed.toFixed(2)),
       achievementPct,
       availableYears: years,
     });
@@ -1119,23 +1134,23 @@ export async function getForecastMonthly(req, res) {
       if (m >= 1 && m <= 12) actualByMonth[m] = (safeNum(r._sum.scheduleValue) || 0) / 1e6;
     }
 
-    // Forecast total for the remote month.
-    let remoteForecast = 0;
-    if (remoteMonth) {
-      const fWhere = { year, month: remoteMonth };
-      if (ids) fWhere.agencyId = { in: ids };
-      const fAgg = await prisma.monthlyForecast.aggregate({ where: fWhere, _sum: { amountMillions: true } });
-      remoteForecast = safeNum(fAgg._sum.amountMillions) || 0;
-    }
+    // Per-month forecasts (→ millions).
+    const fWhere = { year };
+    if (ids) fWhere.agencyId = { in: ids };
+    const fRows = await prisma.monthlyForecast.groupBy({ by: ['month'], where: fWhere, _sum: { amountMillions: true } });
+    const forecastByMonth = {};
+    for (const r of fRows) forecastByMonth[r.month] = safeNum(r._sum.amountMillions) || 0;
 
     const data = [];
     for (let m = 1; m <= 12; m++) {
       const month = `${year}-${String(m).padStart(2, '0')}`;
       const a = actualByMonth[m];
-      // Show real actuals for every month that has them. Only the remote month
-      // falls back to its forecast — and only when it has no actuals yet.
-      if (remoteMonth && m === remoteMonth && !(a > 0) && remoteForecast > 0) {
-        data.push({ month, label: MONTH_NAMES[m - 1], value: Number(remoteForecast.toFixed(2)), isForecast: true });
+      const f = forecastByMonth[m] || 0;
+      // Real actual where present; otherwise the submitted forecast (Est).
+      if (a != null && a > 0) {
+        data.push({ month, label: MONTH_NAMES[m - 1], value: Number(a.toFixed(2)), isForecast: false });
+      } else if (f > 0) {
+        data.push({ month, label: MONTH_NAMES[m - 1], value: Number(f.toFixed(2)), isForecast: true });
       } else {
         data.push({ month, label: MONTH_NAMES[m - 1], value: a != null ? Number(a.toFixed(2)) : null, isForecast: false });
       }
