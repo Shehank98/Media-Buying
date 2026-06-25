@@ -61,7 +61,12 @@ export async function listForecastClients(req, res) {
   }
 }
 
-// Active channels grouped by medium (category), ordered by sortOrder then name.
+// Categories that list every channel individually; the rest take a single total.
+const FULL_LIST_MEDIA = ['TV', 'RADIO'];
+const TOTAL_LABEL = { PRINT: 'Print', CINEMA: 'Cinema', OOH: 'OOH', DIGITAL: 'Digital' };
+
+// Channels for the forecast entry table. TV & Radio list every channel; Print,
+// Cinema, OOH and Digital collapse to a single "<category> total" bucket row.
 export async function listForecastChannels(req, res) {
   try {
     const channels = await prisma.channelMaster.findMany({
@@ -70,10 +75,20 @@ export async function listForecastChannels(req, res) {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
     const groups = {};
-    for (const ch of channels) (groups[ch.medium] ||= []).push({ id: ch.id, name: ch.name });
-    const categories = MEDIUM_ORDER
-      .filter(m => groups[m]?.length)
-      .map(m => ({ category: m, channels: groups[m] }));
+    for (const ch of channels) (groups[ch.medium] ||= []).push(ch);
+    const categories = [];
+    for (const m of MEDIUM_ORDER) {
+      const list = groups[m];
+      if (!list || !list.length) continue;
+      if (FULL_LIST_MEDIA.includes(m)) {
+        categories.push({ category: m, channels: list.map(c => ({ id: c.id, name: c.name })) });
+      } else {
+        // One total bucket for the category (the seeded channel named after it).
+        const label = TOTAL_LABEL[m] || m;
+        const bucket = list.find(c => c.name.toLowerCase() === label.toLowerCase()) || list[0];
+        categories.push({ category: m, total: true, channels: [{ id: bucket.id, name: `${label} total` }] });
+      }
+    }
     return res.json({ categories });
   } catch (error) {
     console.error('listForecastChannels error:', error);

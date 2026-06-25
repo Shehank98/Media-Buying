@@ -138,7 +138,22 @@ async function main() {
   if (fallbackGroup) {
     await seedOrdered(FORECAST_TV, 'TV', 1);
     await seedOrdered(FORECAST_RADIO, 'RADIO', 101);
-    console.log(`Forecasting channel order set: ${FORECAST_TV.length} TV, ${FORECAST_RADIO.length} radio`);
+    // Single "total" bucket per non-TV/Radio category — the forecast entry shows
+    // one total input for these instead of every channel.
+    const TOTAL_BUCKETS = [
+      { name: 'Print', medium: 'PRINT', sortOrder: 201 },
+      { name: 'Cinema', medium: 'CINEMA', sortOrder: 301 },
+      { name: 'OOH', medium: 'OOH', sortOrder: 401 },
+      { name: 'Digital', medium: 'DIGITAL', sortOrder: 501 },
+    ];
+    for (const b of TOTAL_BUCKETS) {
+      await prisma.channelMaster.upsert({
+        where: { name: b.name },
+        update: { sortOrder: b.sortOrder, medium: b.medium, isActive: true },
+        create: { name: b.name, medium: b.medium, aliases: [], isActive: true, sortOrder: b.sortOrder, mediaGroupId: fallbackGroup.id, createdById: superAdmin.id },
+      });
+    }
+    console.log(`Forecasting channel order set: ${FORECAST_TV.length} TV, ${FORECAST_RADIO.length} radio, ${TOTAL_BUCKETS.length} category totals`);
   }
 
   // ── One-time replace: remove the old default master data ─────────────────────
