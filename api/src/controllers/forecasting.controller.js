@@ -121,6 +121,40 @@ export async function getForecastEntry(req, res) {
   }
 }
 
+// The most recent forecast a client has BEFORE the upcoming month — used to
+// pre-fill ("copy last month") so heads don't re-enter everything.
+export async function getPreviousForecast(req, res) {
+  try {
+    const user = req.user;
+    const clientId = parseInt(req.query.clientId);
+    if (!Number.isInteger(clientId)) return res.status(400).json({ error: 'clientId is required' });
+    const ids = await accessibleClientIds(user);
+    if (ids && !ids.includes(clientId)) return res.status(403).json({ error: 'No access to this client' });
+
+    const { year, month } = nextMonth();
+    const latest = await prisma.monthlyForecast.findFirst({
+      where: { clientId, OR: [{ year: { lt: year } }, { year, month: { lt: month } }] },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      select: { year: true, month: true },
+    });
+    if (!latest) return res.json({ found: false, items: [] });
+
+    const rows = await prisma.monthlyForecast.findMany({
+      where: { clientId, year: latest.year, month: latest.month },
+      select: { channelMasterId: true, amountMillions: true, notes: true },
+    });
+    return res.json({
+      found: true,
+      year: latest.year,
+      month: latest.month,
+      items: rows.map(r => ({ channelMasterId: r.channelMasterId, amountMillions: Number(r.amountMillions), notes: r.notes || '' })),
+    });
+  } catch (error) {
+    console.error('getPreviousForecast error:', error);
+    return res.status(500).json({ error: 'Failed to load previous forecast', detail: error.message });
+  }
+}
+
 // Save a client's forecast for a month. Group heads: upcoming month only, own clients.
 export async function submitForecast(req, res) {
   try {

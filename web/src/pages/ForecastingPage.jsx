@@ -91,6 +91,24 @@ export default function ForecastingPage() {
 
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
 
+  // Copy the client's most recent prior forecast into the inputs to edit.
+  const [copying, setCopying] = useState(false);
+  const copyLast = async () => {
+    setCopying(true); setEntryError(''); setSavedMsg('');
+    try {
+      const { data } = await api.get('/forecasting/previous', { params: { clientId: active.id } });
+      if (!data.found) { setEntryError('No previous forecast to copy yet.'); return; }
+      const seed = {};
+      data.items.forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
+      setAmounts(seed);
+      setSavedMsg(`Copied ${MONTHS[data.month - 1]} ${data.year} — edit the amounts and submit.`);
+    } catch (err) {
+      setEntryError(err.response?.data?.error || 'Failed to copy previous forecast.');
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const total = useMemo(() =>
     Object.values(amounts).reduce((s, v) => s + (parseFloat(v?.amount) || 0), 0)
   , [amounts]);
@@ -207,9 +225,16 @@ export default function ForecastingPage() {
             <div className="modal-head">
               <div>
                 <h2 style={{ margin: 0 }}>{active.name}</h2>
-                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{readOnly ? 'Forecast history' : `${periodLabel} forecast · LKR millions`}</p>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{readOnly ? 'Forecast history' : `${periodLabel} forecast · enter amounts in LKR`}</p>
               </div>
-              <button className="act-btn" onClick={closeEntry}><Icon name="x" size={18} /></button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {!readOnly && !entryLoading && (
+                  <button className="btn btn-ghost btn-sm" onClick={copyLast} disabled={copying}>
+                    <Icon name="history" size={14} /> {copying ? 'Copying…' : 'Copy last month'}
+                  </button>
+                )}
+                <button className="act-btn" onClick={closeEntry}><Icon name="x" size={18} /></button>
+              </div>
             </div>
             <div className="modal-body" style={{ maxHeight: '64vh', overflow: 'auto' }}>
               {entryError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>{entryError}</div>}

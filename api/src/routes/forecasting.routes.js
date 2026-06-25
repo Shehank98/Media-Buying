@@ -5,6 +5,7 @@ import {
   listForecastClients,
   listForecastChannels,
   getForecastEntry,
+  getPreviousForecast,
   submitForecast,
   forecastHistory,
   requestClient,
@@ -17,6 +18,7 @@ router.get('/next-month', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'G
 router.get('/clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), listForecastClients);
 router.get('/channels', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), listForecastChannels);
 router.get('/entry', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getForecastEntry);
+router.get('/previous', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getPreviousForecast);
 router.post('/submit', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), submitForecast);
 router.get('/history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), forecastHistory);
 router.post('/request-client', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestClient);
