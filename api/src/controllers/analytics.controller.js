@@ -989,13 +989,15 @@ export async function getDeepDashboard(req, res) {
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Pick the year to report on: explicit ?year, else latest year with data, else
-// the years that have a target, else the current calendar year.
+// Pick the year to report on: explicit ?year wins; otherwise prefer the latest
+// year that has a TARGET (this is an achievement-vs-target view, and budgets are
+// set forward — often before that year has actuals), then the latest data year,
+// then the current calendar year.
 async function resolveYear(reqYear, dataYears) {
   if (reqYear && /^\d{4}$/.test(String(reqYear))) return parseInt(reqYear);
+  const t = await prisma.annualTarget.findFirst({ select: { year: true }, orderBy: { year: 'desc' } });
+  if (t) return t.year;
   if (dataYears.length) return parseInt(dataYears[0]);
-  const targetYears = await prisma.annualTarget.findMany({ select: { year: true }, orderBy: { year: 'desc' }, take: 1 });
-  if (targetYears.length) return targetYears[0].year;
   return new Date().getFullYear();
 }
 
