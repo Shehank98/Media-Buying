@@ -90,7 +90,7 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, loadi
   const bars = achievement ? [
     { name: 'Budget Forecast', value: achievement.targetMillions || 0, fill: '#1F5BB5' },
     { name: `Upto ${achievement.uptoMonthLabel || '-'} Target`, value: achievement.uptoTargetMillions || 0, fill: '#9A5B00' },
-    { name: 'Actual', value: achievement.actualMillions || 0, fill: '#15814B' },
+    { name: achievement.uptoMonthLabel ? `Actual upto ${achievement.uptoMonthLabel}` : 'Actual', value: achievement.actualMillions || 0, fill: '#15814B' },
   ] : [];
   const fc = forecastMonthly?.data || [];
 
@@ -135,7 +135,7 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, loadi
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Monthly Spend</div>
         <div className="chart-card-sub">
-          Actual spend by month{achievement?.uptoMonthLabel ? ` · ${achievement.uptoMonthLabel} is a forecast (orange / Est)` : ''} · LKR millions
+          Monthly spend (actuals + submitted forecasts) · LKR millions
         </div>
         {loading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : fc.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={270}>
@@ -143,15 +143,10 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, loadi
               <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} />
               <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
-              <Tooltip formatter={(v, n, p) => [fmtM(v) + (p?.payload?.isForecast ? ' (Est)' : ''), 'Spend']} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Tooltip formatter={(v) => [fmtM(v), 'Spend']} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
               <Line
-                type="monotone" dataKey="value" stroke="#1F5BB5" strokeWidth={2.5} connectNulls={false} activeDot={{ r: 5 }}
-                dot={(props) => {
-                  const { cx, cy, payload, index } = props;
-                  if (cx == null || cy == null || payload?.value == null) return <g key={index} />;
-                  const f = payload.isForecast;
-                  return <circle key={index} cx={cx} cy={cy} r={f ? 5.5 : 3.5} fill={f ? '#E85D24' : '#1F5BB5'} stroke="#fff" strokeWidth={1.5} />;
-                }}
+                type="monotone" dataKey="value" stroke="#1F5BB5" strokeWidth={2.5} connectNulls={false}
+                dot={{ r: 3.5, fill: '#1F5BB5', stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 5 }}
               >
                 <LabelList dataKey="value" position="top" formatter={(v) => (v == null ? '' : Math.round(v))} style={{ fontSize: 10.5, fill: 'var(--muted)' }} />
               </Line>

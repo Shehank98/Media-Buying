@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import Icon from '../components/Icon';
+import Icon, { fmtLKR } from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 
@@ -77,7 +77,8 @@ export default function ForecastingPage() {
         ]);
         setCategories(chRes.data.categories || []);
         const seed = {};
-        (enRes.data.items || []).forEach(it => { seed[it.channelMasterId] = { amount: String(it.amountMillions), notes: it.notes || '' }; });
+        // Stored in millions; show group heads the full rupee value.
+        (enRes.data.items || []).forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
         setAmounts(seed);
       }
     } catch {
@@ -98,7 +99,8 @@ export default function ForecastingPage() {
     setSaving(true); setEntryError(''); setSavedMsg('');
     try {
       const items = Object.entries(amounts)
-        .map(([channelMasterId, v]) => ({ channelMasterId: Number(channelMasterId), amountMillions: parseFloat(v.amount), notes: v.notes }))
+        // Group heads type the full rupee amount; store it in millions.
+        .map(([channelMasterId, v]) => ({ channelMasterId: Number(channelMasterId), amountMillions: parseFloat(v.amount) / 1e6, notes: v.notes }))
         .filter(it => !Number.isNaN(it.amountMillions) && it.amountMillions > 0);
       await api.post('/forecasting/submit', { clientId: active.id, year: period.year, month: period.month, items });
       setSavedMsg('Forecast saved.');
@@ -215,14 +217,14 @@ export default function ForecastingPage() {
               {entryLoading ? <OrbitLoader label="Loading…" /> : readOnly ? (
                 history && history.length > 0 ? (
                   <table className="tbl" style={{ fontSize: 12.5 }}>
-                    <thead><tr><th>Period</th><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Amount (M)</th><th>Notes</th></tr></thead>
+                    <thead><tr><th>Period</th><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Amount</th><th>Notes</th></tr></thead>
                     <tbody>
                       {history.map((h, i) => (
                         <tr key={i}>
                           <td>{MONTHS[h.month - 1]?.slice(0, 3)} {h.year}</td>
                           <td className="strong">{h.channel}</td>
                           <td><span className="medium-tag" data-medium={h.medium}>{h.medium}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{h.amountMillions}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(h.amountMillions * 1e6)}</td>
                           <td style={{ color: 'var(--muted)' }}>{h.notes}</td>
                         </tr>
                       ))}
@@ -235,13 +237,13 @@ export default function ForecastingPage() {
                     <div key={cat.category} style={{ marginBottom: 18 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
                       <table className="tbl" style={{ fontSize: 12.5 }}>
-                        <thead><tr><th style={{ width: '42%' }}>Channel</th><th style={{ width: '22%' }}>Amount (M)</th><th>Notes</th></tr></thead>
+                        <thead><tr><th style={{ width: '42%' }}>Channel</th><th style={{ width: '26%' }}>Amount (LKR)</th><th>Notes</th></tr></thead>
                         <tbody>
                           {cat.channels.map(ch => (
                             <tr key={ch.id}>
                               <td>{ch.name}</td>
                               <td>
-                                <input className="input" type="number" step="0.01" min="0" value={amounts[ch.id]?.amount || ''} onChange={e => setCell(ch.id, 'amount', e.target.value)} placeholder="0" style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="number" step="1000" min="0" value={amounts[ch.id]?.amount || ''} onChange={e => setCell(ch.id, 'amount', e.target.value)} placeholder="e.g. 100000000" style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                               <td>
                                 <input className="input" type="text" value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder="optional" style={{ height: 32, fontSize: 12.5 }} />
@@ -259,7 +261,7 @@ export default function ForecastingPage() {
             <div className="modal-foot" style={{ justifyContent: 'space-between' }}>
               {!readOnly ? (
                 <>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}M</span></div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
                     <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
