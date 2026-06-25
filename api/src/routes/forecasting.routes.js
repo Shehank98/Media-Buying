@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   getNextMonth,
+  getVariance,
   listForecastClients,
   listForecastChannels,
   getForecastEntry,
@@ -21,6 +22,7 @@ router.get('/entry', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), get
 router.get('/previous', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getPreviousForecast);
 router.post('/submit', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), submitForecast);
 router.get('/history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), forecastHistory);
+router.get('/variance', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getVariance);
 router.post('/request-client', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestClient);
 router.post('/request-channel', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestChannel);
 

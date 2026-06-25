@@ -21,6 +21,98 @@ export async function getNextMonth(req, res) {
   return res.json(nextMonth());
 }
 
+// Months that have any forecast data (for the variance month picker), newest first.
+async function forecastMonths() {
+  const rows = await prisma.monthlyForecast.findMany({
+    select: { year: true, month: true },
+    distinct: ['year', 'month'],
+    orderBy: [{ year: 'desc' }, { month: 'desc' }],
+  });
+  return rows.map(r => ({ year: r.year, month: r.month }));
+}
+
+// Forecast vs actual per client × channel for a month (admins/managers).
+// Forecast comes from MonthlyForecast (millions); actual from ScheduleLog (LKR → millions).
+export async function getVariance(req, res) {
+  try {
+    const user = req.user;
+    const ids = await accessibleClientIds(user); // null = all (super admin)
+
+    let year = parseInt(req.query.year);
+    let month = parseInt(req.query.month);
+    if (!(year >= 2000 && month >= 1 && month <= 12)) {
+      const latest = await prisma.monthlyForecast.findFirst({ orderBy: [{ year: 'desc' }, { month: 'desc' }], select: { year: true, month: true } });
+      if (latest) { year = latest.year; month = latest.month; }
+      else { const nm = nextMonth(); year = nm.year; month = nm.month; }
+    }
+    const ym = `${year}-${String(month).padStart(2, '0')}`;
+
+    const fWhere = { year, month };
+    const aWhere = { isDeleted: false, scheduleMonth: ym };
+    if (ids) { fWhere.clientId = { in: ids }; aWhere.clientId = { in: ids }; }
+
+    const [fRows, aRows] = await Promise.all([
+      prisma.monthlyForecast.groupBy({ by: ['clientId', 'channelMasterId'], where: fWhere, _sum: { amountMillions: true } }),
+      prisma.scheduleLog.groupBy({ by: ['clientId', 'channelMasterId'], where: aWhere, _sum: { scheduleValue: true } }),
+    ]);
+
+    const map = new Map();
+    const keyOf = (c, ch) => `${c}:${ch ?? 'null'}`;
+    for (const r of fRows) {
+      map.set(keyOf(r.clientId, r.channelMasterId), { clientId: r.clientId, channelMasterId: r.channelMasterId, forecast: Number(r._sum.amountMillions) || 0, actual: 0 });
+    }
+    for (const r of aRows) {
+      const k = keyOf(r.clientId, r.channelMasterId);
+      const e = map.get(k) || { clientId: r.clientId, channelMasterId: r.channelMasterId, forecast: 0, actual: 0 };
+      e.actual = (Number(r._sum.scheduleValue) || 0) / 1e6;
+      map.set(k, e);
+    }
+
+    const entries = [...map.values()];
+    const clientIds = [...new Set(entries.map(e => e.clientId))];
+    const channelIds = [...new Set(entries.map(e => e.channelMasterId).filter(v => v != null))];
+    const [clients, channels] = await Promise.all([
+      prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true, agency: { select: { name: true } } } }),
+      prisma.channelMaster.findMany({ where: { id: { in: channelIds } }, select: { id: true, name: true, medium: true } }),
+    ]);
+    const cMap = new Map(clients.map(c => [c.id, c]));
+    const chMap = new Map(channels.map(c => [c.id, c]));
+
+    const rows = entries.map(e => {
+      const c = cMap.get(e.clientId);
+      const ch = e.channelMasterId != null ? chMap.get(e.channelMasterId) : null;
+      const forecastMillions = Number(e.forecast.toFixed(2));
+      const actualMillions = Number(e.actual.toFixed(2));
+      return {
+        client: c?.name || `#${e.clientId}`,
+        agency: c?.agency?.name || '',
+        channel: ch?.name || 'Unlinked',
+        medium: ch?.medium || '',
+        forecastMillions,
+        actualMillions,
+        varianceMillions: Number((actualMillions - forecastMillions).toFixed(2)),
+      };
+    }).sort((a, b) => a.client.localeCompare(b.client) || a.channel.localeCompare(b.channel));
+
+    const totals = rows.reduce((t, r) => ({ f: t.f + r.forecastMillions, a: t.a + r.actualMillions }), { f: 0, a: 0 });
+
+    return res.json({
+      year,
+      month,
+      rows,
+      totals: {
+        forecastMillions: Number(totals.f.toFixed(2)),
+        actualMillions: Number(totals.a.toFixed(2)),
+        varianceMillions: Number((totals.a - totals.f).toFixed(2)),
+      },
+      months: await forecastMonths(),
+    });
+  } catch (error) {
+    console.error('getVariance error:', error);
+    return res.status(500).json({ error: 'Failed to build forecast vs actual', detail: error.message });
+  }
+}
+
 // Active clients the caller can forecast for, each with next-month status.
 export async function listForecastClients(req, res) {
   try {

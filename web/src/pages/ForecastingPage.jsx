@@ -25,6 +25,12 @@ export default function ForecastingPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
+  // forecast-vs-actual report (admins/managers)
+  const [view, setView] = useState('clients'); // 'clients' | 'variance'
+  const [variance, setVariance] = useState(null);
+  const [varLoading, setVarLoading] = useState(false);
+  const [varSel, setVarSel] = useState(''); // 'YYYY-MM' or '' (auto/latest)
+
   // entry modal
   const [active, setActive] = useState(null); // the client being edited/viewed
   const [categories, setCategories] = useState([]);
@@ -50,6 +56,20 @@ export default function ForecastingPage() {
       .finally(() => setLoading(false));
   };
   useEffect(fetchClients, [agencyFilter]);
+
+  useEffect(() => {
+    if (view !== 'variance') return;
+    setVarLoading(true);
+    const params = {};
+    if (varSel) { const [y, m] = varSel.split('-'); params.year = y; params.month = m; }
+    api.get('/forecasting/variance', { params })
+      .then(r => setVariance(r.data))
+      .catch(() => setVariance(null))
+      .finally(() => setVarLoading(false));
+  }, [view, varSel]);
+
+  const monthName = (m) => MONTHS[m - 1] || m;
+  const fmtM = (v) => (v == null ? '-' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`);
 
   const agencies = useMemo(() => {
     const m = new Map();
@@ -184,9 +204,57 @@ export default function ForecastingPage() {
         </div>
       </div>
 
+      {(isAdmin || isManager) && (
+        <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3, marginBottom: 18 }}>
+          {[['clients', 'Clients'], ['variance', 'Forecast vs Actual']].map(([k, label]) => (
+            <button key={k} onClick={() => setView(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 14px', borderRadius: 7, fontFamily: 'inherit', background: view === k ? '#fff' : 'transparent', color: view === k ? '#16243C' : '#6B7790', boxShadow: view === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{label}</button>
+          ))}
+        </div>
+      )}
+
       {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>{error}</div>}
 
-      {filtered.length === 0 ? (
+      {view === 'variance' ? (
+        <div className="tbl-wrap" style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>
+              Forecast vs Actual{variance ? ` · ${monthName(variance.month)} ${variance.year}` : ''}
+            </div>
+            <select className="select" value={varSel || (variance ? `${variance.year}-${variance.month}` : '')} onChange={e => setVarSel(e.target.value)} style={{ maxWidth: 200 }}>
+              {variance?.months?.length ? variance.months.map(m => (
+                <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{monthName(m.month)} {m.year}</option>
+              )) : <option value="">No forecasts yet</option>}
+            </select>
+          </div>
+          {varLoading ? <OrbitLoader label="Loading…" /> : !variance || variance.rows.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)' }}>No forecast or actual data for this month.</div>
+          ) : (
+            <table className="tbl" style={{ fontSize: 12.5 }}>
+              <thead><tr><th>Client</th><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ textAlign: 'right' }}>Actual</th><th style={{ textAlign: 'right' }}>Variance</th></tr></thead>
+              <tbody>
+                {variance.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="strong">{r.client}</td>
+                    <td>{r.channel}</td>
+                    <td>{r.medium ? <span className="medium-tag" data-medium={r.medium}>{r.medium}</span> : '-'}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmtM(r.forecastMillions)}</td>
+                    <td className="mono" style={{ textAlign: 'right' }}>{fmtM(r.actualMillions)}</td>
+                    <td className="mono" style={{ textAlign: 'right', color: r.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>{r.varianceMillions >= 0 ? '+' : ''}{fmtM(r.varianceMillions)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 700 }}>
+                  <td colSpan={3}>Total</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmtM(variance.totals.forecastMillions)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmtM(variance.totals.actualMillions)}</td>
+                  <td className="mono" style={{ textAlign: 'right', color: variance.totals.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>{variance.totals.varianceMillions >= 0 ? '+' : ''}{fmtM(variance.totals.varianceMillions)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      ) : filtered.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>No clients available.</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(248px, 1fr))', gap: 16 }}>
