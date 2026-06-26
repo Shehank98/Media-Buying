@@ -1210,9 +1210,10 @@ export default function DatabasePage() {
                     <div style={{ marginTop: 14 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#C5391F', marginBottom: 6 }}>Rows that can't be imported</div>
                       <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', background: '#fff' }}>
-                        {importCheck.errors.map((e, i) => (
+                        {importCheck.errors.slice(0, 200).map((e, i) => (
                           <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
                         ))}
+                        {importCheck.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importCheck.errors.length - 200} more — download to see them all.</div>}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
                         A duplicate = same <b>Year+Month, Client, Channel and Schedule Value</b> as a row already in the database (brand &amp; RO are ignored; repeats within this file are kept). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
@@ -1259,9 +1260,10 @@ export default function DatabasePage() {
                       </button>
                       <div style={{ maxHeight: 200, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px' }}>
                         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Skipped rows</div>
-                        {importResult.errors.map((e, i) => (
+                        {importResult.errors.slice(0, 200).map((e, i) => (
                           <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
                         ))}
+                        {importResult.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importResult.errors.length - 200} more — download to see them all.</div>}
                       </div>
                     </>
                   )}

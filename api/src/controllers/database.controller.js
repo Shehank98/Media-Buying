@@ -810,7 +810,7 @@ export async function importAllScheduleLogs(req, res) {
         newClientRows: pendingNewClientRows,
         duplicates,
         failed: errors.length,
-        errors: errors.slice(0, 200),
+        errors, // full list so the user can download every failed row
         duplicateRows,
         newSample,
       });
@@ -864,7 +864,7 @@ export async function importAllScheduleLogs(req, res) {
       failed: errors.length,
       duplicates: reportedDuplicates,
       createdClients,
-      errors: errors.slice(0, 200),
+      errors, // full list so the user can download every failed row
       batchId: uploadBatch?.id || null,
     });
   } catch (error) {
