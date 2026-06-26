@@ -463,44 +463,40 @@ export async function createScheduleLog(req, res) {
 
 // ── bulkCreateScheduleLogs ──
 
-// A schedule log is treated as a duplicate of an existing (non-deleted) row
-// when all of these match. This lets re-importing the same file skip rows
-// already present instead of silently doubling the data.
+// A schedule log is a duplicate of an existing (non-deleted) DB row when the
+// Year+Month (scheduleMonth), Client, Channel and Schedule Value all match.
+// Brand and RO are intentionally NOT part of the key.
 function dedupeKey(o) {
   const v = Number(o.scheduleValue);
   // Compare on integer cents so the JS number (candidate) and the Decimal(14,2)
-  // read back from the DB key identically — otherwise float/round-trip quirks
-  // make a row look "new" on every re-upload.
+  // read back from the DB key identically (avoids float round-trip mismatches).
   const cents = Number.isFinite(v) ? Math.round(v * 100) : '';
   return [
     o.clientId,
     o.channelMasterId,
     o.scheduleMonth,
-    String(o.brandName ?? '').trim().toLowerCase(),
     cents,
-    String(o.roNumber ?? '').trim().toLowerCase(),
   ].join('||');
 }
 
-// Split validated candidate rows into the ones to actually insert vs. a count
-// of duplicates — checked against existing DB rows AND earlier rows in the same
-// batch (so a file that repeats a line only inserts it once).
+// Split validated candidate rows into the ones to insert vs. a count of
+// duplicates. A row is a duplicate only if it matches a row ALREADY IN THE
+// DATABASE (month+client+channel+value) — repeats within the same file are NOT
+// treated as duplicates and are all kept.
 async function splitDuplicates(candidates) {
-  if (candidates.length === 0) return { unique: [], duplicates: 0 };
+  if (candidates.length === 0) return { unique: [], duplicates: 0, duplicateRows: [] };
   const clientIds = [...new Set(candidates.map(c => c.clientId))];
   const months = [...new Set(candidates.map(c => c.scheduleMonth))];
   const existing = await prisma.scheduleLog.findMany({
     where: { clientId: { in: clientIds }, scheduleMonth: { in: months }, isDeleted: false },
-    select: { clientId: true, channelMasterId: true, scheduleMonth: true, brandName: true, scheduleValue: true, roNumber: true },
+    select: { clientId: true, channelMasterId: true, scheduleMonth: true, scheduleValue: true },
   });
   const seen = new Set(existing.map(dedupeKey));
   const unique = [];
   const duplicateRows = []; // original 1-based row numbers flagged as duplicates
   let duplicates = 0;
   for (const c of candidates) {
-    const k = dedupeKey(c);
-    if (seen.has(k)) { duplicates++; if (c._row != null) duplicateRows.push(c._row); continue; }
-    seen.add(k);
+    if (seen.has(dedupeKey(c))) { duplicates++; if (c._row != null) duplicateRows.push(c._row); continue; }
     unique.push(c);
   }
   return { unique, duplicates, duplicateRows };

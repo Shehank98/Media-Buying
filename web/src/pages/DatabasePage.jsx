@@ -1215,7 +1215,7 @@ export default function DatabasePage() {
                         ))}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
-                        A duplicate = same client, channel, month, brand, value <b>and</b> RO as another row (in the DB or earlier in this file). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
+                        A duplicate = same <b>Year+Month, Client, Channel and Schedule Value</b> as a row already in the database (brand &amp; RO are ignored; repeats within this file are kept). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
                       </p>
                     </div>
                   )}
