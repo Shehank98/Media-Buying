@@ -69,6 +69,8 @@ model User {
   clientAccess          UserClientAccess[]
   teamMembers           TeamMember[]
   teamsHeaded           Team[]               @relation("TeamHead")
+  channelAgencyDealsCreated ChannelAgencyDeal[] @relation("ChannelAgencyDealCreator")
+  channelClientDealsCreated ChannelClientDeal[] @relation("ChannelClientDealCreator")
   properties            Property[]           @relation("CreatedBy")
   propertyHistory       PropertyHistory[]    @relation("ChangedBy")
   passwordResetTokens   PasswordResetToken[]
@@ -127,6 +129,7 @@ model Client {
   campaigns    Campaign[]
   scheduleLogs ScheduleLog[]
   forecasts    MonthlyForecast[]
+  channelDeals ChannelClientDeal[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -211,10 +214,50 @@ model ChannelMaster {
   scheduleLogs    ScheduleLog[]
   uploadBatchRows UploadBatchRow[]
   forecasts       MonthlyForecast[]
+  agencyDeals     ChannelAgencyDeal[]
+  clientDeals     ChannelClientDeal[]
   mediaGroup      MediaGroup       @relation(fields: [mediaGroupId], references: [id])
   creator         User             @relation("ChannelMasterCreator", fields: [createdById], references: [id])
 
   @@map("channel_masters")
+}
+
+// ─── Media Buying: channel negotiation deals (discount/bonus terms) ────────
+
+model ChannelAgencyDeal {
+  id              Int      @id @default(autoincrement())
+  channelMasterId Int      @map("channel_master_id")
+  year            Int
+  discountPct     Decimal  @map("discount_pct") @db.Decimal(5, 2)
+  bonusPct        Decimal  @map("bonus_pct") @db.Decimal(5, 2)
+  notes           String?
+  createdById     Int      @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation("ChannelAgencyDealCreator", fields: [createdById], references: [id])
+
+  @@unique([channelMasterId, year])
+  @@map("channel_agency_deals")
+}
+
+model ChannelClientDeal {
+  id              Int      @id @default(autoincrement())
+  channelMasterId Int      @map("channel_master_id")
+  clientId        Int      @map("client_id")
+  year            Int
+  discountPct     Decimal  @map("discount_pct") @db.Decimal(5, 2)
+  bonusPct        Decimal  @map("bonus_pct") @db.Decimal(5, 2)
+  notes           String?
+  createdById     Int      @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation("ChannelClientDealCreator", fields: [createdById], references: [id])
+
+  @@unique([channelMasterId, clientId, year])
+  @@map("channel_client_deals")
 }
 
 // ─── Channel (client-specific channel record) ──────────────────────────────

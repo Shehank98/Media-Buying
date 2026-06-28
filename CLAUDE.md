@@ -154,6 +154,8 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | Channel | Client-specific channel records |
 | Property | Negotiated deals on channels (cost, bonus%, sponsorship details, startDate, endDate — endDate null means still ongoing) |
 | PropertyHistory | Audit trail for property changes (previousValues, newValues JSON) |
+| ChannelAgencyDeal | Year-keyed overall agency discount %/bonus % per channel (Media Buying tab) |
+| ChannelClientDeal | Year-keyed per-client discount %/bonus % per channel (Media Buying tab) |
 
 ### Schedule & Upload Models
 
@@ -324,6 +326,17 @@ GET    /api/analytics/deep-dashboard             (AUTH + SUPER_ADMIN|MANAGER)   
 #    uploading new years (2025/2026) auto-surfaces year buttons and rolls into "All" everywhere.
 ```
 
+### Media Buying (SUPER_ADMIN only)
+```
+GET    /api/media-buying/channels/:channelMasterId                           getChannelIntelligence  ?year=
+GET    /api/media-buying/channels/:channelMasterId/clients/:clientId/monthly getClientChannelMonthly ?year=
+GET    /api/media-buying/channels/:channelMasterId/planner                   getNegotiationPlanner   ?year= &monthlyBudget=
+POST   /api/media-buying/agency-deals                                        upsertAgencyDeal  (upsert by channelMasterId+year)
+DELETE /api/media-buying/agency-deals/:id                                    deleteAgencyDeal
+POST   /api/media-buying/client-deals                                        upsertClientDeal  (upsert by channelMasterId+clientId+year)
+DELETE /api/media-buying/client-deals/:id                                    deleteClientDeal
+```
+
 ### Admin (SUPER_ADMIN only)
 ```
 CRUD   /api/admin/agencies
@@ -389,6 +402,7 @@ GET    /api/notifications/master-sheet           (AUTH + SUPER_ADMIN|MANAGER)
 | ChannelIntelligencePage | `/channel-masters/:id` | SUPER_ADMIN, MANAGER, GROUP_HEAD | Per-channel analytics |
 | ReportsPage | `/reports` | SUPER_ADMIN, MANAGER | Report generation by channel/client/agency |
 | UploadTrackerPage | `/upload-tracker` | SUPER_ADMIN | Monthly upload status tracking, send reminders |
+| MediaBuyingPage | `/media-buying` | SUPER_ADMIN | Channel negotiation intelligence — agency/client discount & bonus deal history, year-over-year trend arrows, Negotiation Planner, Excel export |
 | AdminPage | `/admin` | SUPER_ADMIN | User, team, agency, client management (tabbed) |
 | PackagesPage | `/packages` | SUPER_ADMIN | Build packages (card grid), send to team heads, track responses |
 | MyPackagesPage | `/my-packages` | GROUP_HEAD | Inbox of shared packages; reply Interested/Negotiate/Not interested |
@@ -536,6 +550,17 @@ A SUPER_ADMIN builds a package (name, category, line items with rates) and **sen
 - an **in-app notification**.
 
 GROUP_HEADs open `/my-packages`, review the package, and reply **Interested / Open to negotiate / Not interested** with optional client, budget note, and notes. The admin sees every reply (and follow-up status) on the Packages → Responses view, and gets a notification per response. `PackageRecipient.tokenHash`/`expiresAt` are nullable legacy columns from the old token flow.
+
+## Media Buying (channel negotiation intelligence, SUPER_ADMIN only)
+
+`/media-buying` lets a SUPER_ADMIN track negotiated **discount %** (off rate card) and **bonus %** (free added-value airtime/space) per channel, both at the **agency level** and **per client**, year over year — distinct from `Property.bonusPct` (which is a deal-instance field on a specific client's channel, not a tracked negotiation term).
+
+- **Schema:** `ChannelAgencyDeal` (`channelMasterId, year` unique) and `ChannelClientDeal` (`channelMasterId, clientId, year` unique). Saving the same year **updates** that row (typo-fix); saving a **new** year always inserts a new row — history is preserved structurally via the unique constraint + upsert-by-year, with no separate audit table (a v1 simplification; `PropertyHistory`-style change tracking could be added later if needed).
+- **Channel Intelligence view** (`getChannelIntelligence`): pick a channel → **Agency-Level Deal Block** (full year history, color-coded trend arrow ▲/▼/→ comparing combined discount+bonus vs the prior year) + a year-filtered **Client Breakdown Table** (yearly spend + monthly avg derived live from `ScheduleLog`, joined to that client's deal for the selected year — discount/bonus show "-" until recorded). Expandable rows lazy-fetch month-by-month spend (`getClientChannelMonthly`).
+- **Negotiation Planner** (`getNegotiationPlanner`, slide-in panel via "Plan New Client"): given a proposed monthly budget, computes `projectedYearlySpend` and buckets it into a **Low/Mid/High spend tier** via live terciles (33rd/66th percentile) of that channel's existing per-client yearly spend — no persisted/configurable threshold table, a v1 simplification. Returns `suggestedDiscountRange`/`suggestedBonusRange` (min/max among same-tier clients with a recorded deal), the list of comparable clients (real names, SUPER_ADMIN only), and the agency deal for that year (or the latest available year as fallback).
+- **Entry points:** "Add/Edit Deal" on the agency block, an "Edit" button per client row, and a standalone "+ Add Deal" button near the channel/year selectors with **both** Channel and Client as dropdowns (covers ad-hoc/bulk entry without navigating into a specific channel's view — kept inside this page rather than scattered into Admin/Database, a deliberate v1 simplification).
+- **Export:** SheetJS workbook with an "Agency Deal History" sheet + a "Client Breakdown" sheet for the selected year.
+- Nav entry only renders for `SUPER_ADMIN` (`Layout.jsx` `NAV_ADMIN`); route guarded by `requiredRoles={['SUPER_ADMIN']}`; all `/api/media-buying/*` endpoints require `SUPER_ADMIN`.
 
 ## Property & Rate-History Export
 

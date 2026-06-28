@@ -15,6 +15,7 @@ const NAV = [
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [
+  { key: '/media-buying', label: 'Media Buying', icon: 'sparkle', roles: ['SUPER_ADMIN'] },
   { key: '/packages', label: 'Media Packages', icon: 'mail', roles: ['SUPER_ADMIN'] },
   { key: '/upload-tracker', label: 'Upload Tracker', icon: 'upload', roles: ['SUPER_ADMIN'] },
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },

@@ -25,6 +25,7 @@ import masterdataRoutes from './routes/masterdata.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import forecastingRoutes from './routes/forecasting.routes.js';
+import mediaBuyingRoutes from './routes/mediabuying.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/masterdata', masterdataRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/forecasting', forecastingRoutes);
+app.use('/api/media-buying', mediaBuyingRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

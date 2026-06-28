@@ -24,6 +24,7 @@ import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
 import UploadTrackerPage from './pages/UploadTrackerPage';
 import ForecastingPage from './pages/ForecastingPage';
+import MediaBuyingPage from './pages/MediaBuyingPage';
 
 // Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
 function HomeRedirect() {
@@ -116,6 +117,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
                   <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/media-buying"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
+                  <MediaBuyingPage />
                 </ProtectedRoute>
               }
             />
