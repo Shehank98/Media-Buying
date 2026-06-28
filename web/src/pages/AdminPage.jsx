@@ -75,6 +75,13 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [channelSubmitting, setChannelSubmitting] = useState(false);
   const [channelError, setChannelError] = useState('');
 
+  /* ---- merge channel master modal ---- */
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeSource, setMergeSource] = useState(null);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeSubmitting, setMergeSubmitting] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+
   /* ---- media group modal ---- */
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
@@ -426,6 +433,32 @@ export default function AdminPage({ initialTab = 'users' }) {
       await fetchData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update channel status.');
+    }
+  };
+  const openMergeModal = ch => {
+    setMergeSource(ch);
+    setMergeTargetId('');
+    setMergeError('');
+    setShowMergeModal(true);
+  };
+  const handleMergeSubmit = async e => {
+    e.preventDefault();
+    setMergeError('');
+    if (!mergeTargetId) { setMergeError('Please select a channel to merge into.'); return; }
+    setMergeSubmitting(true);
+    try {
+      await api.post('/masterdata/channel-masters/merge', {
+        sourceId: mergeSource.id,
+        targetId: parseInt(mergeTargetId),
+      });
+      setShowMergeModal(false);
+      setMergeSource(null);
+      setMergeTargetId('');
+      await fetchData();
+    } catch (err) {
+      setMergeError(err.response?.data?.error || err.response?.data?.message || 'Failed to merge channels.');
+    } finally {
+      setMergeSubmitting(false);
     }
   };
 
@@ -957,6 +990,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <div className="row-actions">
                       <button className="act-btn" onClick={() => openEditChannel(ch)} title="Edit channel">
                         <Icon name="edit" size={15} />
+                      </button>
+                      <button className="act-btn" onClick={() => openMergeModal(ch)} title="Merge into another channel">
+                        <Icon name="merge" size={15} />
                       </button>
                       <button
                         className="act-btn"
@@ -1549,6 +1585,54 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowChannelModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={channelSubmitting}>{channelSubmitting ? 'Saving...' : editingChannel ? 'Save Changes' : 'Add Channel'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MERGE CHANNEL MODAL ============ */}
+      {showMergeModal && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) { setShowMergeModal(false); setMergeSource(null); } }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-head">
+              <h2>Merge Channel</h2>
+              <button className="act-btn" onClick={() => { setShowMergeModal(false); setMergeSource(null); }}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleMergeSubmit}>
+              <div className="modal-body">
+                {mergeError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{mergeError}</div>
+                )}
+                <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+                  Use this when two channel masters are duplicates of the same real channel (e.g. created under the wrong media group).
+                  All schedule logs, upload rows, and aliases on <strong style={{ color: 'var(--ink)' }}>{mergeSource?.name}</strong> will move
+                  to the channel you pick below, and <strong style={{ color: 'var(--ink)' }}>{mergeSource?.name}</strong> will be deactivated.
+                  This cannot be undone.
+                </p>
+                <div className="field">
+                  <label className="field-label">Merging</label>
+                  <input className="input" type="text" value={mergeSource?.name || ''} disabled />
+                </div>
+                <div className="field">
+                  <label className="field-label">Merge into <span className="req">*</span></label>
+                  <select className="select" value={mergeTargetId} onChange={e => setMergeTargetId(e.target.value)}>
+                    <option value="">Select target channel...</option>
+                    {channelMasters
+                      .filter(c => c.id !== mergeSource?.id)
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.medium}{c.mediaGroup?.name ? `, ${c.mediaGroup.name}` : ''})</option>
+                      ))}
+                  </select>
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    All data from "{mergeSource?.name}" will appear under this channel going forward.
+                  </span>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => { setShowMergeModal(false); setMergeSource(null); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={mergeSubmitting}>{mergeSubmitting ? 'Merging...' : 'Merge Channels'}</button>
               </div>
             </form>
           </div>
