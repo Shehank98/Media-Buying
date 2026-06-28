@@ -8,24 +8,57 @@ const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = [CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
 
 function fmtPct(v) {
-  if (v == null) return '-';
+  if (v == null) return '';
   return `${Number(v).toFixed(1)}%`;
 }
 
+function NotSet() {
+  return <span style={{ color: 'var(--muted)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
+}
+
 function fmtMonthLabel(ym) {
-  if (!ym) return '-';
+  if (!ym) return '';
   const [y, m] = ym.split('-');
   const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${names[parseInt(m) - 1]} ${y}`;
 }
 
 function TrendArrow({ trend }) {
-  if (trend === 'up') return <span style={{ color: 'var(--green-600,#16a34a)', fontWeight: 700 }}>▲</span>;
-  if (trend === 'down') return <span style={{ color: 'var(--red-600,#dc2626)', fontWeight: 700 }}>▼</span>;
-  return <span style={{ color: 'var(--muted)', fontWeight: 700 }}>→</span>;
+  if (trend === 'up') return <span style={{ color: 'var(--green-600,#16a34a)', fontWeight: 700 }}>▲ Improved</span>;
+  if (trend === 'down') return <span style={{ color: 'var(--red-600,#dc2626)', fontWeight: 700 }}>▼ Declined</span>;
+  return <span style={{ color: 'var(--muted)', fontWeight: 700 }}>→ Unchanged</span>;
 }
 
-function DealModal({ title, channelName, clientName, year, setYear, discountPct, setDiscountPct, bonusPct, setBonusPct, notes, setNotes, yearLocked, onSubmit, onClose, submitting, error, channelSelect, clientSelect }) {
+function YearChips({ years, onToggle, options }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {options.map((y) => {
+        const active = years.includes(y);
+        return (
+          <button
+            key={y}
+            type="button"
+            onClick={() => onToggle(y)}
+            style={{
+              padding: '7px 14px',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: active ? '1px solid var(--coral-600,#C44A18)' : '1px solid var(--border)',
+              background: active ? 'var(--coral-600,#C44A18)' : '#fff',
+              color: active ? '#fff' : 'var(--ink-soft)',
+            }}
+          >
+            {y}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DealModal({ title, channelName, clientName, years, onToggleYear, discountPct, setDiscountPct, bonusPct, setBonusPct, notes, setNotes, onSubmit, onClose, submitting, error, channelSelect, clientSelect }) {
   return (
     <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -62,12 +95,12 @@ function DealModal({ title, channelName, clientName, year, setYear, discountPct,
                 </div>
               )
             )}
-            <div className="field-grid2">
-              <div className="field">
-                <label className="field-label">Year <span className="req">*</span></label>
-                <input className="input" type="number" value={year} disabled={yearLocked} onChange={(e) => setYear(e.target.value)} placeholder={String(CURRENT_YEAR)} />
-              </div>
-              <div className="field" />
+            <div className="field">
+              <label className="field-label">Year(s) <span className="req">*</span></label>
+              <YearChips years={years} onToggle={onToggleYear} options={YEAR_OPTIONS} />
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                Select every year these terms apply to — saving applies the same discount/bonus to each selected year in one go.
+              </p>
             </div>
             <div className="field-grid2">
               <div className="field">
@@ -86,7 +119,7 @@ function DealModal({ title, channelName, clientName, year, setYear, discountPct,
           </div>
           <div className="modal-foot">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Saving…' : 'Save Deal'}</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Saving…' : years.length > 1 ? `Save ${years.length} Years` : 'Save Deal'}</button>
           </div>
         </form>
       </div>
@@ -108,8 +141,7 @@ export default function MediaBuyingPage() {
 
   // Agency deal modal
   const [showAgencyModal, setShowAgencyModal] = useState(false);
-  const [agencyYear, setAgencyYear] = useState(String(CURRENT_YEAR));
-  const [agencyYearLocked, setAgencyYearLocked] = useState(false);
+  const [agencyYears, setAgencyYears] = useState([CURRENT_YEAR]);
   const [agencyDiscount, setAgencyDiscount] = useState('');
   const [agencyBonus, setAgencyBonus] = useState('');
   const [agencyNotes, setAgencyNotes] = useState('');
@@ -120,8 +152,7 @@ export default function MediaBuyingPage() {
   const [showClientModal, setShowClientModal] = useState(false);
   const [clientModalClientId, setClientModalClientId] = useState('');
   const [clientModalClientName, setClientModalClientName] = useState('');
-  const [clientYear, setClientYear] = useState(String(CURRENT_YEAR));
-  const [clientYearLocked, setClientYearLocked] = useState(false);
+  const [clientYears, setClientYears] = useState([CURRENT_YEAR]);
   const [clientDiscount, setClientDiscount] = useState('');
   const [clientBonus, setClientBonus] = useState('');
   const [clientNotes, setClientNotes] = useState('');
@@ -132,7 +163,7 @@ export default function MediaBuyingPage() {
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   const [quickAddChannelId, setQuickAddChannelId] = useState('');
   const [quickAddClientId, setQuickAddClientId] = useState('');
-  const [quickAddYear, setQuickAddYear] = useState(String(CURRENT_YEAR));
+  const [quickAddYears, setQuickAddYears] = useState([CURRENT_YEAR]);
   const [quickAddDiscount, setQuickAddDiscount] = useState('');
   const [quickAddBonus, setQuickAddBonus] = useState('');
   const [quickAddNotes, setQuickAddNotes] = useState('');
@@ -214,9 +245,12 @@ export default function MediaBuyingPage() {
     }
   }
 
+  function toggleYearIn(setFn) {
+    return (y) => setFn((prev) => (prev.includes(y) ? prev.filter((v) => v !== y) : [...prev, y].sort((a, b) => a - b)));
+  }
+
   function openAgencyModal() {
-    setAgencyYear(String(year));
-    setAgencyYearLocked(false);
+    setAgencyYears([year]);
     const existing = data?.agencyDeals?.find((d) => d.year === year);
     setAgencyDiscount(existing ? String(existing.discountPct) : '');
     setAgencyBonus(existing ? String(existing.bonusPct) : '');
@@ -227,17 +261,17 @@ export default function MediaBuyingPage() {
 
   async function handleAgencySubmit(e) {
     e.preventDefault();
-    if (!agencyYear || agencyDiscount === '' || agencyBonus === '') { setAgencyError('Year, discount %, and bonus % are required.'); return; }
+    if (agencyYears.length === 0 || agencyDiscount === '' || agencyBonus === '') { setAgencyError('At least one year, discount %, and bonus % are required.'); return; }
     setAgencySubmitting(true);
     setAgencyError('');
     try {
-      await api.post('/media-buying/agency-deals', {
+      await Promise.all(agencyYears.map((y) => api.post('/media-buying/agency-deals', {
         channelMasterId: parseInt(channelMasterId),
-        year: parseInt(agencyYear),
+        year: y,
         discountPct: parseFloat(agencyDiscount),
         bonusPct: parseFloat(agencyBonus),
         notes: agencyNotes,
-      });
+      })));
       setShowAgencyModal(false);
       fetchData();
     } catch (err) {
@@ -250,8 +284,7 @@ export default function MediaBuyingPage() {
   function openClientModal(client) {
     setClientModalClientId(client.clientId);
     setClientModalClientName(client.clientName);
-    setClientYear(String(year));
-    setClientYearLocked(false);
+    setClientYears([year]);
     setClientDiscount(client.discountPct != null ? String(client.discountPct) : '');
     setClientBonus(client.bonusPct != null ? String(client.bonusPct) : '');
     setClientNotes(client.notes || '');
@@ -261,18 +294,18 @@ export default function MediaBuyingPage() {
 
   async function handleClientSubmit(e) {
     e.preventDefault();
-    if (!clientYear || clientDiscount === '' || clientBonus === '') { setClientError('Year, discount %, and bonus % are required.'); return; }
+    if (clientYears.length === 0 || clientDiscount === '' || clientBonus === '') { setClientError('At least one year, discount %, and bonus % are required.'); return; }
     setClientSubmitting(true);
     setClientError('');
     try {
-      await api.post('/media-buying/client-deals', {
+      await Promise.all(clientYears.map((y) => api.post('/media-buying/client-deals', {
         channelMasterId: parseInt(channelMasterId),
         clientId: parseInt(clientModalClientId),
-        year: parseInt(clientYear),
+        year: y,
         discountPct: parseFloat(clientDiscount),
         bonusPct: parseFloat(clientBonus),
         notes: clientNotes,
-      });
+      })));
       setShowClientModal(false);
       fetchData();
     } catch (err) {
@@ -285,7 +318,7 @@ export default function MediaBuyingPage() {
   function openQuickAddModal() {
     setQuickAddChannelId(channelMasterId || '');
     setQuickAddClientId('');
-    setQuickAddYear(String(year));
+    setQuickAddYears([year]);
     setQuickAddDiscount('');
     setQuickAddBonus('');
     setQuickAddNotes('');
@@ -295,21 +328,21 @@ export default function MediaBuyingPage() {
 
   async function handleQuickAddSubmit(e) {
     e.preventDefault();
-    if (!quickAddChannelId || !quickAddClientId || !quickAddYear || quickAddDiscount === '' || quickAddBonus === '') {
-      setQuickAddError('Channel, client, year, discount %, and bonus % are required.');
+    if (!quickAddChannelId || !quickAddClientId || quickAddYears.length === 0 || quickAddDiscount === '' || quickAddBonus === '') {
+      setQuickAddError('Channel, client, at least one year, discount %, and bonus % are required.');
       return;
     }
     setQuickAddSubmitting(true);
     setQuickAddError('');
     try {
-      await api.post('/media-buying/client-deals', {
+      await Promise.all(quickAddYears.map((y) => api.post('/media-buying/client-deals', {
         channelMasterId: parseInt(quickAddChannelId),
         clientId: parseInt(quickAddClientId),
-        year: parseInt(quickAddYear),
+        year: y,
         discountPct: parseFloat(quickAddDiscount),
         bonusPct: parseFloat(quickAddBonus),
         notes: quickAddNotes,
-      });
+      })));
       setShowQuickAddModal(false);
       if (String(quickAddChannelId) === String(channelMasterId)) fetchData();
     } catch (err) {
@@ -347,11 +380,46 @@ export default function MediaBuyingPage() {
     XLSX.utils.book_append_sheet(wb, dealWs, 'Agency Deal History');
 
     const clientHeaders = ['Client', 'Agency', 'Year', 'Yearly Spend (LKR)', 'Monthly Avg (LKR)', 'Discount %', 'Bonus %', 'Notes'];
-    const clientRows = sortedClients.map((c) => [c.clientName, c.agencyName, c.year, c.yearlySpend, c.monthlyAvg, c.discountPct, c.bonusPct, c.notes]);
+    const clientRows = sortedClients.map((c) => [
+      c.clientName, c.agencyName, c.year, c.yearlySpend, c.monthlyAvg,
+      c.discountPct != null ? c.discountPct : 'Not set',
+      c.bonusPct != null ? c.bonusPct : 'Not set',
+      c.notes,
+    ]);
     const clientWs = XLSX.utils.aoa_to_sheet([clientHeaders, ...clientRows]);
     XLSX.utils.book_append_sheet(wb, clientWs, 'Client Breakdown');
 
     XLSX.writeFile(wb, `media-buying-${data.channel.name.replace(/\W+/g, '_')}-${year}.xlsx`);
+  }
+
+  function handlePlannerExport() {
+    if (!plannerResult || !selectedChannel) return;
+    const wb = XLSX.utils.book_new();
+    const rows = [
+      ['Negotiation Plan'],
+      ['Channel', selectedChannel.name],
+      ['Deal Year', plannerResult.year],
+      ['Proposed Monthly Budget (LKR)', plannerResult.monthlyBudget],
+      ['Projected Yearly Spend (LKR)', plannerResult.projectedYearlySpend],
+      ['Spend Tier', plannerResult.spendTier],
+      ['Tier threshold — Low/Mid cutoff (LKR)', plannerResult.tierThresholds.lowMax],
+      ['Tier threshold — Mid/High cutoff (LKR)', plannerResult.tierThresholds.midMax],
+      [],
+      ['Suggested Discount Range', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min}% – ${plannerResult.suggestedDiscountRange.max}%` : 'No comparable data'],
+      ['Suggested Bonus Range', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min}% – ${plannerResult.suggestedBonusRange.max}%` : 'No comparable data'],
+      [],
+      ['Agency Deal Reference Year', plannerResult.agencyDealReference?.year ?? 'No agency deal recorded'],
+      ['Agency Discount %', plannerResult.agencyDealReference?.discountPct ?? ''],
+      ['Agency Bonus %', plannerResult.agencyDealReference?.bonusPct ?? ''],
+      ['Agency Deal Notes', plannerResult.agencyDealReference?.notes ?? ''],
+      [],
+      ['Comparable Clients (' + plannerResult.spendTier + ' tier)'],
+      ['Client', 'Yearly Spend (LKR)', 'Discount %', 'Bonus %'],
+      ...plannerResult.comparableClients.map((c) => [c.clientName, c.yearlySpend, c.discountPct ?? 'Not set', c.bonusPct ?? 'Not set']),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Negotiation Plan');
+    XLSX.writeFile(wb, `negotiation-plan-${selectedChannel.name.replace(/\W+/g, '_')}-${plannerResult.year}.xlsx`);
   }
 
   const selectedChannel = channels.find((c) => String(c.id) === String(channelMasterId));
@@ -363,35 +431,37 @@ export default function MediaBuyingPage() {
           <h1>Media Buying</h1>
           <p className="page-sub">Channel negotiation intelligence — discount &amp; bonus deal history, planning.</p>
         </div>
-        <button className="btn btn-ghost" onClick={openQuickAddModal}>
-          <Icon name="plus" size={16} /> Add Deal
-        </button>
       </div>
 
-      <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
-        <div className="field" style={{ minWidth: 280, marginBottom: 0 }}>
-          <label className="field-label">Channel</label>
-          <select className="select" value={channelMasterId} onChange={(e) => setChannelMasterId(e.target.value)}>
-            <option value="">Select a channel…</option>
-            {Object.entries(channelsByMedium).map(([medium, list]) => (
-              <optgroup key={medium} label={medium}>
-                {list.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ minWidth: 140, marginBottom: 0 }}>
-          <label className="field-label">Year</label>
-          <select className="select" value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        {channelMasterId && (
-          <div style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
-            <button className="btn btn-ghost" onClick={openPlanner}><Icon name="sparkle" size={16} /> Plan New Client</button>
-            <button className="btn btn-subtle" onClick={handleExport} disabled={!data}><Icon name="download" size={16} /> Export to Excel</button>
+      <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="field" style={{ minWidth: 280, marginBottom: 0 }}>
+            <label className="field-label">Channel</label>
+            <select className="select" value={channelMasterId} onChange={(e) => setChannelMasterId(e.target.value)}>
+              <option value="">Select a channel…</option>
+              {Object.entries(channelsByMedium).map(([medium, list]) => (
+                <optgroup key={medium} label={medium}>
+                  {list.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
           </div>
-        )}
+          <div className="field" style={{ minWidth: 140, marginBottom: 0 }}>
+            <label className="field-label">Year</label>
+            <select className="select" value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
+              {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-ghost" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>
+          {channelMasterId && (
+            <>
+              <button className="btn btn-primary" onClick={openPlanner}><Icon name="sparkle" size={16} /> Plan New Client</button>
+              <button className="btn btn-subtle" onClick={handleExport} disabled={!data}><Icon name="download" size={16} /> Export to Excel</button>
+            </>
+          )}
+        </div>
       </div>
 
       {!channelMasterId && (
@@ -417,16 +487,16 @@ export default function MediaBuyingPage() {
               <div className="tbl-wrap">
                 <table className="tbl">
                   <thead>
-                    <tr><th>Year</th><th>Discount %</th><th>Bonus %</th><th>Trend</th><th>Notes</th></tr>
+                    <tr><th>Year</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Trend</th><th>Notes</th></tr>
                   </thead>
                   <tbody>
                     {data.agencyDeals.map((d) => (
                       <tr key={d.id}>
-                        <td>{d.year}</td>
-                        <td>{fmtPct(d.discountPct)}</td>
-                        <td>{fmtPct(d.bonusPct)}</td>
+                        <td className="strong">{d.year}</td>
+                        <td className="num strong">{fmtPct(d.discountPct)}</td>
+                        <td className="num strong">{fmtPct(d.bonusPct)}</td>
                         <td><TrendArrow trend={d.trend} /></td>
-                        <td>{d.notes || '-'}</td>
+                        <td>{d.notes ? d.notes : <NotSet />}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -445,12 +515,12 @@ export default function MediaBuyingPage() {
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th></th>
+                      <th style={{ width: 36 }}></th>
                       <th onClick={() => toggleSort('clientName')} style={{ cursor: 'pointer' }}>Client</th>
-                      <th onClick={() => toggleSort('yearlySpend')} style={{ cursor: 'pointer' }}>Yearly Spend</th>
-                      <th onClick={() => toggleSort('monthlyAvg')} style={{ cursor: 'pointer' }}>Monthly Avg</th>
-                      <th onClick={() => toggleSort('discountPct')} style={{ cursor: 'pointer' }}>Discount %</th>
-                      <th onClick={() => toggleSort('bonusPct')} style={{ cursor: 'pointer' }}>Bonus %</th>
+                      <th onClick={() => toggleSort('yearlySpend')} className="num" style={{ cursor: 'pointer' }}>Yearly Spend</th>
+                      <th onClick={() => toggleSort('monthlyAvg')} className="num" style={{ cursor: 'pointer' }}>Monthly Avg</th>
+                      <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount %</th>
+                      <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus %</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -459,15 +529,15 @@ export default function MediaBuyingPage() {
                       <>
                         <tr key={c.clientId}>
                           <td>
-                            <button className="act-btn" onClick={() => toggleExpand(c)}>
-                              <Icon name={expandedClientId === c.clientId ? 'trending-down' : 'trending-up'} size={14} />
+                            <button className="act-btn" onClick={() => toggleExpand(c)} title="Show month-by-month">
+                              <Icon name={expandedClientId === c.clientId ? 'chevDown' : 'chevR'} size={14} />
                             </button>
                           </td>
                           <td>{c.clientName}<div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div></td>
-                          <td>{fmtLKR(c.yearlySpend)}</td>
-                          <td>{fmtLKR(c.monthlyAvg)}</td>
-                          <td>{fmtPct(c.discountPct)}</td>
-                          <td>{fmtPct(c.bonusPct)}</td>
+                          <td className="num strong">{fmtLKR(c.yearlySpend)}</td>
+                          <td className="num">{fmtLKR(c.monthlyAvg)}</td>
+                          <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
+                          <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
                           <td><button className="btn btn-ghost btn-sm" onClick={() => openClientModal(c)}>Edit</button></td>
                         </tr>
                         {expandedClientId === c.clientId && (
@@ -504,13 +574,12 @@ export default function MediaBuyingPage() {
       {/* Agency Deal Modal */}
       {showAgencyModal && (
         <DealModal
-          title={data?.agencyDeals?.some((d) => d.year === parseInt(agencyYear)) ? `Edit ${agencyYear} Agency Deal` : 'Add Agency Deal'}
+          title={data?.agencyDeals?.some((d) => agencyYears.includes(d.year)) ? 'Edit Agency Deal' : 'Add Agency Deal'}
           channelName={selectedChannel?.name}
-          year={agencyYear} setYear={setAgencyYear}
+          years={agencyYears} onToggleYear={toggleYearIn(setAgencyYears)}
           discountPct={agencyDiscount} setDiscountPct={setAgencyDiscount}
           bonusPct={agencyBonus} setBonusPct={setAgencyBonus}
           notes={agencyNotes} setNotes={setAgencyNotes}
-          yearLocked={false}
           onSubmit={handleAgencySubmit}
           onClose={() => setShowAgencyModal(false)}
           submitting={agencySubmitting}
@@ -524,11 +593,10 @@ export default function MediaBuyingPage() {
           title="Edit Client Deal"
           channelName={selectedChannel?.name}
           clientName={clientModalClientName}
-          year={clientYear} setYear={setClientYear}
+          years={clientYears} onToggleYear={toggleYearIn(setClientYears)}
           discountPct={clientDiscount} setDiscountPct={setClientDiscount}
           bonusPct={clientBonus} setBonusPct={setClientBonus}
           notes={clientNotes} setNotes={setClientNotes}
-          yearLocked={false}
           onSubmit={handleClientSubmit}
           onClose={() => setShowClientModal(false)}
           submitting={clientSubmitting}
@@ -542,11 +610,10 @@ export default function MediaBuyingPage() {
           title="Add Client Deal"
           channelName={channels.find((c) => String(c.id) === String(quickAddChannelId))?.name}
           clientName={allClients.find((c) => String(c.id) === String(quickAddClientId))?.name}
-          year={quickAddYear} setYear={setQuickAddYear}
+          years={quickAddYears} onToggleYear={toggleYearIn(setQuickAddYears)}
           discountPct={quickAddDiscount} setDiscountPct={setQuickAddDiscount}
           bonusPct={quickAddBonus} setBonusPct={setQuickAddBonus}
           notes={quickAddNotes} setNotes={setQuickAddNotes}
-          yearLocked={false}
           onSubmit={handleQuickAddSubmit}
           onClose={() => setShowQuickAddModal(false)}
           submitting={quickAddSubmitting}
@@ -578,6 +645,11 @@ export default function MediaBuyingPage() {
             <div className="panel-title">Negotiation Planner</div>
             <div className="panel-sub">{selectedChannel?.name}</div>
           </div>
+          {plannerResult && (
+            <button className="btn btn-subtle btn-sm" onClick={handlePlannerExport} style={{ marginRight: 8 }}>
+              <Icon name="download" size={14} /> Export
+            </button>
+          )}
           <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => setShowPlanner(false)}>
             <Icon name="x" size={18} />
           </button>
@@ -639,14 +711,14 @@ export default function MediaBuyingPage() {
                 ) : (
                   <div className="tbl-wrap">
                     <table className="tbl">
-                      <thead><tr><th>Client</th><th>Yearly Spend</th><th>Discount</th><th>Bonus</th></tr></thead>
+                      <thead><tr><th>Client</th><th className="num">Yearly Spend</th><th className="num">Discount</th><th className="num">Bonus</th></tr></thead>
                       <tbody>
                         {plannerResult.comparableClients.map((c) => (
                           <tr key={c.clientId}>
                             <td>{c.clientName}</td>
-                            <td>{fmtLKR(c.yearlySpend)}</td>
-                            <td>{fmtPct(c.discountPct)}</td>
-                            <td>{fmtPct(c.bonusPct)}</td>
+                            <td className="num">{fmtLKR(c.yearlySpend)}</td>
+                            <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
+                            <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
                           </tr>
                         ))}
                       </tbody>
