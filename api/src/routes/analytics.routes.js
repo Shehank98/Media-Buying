@@ -19,6 +19,7 @@ import {
   getDeepDashboard,
   getAchievement,
   getForecastMonthly,
+  getGroupContribution,
 } from '../controllers/analytics.controller.js';
 
 const router = Router();
@@ -47,5 +48,6 @@ router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'
 // Forecasting dashboard
 router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
 router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
+router.get('/dashboard/group-contribution', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContribution);
 
 export default router;

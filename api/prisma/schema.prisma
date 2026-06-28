@@ -68,6 +68,7 @@ model User {
   agencyAccess          UserAgencyAccess[]
   clientAccess          UserClientAccess[]
   teamMembers           TeamMember[]
+  teamsHeaded           Team[]               @relation("TeamHead")
   properties            Property[]           @relation("CreatedBy")
   propertyHistory       PropertyHistory[]    @relation("ChangedBy")
   passwordResetTokens   PasswordResetToken[]
@@ -143,12 +144,14 @@ model UserClientAccess {
 }
 
 model Team {
-  id       Int          @id @default(autoincrement())
-  agencyId Int          @map("agency_id")
-  name     String
-  agency   Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  members  TeamMember[]
-  clients  TeamClient[]
+  id         Int          @id @default(autoincrement())
+  agencyId   Int          @map("agency_id")
+  name       String
+  headUserId Int?         @map("head_user_id")
+  agency     Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  head       User?        @relation("TeamHead", fields: [headUserId], references: [id])
+  members    TeamMember[]
+  clients    TeamClient[]
 
   @@unique([agencyId, name])
   @@map("teams")

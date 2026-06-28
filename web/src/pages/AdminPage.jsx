@@ -64,7 +64,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- team modal ---- */
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [teamForm, setTeamForm] = useState({ name: '', agencyId: '', memberIds: [], clientIds: [] });
+  const [teamForm, setTeamForm] = useState({ name: '', agencyId: '', headUserId: '', memberIds: [], clientIds: [] });
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamError, setTeamError] = useState('');
 
@@ -314,7 +314,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- Team CRUD ---- */
   const openAddTeam = () => {
     setEditingTeam(null);
-    setTeamForm({ name: '', agencyId: '', memberIds: [], clientIds: [] });
+    setTeamForm({ name: '', agencyId: '', headUserId: '', memberIds: [], clientIds: [] });
     setTeamError('');
     setShowTeamModal(true);
   };
@@ -323,6 +323,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     setTeamForm({
       name: team.name,
       agencyId: team.agencyId || '',
+      headUserId: team.headUserId || team.head?.id || '',
       memberIds: team.members?.map(m => m.id) || team.memberIds || [],
       clientIds: team.clients?.map(c => c.id) || team.clientIds || [],
     });
@@ -889,6 +890,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <tr>
                 <th>Team Name</th>
                 <th>Agency</th>
+                <th>Team Head</th>
                 <th>Members</th>
                 <th>Clients</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -899,6 +901,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <tr key={team.id}>
                   <td className="strong">{team.name}</td>
                   <td>{team.agency?.name || team.agencyName || '-'}</td>
+                  <td>{team.head?.name || <span style={{ color: 'var(--muted)' }}>Not set</span>}</td>
                   <td>{team.memberCount || team._count?.members || team.members?.length || 0}</td>
                   <td>{team.clientCount || team._count?.clients || team.clients?.length || 0}</td>
                   <td>
@@ -1455,6 +1458,16 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </div>
                 </div>
                 <div className="field">
+                  <label className="field-label">Team Head</label>
+                  <select className="select" value={teamForm.headUserId} onChange={e => setTeamForm(p => ({ ...p, headUserId: e.target.value }))}>
+                    <option value="">No head assigned</option>
+                    {users.filter(u => u.role === 'GROUP_HEAD').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                    Each client below reports to this team's head. A client can only belong to one team at a time.
+                  </div>
+                </div>
+                <div className="field">
                   <label className="field-label">Members</label>
                   <div className="chips">
                     {users.map(u => (
@@ -1470,12 +1483,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <div className="chips">
                     {allClients
                       .filter(c => !teamForm.agencyId || c.agencyId === parseInt(teamForm.agencyId))
-                      .map(c => (
-                        <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
-                          {c.name}
-                          {teamForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
-                        </button>
-                      ))}
+                      .map(c => {
+                        const owner = teams.find(t => t.id !== editingTeam?.id && t.clients?.some(tc => tc.id === c.id));
+                        return (
+                          <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))} title={owner ? `Currently on team "${owner.name}" — adding here will move it` : ''}>
+                            {c.name}{owner ? ` (on ${owner.name})` : ''}
+                            {teamForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               </div>

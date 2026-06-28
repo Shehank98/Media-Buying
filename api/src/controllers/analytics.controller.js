@@ -1162,3 +1162,71 @@ export async function getForecastMonthly(req, res) {
     return res.status(500).json({ error: 'Failed to build monthly forecast', detail: error.message });
   }
 }
+
+// Each client has exactly one team (and therefore one team head, via Team.headUserId)
+// thanks to the 1-team-per-client invariant enforced in admin.controller.js. This
+// compares how much each team's portfolio of clients spent in the latest two months
+// that have any schedule data.
+export async function getGroupContribution(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const monthRows = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: scope,
+      orderBy: { scheduleMonth: 'desc' },
+      take: 2,
+    });
+    // Ascending order: months[0] = older month ("m1"), months[1] = newer month ("m2").
+    const months = monthRows.map(r => r.scheduleMonth).sort();
+    if (months.length === 0) return res.json({ months: [], groups: [] });
+
+    const rows = await prisma.scheduleLog.groupBy({
+      by: ['clientId', 'scheduleMonth'],
+      where: { ...scope, scheduleMonth: { in: months } },
+      _sum: { scheduleValue: true },
+    });
+
+    const clientIds = [...new Set(rows.map(r => r.clientId))];
+    const teamClients = await prisma.teamClient.findMany({
+      where: { clientId: { in: clientIds } },
+      include: { team: { include: { head: { select: { name: true } }, agency: { select: { name: true } } } } },
+    });
+    const teamByClient = {};
+    for (const tc of teamClients) teamByClient[tc.clientId] = tc.team;
+
+    const groups = {};
+    const monthKey = (m) => (m === months[0] ? 'm1' : 'm2');
+    for (const r of rows) {
+      const team = teamByClient[r.clientId];
+      const key = team ? `team-${team.id}` : 'unassigned';
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          teamId: team?.id || null,
+          name: team ? team.name : 'Unassigned',
+          headName: team?.head?.name || null,
+          agencyName: team?.agency?.name || null,
+          m1: 0,
+          m2: 0,
+        };
+      }
+      groups[key][monthKey(r.scheduleMonth)] += (safeNum(r._sum.scheduleValue) || 0) / 1e6;
+    }
+
+    const result = Object.values(groups)
+      .map(g => ({ ...g, m1: Number(g.m1.toFixed(2)), m2: Number(g.m2.toFixed(2)) }))
+      .sort((a, b) => (b.m1 + b.m2) - (a.m1 + a.m2));
+
+    return res.json({
+      months: months.map(m => ({ month: m, label: MONTH_NAMES[parseInt(String(m).slice(5)) - 1] })),
+      groups: result,
+    });
+  } catch (error) {
+    console.error('getGroupContribution error:', error);
+    return res.status(500).json({ error: 'Failed to build group contribution', detail: error.message });
+  }
+}

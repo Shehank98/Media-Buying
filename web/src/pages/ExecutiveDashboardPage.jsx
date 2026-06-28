@@ -84,7 +84,7 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
 const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
 
 // Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
-function AchievementSection({ year, setYear, achievement, forecastMonthly, loading }) {
+function AchievementSection({ year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading }) {
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
   const bars = achievement ? [
@@ -93,6 +93,8 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, loadi
     { name: achievement.uptoMonthLabel ? `Actual upto ${achievement.uptoMonthLabel}` : 'Actual', value: achievement.actualMillions || 0, fill: '#15814B' },
   ] : [];
   const fc = forecastMonthly?.data || [];
+  const gcMonths = groupContribution?.months || [];
+  const gcData = groupContribution?.groups || [];
 
   return (
     <div className="dash-section">
@@ -154,6 +156,31 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, loadi
           </ResponsiveContainer>
         )}
       </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-card-title">Group Contribution</div>
+        <div className="chart-card-sub">
+          {gcMonths.length === 2
+            ? `${gcMonths[0].label} vs ${gcMonths[1].label} spend by team head's client portfolio · LKR millions`
+            : 'Spend by team head\'s client portfolio, last two months · LKR millions'}
+        </div>
+        {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : gcData.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={Math.max(220, gcData.length * 48)}>
+            <BarChart data={gcData} layout="vertical" margin={{ top: 6, right: 60, bottom: 6, left: 8 }} barCategoryGap="28%">
+              <CartesianGrid horizontal={false} stroke="var(--border)" />
+              <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
+              <YAxis
+                type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }}
+                tickFormatter={(v, i) => gcData[i]?.headName ? `${v} (${gcData[i].headName})` : v}
+              />
+              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              {gcMonths[0] && <Bar dataKey="m1" name={gcMonths[0].label} fill="#9A5B00" radius={[0, 5, 5, 0]} barSize={14} />}
+              {gcMonths[1] && <Bar dataKey="m2" name={gcMonths[1].label} fill="#1F5BB5" radius={[0, 5, 5, 0]} barSize={14} />}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </div>
   );
 }
@@ -198,6 +225,8 @@ export default function ExecutiveDashboardPage() {
   const [achievement, setAchievement] = useState(null);
   const [achLoading, setAchLoading] = useState(true);
   const [forecastMonthly, setForecastMonthly] = useState(null);
+  const [groupContribution, setGroupContribution] = useState(null);
+  const [groupContributionLoading, setGroupContributionLoading] = useState(true);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -272,6 +301,15 @@ export default function ExecutiveDashboardPage() {
       if (f.status === 'fulfilled') setForecastMonthly(f.value.data); else setForecastMonthly(null);
     }).finally(() => setAchLoading(false));
   }, [year]);
+
+  // Group contribution (last two months with data, by team head's client portfolio)
+  useEffect(() => {
+    setGroupContributionLoading(true);
+    api.get('/analytics/dashboard/group-contribution')
+      .then(r => setGroupContribution(r.data))
+      .catch(() => setGroupContribution(null))
+      .finally(() => setGroupContributionLoading(false));
+  }, []);
 
   // Medium split
   useEffect(() => {
@@ -620,7 +658,10 @@ export default function ExecutiveDashboardPage() {
       </div>
 
       {/* Section 1: Annual Achievement + Monthly Spend (forecast) */}
-      <AchievementSection year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading} />
+      <AchievementSection
+        year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading}
+        groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
+      />
 
       {/* Section 2: Monthly Billing Trend */}
       <div className="dash-section">

@@ -8,6 +8,7 @@ const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
 const teamIncludes = {
   agency: { select: { id: true, name: true } },
+  head: { select: { id: true, name: true, email: true, role: true } },
   members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
   clients: { include: { client: { select: { id: true, name: true } } } },
 };
@@ -18,6 +19,17 @@ function mapTeam(t) {
     members: t.members.map(m => ({ id: m.user.id, name: m.user.name, email: m.user.email, role: m.user.role })),
     clients: t.clients.map(c => c.client),
   };
+}
+
+// Each client has exactly one team head, so a client can belong to at most one
+// team at a time: clear any other team's claim on these clients before assigning.
+async function setTeamClients(teamId, clientIds) {
+  const ids = clientIds.map(Number);
+  await prisma.teamClient.deleteMany({ where: { teamId } });
+  if (ids.length > 0) {
+    await prisma.teamClient.deleteMany({ where: { clientId: { in: ids }, teamId: { not: teamId } } });
+    await prisma.teamClient.createMany({ data: ids.map(clientId => ({ teamId, clientId })) });
+  }
 }
 
 // ── Agencies ──
@@ -283,10 +295,12 @@ export async function listTeams(req, res) {
 
 export async function createTeam(req, res) {
   try {
-    const { name, agencyId, memberIds, clientIds } = req.body;
+    const { name, agencyId, headUserId, memberIds, clientIds } = req.body;
     if (!name || !agencyId) return res.status(400).json({ error: 'Name and agencyId are required' });
 
-    const team = await prisma.team.create({ data: { name, agencyId: parseInt(agencyId) } });
+    const team = await prisma.team.create({
+      data: { name, agencyId: parseInt(agencyId), headUserId: headUserId ? parseInt(headUserId) : null },
+    });
 
     if (Array.isArray(memberIds) && memberIds.length > 0) {
       const userRoles = await prisma.user.findMany({
@@ -299,9 +313,7 @@ export async function createTeam(req, res) {
       });
     }
     if (Array.isArray(clientIds) && clientIds.length > 0) {
-      await prisma.teamClient.createMany({
-        data: clientIds.map(clientId => ({ teamId: team.id, clientId: parseInt(clientId) })),
-      });
+      await setTeamClients(team.id, clientIds);
     }
 
     const full = await prisma.team.findUnique({ where: { id: team.id }, include: teamIncludes });
@@ -316,11 +328,12 @@ export async function createTeam(req, res) {
 export async function updateTeam(req, res) {
   try {
     const teamId = parseInt(req.params.id);
-    const { name, agencyId, memberIds, clientIds } = req.body;
+    const { name, agencyId, headUserId, memberIds, clientIds } = req.body;
 
     const data = {};
     if (name !== undefined) data.name = name;
     if (agencyId !== undefined) data.agencyId = parseInt(agencyId);
+    if (headUserId !== undefined) data.headUserId = headUserId ? parseInt(headUserId) : null;
 
     await prisma.team.update({ where: { id: teamId }, data });
 
@@ -338,12 +351,7 @@ export async function updateTeam(req, res) {
       }
     }
     if (Array.isArray(clientIds)) {
-      await prisma.teamClient.deleteMany({ where: { teamId } });
-      if (clientIds.length > 0) {
-        await prisma.teamClient.createMany({
-          data: clientIds.map(clientId => ({ teamId, clientId: parseInt(clientId) })),
-        });
-      }
+      await setTeamClients(teamId, clientIds);
     }
 
     const full = await prisma.team.findUnique({ where: { id: teamId }, include: teamIncludes });
@@ -397,12 +405,7 @@ export async function assignTeamClients(req, res) {
     const { clientIds } = req.body;
     if (!Array.isArray(clientIds)) return res.status(400).json({ error: 'clientIds must be an array' });
 
-    await prisma.teamClient.deleteMany({ where: { teamId } });
-    if (clientIds.length > 0) {
-      await prisma.teamClient.createMany({
-        data: clientIds.map(clientId => ({ teamId, clientId: parseInt(clientId) })),
-      });
-    }
+    await setTeamClients(teamId, clientIds);
     return res.json({ message: 'Clients assigned' });
   } catch (error) {
     console.error('Assign team clients error:', error);

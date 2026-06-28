@@ -141,9 +141,9 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | Client | Brand clients under agencies |
 | UserAgencyAccess | M:N user-agency assignments |
 | UserClientAccess | M:N user-client assignments |
-| Team | Team groupings within agencies |
+| Team | Team groupings within agencies. `headUserId` (nullable) names the team's head — a GROUP_HEAD user. Admin (Admin → Teams) enforces a 1-team-per-client invariant: assigning a client to a team detaches it from any other team, so every client has exactly one team and therefore one team head |
 | TeamMember | Users assigned to teams (with role) |
-| TeamClient | Teams assigned to clients |
+| TeamClient | Teams assigned to clients (kept 1:1 per client by the invariant above, even though the table itself is M:N) |
 
 ### Channel & Property Models
 
@@ -412,6 +412,7 @@ A standalone reference also lives in `docs/DASHBOARDS_AND_CHARTS.md`.
 
 ### Executive Dashboard (`/executive-dashboard`)
 - KPI cards; **Monthly Billing Trend** (Combined Area / By-Agency multi-Line toggle); **Top 10 Clients / Channels** ranked bars (YTD + this-month + MoM/YoY); **Agency Comparison** grouped bars + cards; **Medium Split** two donuts (this-month + YTD with per-medium YoY); **Activity Log** table; **Recent Uploads**. "Export summary" → branded jsPDF + autoTable. Loading uses skeletons.
+- Inside the Annual Achievement section, under **Monthly Spend**: **Group Contribution** — horizontal grouped bars comparing each team's client portfolio spend across the latest two months with any schedule data (`/dashboard/group-contribution`). Each bar group is one `Team` (clients grouped via `TeamClient`, label includes the team's `headUserId` head name); clients not yet assigned to a team roll into "Unassigned". Read-only, no year filter (always the latest two data months).
 
 ### Deep Dashboard (`/deep-dashboard`)
 - One call `/analytics/deep-dashboard` (agency/client/channel filters). KPIs; **Multi-Year Monthly Spend Trend** (one Line per year + Brush); **Client Investment Contribution** bars; **Channel Performance Insights** / **Client Investment History** metric tiles; **Property Performance** sortable table incl. a computed **Bonus Yield %** (bonus ÷ value) column, Excel + PDF export.
@@ -563,6 +564,7 @@ Group/filter by canonical **channel master** (spans agencies), agency, client, o
 
 ### Recently implemented (do NOT re-report as gaps)
 
+- **Team heads:** `Team.headUserId` (nullable, → a GROUP_HEAD user). Admin → Teams modal has a "Team Head" picker; assigning a client to a team via the existing client-chips picker moves it off any other team (`setTeamClients` in `admin.controller.js`), enforcing one team (and therefore one head) per client. Executive Dashboard's **Group Contribution** chart (under Monthly Spend) compares each team's client-portfolio spend across the latest two data months, labeled with the team head's name (`/api/analytics/dashboard/group-contribution`).
 - **Forecasting & targets:** `AnnualTarget` (year, target millions, remoteMonth) + `MonthlyForecast` (year/month/client/channel/amountMillions) models; `Client.isActive`, `ChannelMaster.sortOrder`, `Notification.link` added. Executive Dashboard leads with an **Annual Achievement** horizontal bar (budget vs upto-month target vs actual+remote-month forecast, % badge) and a **Monthly Spend** line (remote month = forecast, orange dot) via `/api/analytics/dashboard/achievement` + `/forecast-monthly` (actuals ÷1e6 → millions). **Forecasting tab** (`/forecasting`, SUPER_ADMIN/MANAGER/GROUP_HEAD): group heads enter the upcoming month's per-channel allocations per accessible+active client (`/api/forecasting/*`); managers/admins get read-only history. Admin tabs: **Annual Targets**, client **active/hide** toggle, **Client/Channel Requests** (group heads request via `/api/forecasting/request-*`, admin approves under `/api/admin/*-requests`, notifications deep-link via `Notification.link`). Channels reuse `ChannelMaster` (seeded `sortOrder` for the fixed TV/Radio forecasting order); "group" scope reuses `getAccessibleClientIds`.
 
 - **Property dates:** `startDate`/`endDate` (null end = ongoing) on `Property`, editable in the Add/Edit form, shown on the channel table, Deep Dashboard, and property-report exports.
