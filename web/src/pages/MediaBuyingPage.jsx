@@ -13,7 +13,7 @@ function fmtPct(v) {
 }
 
 function NotSet() {
-  return <span style={{ color: 'var(--muted)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
+  return <span style={{ color: 'var(--muted-2)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
 }
 
 function fmtMonthLabel(ym) {
@@ -23,10 +23,27 @@ function fmtMonthLabel(ym) {
   return `${names[parseInt(m) - 1]} ${y}`;
 }
 
-function TrendArrow({ trend }) {
-  if (trend === 'up') return <span style={{ color: 'var(--green-600,#16a34a)', fontWeight: 700 }}>▲ Improved</span>;
-  if (trend === 'down') return <span style={{ color: 'var(--red-600,#dc2626)', fontWeight: 700 }}>▼ Declined</span>;
-  return <span style={{ color: 'var(--muted)', fontWeight: 700 }}>→ Unchanged</span>;
+function SectionTitle({ children, sub }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 16, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.2px' }}>{children}</div>
+      {sub && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function TrendChip({ trend }) {
+  const map = {
+    up: { label: 'Improved', dot: 'var(--green-600)', bg: 'var(--green-50)', fg: 'var(--green-600)' },
+    down: { label: 'Declined', dot: 'var(--red-600)', bg: 'var(--red-100)', fg: 'var(--red-600)' },
+  };
+  const t = map[trend] || { label: 'Unchanged', dot: 'var(--muted-2)', bg: 'var(--bg-sunken)', fg: 'var(--muted)' };
+  return (
+    <span className="badge" style={{ background: t.bg, color: t.fg }}>
+      <span className="bdot" style={{ background: t.dot }} />
+      {t.label}
+    </span>
+  );
 }
 
 function YearChips({ years, onToggle, options }) {
@@ -45,9 +62,11 @@ function YearChips({ years, onToggle, options }) {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              border: active ? '1px solid var(--coral-600,#C44A18)' : '1px solid var(--border)',
-              background: active ? 'var(--coral-600,#C44A18)' : '#fff',
+              border: active ? '1px solid var(--coral-600)' : '1px solid var(--border-strong)',
+              background: active ? 'var(--coral-500)' : '#fff',
               color: active ? '#fff' : 'var(--ink-soft)',
+              boxShadow: active ? '0 1px 2px rgba(232,93,36,.35)' : 'none',
+              transition: '.13s',
             }}
           >
             {y}
@@ -63,13 +82,13 @@ function DealModal({ title, channelName, clientName, years, onToggleYear, discou
     <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h2>{title}</h2>
-          <button className="act-btn" onClick={onClose}><Icon name="x" size={18} /></button>
+          <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>{title}</div>
+          <button className="icon-btn" onClick={onClose}><Icon name="x" size={18} /></button>
         </div>
         <form onSubmit={onSubmit}>
           <div className="modal-body">
             {error && (
-              <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{error}</div>
+              <div style={{ background: 'var(--red-100)', border: '1px solid var(--red-100)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-600)', marginBottom: 16, fontWeight: 600 }}>{error}</div>
             )}
             {channelSelect ? (
               <div className="field">
@@ -98,7 +117,7 @@ function DealModal({ title, channelName, clientName, years, onToggleYear, discou
             <div className="field">
               <label className="field-label">Year(s) <span className="req">*</span></label>
               <YearChips years={years} onToggle={onToggleYear} options={YEAR_OPTIONS} />
-              <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
                 Select every year these terms apply to — saving applies the same discount/bonus to each selected year in one go.
               </p>
             </div>
@@ -123,6 +142,21 @@ function DealModal({ title, channelName, clientName, years, onToggleYear, discou
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function StatTile({ icon, color, bg, label, value, meta }) {
+  return (
+    <div className="stat" style={{ padding: '16px 18px' }}>
+      <div className="stat-top">
+        <div className="stat-ico" style={{ background: bg, color }}>
+          <Icon name={icon} size={17} />
+        </div>
+        <span className="stat-label">{label}</span>
+      </div>
+      <div className="stat-val" style={{ fontSize: 21, fontFamily: 'var(--mono)' }}>{value}</div>
+      {meta && <div className="stat-meta">{meta}</div>}
     </div>
   );
 }
@@ -228,6 +262,9 @@ export default function MediaBuyingPage() {
     });
     return arr;
   }, [data, sortKey, sortDir]);
+
+  const currentAgencyDeal = useMemo(() => data?.agencyDeals?.find((d) => d.year === year), [data, year]);
+  const totalClientSpend = useMemo(() => sortedClients.reduce((s, c) => s + (c.yearlySpend || 0), 0), [sortedClients]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -425,15 +462,16 @@ export default function MediaBuyingPage() {
   const selectedChannel = channels.find((c) => String(c.id) === String(channelMasterId));
 
   return (
-    <div className="page">
+    <div className="fade-in">
       <div className="page-head">
         <div>
-          <h1>Media Buying</h1>
+          <h1 className="page-title">Media Buying</h1>
           <p className="page-sub">Channel negotiation intelligence — discount &amp; bonus deal history, planning.</p>
         </div>
+        <button className="btn btn-primary" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>
       </div>
 
-      <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between', padding: 18, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="field" style={{ minWidth: 280, marginBottom: 0 }}>
             <label className="field-label">Channel</label>
@@ -446,28 +484,27 @@ export default function MediaBuyingPage() {
               ))}
             </select>
           </div>
-          <div className="field" style={{ minWidth: 140, marginBottom: 0 }}>
+          <div className="field" style={{ minWidth: 130, marginBottom: 0 }}>
             <label className="field-label">Year</label>
             <select className="select" value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
               {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>
-          {channelMasterId && (
-            <>
-              <button className="btn btn-primary" onClick={openPlanner}><Icon name="sparkle" size={16} /> Plan New Client</button>
-              <button className="btn btn-subtle" onClick={handleExport} disabled={!data}><Icon name="download" size={16} /> Export to Excel</button>
-            </>
-          )}
-        </div>
+        {channelMasterId && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-ghost" onClick={handleExport} disabled={!data}><Icon name="download" size={15} /> Export to Excel</button>
+            <button className="btn btn-primary" onClick={openPlanner}><Icon name="sparkle" size={15} /> Plan New Client</button>
+          </div>
+        )}
       </div>
 
       {!channelMasterId && (
-        <div className="card" style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
-          <Icon name="sparkle" size={32} />
-          <p style={{ marginTop: 12 }}>Select a channel above to view its negotiation history.</p>
+        <div className="card" style={{ textAlign: 'center', padding: '64px 20px' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--coral-50)', color: 'var(--coral-600)', display: 'grid', placeItems: 'center', margin: '0 auto 14px' }}>
+            <Icon name="sparkle" size={24} />
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: 0 }}>Select a channel above to view its negotiation history.</p>
         </div>
       )}
 
@@ -475,16 +512,44 @@ export default function MediaBuyingPage() {
 
       {channelMasterId && !loading && data && (
         <>
+          {/* KPI strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+            <StatTile
+              icon="dollar" color="#fff" bg="var(--navy-900)"
+              label="Agency Deal" meta={`for ${year}`}
+              value={currentAgencyDeal ? `${fmtPct(currentAgencyDeal.discountPct)} / ${fmtPct(currentAgencyDeal.bonusPct)}` : 'Not set'}
+            />
+            <StatTile
+              icon="users" color="#fff" bg="var(--blue-700)"
+              label="Clients Buying" meta={`channel · ${year}`}
+              value={sortedClients.length}
+            />
+            <StatTile
+              icon="money" color="#fff" bg="var(--coral-500)"
+              label="Total Yearly Spend" meta="across all clients"
+              value={fmtLKR(totalClientSpend)}
+            />
+            <StatTile
+              icon="chart" color="#fff" bg="var(--green-600)"
+              label="Deal Years Recorded" meta="agency-level history"
+              value={data.agencyDeals.length}
+            />
+          </div>
+
           {/* Agency-Level Deal Block */}
-          <div className="card" style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0 }}>Agency-Level Deal — {data.channel.name}</h3>
+          <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+              <SectionTitle sub="Year-over-year negotiated terms with the agency for this channel.">
+                Agency-Level Deal — {data.channel.name}
+              </SectionTitle>
               <button className="btn btn-primary btn-sm" onClick={openAgencyModal}>Add / Edit Deal</button>
             </div>
             {data.agencyDeals.length === 0 ? (
-              <p style={{ color: 'var(--muted)', fontSize: 13 }}>No agency-level deal recorded yet for this channel.</p>
+              <div style={{ textAlign: 'center', padding: '28px 0' }}>
+                <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No agency-level deal recorded yet for this channel.</p>
+              </div>
             ) : (
-              <div className="tbl-wrap">
+              <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                 <table className="tbl">
                   <thead>
                     <tr><th>Year</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Trend</th><th>Notes</th></tr>
@@ -495,7 +560,7 @@ export default function MediaBuyingPage() {
                         <td className="strong">{d.year}</td>
                         <td className="num strong">{fmtPct(d.discountPct)}</td>
                         <td className="num strong">{fmtPct(d.bonusPct)}</td>
-                        <td><TrendArrow trend={d.trend} /></td>
+                        <td><TrendChip trend={d.trend} /></td>
                         <td>{d.notes ? d.notes : <NotSet />}</td>
                       </tr>
                     ))}
@@ -506,12 +571,16 @@ export default function MediaBuyingPage() {
           </div>
 
           {/* Client Breakdown Table */}
-          <div className="card">
-            <h3 style={{ marginTop: 0, marginBottom: 14 }}>Client Breakdown — {year}</h3>
+          <div className="card" style={{ padding: 20 }}>
+            <SectionTitle sub="Spend, discount and bonus per client buying on this channel in the selected year.">
+              Client Breakdown — {year}
+            </SectionTitle>
             {sortedClients.length === 0 ? (
-              <p style={{ color: 'var(--muted)', fontSize: 13 }}>No clients bought on this channel in {year}.</p>
+              <div style={{ textAlign: 'center', padding: '28px 0' }}>
+                <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No clients bought on this channel in {year}.</p>
+              </div>
             ) : (
-              <div className="tbl-wrap">
+              <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -521,7 +590,7 @@ export default function MediaBuyingPage() {
                       <th onClick={() => toggleSort('monthlyAvg')} className="num" style={{ cursor: 'pointer' }}>Monthly Avg</th>
                       <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount %</th>
                       <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus %</th>
-                      <th>Actions</th>
+                      <th className="num">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -538,7 +607,11 @@ export default function MediaBuyingPage() {
                           <td className="num">{fmtLKR(c.monthlyAvg)}</td>
                           <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
                           <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
-                          <td><button className="btn btn-ghost btn-sm" onClick={() => openClientModal(c)}>Edit</button></td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="act-btn" title="Edit deal" onClick={() => openClientModal(c)}><Icon name="edit" size={14} /></button>
+                            </div>
+                          </td>
                         </tr>
                         {expandedClientId === c.clientId && (
                           <tr key={`${c.clientId}-expanded`}>
@@ -550,7 +623,7 @@ export default function MediaBuyingPage() {
                                   {(monthlyByClient[c.clientId] || []).map((m) => (
                                     <div key={m.month} style={{ minWidth: 110 }}>
                                       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtMonthLabel(m.month)}</div>
-                                      <div style={{ fontWeight: 700 }}>{fmtLKR(m.scheduleValue)}</div>
+                                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmtLKR(m.scheduleValue)}</div>
                                     </div>
                                   ))}
                                   {(monthlyByClient[c.clientId] || []).length === 0 && (
@@ -672,25 +745,27 @@ export default function MediaBuyingPage() {
 
           {!plannerLoading && plannerResult && (
             <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="card" style={{ background: 'var(--bg)', padding: 16 }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>Projected Yearly Spend</div>
-                <div style={{ fontSize: 22, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace" }}>{fmtLKR(plannerResult.projectedYearlySpend)}</div>
-                <span className="badge">{plannerResult.spendTier} tier</span>
+              <div className="card" style={{ background: 'var(--navy-900)', padding: 18, border: 'none' }}>
+                <div style={{ fontSize: 11.5, color: 'var(--navy-300)', textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 700 }}>Projected Yearly Spend</div>
+                <div style={{ fontSize: 24, fontWeight: 760, fontFamily: 'var(--mono)', color: '#fff', margin: '4px 0 8px' }}>{fmtLKR(plannerResult.projectedYearlySpend)}</div>
+                <span className="badge" style={{ background: 'var(--coral-500)', color: '#fff' }}>{plannerResult.spendTier} tier</span>
               </div>
 
               <div className="card" style={{ padding: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Suggested Terms</div>
-                <div style={{ display: 'flex', gap: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 10, color: 'var(--ink)' }}>
+                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-600)' }} /> Suggested Terms
+                </div>
+                <div style={{ display: 'flex', gap: 28 }}>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>Discount %</div>
-                    <div style={{ fontWeight: 700 }}>
-                      {plannerResult.suggestedDiscountRange ? `${fmtPct(plannerResult.suggestedDiscountRange.min)} – ${fmtPct(plannerResult.suggestedDiscountRange.max)}` : 'No comparable data'}
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>
+                      {plannerResult.suggestedDiscountRange ? `${fmtPct(plannerResult.suggestedDiscountRange.min)} – ${fmtPct(plannerResult.suggestedDiscountRange.max)}` : <NotSet />}
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>Bonus %</div>
-                    <div style={{ fontWeight: 700 }}>
-                      {plannerResult.suggestedBonusRange ? `${fmtPct(plannerResult.suggestedBonusRange.min)} – ${fmtPct(plannerResult.suggestedBonusRange.max)}` : 'No comparable data'}
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>
+                      {plannerResult.suggestedBonusRange ? `${fmtPct(plannerResult.suggestedBonusRange.min)} – ${fmtPct(plannerResult.suggestedBonusRange.max)}` : <NotSet />}
                     </div>
                   </div>
                 </div>
@@ -698,18 +773,22 @@ export default function MediaBuyingPage() {
 
               {plannerResult.agencyDealReference && (
                 <div className="card" style={{ padding: 16 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Agency Deal Reference ({plannerResult.agencyDealReference.year})</div>
-                  <div style={{ fontSize: 13 }}>Discount {fmtPct(plannerResult.agencyDealReference.discountPct)} &middot; Bonus {fmtPct(plannerResult.agencyDealReference.bonusPct)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 6, color: 'var(--ink)' }}>
+                    <Icon name="building" size={15} style={{ color: 'var(--blue-700)' }} /> Agency Deal Reference ({plannerResult.agencyDealReference.year})
+                  </div>
+                  <div style={{ fontSize: 13, fontFamily: 'var(--mono)' }}>Discount {fmtPct(plannerResult.agencyDealReference.discountPct)} &middot; Bonus {fmtPct(plannerResult.agencyDealReference.bonusPct)}</div>
                   {plannerResult.agencyDealReference.notes && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{plannerResult.agencyDealReference.notes}</div>}
                 </div>
               )}
 
               <div>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Comparable Clients ({plannerResult.comparableClients.length})</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 8, color: 'var(--ink)' }}>
+                  <Icon name="users" size={15} style={{ color: 'var(--green-600)' }} /> Comparable Clients ({plannerResult.comparableClients.length})
+                </div>
                 {plannerResult.comparableClients.length === 0 ? (
                   <p style={{ fontSize: 13, color: 'var(--muted)' }}>No comparable clients on this channel yet.</p>
                 ) : (
-                  <div className="tbl-wrap">
+                  <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                     <table className="tbl">
                       <thead><tr><th>Client</th><th className="num">Yearly Spend</th><th className="num">Discount</th><th className="num">Bonus</th></tr></thead>
                       <tbody>
