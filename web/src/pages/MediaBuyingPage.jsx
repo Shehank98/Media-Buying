@@ -187,7 +187,7 @@ function DealModal({ title, channelName, clientName, years, onToggleYear, discou
               <label className="field-label">Year(s) <span className="req">*</span></label>
               <YearChips years={years} onToggle={onToggleYear} options={YEAR_OPTIONS} />
               <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
-                Select every year these terms apply to — saving applies the same discount/bonus to each selected year in one go.
+                Select every year these terms apply to. Saving applies the same discount/bonus to each selected year in one go.
               </p>
             </div>
             <div className="field-grid2">
@@ -524,8 +524,8 @@ export default function MediaBuyingPage() {
       ['Proposed Monthly Budget (LKR)', plannerResult.monthlyBudget],
       ['Projected Yearly Spend (LKR)', plannerResult.projectedYearlySpend],
       ['Spend Tier', plannerResult.spendTier],
-      ['Tier threshold — Low/Mid cutoff (LKR, avg yearly spend)', plannerResult.tierThresholds.lowMax],
-      ['Tier threshold — Mid/High cutoff (LKR, avg yearly spend)', plannerResult.tierThresholds.midMax],
+      ['Tier threshold (Low/Mid cutoff, LKR avg yearly spend)', plannerResult.tierThresholds.lowMax],
+      ['Tier threshold (Mid/High cutoff, LKR avg yearly spend)', plannerResult.tierThresholds.midMax],
       [],
       ['Suggested Discount Range (avg over all years)', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min.toFixed(1)}% – ${plannerResult.suggestedDiscountRange.max.toFixed(1)}%` : 'No comparable data'],
       ['Suggested Bonus Range (avg over all years)', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min.toFixed(1)}% – ${plannerResult.suggestedBonusRange.max.toFixed(1)}%` : 'No comparable data'],
@@ -551,7 +551,7 @@ export default function MediaBuyingPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Media Buying</h1>
-          <p className="page-sub">Channel negotiation intelligence — discount &amp; bonus deal history, planning.</p>
+          <p className="page-sub">Channel negotiation intelligence: discount &amp; bonus deal history, planning.</p>
         </div>
         <button className="btn btn-primary" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>
       </div>
@@ -590,7 +590,7 @@ export default function MediaBuyingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
             <StatTile
               icon="dollar" color="#fff" bg="var(--navy-900)"
-              label="Agency Deal" meta={latestAgencyDeal ? `latest — ${latestAgencyDeal.year}` : 'no history'}
+              label="Agency Deal" meta={latestAgencyDeal ? `latest, ${latestAgencyDeal.year}` : 'no history'}
               value={latestAgencyDeal ? `${fmtPct(latestAgencyDeal.discountPct)} / ${fmtPct(latestAgencyDeal.bonusPct)}` : 'Not set'}
             />
             <StatTile
@@ -614,7 +614,7 @@ export default function MediaBuyingPage() {
           <div className="card" style={{ padding: 20, marginBottom: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
               <SectionTitle sub="Year-over-year negotiated terms with the agency for this channel.">
-                Agency-Level Deal — {data.channel.name}
+                Agency-Level Deal: {data.channel.name}
               </SectionTitle>
               <button className="btn btn-primary btn-sm" onClick={openAgencyModal}>Add / Edit Deal</button>
             </div>
@@ -647,7 +647,7 @@ export default function MediaBuyingPage() {
           {/* Client Breakdown Table */}
           <div className="card" style={{ padding: 20 }}>
             <SectionTitle sub="Lifetime spend per client on this channel, with their most recently recorded deal terms. Expand a row for the year-by-year breakdown.">
-              Client Breakdown — All Years
+              Client Breakdown (All Years)
             </SectionTitle>
             {sortedClients.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '28px 0' }}>
@@ -818,7 +818,7 @@ export default function MediaBuyingPage() {
             <input className="input" type="number" value={plannerBudget} onChange={(e) => setPlannerBudget(e.target.value)} placeholder="500000" />
           </div>
           <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
-            Suggestions are averaged across every year this channel has recorded data — no single deal year is used.
+            Suggestions are averaged across every year this channel has recorded data; no single deal year is used.
           </p>
 
           {plannerLoading && <OrbitLoader size={24} label="Calculating…" />}
