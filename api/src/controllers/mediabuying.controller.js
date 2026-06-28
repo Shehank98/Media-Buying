@@ -5,10 +5,6 @@ function safeNum(v) {
   return Number(v);
 }
 
-function currentYear() {
-  return new Date().getFullYear();
-}
-
 function trend(curr, prev) {
   if (!prev) return 'flat';
   const a = safeNum(curr.discountPct) + safeNum(curr.bonusPct);
@@ -18,10 +14,12 @@ function trend(curr, prev) {
   return 'flat';
 }
 
+// Channel view is all-time now (no year filter) — each client shows lifetime
+// spend on this channel plus the terms from their most recently recorded deal
+// year (which may differ from the year they last actually bought).
 export async function getChannelIntelligence(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
-    const year = req.query.year ? parseInt(req.query.year) : currentYear();
 
     const channel = await prisma.channelMaster.findUnique({
       where: { id: channelMasterId },
@@ -45,71 +43,88 @@ export async function getChannelIntelligence(req, res) {
       trend: idx < agencyDealRows.length - 1 ? trend(d, agencyDealRows[idx + 1]) : 'flat',
     }));
 
-    const monthFrom = `${year}-01`;
-    const monthTo = `${year}-12`;
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['clientId'],
-      where: { channelMasterId, isDeleted: false, scheduleMonth: { gte: monthFrom, lte: monthTo } },
+      where: { channelMasterId, isDeleted: false },
       _sum: { scheduleValue: true },
     });
 
-    const clientDealRows = await prisma.channelClientDeal.findMany({
-      where: { channelMasterId, year },
+    // Most recent recorded deal per client (deals ordered desc, first seen wins).
+    const allClientDeals = await prisma.channelClientDeal.findMany({
+      where: { channelMasterId },
+      orderBy: { year: 'desc' },
     });
-    const dealByClient = new Map(clientDealRows.map((d) => [d.clientId, d]));
+    const latestDealByClient = new Map();
+    for (const d of allClientDeals) {
+      if (!latestDealByClient.has(d.clientId)) latestDealByClient.set(d.clientId, d);
+    }
 
     const clients = await Promise.all(grouped.map(async (g) => {
       const client = await prisma.client.findUnique({
         where: { id: g.clientId },
         include: { agency: { select: { id: true, name: true } } },
       });
-      const yearlySpend = safeNum(g._sum.scheduleValue) || 0;
-      const deal = dealByClient.get(g.clientId);
+      const totalSpend = safeNum(g._sum.scheduleValue) || 0;
+      const deal = latestDealByClient.get(g.clientId);
       return {
         clientId: g.clientId,
         clientName: client?.name || 'Unknown',
         agencyName: client?.agency?.name || 'Unknown',
-        yearlySpend,
-        monthlyAvg: yearlySpend / 12,
+        totalSpend,
         discountPct: deal ? safeNum(deal.discountPct) : null,
         bonusPct: deal ? safeNum(deal.bonusPct) : null,
+        dealYear: deal?.year ?? null,
         dealId: deal?.id || null,
         notes: deal?.notes || '',
-        year,
       };
     }));
 
-    clients.sort((a, b) => b.yearlySpend - a.yearlySpend);
+    clients.sort((a, b) => b.totalSpend - a.totalSpend);
 
-    return res.json({ channel, year, agencyDeals, clients });
+    return res.json({ channel, agencyDeals, clients });
   } catch (error) {
     console.error('getChannelIntelligence error:', error);
     return res.status(500).json({ error: 'Failed to get channel intelligence', detail: error.message });
   }
 }
 
-export async function getClientChannelMonthly(req, res) {
+// Per-client, per-year spend + that year's recorded discount/bonus — used by
+// the expandable row in the Client Breakdown table (replaces the old
+// month-by-month view now that the page has no year filter).
+export async function getClientChannelYearly(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const clientId = parseInt(req.params.clientId);
-    const year = req.query.year ? parseInt(req.query.year) : currentYear();
-    const monthFrom = `${year}-01`;
-    const monthTo = `${year}-12`;
 
-    const rows = await prisma.scheduleLog.groupBy({
-      by: ['scheduleMonth'],
-      where: { channelMasterId, clientId, isDeleted: false, scheduleMonth: { gte: monthFrom, lte: monthTo } },
-      _sum: { scheduleValue: true },
-      orderBy: { scheduleMonth: 'asc' },
+    const rows = await prisma.scheduleLog.findMany({
+      where: { channelMasterId, clientId, isDeleted: false },
+      select: { scheduleMonth: true, scheduleValue: true },
+    });
+    const spendByYear = new Map();
+    for (const r of rows) {
+      const y = parseInt(r.scheduleMonth.slice(0, 4), 10);
+      spendByYear.set(y, (spendByYear.get(y) || 0) + (safeNum(r.scheduleValue) || 0));
+    }
+
+    const deals = await prisma.channelClientDeal.findMany({ where: { channelMasterId, clientId } });
+    const dealByYear = new Map(deals.map((d) => [d.year, d]));
+
+    const years = new Set([...spendByYear.keys(), ...dealByYear.keys()]);
+    const result = [...years].sort((a, b) => b - a).map((y) => {
+      const deal = dealByYear.get(y);
+      return {
+        year: y,
+        spend: spendByYear.get(y) || 0,
+        discountPct: deal ? safeNum(deal.discountPct) : null,
+        bonusPct: deal ? safeNum(deal.bonusPct) : null,
+        notes: deal?.notes || '',
+      };
     });
 
-    return res.json(rows.map((r) => ({
-      month: r.scheduleMonth,
-      scheduleValue: safeNum(r._sum.scheduleValue) || 0,
-    })));
+    return res.json(result);
   } catch (error) {
-    console.error('getClientChannelMonthly error:', error);
-    return res.status(500).json({ error: 'Failed to get monthly breakdown', detail: error.message });
+    console.error('getClientChannelYearly error:', error);
+    return res.status(500).json({ error: 'Failed to get yearly breakdown', detail: error.message });
   }
 }
 
@@ -192,38 +207,52 @@ export async function deleteClientDeal(req, res) {
   }
 }
 
+// No year input — looks at every year a client has spend on this channel and
+// averages discount/bonus across those years (missing-deal years count as 0%),
+// so the suggested range reflects the full negotiating history, not one year.
 export async function getNegotiationPlanner(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
-    const year = req.query.year ? parseInt(req.query.year) : currentYear();
     const monthlyBudget = parseFloat(req.query.monthlyBudget) || 0;
     const projectedYearlySpend = monthlyBudget * 12;
 
-    const monthFrom = `${year}-01`;
-    const monthTo = `${year}-12`;
-    const grouped = await prisma.scheduleLog.groupBy({
-      by: ['clientId'],
-      where: { channelMasterId, isDeleted: false, scheduleMonth: { gte: monthFrom, lte: monthTo } },
-      _sum: { scheduleValue: true },
+    const rows = await prisma.scheduleLog.findMany({
+      where: { channelMasterId, isDeleted: false },
+      select: { clientId: true, scheduleMonth: true, scheduleValue: true },
     });
+    const spendByClientYear = new Map();
+    for (const r of rows) {
+      const y = parseInt(r.scheduleMonth.slice(0, 4), 10);
+      if (!spendByClientYear.has(r.clientId)) spendByClientYear.set(r.clientId, new Map());
+      const yearMap = spendByClientYear.get(r.clientId);
+      yearMap.set(y, (yearMap.get(y) || 0) + (safeNum(r.scheduleValue) || 0));
+    }
 
-    const clientDealRows = await prisma.channelClientDeal.findMany({ where: { channelMasterId, year } });
-    const dealByClient = new Map(clientDealRows.map((d) => [d.clientId, d]));
+    const allClientDeals = await prisma.channelClientDeal.findMany({ where: { channelMasterId } });
+    const dealByClientYear = new Map();
+    for (const d of allClientDeals) {
+      if (!dealByClientYear.has(d.clientId)) dealByClientYear.set(d.clientId, new Map());
+      dealByClientYear.get(d.clientId).set(d.year, d);
+    }
 
-    const clientsWithSpend = await Promise.all(grouped.map(async (g) => {
-      const client = await prisma.client.findUnique({ where: { id: g.clientId }, select: { id: true, name: true } });
-      const yearlySpend = safeNum(g._sum.scheduleValue) || 0;
-      const deal = dealByClient.get(g.clientId);
+    const clientsWithSpend = await Promise.all([...spendByClientYear.entries()].map(async ([clientId, yearMap]) => {
+      const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, name: true } });
+      const years = [...yearMap.keys()];
+      const totalSpend = years.reduce((sum, y) => sum + yearMap.get(y), 0);
+      const dealsForClient = dealByClientYear.get(clientId) || new Map();
+      const totalDiscount = years.reduce((sum, y) => sum + (safeNum(dealsForClient.get(y)?.discountPct) || 0), 0);
+      const totalBonus = years.reduce((sum, y) => sum + (safeNum(dealsForClient.get(y)?.bonusPct) || 0), 0);
       return {
-        clientId: g.clientId,
+        clientId,
         clientName: client?.name || 'Unknown',
-        yearlySpend,
-        discountPct: deal ? safeNum(deal.discountPct) : null,
-        bonusPct: deal ? safeNum(deal.bonusPct) : null,
+        avgYearlySpend: totalSpend / years.length,
+        avgDiscountPct: totalDiscount / years.length,
+        avgBonusPct: totalBonus / years.length,
+        yearsOfData: years.length,
       };
     }));
 
-    const spends = clientsWithSpend.map((c) => c.yearlySpend).sort((a, b) => a - b);
+    const spends = clientsWithSpend.map((c) => c.avgYearlySpend).sort((a, b) => a - b);
     let lowMax = 0;
     let midMax = 0;
     if (spends.length) {
@@ -241,36 +270,29 @@ export async function getNegotiationPlanner(req, res) {
     }
 
     const spendTier = tierOf(projectedYearlySpend);
-    const comparableClients = clientsWithSpend.filter((c) => tierOf(c.yearlySpend) === spendTier);
-    const dealsInTier = comparableClients.filter((c) => c.discountPct != null);
+    const comparableClients = clientsWithSpend.filter((c) => tierOf(c.avgYearlySpend) === spendTier);
 
-    const suggestedDiscountRange = dealsInTier.length
-      ? { min: Math.min(...dealsInTier.map((c) => c.discountPct)), max: Math.max(...dealsInTier.map((c) => c.discountPct)) }
+    const suggestedDiscountRange = comparableClients.length
+      ? { min: Math.min(...comparableClients.map((c) => c.avgDiscountPct)), max: Math.max(...comparableClients.map((c) => c.avgDiscountPct)) }
       : null;
-    const suggestedBonusRange = dealsInTier.length
-      ? { min: Math.min(...dealsInTier.map((c) => c.bonusPct)), max: Math.max(...dealsInTier.map((c) => c.bonusPct)) }
+    const suggestedBonusRange = comparableClients.length
+      ? { min: Math.min(...comparableClients.map((c) => c.avgBonusPct)), max: Math.max(...comparableClients.map((c) => c.avgBonusPct)) }
       : null;
 
-    let agencyDealReference = await prisma.channelAgencyDeal.findUnique({
-      where: { channelMasterId_year: { channelMasterId, year } },
+    const agencyDealReference = await prisma.channelAgencyDeal.findFirst({
+      where: { channelMasterId },
+      orderBy: { year: 'desc' },
     });
-    if (!agencyDealReference) {
-      agencyDealReference = await prisma.channelAgencyDeal.findFirst({
-        where: { channelMasterId },
-        orderBy: { year: 'desc' },
-      });
-    }
 
     return res.json({
       channelMasterId,
-      year,
       monthlyBudget,
       projectedYearlySpend,
       spendTier,
       tierThresholds: { lowMax, midMax },
       suggestedDiscountRange,
       suggestedBonusRange,
-      comparableClients: comparableClients.sort((a, b) => b.yearlySpend - a.yearlySpend),
+      comparableClients: comparableClients.sort((a, b) => b.avgYearlySpend - a.avgYearlySpend),
       agencyDealReference: agencyDealReference
         ? {
             year: agencyDealReference.year,

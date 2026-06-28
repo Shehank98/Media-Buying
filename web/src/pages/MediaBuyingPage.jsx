@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import api from '../lib/api';
 import Icon, { fmtLKR } from '../components/Icon';
@@ -14,13 +14,6 @@ function fmtPct(v) {
 
 function NotSet() {
   return <span style={{ color: 'var(--muted-2)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
-}
-
-function fmtMonthLabel(ym) {
-  if (!ym) return '';
-  const [y, m] = ym.split('-');
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${names[parseInt(m) - 1]} ${y}`;
 }
 
 function SectionTitle({ children, sub }) {
@@ -73,6 +66,82 @@ function YearChips({ years, onToggle, options }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Searchable combobox for picking a channel — text input filters a grouped
+// (by medium) dropdown list instead of relying on native <select> filtering.
+function ChannelCombobox({ channels, value, onChange, placeholder = 'Select a channel…' }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef(null);
+
+  const selected = channels.find((c) => String(c.id) === String(value));
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  const filteredByMedium = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q ? channels.filter((c) => c.name.toLowerCase().includes(q)) : channels;
+    const groups = {};
+    list.forEach((c) => {
+      if (!groups[c.medium]) groups[c.medium] = [];
+      groups[c.medium].push(c);
+    });
+    return groups;
+  }, [channels, query]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        className="input"
+        type="text"
+        value={open ? query : (selected?.name || '')}
+        placeholder={placeholder}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+      />
+      {open && (
+        <div
+          className="card"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 30,
+            maxHeight: 320, overflowY: 'auto', padding: 6, boxShadow: '0 8px 24px rgba(20,30,50,.18)',
+          }}
+        >
+          {Object.keys(filteredByMedium).length === 0 && (
+            <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--muted)' }}>No channels match.</div>
+          )}
+          {Object.entries(filteredByMedium).map(([medium, list]) => (
+            <div key={medium} style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 720, textTransform: 'uppercase', letterSpacing: '.4px', color: 'var(--muted)', padding: '6px 10px 2px' }}>{medium}</div>
+              {list.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => { onChange(String(c.id)); setOpen(false); setQuery(''); }}
+                  style={{
+                    padding: '8px 10px', borderRadius: 7, fontSize: 13.5, cursor: 'pointer',
+                    background: String(c.id) === String(value) ? 'var(--coral-50)' : 'transparent',
+                    color: String(c.id) === String(value) ? 'var(--coral-700)' : 'var(--ink)',
+                    fontWeight: String(c.id) === String(value) ? 650 : 500,
+                  }}
+                  onMouseEnter={(e) => { if (String(c.id) !== String(value)) e.currentTarget.style.background = 'var(--bg-sunken)'; }}
+                  onMouseLeave={(e) => { if (String(c.id) !== String(value)) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {c.name}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -164,14 +233,14 @@ function StatTile({ icon, color, bg, label, value, meta }) {
 export default function MediaBuyingPage() {
   const [channels, setChannels] = useState([]);
   const [channelMasterId, setChannelMasterId] = useState('');
-  const [year, setYear] = useState(CURRENT_YEAR);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
-  const [sortKey, setSortKey] = useState('yearlySpend');
+  const [sortKey, setSortKey] = useState('totalSpend');
   const [sortDir, setSortDir] = useState('desc');
   const [expandedClientId, setExpandedClientId] = useState(null);
-  const [monthlyByClient, setMonthlyByClient] = useState({});
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [yearlyByClient, setYearlyByClient] = useState({});
+  const [yearlyLoading, setYearlyLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Agency deal modal
   const [showAgencyModal, setShowAgencyModal] = useState(false);
@@ -208,7 +277,6 @@ export default function MediaBuyingPage() {
   // Negotiation planner panel
   const [showPlanner, setShowPlanner] = useState(false);
   const [plannerBudget, setPlannerBudget] = useState('');
-  const [plannerYear, setPlannerYear] = useState(String(CURRENT_YEAR));
   const [plannerResult, setPlannerResult] = useState(null);
   const [plannerLoading, setPlannerLoading] = useState(false);
 
@@ -232,15 +300,15 @@ export default function MediaBuyingPage() {
   const fetchData = useCallback(() => {
     if (!channelMasterId) { setData(null); return; }
     setLoading(true);
-    api.get(`/media-buying/channels/${channelMasterId}`, { params: { year } })
+    api.get(`/media-buying/channels/${channelMasterId}`)
       .then((res) => setData(res.data))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [channelMasterId, year]);
+  }, [channelMasterId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => { setExpandedClientId(null); setMonthlyByClient({}); }, [channelMasterId, year]);
+  useEffect(() => { setExpandedClientId(null); setYearlyByClient({}); }, [channelMasterId]);
 
   const channelsByMedium = useMemo(() => {
     const groups = {};
@@ -263,8 +331,8 @@ export default function MediaBuyingPage() {
     return arr;
   }, [data, sortKey, sortDir]);
 
-  const currentAgencyDeal = useMemo(() => data?.agencyDeals?.find((d) => d.year === year), [data, year]);
-  const totalClientSpend = useMemo(() => sortedClients.reduce((s, c) => s + (c.yearlySpend || 0), 0), [sortedClients]);
+  const latestAgencyDeal = data?.agencyDeals?.[0] || null;
+  const totalClientSpend = useMemo(() => sortedClients.reduce((s, c) => s + (c.totalSpend || 0), 0), [sortedClients]);
 
   function toggleSort(key) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -274,11 +342,11 @@ export default function MediaBuyingPage() {
   function toggleExpand(client) {
     if (expandedClientId === client.clientId) { setExpandedClientId(null); return; }
     setExpandedClientId(client.clientId);
-    if (!monthlyByClient[client.clientId]) {
-      setMonthlyLoading(true);
-      api.get(`/media-buying/channels/${channelMasterId}/clients/${client.clientId}/monthly`, { params: { year } })
-        .then((res) => setMonthlyByClient((p) => ({ ...p, [client.clientId]: res.data })))
-        .finally(() => setMonthlyLoading(false));
+    if (!yearlyByClient[client.clientId]) {
+      setYearlyLoading(true);
+      api.get(`/media-buying/channels/${channelMasterId}/clients/${client.clientId}/yearly`)
+        .then((res) => setYearlyByClient((p) => ({ ...p, [client.clientId]: res.data })))
+        .finally(() => setYearlyLoading(false));
     }
   }
 
@@ -287,8 +355,8 @@ export default function MediaBuyingPage() {
   }
 
   function openAgencyModal() {
-    setAgencyYears([year]);
-    const existing = data?.agencyDeals?.find((d) => d.year === year);
+    setAgencyYears([CURRENT_YEAR]);
+    const existing = data?.agencyDeals?.find((d) => d.year === CURRENT_YEAR);
     setAgencyDiscount(existing ? String(existing.discountPct) : '');
     setAgencyBonus(existing ? String(existing.bonusPct) : '');
     setAgencyNotes(existing ? existing.notes : '');
@@ -321,7 +389,7 @@ export default function MediaBuyingPage() {
   function openClientModal(client) {
     setClientModalClientId(client.clientId);
     setClientModalClientName(client.clientName);
-    setClientYears([year]);
+    setClientYears([client.dealYear || CURRENT_YEAR]);
     setClientDiscount(client.discountPct != null ? String(client.discountPct) : '');
     setClientBonus(client.bonusPct != null ? String(client.bonusPct) : '');
     setClientNotes(client.notes || '');
@@ -345,6 +413,7 @@ export default function MediaBuyingPage() {
       })));
       setShowClientModal(false);
       fetchData();
+      setYearlyByClient((p) => { const n = { ...p }; delete n[clientModalClientId]; return n; });
     } catch (err) {
       setClientError(err.response?.data?.error || 'Failed to save client deal.');
     } finally {
@@ -355,7 +424,7 @@ export default function MediaBuyingPage() {
   function openQuickAddModal() {
     setQuickAddChannelId(channelMasterId || '');
     setQuickAddClientId('');
-    setQuickAddYears([year]);
+    setQuickAddYears([CURRENT_YEAR]);
     setQuickAddDiscount('');
     setQuickAddBonus('');
     setQuickAddNotes('');
@@ -391,7 +460,6 @@ export default function MediaBuyingPage() {
 
   function openPlanner() {
     setPlannerBudget('');
-    setPlannerYear(String(year));
     setPlannerResult(null);
     setShowPlanner(true);
   }
@@ -400,33 +468,51 @@ export default function MediaBuyingPage() {
     if (!showPlanner || !channelMasterId || !plannerBudget) { setPlannerResult(null); return; }
     const t = setTimeout(() => {
       setPlannerLoading(true);
-      api.get(`/media-buying/channels/${channelMasterId}/planner`, { params: { year: plannerYear, monthlyBudget: plannerBudget } })
+      api.get(`/media-buying/channels/${channelMasterId}/planner`, { params: { monthlyBudget: plannerBudget } })
         .then((res) => setPlannerResult(res.data))
         .catch(() => setPlannerResult(null))
         .finally(() => setPlannerLoading(false));
     }, 400);
     return () => clearTimeout(t);
-  }, [showPlanner, channelMasterId, plannerBudget, plannerYear]);
+  }, [showPlanner, channelMasterId, plannerBudget]);
 
-  function handleExport() {
+  async function handleExport() {
     if (!data) return;
-    const wb = XLSX.utils.book_new();
-    const dealHeaders = ['Year', 'Agency Discount %', 'Agency Bonus %', 'Notes', 'Created By'];
-    const dealRows = (data.agencyDeals || []).map((d) => [d.year, d.discountPct, d.bonusPct, d.notes, d.createdBy]);
-    const dealWs = XLSX.utils.aoa_to_sheet([dealHeaders, ...dealRows]);
-    XLSX.utils.book_append_sheet(wb, dealWs, 'Agency Deal History');
+    setExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const dealHeaders = ['Year', 'Agency Discount %', 'Agency Bonus %', 'Notes', 'Created By'];
+      const dealRows = (data.agencyDeals || []).map((d) => [d.year, d.discountPct, d.bonusPct, d.notes, d.createdBy]);
+      const dealWs = XLSX.utils.aoa_to_sheet([dealHeaders, ...dealRows]);
+      XLSX.utils.book_append_sheet(wb, dealWs, 'Agency Deal History');
 
-    const clientHeaders = ['Client', 'Agency', 'Year', 'Yearly Spend (LKR)', 'Monthly Avg (LKR)', 'Discount %', 'Bonus %', 'Notes'];
-    const clientRows = sortedClients.map((c) => [
-      c.clientName, c.agencyName, c.year, c.yearlySpend, c.monthlyAvg,
-      c.discountPct != null ? c.discountPct : 'Not set',
-      c.bonusPct != null ? c.bonusPct : 'Not set',
-      c.notes,
-    ]);
-    const clientWs = XLSX.utils.aoa_to_sheet([clientHeaders, ...clientRows]);
-    XLSX.utils.book_append_sheet(wb, clientWs, 'Client Breakdown');
+      const yearlyResults = await Promise.all(sortedClients.map((c) =>
+        api.get(`/media-buying/channels/${channelMasterId}/clients/${c.clientId}/yearly`).then((res) => ({ client: c, years: res.data }))
+      ));
 
-    XLSX.writeFile(wb, `media-buying-${data.channel.name.replace(/\W+/g, '_')}-${year}.xlsx`);
+      const clientHeaders = ['Client', 'Agency', 'Year', 'Yearly Spend (LKR)', 'Discount %', 'Bonus %', 'Notes'];
+      const clientRows = [];
+      yearlyResults.forEach(({ client, years }) => {
+        if (years.length === 0) {
+          clientRows.push([client.clientName, client.agencyName, '', client.totalSpend, '', '', '']);
+        } else {
+          years.forEach((y) => {
+            clientRows.push([
+              client.clientName, client.agencyName, y.year, y.spend,
+              y.discountPct != null ? y.discountPct : 'Not set',
+              y.bonusPct != null ? y.bonusPct : 'Not set',
+              y.notes,
+            ]);
+          });
+        }
+      });
+      const clientWs = XLSX.utils.aoa_to_sheet([clientHeaders, ...clientRows]);
+      XLSX.utils.book_append_sheet(wb, clientWs, 'Client Breakdown');
+
+      XLSX.writeFile(wb, `media-buying-${data.channel.name.replace(/\W+/g, '_')}.xlsx`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   function handlePlannerExport() {
@@ -435,28 +521,27 @@ export default function MediaBuyingPage() {
     const rows = [
       ['Negotiation Plan'],
       ['Channel', selectedChannel.name],
-      ['Deal Year', plannerResult.year],
       ['Proposed Monthly Budget (LKR)', plannerResult.monthlyBudget],
       ['Projected Yearly Spend (LKR)', plannerResult.projectedYearlySpend],
       ['Spend Tier', plannerResult.spendTier],
-      ['Tier threshold — Low/Mid cutoff (LKR)', plannerResult.tierThresholds.lowMax],
-      ['Tier threshold — Mid/High cutoff (LKR)', plannerResult.tierThresholds.midMax],
+      ['Tier threshold — Low/Mid cutoff (LKR, avg yearly spend)', plannerResult.tierThresholds.lowMax],
+      ['Tier threshold — Mid/High cutoff (LKR, avg yearly spend)', plannerResult.tierThresholds.midMax],
       [],
-      ['Suggested Discount Range', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min}% – ${plannerResult.suggestedDiscountRange.max}%` : 'No comparable data'],
-      ['Suggested Bonus Range', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min}% – ${plannerResult.suggestedBonusRange.max}%` : 'No comparable data'],
+      ['Suggested Discount Range (avg over all years)', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min.toFixed(1)}% – ${plannerResult.suggestedDiscountRange.max.toFixed(1)}%` : 'No comparable data'],
+      ['Suggested Bonus Range (avg over all years)', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min.toFixed(1)}% – ${plannerResult.suggestedBonusRange.max.toFixed(1)}%` : 'No comparable data'],
       [],
       ['Agency Deal Reference Year', plannerResult.agencyDealReference?.year ?? 'No agency deal recorded'],
       ['Agency Discount %', plannerResult.agencyDealReference?.discountPct ?? ''],
       ['Agency Bonus %', plannerResult.agencyDealReference?.bonusPct ?? ''],
       ['Agency Deal Notes', plannerResult.agencyDealReference?.notes ?? ''],
       [],
-      ['Comparable Clients (' + plannerResult.spendTier + ' tier)'],
-      ['Client', 'Yearly Spend (LKR)', 'Discount %', 'Bonus %'],
-      ...plannerResult.comparableClients.map((c) => [c.clientName, c.yearlySpend, c.discountPct ?? 'Not set', c.bonusPct ?? 'Not set']),
+      ['Comparable Clients (' + plannerResult.spendTier + ' tier, averaged across all years)'],
+      ['Client', 'Avg Yearly Spend (LKR)', 'Avg Discount %', 'Avg Bonus %', 'Years of Data'],
+      ...plannerResult.comparableClients.map((c) => [c.clientName, c.avgYearlySpend, c.avgDiscountPct.toFixed(1), c.avgBonusPct.toFixed(1), c.yearsOfData]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, 'Negotiation Plan');
-    XLSX.writeFile(wb, `negotiation-plan-${selectedChannel.name.replace(/\W+/g, '_')}-${plannerResult.year}.xlsx`);
+    XLSX.writeFile(wb, `negotiation-plan-${selectedChannel.name.replace(/\W+/g, '_')}.xlsx`);
   }
 
   const selectedChannel = channels.find((c) => String(c.id) === String(channelMasterId));
@@ -473,27 +558,16 @@ export default function MediaBuyingPage() {
 
       <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between', padding: 18, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="field" style={{ minWidth: 280, marginBottom: 0 }}>
+          <div className="field" style={{ minWidth: 320, marginBottom: 0 }}>
             <label className="field-label">Channel</label>
-            <select className="select" value={channelMasterId} onChange={(e) => setChannelMasterId(e.target.value)}>
-              <option value="">Select a channel…</option>
-              {Object.entries(channelsByMedium).map(([medium, list]) => (
-                <optgroup key={medium} label={medium}>
-                  {list.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div className="field" style={{ minWidth: 130, marginBottom: 0 }}>
-            <label className="field-label">Year</label>
-            <select className="select" value={year} onChange={(e) => setYear(parseInt(e.target.value))}>
-              {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <ChannelCombobox channels={channels} value={channelMasterId} onChange={setChannelMasterId} />
           </div>
         </div>
         {channelMasterId && (
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-ghost" onClick={handleExport} disabled={!data}><Icon name="download" size={15} /> Export to Excel</button>
+            <button className="btn btn-ghost" onClick={handleExport} disabled={!data || exporting}>
+              <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Export to Excel'}
+            </button>
             <button className="btn btn-primary" onClick={openPlanner}><Icon name="sparkle" size={15} /> Plan New Client</button>
           </div>
         )}
@@ -516,17 +590,17 @@ export default function MediaBuyingPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
             <StatTile
               icon="dollar" color="#fff" bg="var(--navy-900)"
-              label="Agency Deal" meta={`for ${year}`}
-              value={currentAgencyDeal ? `${fmtPct(currentAgencyDeal.discountPct)} / ${fmtPct(currentAgencyDeal.bonusPct)}` : 'Not set'}
+              label="Agency Deal" meta={latestAgencyDeal ? `latest — ${latestAgencyDeal.year}` : 'no history'}
+              value={latestAgencyDeal ? `${fmtPct(latestAgencyDeal.discountPct)} / ${fmtPct(latestAgencyDeal.bonusPct)}` : 'Not set'}
             />
             <StatTile
               icon="users" color="#fff" bg="var(--blue-700)"
-              label="Clients Buying" meta={`channel · ${year}`}
+              label="Clients on Channel" meta="all-time"
               value={sortedClients.length}
             />
             <StatTile
               icon="money" color="#fff" bg="var(--coral-500)"
-              label="Total Yearly Spend" meta="across all clients"
+              label="Total Spend (All Years)" meta="across all clients"
               value={fmtLKR(totalClientSpend)}
             />
             <StatTile
@@ -572,12 +646,12 @@ export default function MediaBuyingPage() {
 
           {/* Client Breakdown Table */}
           <div className="card" style={{ padding: 20 }}>
-            <SectionTitle sub="Spend, discount and bonus per client buying on this channel in the selected year.">
-              Client Breakdown — {year}
+            <SectionTitle sub="Lifetime spend per client on this channel, with their most recently recorded deal terms. Expand a row for the year-by-year breakdown.">
+              Client Breakdown — All Years
             </SectionTitle>
             {sortedClients.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '28px 0' }}>
-                <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No clients bought on this channel in {year}.</p>
+                <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No clients have bought on this channel yet.</p>
               </div>
             ) : (
               <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
@@ -586,10 +660,10 @@ export default function MediaBuyingPage() {
                     <tr>
                       <th style={{ width: 36 }}></th>
                       <th onClick={() => toggleSort('clientName')} style={{ cursor: 'pointer' }}>Client</th>
-                      <th onClick={() => toggleSort('yearlySpend')} className="num" style={{ cursor: 'pointer' }}>Yearly Spend</th>
-                      <th onClick={() => toggleSort('monthlyAvg')} className="num" style={{ cursor: 'pointer' }}>Monthly Avg</th>
-                      <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount %</th>
-                      <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus %</th>
+                      <th onClick={() => toggleSort('totalSpend')} className="num" style={{ cursor: 'pointer' }}>Total Spend</th>
+                      <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount % (latest)</th>
+                      <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus % (latest)</th>
+                      <th onClick={() => toggleSort('dealYear')} className="num" style={{ cursor: 'pointer' }}>Deal Year</th>
                       <th className="num">Actions</th>
                     </tr>
                   </thead>
@@ -598,15 +672,15 @@ export default function MediaBuyingPage() {
                       <>
                         <tr key={c.clientId}>
                           <td>
-                            <button className="act-btn" onClick={() => toggleExpand(c)} title="Show month-by-month">
+                            <button className="act-btn" onClick={() => toggleExpand(c)} title="Show year-by-year breakdown">
                               <Icon name={expandedClientId === c.clientId ? 'chevDown' : 'chevR'} size={14} />
                             </button>
                           </td>
                           <td>{c.clientName}<div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div></td>
-                          <td className="num strong">{fmtLKR(c.yearlySpend)}</td>
-                          <td className="num">{fmtLKR(c.monthlyAvg)}</td>
+                          <td className="num strong">{fmtLKR(c.totalSpend)}</td>
                           <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
                           <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
+                          <td className="num">{c.dealYear ?? <NotSet />}</td>
                           <td>
                             <div className="row-actions">
                               <button className="act-btn" title="Edit deal" onClick={() => openClientModal(c)}><Icon name="edit" size={14} /></button>
@@ -616,20 +690,31 @@ export default function MediaBuyingPage() {
                         {expandedClientId === c.clientId && (
                           <tr key={`${c.clientId}-expanded`}>
                             <td colSpan={7} style={{ background: 'var(--bg)', padding: 14 }}>
-                              {monthlyLoading && !monthlyByClient[c.clientId] ? (
-                                <OrbitLoader size={24} label="Loading monthly breakdown…" />
+                              {yearlyLoading && !yearlyByClient[c.clientId] ? (
+                                <OrbitLoader size={24} label="Loading yearly breakdown…" />
                               ) : (
-                                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                                  {(monthlyByClient[c.clientId] || []).map((m) => (
-                                    <div key={m.month} style={{ minWidth: 110 }}>
-                                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtMonthLabel(m.month)}</div>
-                                      <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{fmtLKR(m.scheduleValue)}</div>
-                                    </div>
-                                  ))}
-                                  {(monthlyByClient[c.clientId] || []).length === 0 && (
-                                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>No monthly data.</span>
-                                  )}
-                                </div>
+                                (yearlyByClient[c.clientId] || []).length === 0 ? (
+                                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>No yearly data.</span>
+                                ) : (
+                                  <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
+                                    <table className="tbl">
+                                      <thead>
+                                        <tr><th>Year</th><th className="num">Spend</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Notes</th></tr>
+                                      </thead>
+                                      <tbody>
+                                        {(yearlyByClient[c.clientId] || []).map((y) => (
+                                          <tr key={y.year}>
+                                            <td className="strong">{y.year}</td>
+                                            <td className="num">{fmtLKR(y.spend)}</td>
+                                            <td className="num">{y.discountPct != null ? fmtPct(y.discountPct) : <NotSet />}</td>
+                                            <td className="num">{y.bonusPct != null ? fmtPct(y.bonusPct) : <NotSet />}</td>
+                                            <td>{y.notes ? y.notes : <NotSet />}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )
                               )}
                             </td>
                           </tr>
@@ -728,18 +813,13 @@ export default function MediaBuyingPage() {
           </button>
         </div>
         <div className="panel-body">
-          <div className="field-grid2">
-            <div className="field">
-              <label className="field-label">Proposed Monthly Budget (LKR)</label>
-              <input className="input" type="number" value={plannerBudget} onChange={(e) => setPlannerBudget(e.target.value)} placeholder="500000" />
-            </div>
-            <div className="field">
-              <label className="field-label">Deal Year</label>
-              <select className="select" value={plannerYear} onChange={(e) => setPlannerYear(e.target.value)}>
-                {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+          <div className="field">
+            <label className="field-label">Proposed Monthly Budget (LKR)</label>
+            <input className="input" type="number" value={plannerBudget} onChange={(e) => setPlannerBudget(e.target.value)} placeholder="500000" />
           </div>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+            Suggestions are averaged across every year this channel has recorded data — no single deal year is used.
+          </p>
 
           {plannerLoading && <OrbitLoader size={24} label="Calculating…" />}
 
@@ -753,7 +833,7 @@ export default function MediaBuyingPage() {
 
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 10, color: 'var(--ink)' }}>
-                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-600)' }} /> Suggested Terms
+                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-600)' }} /> Suggested Terms <span style={{ fontWeight: 500, fontSize: 11.5, color: 'var(--muted)' }}>(avg over all years)</span>
                 </div>
                 <div style={{ display: 'flex', gap: 28 }}>
                   <div>
@@ -790,14 +870,15 @@ export default function MediaBuyingPage() {
                 ) : (
                   <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                     <table className="tbl">
-                      <thead><tr><th>Client</th><th className="num">Yearly Spend</th><th className="num">Discount</th><th className="num">Bonus</th></tr></thead>
+                      <thead><tr><th>Client</th><th className="num">Avg Yearly Spend</th><th className="num">Avg Discount</th><th className="num">Avg Bonus</th><th className="num">Years</th></tr></thead>
                       <tbody>
                         {plannerResult.comparableClients.map((c) => (
                           <tr key={c.clientId}>
                             <td>{c.clientName}</td>
-                            <td className="num">{fmtLKR(c.yearlySpend)}</td>
-                            <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
-                            <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
+                            <td className="num">{fmtLKR(c.avgYearlySpend)}</td>
+                            <td className="num">{fmtPct(c.avgDiscountPct)}</td>
+                            <td className="num">{fmtPct(c.avgBonusPct)}</td>
+                            <td className="num">{c.yearsOfData}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -809,7 +890,7 @@ export default function MediaBuyingPage() {
           )}
 
           {!plannerLoading && !plannerResult && plannerBudget && (
-            <p style={{ marginTop: 16, fontSize: 13, color: 'var(--muted)' }}>No data available for this channel/year.</p>
+            <p style={{ marginTop: 16, fontSize: 13, color: 'var(--muted)' }}>No data available for this channel.</p>
           )}
         </div>
       </div>

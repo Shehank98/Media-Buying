@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   getChannelIntelligence,
-  getClientChannelMonthly,
+  getClientChannelYearly,
   upsertAgencyDeal,
   deleteAgencyDeal,
   upsertClientDeal,
@@ -15,7 +15,7 @@ const router = Router();
 router.use(authenticate, requireRole('SUPER_ADMIN'));
 
 router.get('/channels/:channelMasterId', getChannelIntelligence);
-router.get('/channels/:channelMasterId/clients/:clientId/monthly', getClientChannelMonthly);
+router.get('/channels/:channelMasterId/clients/:clientId/yearly', getClientChannelYearly);
 router.get('/channels/:channelMasterId/planner', getNegotiationPlanner);
 router.post('/agency-deals', upsertAgencyDeal);
 router.delete('/agency-deals/:id', deleteAgencyDeal);
