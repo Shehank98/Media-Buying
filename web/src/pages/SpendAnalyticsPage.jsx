@@ -52,6 +52,7 @@ export default function SpendAnalyticsPage() {
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set()); // media groups expanded to show channel rows
   const [paretoMode, setParetoMode] = useState('channel'); // 'channel' | 'client'
   const [compare, setCompare] = useState(false);
   const [cmpFrom, setCmpFrom] = useState('');
@@ -1032,6 +1033,7 @@ export default function SpendAnalyticsPage() {
               <table className="tbl" style={{ margin: 0 }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 30 }}></th>
                     <th style={{ width: 260 }}>Media Group / Channel</th>
                     <th>Medium</th>
                     <th style={{ textAlign: 'right' }}>Entries</th>
@@ -1044,20 +1046,35 @@ export default function SpendAnalyticsPage() {
                     const channels = data.byChannel.filter(ch => ch.mediaGroup === mg.name && (!mediumFilter || ch.medium === mediumFilter));
                     if (mediumFilter && channels.length === 0) return null;
                     const mgPct = data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '-';
+                    const isExpanded = expandedGroups.has(mg.name);
+                    const toggleExpanded = () => setExpandedGroups(prev => {
+                      const next = new Set(prev);
+                      next.has(mg.name) ? next.delete(mg.name) : next.add(mg.name);
+                      return next;
+                    });
                     return (
                       <Fragment key={mg.name}>
-                        <tr style={{ background: 'var(--navy-50, #f0f4f8)' }}>
+                        <tr style={{ background: 'var(--navy-50, #f0f4f8)', cursor: channels.length ? 'pointer' : 'default' }} onClick={() => channels.length && toggleExpanded()}>
+                          <td style={{ textAlign: 'center' }}>
+                            {channels.length > 0 && (
+                              <Icon name={isExpanded ? 'chevD' : 'chevR'} size={14} style={{ color: '#6B7790' }} />
+                            )}
+                          </td>
                           <td style={{ fontWeight: 700, fontSize: 13 }}>
                             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLORS[mgIdx % COLORS.length], marginRight: 8, verticalAlign: 'middle' }} />
                             {mg.name}
+                            {channels.length > 0 && (
+                              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#93A0B5' }}>({channels.length} channel{channels.length === 1 ? '' : 's'})</span>
+                            )}
                           </td>
                           <td></td>
                           <td style={{ textAlign: 'right', fontWeight: 700 }}>{mg.count}</td>
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(mg.value)}</td>
                           <ShareCell value={mg.value} color={COLORS[mgIdx % COLORS.length]} strong />
                         </tr>
-                        {channels.map(ch => (
+                        {isExpanded && channels.map(ch => (
                           <tr key={ch.name}>
+                            <td></td>
                             <td style={{ paddingLeft: 34, fontSize: 13 }}>{ch.name}</td>
                             <td><span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span></td>
                             <td style={{ textAlign: 'right' }}>{ch.count}</td>
@@ -1071,6 +1088,7 @@ export default function SpendAnalyticsPage() {
                 </tbody>
                 <tfoot>
                   <tr>
+                    <td></td>
                     <td className="strong" colSpan={2}>Total</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{data.totalEntries}</td>
                     <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(data.totalValue)}</td>
