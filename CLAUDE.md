@@ -141,7 +141,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | Client | Brand clients under agencies |
 | UserAgencyAccess | M:N user-agency assignments |
 | UserClientAccess | M:N user-client assignments |
-| Team | Team groupings within agencies. `headUserId` (nullable) names the team's head — a GROUP_HEAD user. Admin (Admin → Teams) enforces a 1-team-per-client invariant: assigning a client to a team detaches it from any other team, so every client has exactly one team and therefore one team head |
+| Team | Team groupings within agencies. `headUserId` (nullable) names the team's head — a GROUP_HEAD user. Admin (Admin → Teams) enforces a 1-team-per-client invariant: assigning a client to a team detaches it from any other team, so every client has exactly one team and therefore one team head. Besides the per-team Add/Edit modal's client-chips picker, the Teams tab also has a standalone **"Assign Accounts to Heads"** card (above the teams table) — one row per team showing its head's name + clients as instant-toggle chips (scoped to that team's agency), backed by the same `POST /admin/teams/:id/clients` (`assignTeamClients`/`setTeamClients`) endpoint, for quick client-reassignment without opening the modal |
 | TeamMember | Users assigned to teams (with role) |
 | TeamClient | Teams assigned to clients (kept 1:1 per client by the invariant above, even though the table itself is M:N) |
 

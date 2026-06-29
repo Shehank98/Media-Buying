@@ -68,6 +68,10 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamError, setTeamError] = useState('');
 
+  /* ---- assign accounts to heads (quick-assign section) ---- */
+  const [accountAssignError, setAccountAssignError] = useState('');
+  const [assigningClientKey, setAssigningClientKey] = useState(null);
+
   /* ---- channel master modal ---- */
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
@@ -352,6 +356,24 @@ export default function AdminPage({ initialTab = 'users' }) {
       setTeamError(err.response?.data?.error || err.response?.data?.message || 'Failed to save team.');
     } finally {
       setTeamSubmitting(false);
+    }
+  };
+
+  /* ---- Assign accounts to heads (quick-assign chip, instant save) ---- */
+  const toggleAccountForTeam = async (team, clientId) => {
+    setAccountAssignError('');
+    const currentIds = team.clients?.map(c => c.id) || [];
+    const newIds = currentIds.includes(clientId)
+      ? currentIds.filter(id => id !== clientId)
+      : [...currentIds, clientId];
+    setAssigningClientKey(`${team.id}-${clientId}`);
+    try {
+      await api.post(`/admin/teams/${team.id}/clients`, { clientIds: newIds });
+      await fetchData();
+    } catch (err) {
+      setAccountAssignError(err.response?.data?.error || 'Failed to update account assignment.');
+    } finally {
+      setAssigningClientKey(null);
     }
   };
 
@@ -913,6 +935,59 @@ export default function AdminPage({ initialTab = 'users' }) {
             ));
           })()
         )
+      )}
+
+      {/* ============ ASSIGN ACCOUNTS TO HEADS ============ */}
+      {activeTab === 'teams' && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: '0 0 4px' }}>Assign Accounts to Heads</h3>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+            Click a client to assign it to that team's head. A client belongs to one team at a time —
+            assigning it here moves it off any other team instantly.
+          </div>
+          {accountAssignError && (
+            <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 14 }}>{accountAssignError}</div>
+          )}
+          {teams.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted)' }}>
+              No teams yet. Click "Add Team" to create one first.
+            </div>
+          ) : (
+            teams.map(team => {
+              const assignedIds = team.clients?.map(c => c.id) || [];
+              return (
+                <div key={team.id} style={{ padding: '14px 0', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                    <strong>{team.head?.name || <span style={{ color: 'var(--muted)' }}>No head assigned</span>}</strong>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{team.name} · {team.agency?.name || team.agencyName}</span>
+                  </div>
+                  <div className="chips">
+                    {allClients
+                      .filter(c => c.agencyId === team.agencyId || c.agencyId === team.agency?.id)
+                      .map(c => {
+                        const owner = teams.find(t => t.id !== team.id && t.clients?.some(tc => tc.id === c.id));
+                        const active = assignedIds.includes(c.id);
+                        const busy = assigningClientKey === `${team.id}-${c.id}`;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={'chip' + (active ? ' active' : '')}
+                            disabled={busy}
+                            onClick={() => toggleAccountForTeam(team, c.id)}
+                            title={owner ? `Currently on team "${owner.name}" — assigning here will move it` : ''}
+                          >
+                            {c.name}{owner ? ` (on ${owner.name})` : ''}
+                            {active ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       )}
 
       {/* ============ TEAMS TABLE ============ */}
