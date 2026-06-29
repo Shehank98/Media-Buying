@@ -1318,3 +1318,145 @@ export async function getGroupContribution(req, res) {
     return res.status(500).json({ error: 'Failed to build group contribution', detail: error.message });
   }
 }
+
+// Variance view: each team's average spend across every completed month so far
+// in the latest data year, vs. the latest month itself — with a % difference.
+// "Completed months" = every month before the latest one within that same year
+// (so a January data point with no prior months in its year has nothing to
+// average against and is omitted).
+export async function getGroupContributionVariance(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const latestRow = await prisma.scheduleLog.findFirst({
+      where: scope,
+      orderBy: { scheduleMonth: 'desc' },
+      select: { scheduleMonth: true },
+    });
+    if (!latestRow) return res.json({ latestMonth: null, latestMonthLabel: null, priorMonthsCount: 0, groups: [] });
+
+    const latestMonth = latestRow.scheduleMonth;
+    const latestYear = latestMonth.slice(0, 4);
+
+    const priorMonthRows = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: { ...scope, scheduleMonth: { gte: `${latestYear}-01`, lt: latestMonth } },
+    });
+    const priorMonths = priorMonthRows.map(r => r.scheduleMonth);
+    if (priorMonths.length === 0) {
+      return res.json({
+        latestMonth,
+        latestMonthLabel: MONTH_NAMES[parseInt(latestMonth.slice(5)) - 1],
+        priorMonthsCount: 0,
+        groups: [],
+      });
+    }
+
+    const rows = await prisma.scheduleLog.groupBy({
+      by: ['clientId', 'scheduleMonth'],
+      where: { ...scope, scheduleMonth: { in: [...priorMonths, latestMonth] } },
+      _sum: { scheduleValue: true },
+    });
+
+    const clientIds = [...new Set(rows.map(r => r.clientId))];
+    const teamClients = await prisma.teamClient.findMany({
+      where: { clientId: { in: clientIds } },
+      include: { team: { include: { head: { select: { name: true } }, agency: { select: { name: true } } } } },
+    });
+    const teamByClient = {};
+    for (const tc of teamClients) teamByClient[tc.clientId] = tc.team;
+
+    const groups = {};
+    for (const r of rows) {
+      const team = teamByClient[r.clientId];
+      const key = team ? `team-${team.id}` : 'unassigned';
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          teamId: team?.id || null,
+          name: team ? team.name : 'Unassigned',
+          headName: team?.head?.name || null,
+          agencyName: team?.agency?.name || null,
+          priorSum: 0,
+          latest: 0,
+        };
+      }
+      const val = (safeNum(r._sum.scheduleValue) || 0) / 1e6;
+      if (r.scheduleMonth === latestMonth) groups[key].latest += val;
+      else groups[key].priorSum += val;
+    }
+
+    const result = Object.values(groups)
+      .map((g) => {
+        const avgPrior = g.priorSum / priorMonths.length;
+        const diffPct = avgPrior > 0
+          ? Number((((g.latest - avgPrior) / avgPrior) * 100).toFixed(0))
+          : (g.latest > 0 ? 100 : 0);
+        return {
+          key: g.key,
+          teamId: g.teamId,
+          name: g.name,
+          headName: g.headName,
+          agencyName: g.agencyName,
+          avgPrior: Number(avgPrior.toFixed(2)),
+          latest: Number(g.latest.toFixed(2)),
+          diffPct,
+        };
+      })
+      .sort((a, b) => (b.avgPrior + b.latest) - (a.avgPrior + a.latest));
+
+    return res.json({
+      latestMonth,
+      latestMonthLabel: MONTH_NAMES[parseInt(latestMonth.slice(5)) - 1],
+      priorMonthsCount: priorMonths.length,
+      groups: result,
+    });
+  } catch (error) {
+    console.error('getGroupContributionVariance error:', error);
+    return res.status(500).json({ error: 'Failed to build group contribution variance', detail: error.message });
+  }
+}
+
+// Company-wide average monthly spend per calendar year (total spend that year
+// ÷ number of distinct months with data that year) — a quick "is our monthly
+// run-rate trending up or down year over year" read, independent of how many
+// months a given year happens to have data for so far.
+export async function getMonthlyAvgByYear(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user);
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const rows = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: scope,
+      _sum: { scheduleValue: true },
+    });
+
+    const byYear = new Map();
+    for (const r of rows) {
+      const yr = r.scheduleMonth.slice(0, 4);
+      if (!byYear.has(yr)) byYear.set(yr, { total: 0, monthCount: 0 });
+      const y = byYear.get(yr);
+      y.total += safeNum(r._sum.scheduleValue) || 0;
+      y.monthCount += 1;
+    }
+
+    const years = [...byYear.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([yr, y]) => ({
+        year: yr,
+        avgMillions: Number(((y.total / y.monthCount) / 1e6).toFixed(2)),
+        monthsWithData: y.monthCount,
+      }));
+
+    return res.json({ years });
+  } catch (error) {
+    console.error('getMonthlyAvgByYear error:', error);
+    return res.status(500).json({ error: 'Failed to build monthly average by year', detail: error.message });
+  }
+}

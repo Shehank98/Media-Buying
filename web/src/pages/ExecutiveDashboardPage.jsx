@@ -57,6 +57,8 @@ const Skeleton = ({ w = '100%', h = 20 }) => (
 
 const AGENCY_COLORS = ['#0A1729', '#E85D24', '#0891b2', '#7c3aed', '#065f46'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
+// Shared per-team palette for the Group Contribution donuts + variance bars (cycles if more teams than colors).
+const TEAM_COLORS = ['#1F5BB5', '#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F'];
 
 const ChartEmpty = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)' }}>
@@ -84,7 +86,10 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
 const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
 
 // Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
-function AchievementSection({ year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading }) {
+function AchievementSection({
+  year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
+  groupContributionVariance, groupContributionVarianceLoading, monthlyAvgByYear, monthlyAvgByYearLoading,
+}) {
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
   const bars = achievement ? [
@@ -95,6 +100,22 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, group
   const fc = forecastMonthly?.data || [];
   const gcMonths = groupContribution?.months || [];
   const gcData = groupContribution?.groups || [];
+  // One donut per month: each team's value for that month, with its % share of that month's total.
+  const donutFor = (key) => {
+    const total = gcData.reduce((s, g) => s + (g[key] || 0), 0);
+    return gcData
+      .filter(g => (g[key] || 0) > 0)
+      .map((g, i) => ({ name: g.headName || g.name, value: g[key], pct: total > 0 ? (g[key] / total) * 100 : 0, fill: TEAM_COLORS[i % TEAM_COLORS.length] }));
+  };
+  const donut1 = gcMonths[0] ? donutFor('m1') : [];
+  const donut2 = gcMonths[1] ? donutFor('m2') : [];
+
+  const gcvGroups = groupContributionVariance?.groups || [];
+  const gcvTitle = groupContributionVariance?.priorMonthsCount > 0
+    ? `Average of prior months vs ${groupContributionVariance.latestMonthLabel} · by team head's client portfolio · LKR millions`
+    : 'Not enough prior months in the current data year to compute an average yet';
+
+  const mabyYears = monthlyAvgByYear?.years || [];
 
   return (
     <div className="dash-section">
@@ -161,22 +182,85 @@ function AchievementSection({ year, setYear, achievement, forecastMonthly, group
         <div className="chart-card-title">Group Contribution</div>
         <div className="chart-card-sub">
           {gcMonths.length === 2
-            ? `${gcMonths[0].label} vs ${gcMonths[1].label} spend by team head's client portfolio · LKR millions`
-            : 'Spend by team head\'s client portfolio, last two months · LKR millions'}
+            ? `${gcMonths[0].label} vs ${gcMonths[1].label} spend share by team head's client portfolio`
+            : 'Spend share by team head\'s client portfolio, last two months'}
         </div>
         {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : gcData.length === 0 ? <ChartEmpty /> : (
-          <ResponsiveContainer width="100%" height={Math.max(220, gcData.length * 48)}>
-            <BarChart data={gcData} layout="vertical" margin={{ top: 6, right: 60, bottom: 6, left: 8 }} barCategoryGap="28%">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+            {[{ label: gcMonths[0]?.label, donut: donut1 }, { label: gcMonths[1]?.label, donut: donut2 }].map((d, idx) => (
+              <div key={idx} style={{ flex: '1 1 260px', minWidth: 240 }}>
+                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
+                  {d.label || '-'} Spend Contribution
+                </div>
+                {d.donut.length === 0 ? <ChartEmpty /> : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={d.donut} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                        innerRadius={55} outerRadius={90} paddingAngle={1.5}
+                        label={({ pct }) => `${pct.toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {d.donut.map((g, i) => <Cell key={i} fill={g.fill} />)}
+                      </Pie>
+                      <Tooltip formatter={(v, n, p) => [`${fmtM(v)} (${p.payload.pct.toFixed(1)}%)`, n]} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} layout="vertical" align="right" verticalAlign="middle" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-card-title">Group Contribution — Average vs Latest Month</div>
+        <div className="chart-card-sub">{gcvTitle}</div>
+        {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={Math.max(240, gcvGroups.length * 56)}>
+            <BarChart data={gcvGroups} layout="vertical" margin={{ top: 6, right: 70, bottom: 6, left: 8 }} barCategoryGap="30%">
               <CartesianGrid horizontal={false} stroke="var(--border)" />
               <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
               <YAxis
                 type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }}
-                tickFormatter={(v, i) => gcData[i]?.headName ? `${v} (${gcData[i].headName})` : v}
+                tickFormatter={(v, i) => gcvGroups[i]?.headName ? `${v} (${gcvGroups[i].headName})` : v}
               />
               <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              {gcMonths[0] && <Bar dataKey="m1" name={gcMonths[0].label} fill="#9A5B00" radius={[0, 5, 5, 0]} barSize={14} />}
-              {gcMonths[1] && <Bar dataKey="m2" name={gcMonths[1].label} fill="#1F5BB5" radius={[0, 5, 5, 0]} barSize={14} />}
+              <Bar dataKey="avgPrior" name="Prior Months Avg" fill="#9A5B00" radius={[0, 5, 5, 0]} barSize={12} />
+              <Bar dataKey="latest" name={groupContributionVariance?.latestMonthLabel || 'Latest'} fill="#1F5BB5" radius={[0, 5, 5, 0]} barSize={12}>
+                <LabelList
+                  dataKey="diffPct" position="right"
+                  content={({ x, y, width, height, value }) => (
+                    <text
+                      x={Number(x) + Number(width) + 6} y={Number(y) + Number(height) / 2} dy={4}
+                      fontSize={11} fontWeight={700} fill={value >= 0 ? '#15814B' : '#C5391F'}
+                    >
+                      {value == null ? '' : `${value > 0 ? '+' : ''}${value}%`}
+                    </text>
+                  )}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-card-title">Monthly Avg</div>
+        <div className="chart-card-sub">Average monthly spend per calendar year, all clients · LKR millions</div>
+        {monthlyAvgByYearLoading ? <div style={{ marginTop: 12 }}><Skeleton h={240} /></div> : mabyYears.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={mabyYears} margin={{ top: 26, right: 20, bottom: 6, left: 6 }}>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="year" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
+              <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
+              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Bar dataKey="avgMillions" radius={[5, 5, 0, 0]} barSize={42}>
+                {mabyYears.map((_, i) => <Cell key={i} fill={TEAM_COLORS[i % TEAM_COLORS.length]} />)}
+                <LabelList dataKey="avgMillions" position="top" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -227,6 +311,10 @@ export default function ExecutiveDashboardPage() {
   const [forecastMonthly, setForecastMonthly] = useState(null);
   const [groupContribution, setGroupContribution] = useState(null);
   const [groupContributionLoading, setGroupContributionLoading] = useState(true);
+  const [groupContributionVariance, setGroupContributionVariance] = useState(null);
+  const [groupContributionVarianceLoading, setGroupContributionVarianceLoading] = useState(true);
+  const [monthlyAvgByYear, setMonthlyAvgByYear] = useState(null);
+  const [monthlyAvgByYearLoading, setMonthlyAvgByYearLoading] = useState(true);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -309,6 +397,24 @@ export default function ExecutiveDashboardPage() {
       .then(r => setGroupContribution(r.data))
       .catch(() => setGroupContribution(null))
       .finally(() => setGroupContributionLoading(false));
+  }, []);
+
+  // Group contribution variance (avg of completed months this year vs latest month, by team)
+  useEffect(() => {
+    setGroupContributionVarianceLoading(true);
+    api.get('/analytics/dashboard/group-contribution-variance')
+      .then(r => setGroupContributionVariance(r.data))
+      .catch(() => setGroupContributionVariance(null))
+      .finally(() => setGroupContributionVarianceLoading(false));
+  }, []);
+
+  // Monthly average spend per calendar year (company-wide)
+  useEffect(() => {
+    setMonthlyAvgByYearLoading(true);
+    api.get('/analytics/dashboard/monthly-avg-by-year')
+      .then(r => setMonthlyAvgByYear(r.data))
+      .catch(() => setMonthlyAvgByYear(null))
+      .finally(() => setMonthlyAvgByYearLoading(false));
   }, []);
 
   // Medium split
@@ -661,6 +767,8 @@ export default function ExecutiveDashboardPage() {
       <AchievementSection
         year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading}
         groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
+        groupContributionVariance={groupContributionVariance} groupContributionVarianceLoading={groupContributionVarianceLoading}
+        monthlyAvgByYear={monthlyAvgByYear} monthlyAvgByYearLoading={monthlyAvgByYearLoading}
       />
 
       {/* Section 2: Monthly Billing Trend */}

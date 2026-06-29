@@ -21,6 +21,8 @@ import {
   getAchievement,
   getForecastMonthly,
   getGroupContribution,
+  getGroupContributionVariance,
+  getMonthlyAvgByYear,
 } from '../controllers/analytics.controller.js';
 
 const router = Router();
@@ -51,5 +53,7 @@ router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'
 router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
 router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
 router.get('/dashboard/group-contribution', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContribution);
+router.get('/dashboard/group-contribution-variance', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContributionVariance);
+router.get('/dashboard/monthly-avg-by-year', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getMonthlyAvgByYear);
 
 export default router;
