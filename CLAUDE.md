@@ -150,7 +150,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 | Model | Purpose |
 |---|---|
 | MediaGroup | Grouping of channels (e.g., "Maharaja Group") |
-| ChannelMaster | Master registry of all TV/Radio/Print channels with aliases |
+| ChannelMaster | Master registry of all TV/Radio/Print channels with aliases. `isActive` channels with **zero `ScheduleLog` rows** are automatically deactivated by `seed.js`'s startup reconcile (idempotent, runs every deploy) — hides never-used channels from active-only pickers (Media Buying combobox, Add Channel forms) without deleting them; Admin's Channels tab still lists them (Inactive badge) and a manual toggle reactivates. Bulk import resolves channels by name regardless of `isActive`, so logging spend against a deactivated channel later is unaffected |
 | Channel | Client-specific channel records |
 | Property | Negotiated deals on channels (cost, bonus%, sponsorship details, startDate, endDate — endDate null means still ongoing) |
 | PropertyHistory | Audit trail for property changes (previousValues, newValues JSON) |

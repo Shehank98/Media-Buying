@@ -316,6 +316,23 @@ async function main() {
     console.warn('Medium/media-group reconcile skipped:', e.message);
   }
 
+  // ── Deactivate zero-usage channels ───────────────────────────────────────────
+  // Any active ChannelMaster with 0 ScheduleLog rows ("0 logs" in Admin's Usage
+  // column) is deactivated on every deploy, which hides it from every isActive-
+  // filtered picker (Media Buying combobox, Add Channel forms, etc.) without
+  // deleting it. Admin's Channels tab still lists it (with an Inactive badge) and
+  // can re-toggle it active at any time. Bulk import resolves channels by name
+  // regardless of isActive, so this never blocks logging spend against it later.
+  try {
+    const deactivated = await prisma.$executeRaw`
+      UPDATE channel_masters cm SET is_active = false
+      WHERE cm.is_active = true
+        AND NOT EXISTS (SELECT 1 FROM schedule_logs sl WHERE sl.channel_master_id = cm.id)`;
+    console.log(`Zero-usage channel reconcile: ${deactivated} channel(s) deactivated`);
+  } catch (e) {
+    console.warn('Zero-usage channel reconcile skipped:', e.message);
+  }
+
   console.log('\nSeeding complete!');
 }
 
