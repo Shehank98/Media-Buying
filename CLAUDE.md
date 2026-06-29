@@ -161,7 +161,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 
 | Model | Purpose |
 |---|---|
-| ScheduleLog | Monthly execution records with scheduleValue, scheduleValueWithVat |
+| ScheduleLog | Monthly execution records with scheduleValue, scheduleValueWithVat. `medium`/`mediaGroup` are denormalized strings snapshotted from the channel master at insert time (for fast Spend Analytics aggregation) — `updateChannelMaster` and `mergeChannelMasters` both refresh these on every affected row when a channel's medium/media group changes or two channels are merged, so the Spend Breakdown's Media Group & Channel views stay correct for historical spend too |
 | UploadBatch | Batch upload file records with status tracking |
 | UploadBatchRow | Individual rows in upload batches (raw + resolved data) |
 | ScheduleLogEdit | Audit trail for schedule log edits |

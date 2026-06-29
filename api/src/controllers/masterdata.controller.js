@@ -152,13 +152,27 @@ export async function updateChannelMaster(req, res) {
     if (mediaGroupId !== undefined) data.mediaGroupId = parseInt(mediaGroupId);
     if (aliases !== undefined) data.aliases = Array.isArray(aliases) ? aliases : [];
 
-    const channelMaster = await prisma.channelMaster.update({
-      where: { id },
-      data,
-      include: {
-        mediaGroup: { select: { id: true, name: true } },
-        _count: { select: { scheduleLogs: true } },
-      },
+    const channelMaster = await prisma.$transaction(async (tx) => {
+      const updated = await tx.channelMaster.update({
+        where: { id },
+        data,
+        include: {
+          mediaGroup: { select: { id: true, name: true } },
+          _count: { select: { scheduleLogs: true } },
+        },
+      });
+
+      // Schedule logs store medium/mediaGroup as denormalized strings (for fast
+      // spend-breakdown aggregation) — refresh existing rows so reassigning a
+      // channel's medium or media group is reflected in historical spend too.
+      if (medium !== undefined || mediaGroupId !== undefined) {
+        await tx.scheduleLog.updateMany({
+          where: { channelMasterId: id },
+          data: { medium: updated.medium, mediaGroup: updated.mediaGroup.name },
+        });
+      }
+
+      return updated;
     });
     return res.json({ channelMaster });
   } catch (error) {
@@ -208,19 +222,21 @@ export async function mergeChannelMasters(req, res) {
 
     const [source, target] = await Promise.all([
       prisma.channelMaster.findUnique({ where: { id: sid } }),
-      prisma.channelMaster.findUnique({ where: { id: tid } }),
+      prisma.channelMaster.findUnique({ where: { id: tid }, include: { mediaGroup: { select: { name: true } } } }),
     ]);
     if (!source) return res.status(404).json({ error: 'Source channel master not found' });
     if (!target) return res.status(404).json({ error: 'Target channel master not found' });
 
     // Merge: re-point all schedule_logs from source → target, then deactivate source
     await prisma.$transaction(async (tx) => {
-      // Update schedule logs
+      // Update schedule logs — also refresh the denormalized medium/mediaGroup
+      // strings so spend breakdowns reflect the target channel immediately
       await tx.scheduleLog.updateMany({
         where: { channelMasterId: sid },
         data: {
           channelMasterId: tid,
           medium: target.medium,
+          mediaGroup: target.mediaGroup.name,
         },
       });
 
