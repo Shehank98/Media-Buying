@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import Icon, { fmtLKR } from '../components/Icon';
+import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
 
@@ -15,8 +15,6 @@ const STATUS = {
 export default function ForecastingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
-  const isManager = user?.role === 'MANAGER';
-  const readOnly = isManager; // managers view history only
 
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState({ year: null, month: null });
@@ -61,7 +59,6 @@ export default function ForecastingPage() {
   const [saving, setSaving] = useState(false);
   const [entryError, setEntryError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
-  const [history, setHistory] = useState(null);
   const [channelSearch, setChannelSearch] = useState('');
 
   // request modal
@@ -110,32 +107,27 @@ export default function ForecastingPage() {
 
   const openEntry = async (client) => {
     setActive(client);
-    setEntryError(''); setSavedMsg(''); setHistory(null); setChannelSearch('');
+    setEntryError(''); setSavedMsg(''); setChannelSearch('');
     setEntryLoading(true);
     try {
-      if (readOnly) {
-        const { data } = await api.get('/forecasting/history', { params: { clientId: client.id } });
-        setHistory(data.items || []);
-      } else {
-        const entryParams = { clientId: client.id };
-        if (isAdmin && selectedPeriod) { entryParams.year = selectedPeriod.year; entryParams.month = selectedPeriod.month; }
-        const [chRes, enRes] = await Promise.all([
-          api.get('/forecasting/channels'),
-          api.get('/forecasting/entry', { params: entryParams }),
-        ]);
-        setCategories(chRes.data.categories || []);
-        const seed = {};
-        // Stored in millions; show group heads the full rupee value.
-        (enRes.data.items || []).forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
-        setAmounts(seed);
-      }
+      const entryParams = { clientId: client.id };
+      if (isAdmin && selectedPeriod) { entryParams.year = selectedPeriod.year; entryParams.month = selectedPeriod.month; }
+      const [chRes, enRes] = await Promise.all([
+        api.get('/forecasting/channels'),
+        api.get('/forecasting/entry', { params: entryParams }),
+      ]);
+      setCategories(chRes.data.categories || []);
+      const seed = {};
+      // Stored in millions; show group heads the full rupee value.
+      (enRes.data.items || []).forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
+      setAmounts(seed);
     } catch {
       setEntryError('Failed to load the forecast.');
     } finally {
       setEntryLoading(false);
     }
   };
-  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); setHistory(null); };
+  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); };
 
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
 
@@ -228,7 +220,7 @@ export default function ForecastingPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: '#16243C' }}>Forecasting</h1>
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>
-            {readOnly ? 'View submitted forecasts by client' : `Enter the ${periodLabel} forecast for your clients`}
+            Enter the {periodLabel} forecast for your clients
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -250,7 +242,7 @@ export default function ForecastingPage() {
               ))}
             </select>
           )}
-          {(isAdmin || isManager) && agencies.length > 1 && (
+          {isAdmin && agencies.length > 1 && (
             <select className="select" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={{ maxWidth: 220 }}>
               <option value="">All agencies</option>
               {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -260,16 +252,12 @@ export default function ForecastingPage() {
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
             <input className="input" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32, maxWidth: 240 }} />
           </div>
-          {!readOnly && (
-            <>
-              <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
-            </>
-          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
         </div>
       </div>
 
-      {(isAdmin || isManager) && (
+      {isAdmin && (
         <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3, marginBottom: 18 }}>
           {[['clients', 'Clients'], ['variance', 'Forecast vs Actual']].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 14px', borderRadius: 7, fontFamily: 'inherit', background: view === k ? '#fff' : 'transparent', color: view === k ? '#16243C' : '#6B7790', boxShadow: view === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{label}</button>
@@ -341,9 +329,9 @@ export default function ForecastingPage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6B7790' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.dot }} />{readOnly ? 'View history' : st.label}
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.dot }} />{st.label}
                   </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C' }}>{readOnly ? 'Open' : 'Enter'} <Icon name="chevR" size={14} /></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C' }}>Enter <Icon name="chevR" size={14} /></span>
                 </div>
               </div>
             );
@@ -358,10 +346,10 @@ export default function ForecastingPage() {
             <div className="modal-head">
               <div>
                 <h2 style={{ margin: 0 }}>{active.name}</h2>
-                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{readOnly ? 'Forecast history' : `${periodLabel} forecast · enter amounts in LKR`}</p>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{periodLabel} forecast · enter amounts in LKR</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {!readOnly && !entryLoading && (
+                {!entryLoading && (
                   <button className="btn btn-ghost btn-sm" onClick={copyLast} disabled={copying}>
                     <Icon name="history" size={14} /> {copying ? 'Copying…' : 'Copy last month'}
                   </button>
@@ -372,24 +360,7 @@ export default function ForecastingPage() {
             <div className="modal-body" style={{ maxHeight: '64vh', overflow: 'auto' }}>
               {entryError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>{entryError}</div>}
               {savedMsg && <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15814B', marginBottom: 14 }}>{savedMsg}</div>}
-              {entryLoading ? <OrbitLoader label="Loading…" /> : readOnly ? (
-                history && history.length > 0 ? (
-                  <table className="tbl" style={{ fontSize: 12.5 }}>
-                    <thead><tr><th>Period</th><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Amount</th><th>Notes</th></tr></thead>
-                    <tbody>
-                      {history.map((h, i) => (
-                        <tr key={i}>
-                          <td>{MONTHS[h.month - 1]?.slice(0, 3)} {h.year}</td>
-                          <td className="strong">{h.channel}</td>
-                          <td><span className="medium-tag" data-medium={h.medium}>{h.medium}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(h.amountMillions * 1e6)}</td>
-                          <td style={{ color: 'var(--muted)' }}>{h.notes}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No forecasts submitted yet.</div>
-              ) : (
+              {entryLoading ? <OrbitLoader label="Loading…" /> : (
                 <>
                   {categories.length > 0 && (
                     <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -424,17 +395,11 @@ export default function ForecastingPage() {
               )}
             </div>
             <div className="modal-foot" style={{ justifyContent: 'space-between' }}>
-              {!readOnly ? (
-                <>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
-                    <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
-                  </div>
-                </>
-              ) : (
-                <button className="btn btn-primary" onClick={closeEntry} style={{ marginLeft: 'auto' }}>Close</button>
-              )}
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
+                <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
+              </div>
             </div>
           </div>
         </div>

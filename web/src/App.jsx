@@ -61,7 +61,7 @@ export default function App() {
             <Route
               path="/forecasting"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'GROUP_HEAD']}>
                   <ForecastingPage />
                 </ProtectedRoute>
               }
