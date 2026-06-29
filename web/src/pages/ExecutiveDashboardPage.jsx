@@ -117,7 +117,7 @@ function AchievementSection({
   // Renders the %-diff label above whichever bar of the pair is shorter, so the
   // label never collides with the taller bar (matches the reference slide layout).
   const diffLabelFor = (barKey) => ({ x, y, width, payload }) => {
-    if (payload.avgPrior == null || payload.latest == null) return null;
+    if (payload == null || payload.avgPrior == null || payload.latest == null) return null;
     const isLowerBar = barKey === 'avgPrior' ? payload.avgPrior <= payload.latest : payload.latest < payload.avgPrior;
     if (!isLowerBar) return null;
     const diff = payload.diffPct;
