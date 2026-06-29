@@ -330,6 +330,7 @@ input, select, textarea { font-family: inherit; }
   display: flex; flex-direction: column;
 }
 .panel.show { transform: translateX(0); }
+.panel-wide { width: 720px; max-width: 94vw; }
 .panel-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 12px; }
 .panel-title { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
 .panel-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }

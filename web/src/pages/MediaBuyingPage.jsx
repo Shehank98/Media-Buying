@@ -12,6 +12,21 @@ function fmtPct(v) {
   return `${Number(v).toFixed(1)}%`;
 }
 
+// Indian/Sri Lankan lakh-style grouping for Excel export cells — e.g. 500000 -> "5,00,000.00"
+// (last 3 digits, then groups of 2), distinct from the abbreviated on-screen fmtLKR().
+function fmtLKRFull(v) {
+  const n = Number(v) || 0;
+  const negative = n < 0;
+  const [intPart, decPart = '00'] = Math.abs(n).toFixed(2).split('.');
+  let grouped = intPart;
+  if (intPart.length > 3) {
+    const last3 = intPart.slice(-3);
+    const rest = intPart.slice(0, -3);
+    grouped = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + last3;
+  }
+  return `${negative ? '-' : ''}LKR ${grouped}.${decPart}`;
+}
+
 function NotSet() {
   return <span style={{ color: 'var(--muted-2)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
 }
@@ -282,7 +297,7 @@ export default function MediaBuyingPage() {
 
   useEffect(() => {
     api.get('/masterdata/channel-masters').then((res) => {
-      setChannels(res.data.channelMasters || []);
+      setChannels((res.data.channelMasters || []).filter((c) => c.isActive !== false));
     }).catch(() => {});
     api.get('/agencies').then(async (res) => {
       const agencies = res.data || [];
@@ -481,8 +496,21 @@ export default function MediaBuyingPage() {
     setExporting(true);
     try {
       const wb = XLSX.utils.book_new();
-      const dealHeaders = ['Year', 'Agency Discount %', 'Agency Bonus %', 'Notes', 'Created By'];
-      const dealRows = (data.agencyDeals || []).map((d) => [d.year, d.discountPct, d.bonusPct, d.notes, d.createdBy]);
+
+      const summaryRows = [
+        ['Media Buying — Channel Negotiation Intelligence'],
+        ['Channel', data.channel.name],
+        ['Medium', data.channel.medium],
+        ['Clients on Channel', sortedClients.length],
+        ['Total Lifetime Spend (all clients)', fmtLKRFull(totalClientSpend)],
+        ['Latest Agency Deal', latestAgencyDeal ? `${latestAgencyDeal.year}: ${fmtPct(latestAgencyDeal.discountPct)} discount / ${fmtPct(latestAgencyDeal.bonusPct)} bonus` : 'Not set'],
+        ['Exported', new Date().toLocaleString()],
+      ];
+      const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+      const dealHeaders = ['Year', 'Agency Discount %', 'Agency Bonus %', 'Trend', 'Notes', 'Created By'];
+      const dealRows = (data.agencyDeals || []).map((d) => [d.year, fmtPct(d.discountPct), fmtPct(d.bonusPct), d.trend, d.notes, d.createdBy]);
       const dealWs = XLSX.utils.aoa_to_sheet([dealHeaders, ...dealRows]);
       XLSX.utils.book_append_sheet(wb, dealWs, 'Agency Deal History');
 
@@ -490,17 +518,17 @@ export default function MediaBuyingPage() {
         api.get(`/media-buying/channels/${channelMasterId}/clients/${c.clientId}/yearly`).then((res) => ({ client: c, years: res.data }))
       ));
 
-      const clientHeaders = ['Client', 'Agency', 'Year', 'Yearly Spend (LKR)', 'Discount %', 'Bonus %', 'Notes'];
+      const clientHeaders = ['Client', 'Agency', 'Year', 'Yearly Spend (LKR)', 'Avg Monthly Spend (LKR)', 'Discount %', 'Bonus %', 'Notes'];
       const clientRows = [];
       yearlyResults.forEach(({ client, years }) => {
         if (years.length === 0) {
-          clientRows.push([client.clientName, client.agencyName, '', client.totalSpend, '', '', '']);
+          clientRows.push([client.clientName, client.agencyName, '', fmtLKRFull(client.totalSpend), fmtLKRFull(client.totalSpend / 12), 'Not set', 'Not set', '']);
         } else {
           years.forEach((y) => {
             clientRows.push([
-              client.clientName, client.agencyName, y.year, y.spend,
-              y.discountPct != null ? y.discountPct : 'Not set',
-              y.bonusPct != null ? y.bonusPct : 'Not set',
+              client.clientName, client.agencyName, y.year, fmtLKRFull(y.spend), fmtLKRFull(y.spend / 12),
+              y.discountPct != null ? fmtPct(y.discountPct) : 'Not set',
+              y.bonusPct != null ? fmtPct(y.bonusPct) : 'Not set',
               y.notes,
             ]);
           });
@@ -518,26 +546,43 @@ export default function MediaBuyingPage() {
   function handlePlannerExport() {
     if (!plannerResult || !selectedChannel) return;
     const wb = XLSX.utils.book_new();
+    const discountMid = plannerResult.suggestedDiscountRange ? (plannerResult.suggestedDiscountRange.min + plannerResult.suggestedDiscountRange.max) / 2 : null;
+    const bonusMid = plannerResult.suggestedBonusRange ? (plannerResult.suggestedBonusRange.min + plannerResult.suggestedBonusRange.max) / 2 : null;
     const rows = [
       ['Negotiation Plan'],
       ['Channel', selectedChannel.name],
-      ['Proposed Monthly Budget (LKR)', plannerResult.monthlyBudget],
-      ['Projected Yearly Spend (LKR)', plannerResult.projectedYearlySpend],
-      ['Spend Tier', plannerResult.spendTier],
-      ['Tier threshold (Low/Mid cutoff, LKR avg yearly spend)', plannerResult.tierThresholds.lowMax],
-      ['Tier threshold (Mid/High cutoff, LKR avg yearly spend)', plannerResult.tierThresholds.midMax],
+      ['Medium', selectedChannel.medium],
+      ['Generated', new Date().toLocaleString()],
       [],
-      ['Suggested Discount Range (avg over all years)', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min.toFixed(1)}% – ${plannerResult.suggestedDiscountRange.max.toFixed(1)}%` : 'No comparable data'],
-      ['Suggested Bonus Range (avg over all years)', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min.toFixed(1)}% – ${plannerResult.suggestedBonusRange.max.toFixed(1)}%` : 'No comparable data'],
+      ['Proposed Monthly Budget (LKR)', fmtLKRFull(plannerResult.monthlyBudget)],
+      ['Projected Yearly Spend (LKR)', fmtLKRFull(plannerResult.projectedYearlySpend)],
+      ['Spend Tier', plannerResult.spendTier],
+      ['Percentile vs Existing Clients', plannerResult.budgetPercentileRank != null ? `Higher than ${plannerResult.budgetPercentileRank}% of clients` : 'N/A'],
+      ['Tier threshold (Low/Mid cutoff, LKR avg yearly spend)', fmtLKRFull(plannerResult.tierThresholds.lowMax)],
+      ['Tier threshold (Mid/High cutoff, LKR avg yearly spend)', fmtLKRFull(plannerResult.tierThresholds.midMax)],
+      [],
+      ['Channel Context'],
+      ['Total Clients on Channel', plannerResult.totalClientsOnChannel ?? 0],
+      ['Low Tier Clients', plannerResult.tierCounts?.Low ?? 0],
+      ['Mid Tier Clients', plannerResult.tierCounts?.Mid ?? 0],
+      ['High Tier Clients', plannerResult.tierCounts?.High ?? 0],
+      ['Overall Avg Discount % (all clients)', plannerResult.overallAvgDiscountPct != null ? `${plannerResult.overallAvgDiscountPct.toFixed(1)}%` : 'N/A'],
+      ['Overall Avg Bonus % (all clients)', plannerResult.overallAvgBonusPct != null ? `${plannerResult.overallAvgBonusPct.toFixed(1)}%` : 'N/A'],
+      ['Largest Client (avg yearly spend, LKR)', plannerResult.highestYearlySpend != null ? fmtLKRFull(plannerResult.highestYearlySpend) : 'N/A'],
+      [],
+      ['Suggested Discount Range (avg over all years, same tier)', plannerResult.suggestedDiscountRange ? `${plannerResult.suggestedDiscountRange.min.toFixed(1)}% – ${plannerResult.suggestedDiscountRange.max.toFixed(1)}%` : 'No comparable data'],
+      ['Suggested Bonus Range (avg over all years, same tier)', plannerResult.suggestedBonusRange ? `${plannerResult.suggestedBonusRange.min.toFixed(1)}% – ${plannerResult.suggestedBonusRange.max.toFixed(1)}%` : 'No comparable data'],
+      ['Estimated Effective Monthly Cost @ Midpoint Discount (LKR)', discountMid != null ? fmtLKRFull(plannerResult.monthlyBudget * (1 - discountMid / 100)) : 'N/A'],
+      ['Estimated Monthly Bonus Value @ Midpoint Bonus (LKR)', bonusMid != null ? fmtLKRFull(plannerResult.monthlyBudget * (bonusMid / 100)) : 'N/A'],
       [],
       ['Agency Deal Reference Year', plannerResult.agencyDealReference?.year ?? 'No agency deal recorded'],
-      ['Agency Discount %', plannerResult.agencyDealReference?.discountPct ?? ''],
-      ['Agency Bonus %', plannerResult.agencyDealReference?.bonusPct ?? ''],
+      ['Agency Discount %', plannerResult.agencyDealReference?.discountPct != null ? `${plannerResult.agencyDealReference.discountPct.toFixed(1)}%` : ''],
+      ['Agency Bonus %', plannerResult.agencyDealReference?.bonusPct != null ? `${plannerResult.agencyDealReference.bonusPct.toFixed(1)}%` : ''],
       ['Agency Deal Notes', plannerResult.agencyDealReference?.notes ?? ''],
       [],
       ['Comparable Clients (' + plannerResult.spendTier + ' tier, averaged across all years)'],
-      ['Client', 'Avg Yearly Spend (LKR)', 'Avg Discount %', 'Avg Bonus %', 'Years of Data'],
-      ...plannerResult.comparableClients.map((c) => [c.clientName, c.avgYearlySpend, c.avgDiscountPct.toFixed(1), c.avgBonusPct.toFixed(1), c.yearsOfData]),
+      ['Client', 'Avg Yearly Spend (LKR)', 'Avg Monthly Spend (LKR)', 'Avg Discount %', 'Avg Bonus %', 'Years of Data'],
+      ...plannerResult.comparableClients.map((c) => [c.clientName, fmtLKRFull(c.avgYearlySpend), fmtLKRFull(c.avgYearlySpend / 12), `${c.avgDiscountPct.toFixed(1)}%`, `${c.avgBonusPct.toFixed(1)}%`, c.yearsOfData]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, 'Negotiation Plan');
@@ -699,13 +744,14 @@ export default function MediaBuyingPage() {
                                   <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                                     <table className="tbl">
                                       <thead>
-                                        <tr><th>Year</th><th className="num">Spend</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Notes</th></tr>
+                                        <tr><th>Year</th><th className="num">Spend</th><th className="num">Avg Monthly Spend</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Notes</th></tr>
                                       </thead>
                                       <tbody>
                                         {(yearlyByClient[c.clientId] || []).map((y) => (
                                           <tr key={y.year}>
                                             <td className="strong">{y.year}</td>
                                             <td className="num">{fmtLKR(y.spend)}</td>
+                                            <td className="num">{fmtLKR(y.spend / 12)}</td>
                                             <td className="num">{y.discountPct != null ? fmtPct(y.discountPct) : <NotSet />}</td>
                                             <td className="num">{y.bonusPct != null ? fmtPct(y.bonusPct) : <NotSet />}</td>
                                             <td>{y.notes ? y.notes : <NotSet />}</td>
@@ -797,7 +843,7 @@ export default function MediaBuyingPage() {
 
       {/* Negotiation Planner Panel */}
       <div className={`scrim${showPlanner ? ' show' : ''}`} onClick={() => setShowPlanner(false)} />
-      <div className={`panel${showPlanner ? ' show' : ''}`}>
+      <div className={`panel panel-wide${showPlanner ? ' show' : ''}`}>
         <div className="panel-head">
           <div style={{ flex: 1 }}>
             <div className="panel-title">Negotiation Planner</div>
@@ -828,14 +874,52 @@ export default function MediaBuyingPage() {
               <div className="card" style={{ background: 'var(--navy-900)', padding: 18, border: 'none' }}>
                 <div style={{ fontSize: 11.5, color: 'var(--navy-300)', textTransform: 'uppercase', letterSpacing: '.5px', fontWeight: 700 }}>Projected Yearly Spend</div>
                 <div style={{ fontSize: 24, fontWeight: 760, fontFamily: 'var(--mono)', color: '#fff', margin: '4px 0 8px' }}>{fmtLKR(plannerResult.projectedYearlySpend)}</div>
-                <span className="badge" style={{ background: 'var(--coral-500)', color: '#fff' }}>{plannerResult.spendTier} tier</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span className="badge" style={{ background: 'var(--coral-500)', color: '#fff' }}>{plannerResult.spendTier} tier</span>
+                  {plannerResult.budgetPercentileRank != null && (
+                    <span className="badge" style={{ background: 'rgba(255,255,255,.14)', color: '#fff' }}>
+                      Higher than {plannerResult.budgetPercentileRank}% of existing clients
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 10, color: 'var(--ink)' }}>
-                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-600)' }} /> Suggested Terms <span style={{ fontWeight: 500, fontSize: 11.5, color: 'var(--muted)' }}>(avg over all years)</span>
+                  <Icon name="users" size={15} style={{ color: 'var(--blue-700)' }} /> Channel Context
                 </div>
-                <div style={{ display: 'flex', gap: 28 }}>
+                <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Clients on Channel</div>
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{plannerResult.totalClientsOnChannel ?? 0}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Overall Avg Discount</div>
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{plannerResult.overallAvgDiscountPct != null ? fmtPct(plannerResult.overallAvgDiscountPct) : <NotSet />}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Overall Avg Bonus</div>
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{plannerResult.overallAvgBonusPct != null ? fmtPct(plannerResult.overallAvgBonusPct) : <NotSet />}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Largest Client (avg/yr)</div>
+                    <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>{plannerResult.highestYearlySpend != null ? fmtLKR(plannerResult.highestYearlySpend) : <NotSet />}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['Low', 'Mid', 'High'].map((t) => (
+                    <span key={t} className="badge" style={{ background: t === plannerResult.spendTier ? 'var(--coral-50)' : 'var(--bg-sunken)', color: t === plannerResult.spendTier ? 'var(--coral-700)' : 'var(--muted)', fontWeight: t === plannerResult.spendTier ? 700 : 500 }}>
+                      {t}: {plannerResult.tierCounts?.[t] ?? 0} clients
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 10, color: 'var(--ink)' }}>
+                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-600)' }} /> Suggested Terms <span style={{ fontWeight: 500, fontSize: 11.5, color: 'var(--muted)' }}>(avg over all years, {plannerResult.spendTier}-tier clients)</span>
+                </div>
+                <div style={{ display: 'flex', gap: 28, marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--muted)' }}>Discount %</div>
                     <div style={{ fontWeight: 700, fontFamily: 'var(--mono)' }}>
@@ -849,6 +933,15 @@ export default function MediaBuyingPage() {
                     </div>
                   </div>
                 </div>
+                {plannerResult.suggestedDiscountRange && (
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+                    At the midpoint of the suggested discount ({fmtPct((plannerResult.suggestedDiscountRange.min + plannerResult.suggestedDiscountRange.max) / 2)}), the effective monthly cost would be{' '}
+                    <strong>{fmtLKR(plannerBudget * (1 - (plannerResult.suggestedDiscountRange.min + plannerResult.suggestedDiscountRange.max) / 200))}</strong>
+                    {plannerResult.suggestedBonusRange && (
+                      <>, plus an estimated <strong>{fmtLKR(plannerBudget * ((plannerResult.suggestedBonusRange.min + plannerResult.suggestedBonusRange.max) / 200))}</strong> in bonus/added-value airtime per month.</>
+                    )}
+                  </div>
+                )}
               </div>
 
               {plannerResult.agencyDealReference && (

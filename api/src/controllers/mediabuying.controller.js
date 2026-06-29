@@ -279,6 +279,22 @@ export async function getNegotiationPlanner(req, res) {
       ? { min: Math.min(...comparableClients.map((c) => c.avgBonusPct)), max: Math.max(...comparableClients.map((c) => c.avgBonusPct)) }
       : null;
 
+    // Extra decision-support context: where this channel's clients sit overall,
+    // beyond just the same-tier comparison set.
+    const tierCounts = { Low: 0, Mid: 0, High: 0 };
+    clientsWithSpend.forEach((c) => { tierCounts[tierOf(c.avgYearlySpend)]++; });
+    const totalClientsOnChannel = clientsWithSpend.length;
+    const overallAvgDiscountPct = totalClientsOnChannel
+      ? clientsWithSpend.reduce((sum, c) => sum + c.avgDiscountPct, 0) / totalClientsOnChannel
+      : null;
+    const overallAvgBonusPct = totalClientsOnChannel
+      ? clientsWithSpend.reduce((sum, c) => sum + c.avgBonusPct, 0) / totalClientsOnChannel
+      : null;
+    const highestYearlySpend = totalClientsOnChannel ? Math.max(...clientsWithSpend.map((c) => c.avgYearlySpend)) : null;
+    const budgetPercentileRank = totalClientsOnChannel
+      ? Math.round((spends.filter((s) => s <= projectedYearlySpend).length / totalClientsOnChannel) * 100)
+      : null;
+
     const agencyDealReference = await prisma.channelAgencyDeal.findFirst({
       where: { channelMasterId },
       orderBy: { year: 'desc' },
@@ -292,6 +308,12 @@ export async function getNegotiationPlanner(req, res) {
       tierThresholds: { lowMax, midMax },
       suggestedDiscountRange,
       suggestedBonusRange,
+      totalClientsOnChannel,
+      tierCounts,
+      overallAvgDiscountPct,
+      overallAvgBonusPct,
+      highestYearlySpend,
+      budgetPercentileRank,
       comparableClients: comparableClients.sort((a, b) => b.avgYearlySpend - a.avgYearlySpend),
       agencyDealReference: agencyDealReference
         ? {
