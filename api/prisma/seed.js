@@ -5,6 +5,16 @@ import { CLIENTS } from './client-seed-data.js';
 
 const prisma = new PrismaClient();
 
+// Single "total" bucket per non-TV/Radio forecasting category — see
+// listForecastChannels (api/src/controllers/forecasting.controller.js) and the
+// zero-usage channel reconcile below, both of which depend on these exact names.
+const TOTAL_BUCKETS = [
+  { name: 'Print', medium: 'PRINT', sortOrder: 201 },
+  { name: 'Cinema', medium: 'CINEMA', sortOrder: 301 },
+  { name: 'OOH', medium: 'OOH', sortOrder: 401 },
+  { name: 'Digital', medium: 'DIGITAL', sortOrder: 501 },
+];
+
 async function main() {
   console.log('Seeding database...');
 
@@ -140,20 +150,49 @@ async function main() {
     await seedOrdered(FORECAST_RADIO, 'RADIO', 101);
     // Single "total" bucket per non-TV/Radio category — the forecast entry shows
     // one total input for these instead of every channel.
-    const TOTAL_BUCKETS = [
-      { name: 'Print', medium: 'PRINT', sortOrder: 201 },
-      { name: 'Cinema', medium: 'CINEMA', sortOrder: 301 },
-      { name: 'OOH', medium: 'OOH', sortOrder: 401 },
-      { name: 'Digital', medium: 'DIGITAL', sortOrder: 501 },
-    ];
+    const bucketRows = [];
     for (const b of TOTAL_BUCKETS) {
-      await prisma.channelMaster.upsert({
+      const row = await prisma.channelMaster.upsert({
         where: { name: b.name },
         update: { sortOrder: b.sortOrder, medium: b.medium, isActive: true },
         create: { name: b.name, medium: b.medium, aliases: [], isActive: true, sortOrder: b.sortOrder, mediaGroupId: fallbackGroup.id, createdById: superAdmin.id },
       });
+      bucketRows.push(row);
     }
     console.log(`Forecasting channel order set: ${FORECAST_TV.length} TV, ${FORECAST_RADIO.length} radio, ${TOTAL_BUCKETS.length} category totals`);
+
+    // ── Backfill mis-bucketed forecasts ──────────────────────────────────────
+    // Before the zero-usage reconcile (below) was taught to exempt these bucket
+    // channels by name, they could be deactivated and the forecast entry form
+    // (listForecastChannels) would silently fall back to whatever other active
+    // channel happened to be first in that medium — e.g. a "Digital Total"
+    // entry got saved against "ADA Derana - Digital" instead of the "Digital"
+    // bucket. Repoint any such stray MonthlyForecast rows onto the real bucket
+    // channel for their medium (merging amounts if both already exist for the
+    // same client/month, since the unique constraint is on
+    // [year, month, clientId, channelMasterId]).
+    let backfilled = 0;
+    for (const bucket of bucketRows) {
+      const stray = await prisma.monthlyForecast.findMany({
+        where: { channelMasterId: { not: bucket.id }, channelMaster: { medium: bucket.medium } },
+      });
+      for (const row of stray) {
+        const existing = await prisma.monthlyForecast.findUnique({
+          where: { year_month_clientId_channelMasterId: { year: row.year, month: row.month, clientId: row.clientId, channelMasterId: bucket.id } },
+        });
+        if (existing) {
+          await prisma.monthlyForecast.update({
+            where: { id: existing.id },
+            data: { amountMillions: Number(existing.amountMillions) + Number(row.amountMillions) },
+          });
+          await prisma.monthlyForecast.delete({ where: { id: row.id } });
+        } else {
+          await prisma.monthlyForecast.update({ where: { id: row.id }, data: { channelMasterId: bucket.id } });
+        }
+        backfilled++;
+      }
+    }
+    if (backfilled) console.log(`Forecast bucket backfill: ${backfilled} stray row(s) repointed to category totals`);
   }
 
   // ── One-time replace: remove the old default master data ─────────────────────
@@ -323,12 +362,23 @@ async function main() {
   // deleting it. Admin's Channels tab still lists it (with an Inactive badge) and
   // can re-toggle it active at any time. Bulk import resolves channels by name
   // regardless of isActive, so this never blocks logging spend against it later.
+  // The Print/Cinema/OOH/Digital "category total" bucket channels (TOTAL_BUCKETS
+  // above) are deliberately never logged against via ScheduleLog — they only
+  // ever receive MonthlyForecast rows — so they're exempted by name here. Without
+  // this they'd get deactivated, and listForecastChannels' name-based bucket
+  // lookup would silently fall back to an unrelated active channel in that
+  // medium, mis-attributing the category-total forecast to the wrong channel.
   try {
-    const deactivated = await prisma.$executeRaw`
-      UPDATE channel_masters cm SET is_active = false
-      WHERE cm.is_active = true
-        AND NOT EXISTS (SELECT 1 FROM schedule_logs sl WHERE sl.channel_master_id = cm.id)`;
-    console.log(`Zero-usage channel reconcile: ${deactivated} channel(s) deactivated`);
+    const exemptNames = TOTAL_BUCKETS.map(b => b.name);
+    const deactivated = await prisma.channelMaster.updateMany({
+      where: {
+        isActive: true,
+        name: { notIn: exemptNames },
+        scheduleLogs: { none: {} },
+      },
+      data: { isActive: false },
+    });
+    console.log(`Zero-usage channel reconcile: ${deactivated.count} channel(s) deactivated`);
   } catch (e) {
     console.warn('Zero-usage channel reconcile skipped:', e.message);
   }
