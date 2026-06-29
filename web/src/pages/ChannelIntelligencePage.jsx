@@ -30,6 +30,7 @@ const fmtMonth = ym => {
   return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 };
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MediumBadge = ({ medium }) => {
   const c = { TV: ['#1e3a5f', '#dbeafe'], RADIO: ['#E85D24', '#fff5f0'], PRINT: ['#059669', '#ecfdf5'], DIGITAL: ['#6B3FB5', '#efe9fb'], CINEMA: ['#C2185B', '#fce7f0'], OOH: ['#0E7490', '#e0f4f8'] };
   const [fg, bg] = c[medium] || ['#6b7280', '#f3f4f6'];
@@ -54,7 +55,7 @@ export default function ChannelIntelligencePage() {
   const id = parseInt(channelMasterId);
 
   const [summary, setSummary] = useState(null);
-  const [monthly, setMonthly] = useState([]);
+  const [monthly, setMonthly] = useState({ years: [], data: [] });
   const [clients, setClients] = useState([]);
   const [propGroups, setPropGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +71,12 @@ export default function ChannelIntelligencePage() {
 
   const [agencyMonthly, setAgencyMonthly] = useState({ agencies: [], data: [] });
 
+  // Monthly Spend Trend drill-down: which (year, month) point the user clicked
+  const [monthDetail, setMonthDetail] = useState(null); // { year, month, total, clients } | null
+  const [monthDetailLoading, setMonthDetailLoading] = useState(false);
+  const [monthDetailError, setMonthDetailError] = useState('');
+  const [expandedDetailClients, setExpandedDetailClients] = useState({});
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -81,7 +88,7 @@ export default function ChannelIntelligencePage() {
           api.get(`/analytics/channel/${id}/agency-monthly`),
         ]);
         setSummary(sumRes.data);
-        setMonthly(Array.isArray(monthRes.data) ? monthRes.data : []);
+        setMonthly(monthRes.data && Array.isArray(monthRes.data.data) ? monthRes.data : { years: [], data: [] });
         setClients(Array.isArray(clientRes.data) ? clientRes.data : []);
         const raw = Array.isArray(propRes.data) ? propRes.data : [];
         setPropGroups(raw);
@@ -144,18 +151,28 @@ export default function ChannelIntelligencePage() {
     return [...s].filter(Boolean).sort();
   }, [propGroups]);
 
-  // Derived monthly insights
+  // Derived monthly insights — one line per year, so totals/peak are computed
+  // across every (year, month) cell rather than a single flat series.
   const monthlyInsights = useMemo(() => {
-    if (!monthly.length) return null;
-    const vals = monthly.map(m => Number(m.scheduleValue || 0));
-    const total = vals.reduce((a, b) => a + b, 0);
-    const peakIdx = vals.indexOf(Math.max(...vals));
+    const years = monthly.years || [];
+    const rows = monthly.data || [];
+    if (!years.length) return null;
+    let total = 0, count = 0, peak = null;
+    for (const row of rows) {
+      for (const y of years) {
+        const v = Number(row[y] || 0);
+        if (v <= 0) continue;
+        total += v;
+        count++;
+        if (!peak || v > peak.value) peak = { year: y, month: row.label, value: v };
+      }
+    }
     return {
-      months: monthly.length,
+      months: count,
       total,
-      avg: total / monthly.length,
-      peakMonth: monthly[peakIdx]?.month,
-      peakValue: vals[peakIdx] || 0,
+      avg: count ? total / count : 0,
+      peakMonth: peak ? `${peak.month} ${peak.year}` : null,
+      peakValue: peak?.value || 0,
     };
   }, [monthly]);
 
@@ -165,16 +182,28 @@ export default function ChannelIntelligencePage() {
     dir: s.field === field && s.dir === 'desc' ? 'asc' : 'desc',
   }));
 
+  const openMonthDetail = async (monthNum, year) => {
+    setMonthDetailLoading(true);
+    setMonthDetailError('');
+    setExpandedDetailClients({});
+    setMonthDetail({ year, month: monthNum, total: 0, clients: [], label: `${MONTH_NAMES[monthNum - 1]} ${year}` });
+    try {
+      const res = await api.get(`/analytics/channel/${id}/month-detail`, { params: { year, month: monthNum } });
+      setMonthDetail({ ...res.data, label: `${MONTH_NAMES[monthNum - 1]} ${year}` });
+    } catch {
+      setMonthDetailError('Failed to load schedule logs for this month.');
+    } finally {
+      setMonthDetailLoading(false);
+    }
+  };
+  const toggleDetailClient = clientId => setExpandedDetailClients(p => ({ ...p, [clientId]: !p[clientId] }));
+
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading channel intelligence…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
 
   const ch = summary?.channel || {};
-  const chartData = monthly.map(m => ({
-    ...m,
-    label: fmtMonth(m.month),
-    scheduleValue: Number(m.scheduleValue || 0),
-    withVat: Number(m.scheduleValueWithVat || 0),
-  }));
+  const chartData = monthly.data || [];
+  const chartYears = monthly.years || [];
 
   // One spend card per year that has data (auto-expands as new years arrive).
   const yearCards = (summary?.byYear?.length
@@ -191,7 +220,7 @@ export default function ChannelIntelligencePage() {
     { label: 'Active Clients', value: summary?.activeClientsCount ?? 0, icon: 'users' },
     { label: 'Total Log Entries', value: (summary?.totalEntries ?? 0).toLocaleString(), icon: 'database' },
     { label: 'Avg Monthly Spend', value: monthlyInsights ? fmtLKR(monthlyInsights.avg) : '-', icon: 'activity' },
-    { label: 'Peak Month', value: monthlyInsights?.peakMonth ? fmtMonth(monthlyInsights.peakMonth) : '-', sub: monthlyInsights ? fmtLKR(monthlyInsights.peakValue) : '', icon: 'arrowUp' },
+    { label: 'Peak Month', value: monthlyInsights?.peakMonth || '-', sub: monthlyInsights ? fmtLKR(monthlyInsights.peakValue) : '', icon: 'arrowUp' },
     { label: 'Media Group', value: ch.mediaGroup || '-', icon: 'grid' },
   ];
 
@@ -252,11 +281,11 @@ export default function ChannelIntelligencePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           <div>
             <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Committed schedule value across all recorded months</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>One line per year, Jan-Dec — click a dot to see the schedule logs behind that month</p>
           </div>
           {monthlyInsights && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span className="ci-meta">{monthlyInsights.months} months</span>
+              <span className="ci-meta">{monthlyInsights.months} active months</span>
               <span className="ci-meta">Total {fmtLKR(monthlyInsights.total)}</span>
             </div>
           )}
@@ -269,22 +298,112 @@ export default function ChannelIntelligencePage() {
         ) : (
           <ResponsiveContainer width="100%" height={340}>
             <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id="ciFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0A1729" stopOpacity={0.12} />
-                  <stop offset="100%" stopColor="#0A1729" stopOpacity={0} />
-                </linearGradient>
-              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} interval="preserveStartEnd" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
               <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
               <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={l => l} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="scheduleValue" name="Schedule Value" stroke="#0A1729" strokeWidth={2.4} dot={{ r: 2 }} activeDot={{ r: 5 }} fill="url(#ciFill)" />
+              {chartYears.map((y, i) => {
+                const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
+                return (
+                  <Line
+                    key={y}
+                    type="monotone"
+                    dataKey={String(y)}
+                    name={String(y)}
+                    stroke={color}
+                    strokeWidth={2.4}
+                    dot={(dotProps) => {
+                      const { cx, cy, payload, index } = dotProps;
+                      if (payload[y] == null) return null;
+                      return (
+                        <circle
+                          key={`${y}-${index}`}
+                          cx={cx} cy={cy} r={3.5}
+                          fill={color} stroke="#fff" strokeWidth={1.5}
+                          style={{ cursor: payload[y] > 0 ? 'pointer' : 'default' }}
+                          onClick={() => payload[y] > 0 && openMonthDetail(payload.monthNum, y)}
+                        />
+                      );
+                    }}
+                    activeDot={{ r: 6, style: { cursor: 'pointer' }, onClick: (_, p) => p?.payload?.[y] > 0 && openMonthDetail(p.payload.monthNum, y) }}
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Month Detail Drill-down Modal */}
+      {monthDetail && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setMonthDetail(null); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-head">
+              <h2>{monthDetail.label} — Schedule Logs</h2>
+              <button className="act-btn" onClick={() => setMonthDetail(null)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ overflow: 'auto', flex: 1 }}>
+              {monthDetailLoading ? (
+                <OrbitLoader label="Loading schedule logs…" />
+              ) : monthDetailError ? (
+                <div style={{ color: 'var(--red-600)', fontSize: 13 }}>{monthDetailError}</div>
+              ) : monthDetail.clients.length === 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No schedule logs for this month.</div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{monthDetail.clients.length} client{monthDetail.clients.length === 1 ? '' : 's'}</span>
+                    <span style={{ fontSize: 16, fontWeight: 750, fontFamily: "'Spline Sans Mono', monospace" }}>{fmtLKR(monthDetail.total)}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {monthDetail.clients.map(c => {
+                      const expanded = !!expandedDetailClients[c.clientId];
+                      return (
+                        <div key={c.clientId} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
+                          <div
+                            onClick={() => toggleDetailClient(c.clientId)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', cursor: 'pointer', background: '#F8F9FB' }}
+                          >
+                            <Icon name={expanded ? 'chevD' : 'chevR'} size={13} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{c.clientName}</div>
+                              {c.agencyName && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div>}
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Spline Sans Mono', monospace" }}>{fmtLKR(c.value)}</span>
+                          </div>
+                          {expanded && (
+                            <table className="tbl" style={{ margin: 0 }}>
+                              <thead>
+                                <tr>
+                                  <th>RO Number</th>
+                                  <th>Brand</th>
+                                  <th style={{ textAlign: 'right' }}>Schedule Value</th>
+                                  <th style={{ textAlign: 'right' }}>With VAT</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {c.logs.map(l => (
+                                  <tr key={l.id}>
+                                    <td style={{ fontSize: 12.5 }}>{l.roNumber || '-'}</td>
+                                    <td style={{ fontSize: 12.5 }}>{l.brandName || '-'}</td>
+                                    <td className="mono" style={{ textAlign: 'right', fontSize: 12.5 }}>{fmtLKR(l.scheduleValue)}</td>
+                                    <td className="mono" style={{ textAlign: 'right', fontSize: 12.5 }}>{fmtLKR(l.scheduleValueWithVat)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Spend by Agency over time */}
       {agencyMonthly.agencies.length > 0 && (

@@ -585,14 +585,87 @@ export async function getChannelMonthlySpend(req, res) {
       orderBy: { scheduleMonth: 'asc' },
     });
 
-    return res.json(rows.map(r => ({
-      month: r.scheduleMonth,
-      scheduleValue: safeNum(r._sum.scheduleValue) || 0,
-      scheduleValueWithVat: safeNum(r._sum.scheduleValueWithVat) || 0,
-    })));
+    // Pivot into one row per calendar month (Jan-Dec) with a column per year,
+    // so the trend chart can plot one line per year against a Jan-Dec X axis.
+    const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const byMonth = MONTH_LABELS.map((label, i) => ({ monthNum: i + 1, label }));
+    const years = new Set();
+    for (const r of rows) {
+      const [yStr, mStr] = String(r.scheduleMonth).split('-');
+      const y = Number(yStr), m = Number(mStr);
+      if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) continue;
+      years.add(y);
+      byMonth[m - 1][y] = safeNum(r._sum.scheduleValue) || 0;
+    }
+    const sortedYears = [...years].sort((a, b) => a - b);
+    for (const row of byMonth) for (const y of sortedYears) if (row[y] == null) row[y] = 0;
+
+    return res.json({ years: sortedYears, data: byMonth });
   } catch (error) {
     console.error('getChannelMonthlySpend error:', error);
     return res.status(500).json({ error: 'Failed to get monthly spend', detail: error.message });
+  }
+}
+
+// Drill-down for a single (year, month) point on the Monthly Spend Trend chart —
+// every schedule log that makes up that month's total, grouped by client.
+export async function getChannelMonthDetail(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const year = parseInt(req.query.year);
+    const month = parseInt(req.query.month);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      return res.status(400).json({ error: 'year and month query params are required' });
+    }
+    const scheduleMonth = `${year}-${String(month).padStart(2, '0')}`;
+    const base = { channelMasterId, scheduleMonth, isDeleted: false };
+    const cids = await clientScope(req.user);
+    if (cids) base.clientId = { in: cids };
+
+    const logs = await prisma.scheduleLog.findMany({
+      where: base,
+      select: {
+        id: true,
+        roNumber: true,
+        brandName: true,
+        scheduleValue: true,
+        scheduleValueWithVat: true,
+        client: { select: { id: true, name: true } },
+        agency: { select: { name: true } },
+      },
+      orderBy: { scheduleValue: 'desc' },
+    });
+
+    const clientsById = new Map();
+    let total = 0;
+    for (const l of logs) {
+      const v = safeNum(l.scheduleValue) || 0;
+      total += v;
+      if (!clientsById.has(l.client.id)) {
+        clientsById.set(l.client.id, {
+          clientId: l.client.id,
+          clientName: l.client.name,
+          agencyName: l.agency?.name || null,
+          value: 0,
+          logs: [],
+        });
+      }
+      const c = clientsById.get(l.client.id);
+      c.value += v;
+      c.logs.push({
+        id: l.id,
+        roNumber: l.roNumber,
+        brandName: l.brandName,
+        scheduleValue: v,
+        scheduleValueWithVat: safeNum(l.scheduleValueWithVat) || 0,
+      });
+    }
+    const clients = [...clientsById.values()].sort((a, b) => b.value - a.value);
+
+    return res.json({ year, month, total, clients });
+  } catch (error) {
+    console.error('getChannelMonthDetail error:', error);
+    return res.status(500).json({ error: 'Failed to get month detail', detail: error.message });
   }
 }
 

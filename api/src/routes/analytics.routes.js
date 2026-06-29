@@ -4,6 +4,7 @@ import { checkClientAccess } from '../middleware/access.js';
 import {
   getChannelSummary,
   getChannelMonthlySpend,
+  getChannelMonthDetail,
   getChannelAgencyMonthly,
   getChannelClients,
   getChannelPropertyHistory,
@@ -27,6 +28,7 @@ const router = Router();
 // Channel Intelligence
 router.get('/channel/:channelMasterId/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelSummary);
 router.get('/channel/:channelMasterId/monthly-spend', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelMonthlySpend);
+router.get('/channel/:channelMasterId/month-detail', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelMonthDetail);
 router.get('/channel/:channelMasterId/agency-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelAgencyMonthly);
 router.get('/channel/:channelMasterId/clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelClients);
 router.get('/channel/:channelMasterId/property-history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelPropertyHistory);
