@@ -25,6 +25,28 @@ export default function ForecastingPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
+  // SUPER_ADMIN can target any month (e.g. backfill June so it's there to
+  // copy into July) instead of being locked to the upcoming month.
+  const [anchorMonth, setAnchorMonth] = useState(null); // the true "next month", fetched once
+  const [selectedPeriod, setSelectedPeriod] = useState(null); // admin override, or null = use anchor
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/forecasting/next-month').then(r => setAnchorMonth({ year: r.data.year, month: r.data.month })).catch(() => {});
+  }, [isAdmin]);
+
+  const monthOptions = useMemo(() => {
+    if (!anchorMonth) return [];
+    const opts = [];
+    let y = anchorMonth.year, m = anchorMonth.month;
+    for (let i = 0; i < 13; i++) {
+      opts.push({ year: y, month: m });
+      m -= 1;
+      if (m < 1) { m = 12; y -= 1; }
+    }
+    return opts;
+  }, [anchorMonth]);
+
   // forecast-vs-actual report (admins/managers)
   const [view, setView] = useState('clients'); // 'clients' | 'variance'
   const [variance, setVariance] = useState(null);
@@ -50,12 +72,15 @@ export default function ForecastingPage() {
 
   const fetchClients = () => {
     setLoading(true);
-    api.get('/forecasting/clients', { params: agencyFilter ? { agencyId: agencyFilter } : {} })
+    const params = {};
+    if (agencyFilter) params.agencyId = agencyFilter;
+    if (isAdmin && selectedPeriod) { params.year = selectedPeriod.year; params.month = selectedPeriod.month; }
+    api.get('/forecasting/clients', { params })
       .then(r => { setClients(r.data.clients || []); setPeriod({ year: r.data.year, month: r.data.month }); })
       .catch(() => setError('Failed to load clients.'))
       .finally(() => setLoading(false));
   };
-  useEffect(fetchClients, [agencyFilter]);
+  useEffect(fetchClients, [agencyFilter, selectedPeriod]);
 
   useEffect(() => {
     if (view !== 'variance') return;
@@ -91,9 +116,11 @@ export default function ForecastingPage() {
         const { data } = await api.get('/forecasting/history', { params: { clientId: client.id } });
         setHistory(data.items || []);
       } else {
+        const entryParams = { clientId: client.id };
+        if (isAdmin && selectedPeriod) { entryParams.year = selectedPeriod.year; entryParams.month = selectedPeriod.month; }
         const [chRes, enRes] = await Promise.all([
           api.get('/forecasting/channels'),
-          api.get('/forecasting/entry', { params: { clientId: client.id } }),
+          api.get('/forecasting/entry', { params: entryParams }),
         ]);
         setCategories(chRes.data.categories || []);
         const seed = {};
@@ -116,7 +143,9 @@ export default function ForecastingPage() {
   const copyLast = async () => {
     setCopying(true); setEntryError(''); setSavedMsg('');
     try {
-      const { data } = await api.get('/forecasting/previous', { params: { clientId: active.id } });
+      const prevParams = { clientId: active.id };
+      if (isAdmin && selectedPeriod) { prevParams.year = selectedPeriod.year; prevParams.month = selectedPeriod.month; }
+      const { data } = await api.get('/forecasting/previous', { params: prevParams });
       if (!data.found) { setEntryError('No previous forecast to copy yet.'); return; }
       const seed = {};
       data.items.forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
@@ -185,6 +214,24 @@ export default function ForecastingPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {isAdmin && monthOptions.length > 0 && (
+            <select
+              className="select"
+              value={selectedPeriod ? `${selectedPeriod.year}-${selectedPeriod.month}` : `${anchorMonth.year}-${anchorMonth.month}`}
+              onChange={e => {
+                const [y, m] = e.target.value.split('-').map(Number);
+                setSelectedPeriod((y === anchorMonth.year && m === anchorMonth.month) ? null : { year: y, month: m });
+              }}
+              style={{ maxWidth: 200 }}
+              title="Forecast month to enter/view — pick a past month to backfill it, then copy it forward"
+            >
+              {monthOptions.map(o => (
+                <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>
+                  {MONTHS[o.month - 1]} {o.year}{o.year === anchorMonth.year && o.month === anchorMonth.month ? ' (upcoming)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
           {(isAdmin || isManager) && agencies.length > 1 && (
             <select className="select" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={{ maxWidth: 220 }}>
               <option value="">All agencies</option>

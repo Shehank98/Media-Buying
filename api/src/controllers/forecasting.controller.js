@@ -3,11 +3,14 @@ import { getAccessibleClientIds } from '../middleware/access.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
-// Next calendar month — group heads forecast the upcoming month only.
+// The month group heads forecast: the current calendar month through the
+// 14th, then it rolls to next month from the 15th onward (e.g. through May
+// 14th shows May; from May 15th it shows June).
 function nextMonth() {
   const d = new Date();
+  const rollOver = d.getDate() >= 15;
   d.setDate(1);
-  d.setMonth(d.getMonth() + 1);
+  if (rollOver) d.setMonth(d.getMonth() + 1);
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
@@ -15,6 +18,17 @@ function nextMonth() {
 async function accessibleClientIds(user) {
   if (user.role === 'SUPER_ADMIN') return null;
   return getAccessibleClientIds(user.id, user.role);
+}
+
+// SUPER_ADMIN may target any month (e.g. backfilling June so it can be
+// copied into July) via ?year=&month=; everyone else is locked to next month.
+function resolveTargetMonth(req) {
+  if (req.user.role === 'SUPER_ADMIN') {
+    const y = parseInt(req.query.year);
+    const m = parseInt(req.query.month);
+    if (y >= 2000 && m >= 1 && m <= 12) return { year: y, month: m };
+  }
+  return nextMonth();
 }
 
 export async function getNextMonth(req, res) {
@@ -128,7 +142,7 @@ export async function listForecastClients(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    const { year, month } = nextMonth();
+    const { year, month } = resolveTargetMonth(req);
     const submitted = await prisma.monthlyForecast.findMany({
       where: { year, month, clientId: { in: clients.map(c => c.id) } },
       select: { clientId: true },
@@ -197,7 +211,7 @@ export async function getForecastEntry(req, res) {
     const ids = await accessibleClientIds(user);
     if (ids && !ids.includes(clientId)) return res.status(403).json({ error: 'No access to this client' });
 
-    const { year, month } = nextMonth();
+    const { year, month } = resolveTargetMonth(req);
     const rows = await prisma.monthlyForecast.findMany({
       where: { clientId, year, month },
       select: { channelMasterId: true, amountMillions: true, notes: true },
@@ -223,7 +237,7 @@ export async function getPreviousForecast(req, res) {
     const ids = await accessibleClientIds(user);
     if (ids && !ids.includes(clientId)) return res.status(403).json({ error: 'No access to this client' });
 
-    const { year, month } = nextMonth();
+    const { year, month } = resolveTargetMonth(req);
     const latest = await prisma.monthlyForecast.findFirst({
       where: { clientId, OR: [{ year: { lt: year } }, { year, month: { lt: month } }] },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
