@@ -124,6 +124,24 @@ export async function checkClientAccess(req, res, next) {
   }
 }
 
+// Used by the per-channel Add Deal feature (ChannelClientDeal id-scoped routes
+// have no clientId in the URL) — resolve the deal's clientId, then delegate to
+// the normal client-access check.
+export async function checkChannelClientDealAccess(req, res, next) {
+  try {
+    const deal = await prisma.channelClientDeal.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: { clientId: true },
+    });
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+
+    req.params.clientId = String(deal.clientId);
+    return checkClientAccess(req, res, next);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to check deal access' });
+  }
+}
+
 export async function getAccessibleAgencyIds(userId, role) {
   if (role === 'SUPER_ADMIN') {
     const agencies = await prisma.agency.findMany({ select: { id: true } });

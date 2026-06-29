@@ -75,15 +75,28 @@ export default function ChannelDetailPage() {
   const [deletingProperty, setDeletingProperty] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Deal terms (discount %/bonus % negotiation history for this client+channel)
+  const [deals, setDeals] = useState([]);
+  const [showDealModal, setShowDealModal] = useState(false);
+  const [editingDeal, setEditingDeal] = useState(null);
+  const [dealForm, setDealForm] = useState({ year: '', discountPct: '', bonusPct: '', notes: '' });
+  const [dealSubmitting, setDealSubmitting] = useState(false);
+  const [dealFormError, setDealFormError] = useState('');
+  const [showDealDeleteModal, setShowDealDeleteModal] = useState(false);
+  const [deletingDeal, setDeletingDeal] = useState(null);
+  const [dealDeleting, setDealDeleting] = useState(false);
+
   const fetchData = async () => {
     try {
-      const [channelRes, propertiesRes] = await Promise.all([
+      const [channelRes, propertiesRes, dealsRes] = await Promise.all([
         api.get(`/channels/${channelId}`),
         api.get(`/channels/${channelId}/properties`),
+        api.get(`/channels/${channelId}/deals`),
       ]);
       setChannel(channelRes.data.channel || channelRes.data);
       const rawProps = propertiesRes.data.properties || propertiesRes.data;
       setProperties(Array.isArray(rawProps) ? rawProps : []);
+      setDeals(Array.isArray(dealsRes.data.deals) ? dealsRes.data.deals : []);
     } catch (err) {
       setError('Failed to load channel details.');
     } finally {
@@ -219,6 +232,79 @@ export default function ChannelDetailPage() {
     }
   };
 
+  const openAddDealModal = () => {
+    setEditingDeal(null);
+    setDealForm({ year: new Date().getFullYear().toString(), discountPct: '', bonusPct: '', notes: '' });
+    setDealFormError('');
+    setShowDealModal(true);
+  };
+
+  const openEditDealModal = (deal) => {
+    setEditingDeal(deal);
+    setDealForm({
+      year: deal.year?.toString() || '',
+      discountPct: deal.discountPct != null ? deal.discountPct.toString() : '',
+      bonusPct: deal.bonusPct != null ? deal.bonusPct.toString() : '',
+      notes: deal.notes || '',
+    });
+    setDealFormError('');
+    setShowDealModal(true);
+  };
+
+  const handleDealSubmit = async (e) => {
+    e.preventDefault();
+    setDealFormError('');
+
+    if (!editingDeal && (!dealForm.year || isNaN(Number(dealForm.year)))) {
+      setDealFormError('Please enter a valid year.');
+      return;
+    }
+    if (dealForm.discountPct === '' || isNaN(Number(dealForm.discountPct)) || Number(dealForm.discountPct) < 0) {
+      setDealFormError('Please enter a valid discount %.');
+      return;
+    }
+    if (dealForm.bonusPct === '' || isNaN(Number(dealForm.bonusPct)) || Number(dealForm.bonusPct) < 0) {
+      setDealFormError('Please enter a valid bonus %.');
+      return;
+    }
+
+    setDealSubmitting(true);
+    try {
+      const payload = {
+        discountPct: Number(dealForm.discountPct),
+        bonusPct: Number(dealForm.bonusPct),
+        notes: dealForm.notes,
+      };
+      if (editingDeal) {
+        await api.put(`/channels/deals/${editingDeal.id}`, payload);
+      } else {
+        payload.year = Number(dealForm.year);
+        await api.post(`/channels/${channelId}/deals`, payload);
+      }
+      setShowDealModal(false);
+      await fetchData();
+    } catch (err) {
+      setDealFormError(err.response?.data?.error || 'Failed to save deal.');
+    } finally {
+      setDealSubmitting(false);
+    }
+  };
+
+  const handleDealDelete = async () => {
+    if (!deletingDeal) return;
+    setDealDeleting(true);
+    try {
+      await api.delete(`/channels/deals/${deletingDeal.id}`);
+      setShowDealDeleteModal(false);
+      setDeletingDeal(null);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete deal.');
+    } finally {
+      setDealDeleting(false);
+    }
+  };
+
   const openHistory = async (property) => {
     setPanel(property);
     setHistoryLoading(true);
@@ -274,10 +360,21 @@ export default function ChannelDetailPage() {
           </div>
         </div>
         {canModify(user?.role) && (
-          <button className="btn btn-primary" onClick={openAddModal}>
-            <Icon name="plus" size={16} />
-            Add property
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={openAddDealModal}
+              disabled={!channel?.channelMasterId}
+              title={!channel?.channelMasterId ? 'This channel is not linked to a master channel, so deal terms cannot be recorded' : undefined}
+            >
+              <Icon name="money" size={16} />
+              Add deal
+            </button>
+            <button className="btn btn-primary" onClick={openAddModal}>
+              <Icon name="plus" size={16} />
+              Add property
+            </button>
+          </div>
         )}
       </div>
 
@@ -367,6 +464,61 @@ export default function ChannelDetailPage() {
           </div>
         </>
       )}
+
+      {/* Deal terms (discount %/bonus % negotiation history) */}
+      <div style={{ marginTop: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Deal terms</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{deals.length} year{deals.length === 1 ? '' : 's'} recorded</div>
+        </div>
+        {deals.length === 0 ? (
+          <div style={{ padding: '28px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: 13.5, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>
+            No deal terms recorded yet for this client on this channel.
+          </div>
+        ) : (
+          <div className="tbl-wrap" style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th className="num">Discount %</th>
+                  <th className="num">Bonus %</th>
+                  <th>Notes</th>
+                  <th>Added by</th>
+                  {(canModify(user?.role) || ['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role)) && <th></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {deals.map((deal) => {
+                  const canEditDeal = canModify(user?.role);
+                  const canDeleteDeal = ['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role);
+                  return (
+                    <tr key={deal.id}>
+                      <td style={{ fontWeight: 700 }}>{deal.year}</td>
+                      <td className="num">{Number(deal.discountPct).toFixed(1)}%</td>
+                      <td className="num">{Number(deal.bonusPct).toFixed(1)}%</td>
+                      <td style={{ color: 'var(--muted)' }}>{deal.notes || '-'}</td>
+                      <td>{deal.createdByName || '-'}</td>
+                      {(canEditDeal || canDeleteDeal) && (
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                            {canEditDeal && (
+                              <button className="act-btn" title="Edit" onClick={() => openEditDealModal(deal)}><Icon name="edit" size={14} /></button>
+                            )}
+                            {canDeleteDeal && (
+                              <button className="act-btn" title="Delete" style={{ color: 'var(--red-600,#dc2626)' }} onClick={() => { setDeletingDeal(deal); setShowDealDeleteModal(true); }}><Icon name="trash" size={14} /></button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* History slide-out panel */}
       <div className={`scrim${panel ? ' show' : ''}`} onClick={() => setPanel(null)} />
@@ -667,6 +819,141 @@ export default function ChannelDetailPage() {
               <button type="button" className="btn btn-ghost" onClick={() => { setShowDeleteModal(false); setDeletingProperty(null); }}>Cancel</button>
               <button className="btn" style={{ background: 'var(--red-600, #dc2626)', color: '#fff' }} disabled={deleting} onClick={handleDelete}>
                 {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Deal Modal */}
+      {showDealModal && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) setShowDealModal(false); }}>
+          <div className="modal" style={{ width: 480, position: 'relative', overflow: 'hidden' }}>
+            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #E85D24, rgba(232,93,36,.12) 70%, transparent)' }} />
+            <div className="modal-head" style={{ alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #FDF1EB, #fff)', color: '#D9521C', display: 'grid', placeItems: 'center', boxShadow: 'inset 0 0 0 1px #D9521C22', flex: 'none' }}>
+                  <Icon name={editingDeal ? 'edit' : 'money'} size={19} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>
+                    {editingDeal ? 'Edit deal' : 'Add deal'}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+                    {clientName} &middot; {channel?.name}
+                  </div>
+                </div>
+              </div>
+              <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => setShowDealModal(false)}>
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleDealSubmit}>
+              <div className="modal-body">
+                {dealFormError && (
+                  <div className="field-err" style={{ marginBottom: 14, fontSize: 12.5, padding: '8px 10px', background: 'var(--red-100, #fee)', borderRadius: 6 }}>
+                    <Icon name="alert" size={14} />
+                    {dealFormError}
+                  </div>
+                )}
+
+                <div className="field">
+                  <label className="field-label">
+                    Year<span className="req">*</span>
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="1"
+                    placeholder="e.g. 2025"
+                    value={dealForm.year}
+                    disabled={!!editingDeal}
+                    onChange={(e) => setDealForm((prev) => ({ ...prev, year: e.target.value }))}
+                    style={editingDeal ? { background: 'var(--bg-sunken)' } : undefined}
+                  />
+                  {editingDeal && (
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                      To record a different year, use "Add deal" instead — editing only updates this year's terms.
+                    </div>
+                  )}
+                </div>
+
+                <div className="field-grid2">
+                  <div className="field">
+                    <label className="field-label">
+                      Discount %<span className="req">*</span>
+                    </label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="0"
+                      value={dealForm.discountPct}
+                      onChange={(e) => setDealForm((prev) => ({ ...prev, discountPct: e.target.value }))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">
+                      Bonus %<span className="req">*</span>
+                    </label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="0"
+                      value={dealForm.bonusPct}
+                      onChange={(e) => setDealForm((prev) => ({ ...prev, bonusPct: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Notes</label>
+                  <textarea
+                    className="textarea"
+                    rows={3}
+                    placeholder="Optional notes..."
+                    value={dealForm.notes}
+                    onChange={(e) => setDealForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowDealModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={dealSubmitting}>
+                  <Icon name="check" size={16} />
+                  {dealSubmitting ? 'Saving...' : editingDeal ? 'Save changes' : 'Add deal'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Deal Confirmation Modal */}
+      {showDealDeleteModal && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) { setShowDealDeleteModal(false); setDeletingDeal(null); } }}>
+          <div className="modal" style={{ width: 420 }}>
+            <div className="modal-head">
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 720, color: 'var(--ink)', letterSpacing: '-.3px' }}>Delete deal</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>{deletingDeal?.year}</div>
+              </div>
+              <button className="icon-btn" style={{ border: 'none', background: 'var(--bg-sunken)' }} onClick={() => { setShowDealDeleteModal(false); setDeletingDeal(null); }}>
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--ink-soft)', fontSize: 13.5, margin: 0, lineHeight: 1.6 }}>
+                Are you sure you want to delete the <strong style={{ color: 'var(--ink)' }}>{deletingDeal?.year}</strong> deal terms? This action cannot be undone.
+              </p>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-ghost" onClick={() => { setShowDealDeleteModal(false); setDeletingDeal(null); }}>Cancel</button>
+              <button className="btn" style={{ background: 'var(--red-600, #dc2626)', color: '#fff' }} disabled={dealDeleting} onClick={handleDealDelete}>
+                {dealDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
