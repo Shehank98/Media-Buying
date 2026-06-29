@@ -114,6 +114,19 @@ function AchievementSection({
   const gcvTitle = groupContributionVariance?.priorMonthsCount > 0
     ? `Average of prior months vs ${groupContributionVariance.latestMonthLabel} · by team head's client portfolio · LKR millions`
     : 'Not enough prior months in the current data year to compute an average yet';
+  // Renders the %-diff label above whichever bar of the pair is shorter, so the
+  // label never collides with the taller bar (matches the reference slide layout).
+  const diffLabelFor = (barKey) => ({ x, y, width, payload }) => {
+    if (payload.avgPrior == null || payload.latest == null) return null;
+    const isLowerBar = barKey === 'avgPrior' ? payload.avgPrior <= payload.latest : payload.latest < payload.avgPrior;
+    if (!isLowerBar) return null;
+    const diff = payload.diffPct;
+    return (
+      <text x={Number(x) + Number(width) / 2} y={Number(y) - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={diff >= 0 ? '#15814B' : '#C5391F'}>
+        {diff == null ? '' : `${diff > 0 ? '+' : ''}${diff}%`}
+      </text>
+    );
+  };
 
   const mabyYears = monthlyAvgByYear?.years || [];
 
@@ -217,30 +230,22 @@ function AchievementSection({
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Group Contribution — Average vs Latest Month</div>
         <div className="chart-card-sub">{gcvTitle}</div>
-        {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
-          <ResponsiveContainer width="100%" height={Math.max(240, gcvGroups.length * 56)}>
-            <BarChart data={gcvGroups} layout="vertical" margin={{ top: 6, right: 70, bottom: 6, left: 8 }} barCategoryGap="30%">
-              <CartesianGrid horizontal={false} stroke="var(--border)" />
-              <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
-              <YAxis
-                type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }}
-                tickFormatter={(v, i) => gcvGroups[i]?.headName ? `${v} (${gcvGroups[i].headName})` : v}
+        {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={300} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={gcvGroups} margin={{ top: 30, right: 20, bottom: 30, left: 6 }} barCategoryGap="22%">
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis
+                dataKey="name" tick={{ fontSize: 11, fill: 'var(--ink)' }} interval={0}
+                tickFormatter={(v, i) => gcvGroups[i]?.headName || v}
               />
+              <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
               <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="avgPrior" name="Prior Months Avg" fill="#9A5B00" radius={[0, 5, 5, 0]} barSize={12} />
-              <Bar dataKey="latest" name={groupContributionVariance?.latestMonthLabel || 'Latest'} fill="#1F5BB5" radius={[0, 5, 5, 0]} barSize={12}>
-                <LabelList
-                  dataKey="diffPct" position="right"
-                  content={({ x, y, width, height, value }) => (
-                    <text
-                      x={Number(x) + Number(width) + 6} y={Number(y) + Number(height) / 2} dy={4}
-                      fontSize={11} fontWeight={700} fill={value >= 0 ? '#15814B' : '#C5391F'}
-                    >
-                      {value == null ? '' : `${value > 0 ? '+' : ''}${value}%`}
-                    </text>
-                  )}
-                />
+              <Bar dataKey="avgPrior" name="Prior Months Avg" fill="#1F5BB5" radius={[4, 4, 0, 0]} barSize={26}>
+                <LabelList dataKey="diffPct" content={diffLabelFor('avgPrior')} />
+              </Bar>
+              <Bar dataKey="latest" name={groupContributionVariance?.latestMonthLabel || 'Latest'} fill="#E85D24" radius={[4, 4, 0, 0]} barSize={26}>
+                <LabelList dataKey="diffPct" content={diffLabelFor('latest')} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
