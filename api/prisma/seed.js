@@ -295,6 +295,27 @@ async function main() {
     console.warn('Agency reconcile skipped:', e.message);
   }
 
+  // ── Reconcile denormalized medium/mediaGroup ─────────────────────────────────
+  // ScheduleLog stores medium/media_group as a snapshot string at insert time.
+  // updateChannelMaster/mergeChannelMasters keep this in sync going forward, but
+  // channel edits/merges made before that fix shipped left historical rows
+  // stamped with the channel's old medium/media group. Realign every row to its
+  // channel master's CURRENT values. Cheap and idempotent (only touches drifted rows).
+  try {
+    const fixedMedium = await prisma.$executeRaw`
+      UPDATE schedule_logs sl SET medium = cm.medium::text
+      FROM channel_masters cm
+      WHERE sl.channel_master_id = cm.id AND sl.medium <> cm.medium::text`;
+    const fixedMediaGroup = await prisma.$executeRaw`
+      UPDATE schedule_logs sl SET media_group = mg.name
+      FROM channel_masters cm
+      JOIN media_groups mg ON mg.id = cm.media_group_id
+      WHERE sl.channel_master_id = cm.id AND sl.media_group <> mg.name`;
+    console.log(`Medium/media-group reconcile: ${fixedMedium} medium fix(es), ${fixedMediaGroup} media-group fix(es)`);
+  } catch (e) {
+    console.warn('Medium/media-group reconcile skipped:', e.message);
+  }
+
   console.log('\nSeeding complete!');
 }
 
