@@ -62,6 +62,7 @@ export default function ForecastingPage() {
   const [entryError, setEntryError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [history, setHistory] = useState(null);
+  const [channelSearch, setChannelSearch] = useState('');
 
   // request modal
   const [reqType, setReqType] = useState(null); // 'client' | 'channel'
@@ -109,7 +110,7 @@ export default function ForecastingPage() {
 
   const openEntry = async (client) => {
     setActive(client);
-    setEntryError(''); setSavedMsg(''); setHistory(null);
+    setEntryError(''); setSavedMsg(''); setHistory(null); setChannelSearch('');
     setEntryLoading(true);
     try {
       if (readOnly) {
@@ -137,6 +138,23 @@ export default function ForecastingPage() {
   const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); setHistory(null); };
 
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
+
+  const filteredCategories = useMemo(() => {
+    if (!channelSearch.trim()) return categories;
+    const q = channelSearch.toLowerCase();
+    return categories
+      .map(cat => ({ ...cat, channels: cat.channels.filter(ch => ch.name.toLowerCase().includes(q)) }))
+      .filter(cat => cat.channels.length > 0);
+  }, [categories, channelSearch]);
+
+  // Comma-grouped display while typing; raw digits/decimal kept in state.
+  const fmtAmountInput = (v) => (v === undefined || v === null || v === '' || Number.isNaN(Number(v)))
+    ? (v || '')
+    : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const onAmountChange = (chId, raw) => {
+    const cleaned = raw.replace(/,/g, '');
+    if (cleaned === '' || /^\d*\.?\d*$/.test(cleaned)) setCell(chId, 'amount', cleaned);
+  };
 
   // Copy the client's most recent prior forecast into the inputs to edit.
   const [copying, setCopying] = useState(false);
@@ -373,17 +391,23 @@ export default function ForecastingPage() {
                 ) : <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No forecasts submitted yet.</div>
               ) : (
                 <>
-                  {categories.map(cat => (
+                  {categories.length > 0 && (
+                    <div style={{ position: 'relative', marginBottom: 16 }}>
+                      <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                      <input className="input" placeholder="Search channels…" value={channelSearch} onChange={e => setChannelSearch(e.target.value)} style={{ paddingLeft: 32 }} />
+                    </div>
+                  )}
+                  {filteredCategories.map(cat => (
                     <div key={cat.category} style={{ marginBottom: 18 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
                       <table className="tbl" style={{ fontSize: 12.5 }}>
-                        <thead><tr><th style={{ width: '42%' }}>Channel</th><th style={{ width: '26%' }}>Amount (LKR)</th><th>Notes</th></tr></thead>
+                        <thead><tr><th style={{ width: '42%', position: 'static' }}>Channel</th><th style={{ width: '26%', position: 'static' }}>Amount (LKR)</th><th style={{ position: 'static' }}>Notes</th></tr></thead>
                         <tbody>
                           {cat.channels.map(ch => (
                             <tr key={ch.id}>
                               <td>{ch.name}</td>
                               <td>
-                                <input className="input" type="number" step="1000" min="0" value={amounts[ch.id]?.amount || ''} onChange={e => setCell(ch.id, 'amount', e.target.value)} placeholder="e.g. 100000000" style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="text" inputMode="decimal" value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder="e.g. 100,000,000" style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                               <td>
                                 <input className="input" type="text" value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder="optional" style={{ height: 32, fontSize: 12.5 }} />
@@ -395,6 +419,7 @@ export default function ForecastingPage() {
                     </div>
                   ))}
                   {categories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No active channels configured.</div>}
+                  {categories.length > 0 && filteredCategories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No channels match "{channelSearch}".</div>}
                 </>
               )}
             </div>
