@@ -389,7 +389,7 @@ export default function DeepDashboardPage() {
               ) : (
                 <div className="dd-rank-list">
                   {clientDistribution.map((c, i) => (
-                    <div key={c.clientId} className="dd-rank-row" onClick={() => navigate(`/clients/${c.clientId}`)}>
+                    <div key={c.clientId} className="dd-rank-row" onClick={() => navigate(`/clients/${c.clientId}/dashboard`)}>
                       <span className="dd-rank-num">{i + 1}</span>
                       <div className="dd-rank-main">
                         <div className="dd-rank-name">{c.client}</div>
