@@ -111,14 +111,16 @@ function AchievementSection({
   const donut2 = gcMonths[1] ? donutFor('m2') : [];
 
   const gcvGroups = groupContributionVariance?.groups || [];
-  const gcvTitle = groupContributionVariance?.priorMonthsCount > 0
-    ? `Average of prior months vs ${groupContributionVariance.latestMonthLabel} · by team head's client portfolio · LKR millions`
-    : 'Not enough prior months in the current data year to compute an average yet';
+  const gcvActualLabel = groupContributionVariance?.actualMonthsLabel;
+  const gcvForecastLabel = groupContributionVariance?.forecastMonthLabel;
+  const gcvTitle = gcvActualLabel && gcvForecastLabel
+    ? `${gcvActualLabel} actual average vs ${gcvForecastLabel} forecast (from Forecasting submissions) · by team head's client portfolio · LKR millions`
+    : 'No schedule data yet to compute an actual-vs-forecast comparison';
   // Renders the %-diff label above whichever bar of the pair is shorter, so the
   // label never collides with the taller bar (matches the reference slide layout).
   const diffLabelFor = (barKey) => ({ x, y, width, payload }) => {
-    if (payload == null || payload.avgPrior == null || payload.latest == null) return null;
-    const isLowerBar = barKey === 'avgPrior' ? payload.avgPrior <= payload.latest : payload.latest < payload.avgPrior;
+    if (payload == null || payload.avgActual == null || payload.forecast == null) return null;
+    const isLowerBar = barKey === 'avgActual' ? payload.avgActual <= payload.forecast : payload.forecast < payload.avgActual;
     if (!isLowerBar) return null;
     const diff = payload.diffPct;
     return (
@@ -228,7 +230,7 @@ function AchievementSection({
       </div>
 
       <div className="chart-card" style={{ marginTop: 16 }}>
-        <div className="chart-card-title">Group Contribution — Average vs Latest Month</div>
+        <div className="chart-card-title">Group Contribution — Actual Avg vs Forecast</div>
         <div className="chart-card-sub">{gcvTitle}</div>
         {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={300} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={320}>
@@ -241,11 +243,11 @@ function AchievementSection({
               <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
               <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="avgPrior" name="Prior Months Avg" fill="#1F5BB5" radius={[4, 4, 0, 0]} barSize={26}>
-                <LabelList dataKey="diffPct" content={diffLabelFor('avgPrior')} />
+              <Bar dataKey="avgActual" name={`${gcvActualLabel || 'Actual'} Avg`} fill="#1F5BB5" radius={[4, 4, 0, 0]} barSize={26}>
+                <LabelList dataKey="diffPct" content={diffLabelFor('avgActual')} />
               </Bar>
-              <Bar dataKey="latest" name={groupContributionVariance?.latestMonthLabel || 'Latest'} fill="#E85D24" radius={[4, 4, 0, 0]} barSize={26}>
-                <LabelList dataKey="diffPct" content={diffLabelFor('latest')} />
+              <Bar dataKey="forecast" name={`${gcvForecastLabel || 'Next Month'} Forecast`} fill="#E85D24" radius={[4, 4, 0, 0]} barSize={26}>
+                <LabelList dataKey="diffPct" content={diffLabelFor('forecast')} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

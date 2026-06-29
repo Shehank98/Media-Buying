@@ -1324,6 +1324,11 @@ export async function getGroupContribution(req, res) {
 // "Completed months" = every month before the latest one within that same year
 // (so a January data point with no prior months in its year has nothing to
 // average against and is omitted).
+// One bar = the average of this year's actual months so far (Jan..latest actual
+// month, per team); the other = that team's submitted forecast for the very next
+// month (MonthlyForecast), which is the month the Forecasting tab is currently
+// collecting. E.g. with actuals through March, bars are "Jan-Mar Avg" vs "Apr
+// Forecast"; once April actuals land, it becomes "Jan-Apr Avg" vs "May Forecast".
 export async function getGroupContributionVariance(req, res) {
   try {
     const user = req.user;
@@ -1336,32 +1341,34 @@ export async function getGroupContributionVariance(req, res) {
       orderBy: { scheduleMonth: 'desc' },
       select: { scheduleMonth: true },
     });
-    if (!latestRow) return res.json({ latestMonth: null, latestMonthLabel: null, priorMonthsCount: 0, groups: [] });
-
-    const latestMonth = latestRow.scheduleMonth;
-    const latestYear = latestMonth.slice(0, 4);
-
-    const priorMonthRows = await prisma.scheduleLog.groupBy({
-      by: ['scheduleMonth'],
-      where: { ...scope, scheduleMonth: { gte: `${latestYear}-01`, lt: latestMonth } },
-    });
-    const priorMonths = priorMonthRows.map(r => r.scheduleMonth);
-    if (priorMonths.length === 0) {
-      return res.json({
-        latestMonth,
-        latestMonthLabel: MONTH_NAMES[parseInt(latestMonth.slice(5)) - 1],
-        priorMonthsCount: 0,
-        groups: [],
-      });
+    if (!latestRow) {
+      return res.json({ actualMonths: [], actualMonthsLabel: null, forecastMonth: null, forecastMonthLabel: null, groups: [] });
     }
 
-    const rows = await prisma.scheduleLog.groupBy({
+    const latestYear = parseInt(latestRow.scheduleMonth.slice(0, 4));
+    const latestMonthNum = parseInt(latestRow.scheduleMonth.slice(5));
+    const actualMonths = [];
+    for (let m = 1; m <= latestMonthNum; m++) actualMonths.push(`${latestYear}-${String(m).padStart(2, '0')}`);
+
+    let forecastYear = latestYear, forecastMonthNum = latestMonthNum + 1;
+    if (forecastMonthNum > 12) { forecastMonthNum = 1; forecastYear += 1; }
+    const forecastMonth = `${forecastYear}-${String(forecastMonthNum).padStart(2, '0')}`;
+
+    const actualRows = await prisma.scheduleLog.groupBy({
       by: ['clientId', 'scheduleMonth'],
-      where: { ...scope, scheduleMonth: { in: [...priorMonths, latestMonth] } },
+      where: { ...scope, scheduleMonth: { in: actualMonths } },
       _sum: { scheduleValue: true },
     });
 
-    const clientIds = [...new Set(rows.map(r => r.clientId))];
+    const fcWhere = { year: forecastYear, month: forecastMonthNum };
+    if (ids) fcWhere.agencyId = { in: ids };
+    const forecastRows = await prisma.monthlyForecast.groupBy({
+      by: ['clientId'],
+      where: fcWhere,
+      _sum: { amountMillions: true },
+    });
+
+    const clientIds = [...new Set([...actualRows.map(r => r.clientId), ...forecastRows.map(r => r.clientId)])];
     const teamClients = await prisma.teamClient.findMany({
       where: { clientId: { in: clientIds } },
       include: { team: { include: { head: { select: { name: true } }, agency: { select: { name: true } } } } },
@@ -1370,8 +1377,8 @@ export async function getGroupContributionVariance(req, res) {
     for (const tc of teamClients) teamByClient[tc.clientId] = tc.team;
 
     const groups = {};
-    for (const r of rows) {
-      const team = teamByClient[r.clientId];
+    const ensureGroup = (clientId) => {
+      const team = teamByClient[clientId];
       const key = team ? `team-${team.id}` : 'unassigned';
       if (!groups[key]) {
         groups[key] = {
@@ -1380,38 +1387,48 @@ export async function getGroupContributionVariance(req, res) {
           name: team ? team.name : 'Unassigned',
           headName: team?.head?.name || null,
           agencyName: team?.agency?.name || null,
-          priorSum: 0,
-          latest: 0,
+          actualSum: 0,
+          forecast: 0,
         };
       }
-      const val = (safeNum(r._sum.scheduleValue) || 0) / 1e6;
-      if (r.scheduleMonth === latestMonth) groups[key].latest += val;
-      else groups[key].priorSum += val;
+      return groups[key];
+    };
+
+    for (const r of actualRows) {
+      ensureGroup(r.clientId).actualSum += (safeNum(r._sum.scheduleValue) || 0) / 1e6;
+    }
+    for (const r of forecastRows) {
+      ensureGroup(r.clientId).forecast += safeNum(r._sum.amountMillions) || 0;
     }
 
     const result = Object.values(groups)
       .map((g) => {
-        const avgPrior = g.priorSum / priorMonths.length;
-        const diffPct = avgPrior > 0
-          ? Number((((g.latest - avgPrior) / avgPrior) * 100).toFixed(0))
-          : (g.latest > 0 ? 100 : 0);
+        const avgActual = g.actualSum / actualMonths.length;
+        const diffPct = avgActual > 0
+          ? Number((((g.forecast - avgActual) / avgActual) * 100).toFixed(0))
+          : (g.forecast > 0 ? 100 : 0);
         return {
           key: g.key,
           teamId: g.teamId,
           name: g.name,
           headName: g.headName,
           agencyName: g.agencyName,
-          avgPrior: Number(avgPrior.toFixed(2)),
-          latest: Number(g.latest.toFixed(2)),
+          avgActual: Number(avgActual.toFixed(2)),
+          forecast: Number(g.forecast.toFixed(2)),
           diffPct,
         };
       })
-      .sort((a, b) => (b.avgPrior + b.latest) - (a.avgPrior + a.latest));
+      .sort((a, b) => (b.avgActual + b.forecast) - (a.avgActual + a.forecast));
+
+    const actualMonthsLabel = actualMonths.length === 1
+      ? MONTH_NAMES[0]
+      : `${MONTH_NAMES[0]}-${MONTH_NAMES[latestMonthNum - 1]}`;
 
     return res.json({
-      latestMonth,
-      latestMonthLabel: MONTH_NAMES[parseInt(latestMonth.slice(5)) - 1],
-      priorMonthsCount: priorMonths.length,
+      actualMonths,
+      actualMonthsLabel,
+      forecastMonth,
+      forecastMonthLabel: MONTH_NAMES[forecastMonthNum - 1],
       groups: result,
     });
   } catch (error) {
