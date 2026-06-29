@@ -875,12 +875,20 @@ export async function getDeepDashboard(req, res) {
 
     const logs = await prisma.scheduleLog.findMany({
       where: logWhere,
-      select: { scheduleMonth: true, scheduleValue: true, client: { select: { name: true } } },
+      select: {
+        scheduleMonth: true,
+        scheduleValue: true,
+        clientId: true,
+        client: { select: { name: true } },
+        channelMasterId: true,
+        channelMaster: { select: { name: true } },
+      },
     });
 
     const yearTotals = {};      // year -> total spend
     const trend = {};           // year -> [12] monthly spend
-    const clientDist = {};      // client name -> total spend
+    const clientDist = {};      // clientId -> { name, value }
+    const channelDist = {};     // channelMasterId -> { name, value }
     const logMonths = [];       // for first/last activity
     for (const l of logs) {
       if (!l.scheduleMonth) continue;
@@ -891,8 +899,10 @@ export async function getDeepDashboard(req, res) {
       yearTotals[y] = (yearTotals[y] || 0) + v;
       if (!trend[y]) trend[y] = Array(12).fill(0);
       trend[y][m - 1] += v;
-      const cn = l.client?.name || 'Unknown';
-      clientDist[cn] = (clientDist[cn] || 0) + v;
+      if (!clientDist[l.clientId]) clientDist[l.clientId] = { name: l.client?.name || 'Unknown', value: 0 };
+      clientDist[l.clientId].value += v;
+      if (!channelDist[l.channelMasterId]) channelDist[l.channelMasterId] = { name: l.channelMaster?.name || 'Unknown', value: 0 };
+      channelDist[l.channelMasterId].value += v;
       logMonths.push(l.scheduleMonth);
     }
 
@@ -913,7 +923,11 @@ export async function getDeepDashboard(req, res) {
     });
 
     const clientDistribution = Object.entries(clientDist)
-      .map(([client, value]) => ({ client, value }))
+      .map(([id, d]) => ({ clientId: Number(id), client: d.name, value: d.value }))
+      .sort((a, b) => b.value - a.value);
+
+    const channelDistribution = Object.entries(channelDist)
+      .map(([id, d]) => ({ channelMasterId: Number(id), channel: d.name, value: d.value }))
       .sort((a, b) => b.value - a.value);
 
     // ── Properties (sponsorship analysis only — NOT spend) ──
@@ -956,6 +970,7 @@ export async function getDeepDashboard(req, res) {
       monthlyTrend,
       trendYears,
       clientDistribution,
+      channelDistribution,
       properties: props.map((p) => ({
         year: p.year, category: p.category, type: p.type, name: p.name,
         value: p.value, bonusValue: p.bonusValue, bonusCount: p.bonusCount, channel: p.channel, client: p.client,

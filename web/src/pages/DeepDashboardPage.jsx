@@ -65,18 +65,6 @@ function Kpi({ icon, tone, label, value, chip }) {
   );
 }
 
-function Metric({ label, value, accent, dot }) {
-  return (
-    <div className="dd-metric">
-      {dot && <span className="dd-metric-dot" style={{ background: dot }} />}
-      <div style={{ flex: 1 }}>
-        <div className="dd-metric-label">{label}</div>
-        <div className="dd-metric-val" style={accent ? { color: accent } : undefined}>{value}</div>
-      </div>
-    </div>
-  );
-}
-
 export default function DeepDashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -125,8 +113,7 @@ export default function DeepDashboardPage() {
   const trendYears = data?.trendYears || [];
   const monthlyTrend = data?.monthlyTrend || [];
   const clientDistribution = data?.clientDistribution || [];
-  const insights = data?.channelInsights || {};
-  const history = data?.clientHistory || {};
+  const channelDistribution = data?.channelDistribution || [];
   const latestYear = kpis.latestYear || new Date().getFullYear();
   const previousYear = kpis.previousYear || latestYear - 1;
 
@@ -258,6 +245,16 @@ export default function DeepDashboardPage() {
         .dd-cat-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #3B4A63; }
         .dd-cat-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
+        .dd-rank-list { max-height: 460px; overflow-y: auto; padding: 6px 12px 14px; }
+        .dd-rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; cursor: pointer; transition: background .12s; }
+        .dd-rank-row:hover { background: #F5F6F8; }
+        .dd-rank-num { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; background: #EEF0F3; color: #6B7790; flex-shrink: 0; }
+        .dd-rank-main { flex: 1; min-width: 0; }
+        .dd-rank-name { font-size: 12.5px; font-weight: 650; color: #16243C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dd-rank-bar-track { height: 6px; border-radius: 4px; background: #EEF0F3; overflow: hidden; margin-top: 5px; }
+        .dd-rank-bar-fill { height: 100%; border-radius: 4px; transition: width .4s ease; }
+        .dd-rank-val { font-size: 12px; font-weight: 700; font-family: 'Spline Sans Mono', monospace; color: #16243C; flex-shrink: 0; min-width: 72px; text-align: right; }
+
         @media (max-width: 1100px) { .dd-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 900px) { .dd-insights-grid { grid-template-columns: 1fr !important; } }
       `}</style>
@@ -378,28 +375,59 @@ export default function DeepDashboardPage() {
             </div>
           </div>
 
-          {/* Channel insights + Client history */}
-          <div className="dd-insights-grid" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, marginBottom: 0 }}>
+          {/* All clients + all channels, ranked by spend, linking to their intelligence pages */}
+          <div className="dd-insights-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 0 }}>
             <div className="dd-card" style={{ marginBottom: 20 }}>
-              <div className="dd-card-head" style={{ paddingBottom: 4 }}><h3 className="dd-card-title">Channel Performance Insights</h3></div>
-              <div className="dd-metric-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                <Metric label="Total properties" value={insights.totalProperties ?? 0} dot="#1F5BB5" />
-                <Metric label="Total bonus value" value={fmtShort(insights.totalBonusValue)} accent="#15814B" dot="#15814B" />
-                <Metric label="Avg property value" value={fmtShort(insights.avgPropertyValue)} dot="#6B3FB5" />
-                <Metric label="Top category" value={insights.mostPurchasedCategory || '-'} dot="#9A5B00" />
-                <Metric label="Highest property" value={insights.highestProperty ? fmtShort(insights.highestProperty.value) : '-'} accent="#D9521C" dot="#D9521C" />
+              <div className="dd-card-head" style={{ paddingBottom: 4 }}>
+                <div>
+                  <h3 className="dd-card-title">All Clients</h3>
+                  <p className="dd-card-sub">Ranked by spend for the selected filters - click a client to open its profile</p>
+                </div>
               </div>
+              {clientDistribution.length === 0 ? (
+                <div style={{ height: 120, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No schedule data for the selected filters</div>
+              ) : (
+                <div className="dd-rank-list">
+                  {clientDistribution.map((c, i) => (
+                    <div key={c.clientId} className="dd-rank-row" onClick={() => navigate(`/clients/${c.clientId}`)}>
+                      <span className="dd-rank-num">{i + 1}</span>
+                      <div className="dd-rank-main">
+                        <div className="dd-rank-name">{c.client}</div>
+                        <div className="dd-rank-bar-track">
+                          <div className="dd-rank-bar-fill" style={{ width: `${(c.value / clientDistribution[0].value) * 100}%`, background: CAT_COLORS[i % CAT_COLORS.length] }} />
+                        </div>
+                      </div>
+                      <span className="dd-rank-val">{fmtShort(c.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="dd-card" style={{ marginBottom: 20 }}>
-              <div className="dd-card-head" style={{ paddingBottom: 4 }}><h3 className="dd-card-title">Client Investment History</h3></div>
-              <div className="dd-metric-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                <Metric label="First sponsorship" value={fmtDate(history.firstDate)} dot="#1F5BB5" />
-                <Metric label="Latest sponsorship" value={fmtDate(history.latestDate)} dot="#15814B" />
-                <Metric label="Years active" value={history.yearsActive ?? 0} dot="#6B3FB5" />
-                <Metric label="Total properties" value={history.totalProperties ?? 0} dot="#9A5B00" />
-                <Metric label="Lifetime spend" value={fmtShort(history.lifetimeSpend)} accent="#D9521C" dot="#D9521C" />
-                <Metric label="Lifetime bonus" value={fmtShort(history.lifetimeBonusValue)} accent="#15814B" dot="#15814B" />
+              <div className="dd-card-head" style={{ paddingBottom: 4 }}>
+                <div>
+                  <h3 className="dd-card-title">All Channels</h3>
+                  <p className="dd-card-sub">Ranked by spend for the selected filters - click a channel to open its intelligence page</p>
+                </div>
               </div>
+              {channelDistribution.length === 0 ? (
+                <div style={{ height: 120, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No schedule data for the selected filters</div>
+              ) : (
+                <div className="dd-rank-list">
+                  {channelDistribution.map((c, i) => (
+                    <div key={c.channelMasterId} className="dd-rank-row" onClick={() => navigate(`/channel-masters/${c.channelMasterId}`)}>
+                      <span className="dd-rank-num">{i + 1}</span>
+                      <div className="dd-rank-main">
+                        <div className="dd-rank-name">{c.channel}</div>
+                        <div className="dd-rank-bar-track">
+                          <div className="dd-rank-bar-fill" style={{ width: `${(c.value / channelDistribution[0].value) * 100}%`, background: YEAR_COLORS[i % YEAR_COLORS.length] }} />
+                        </div>
+                      </div>
+                      <span className="dd-rank-val">{fmtShort(c.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
