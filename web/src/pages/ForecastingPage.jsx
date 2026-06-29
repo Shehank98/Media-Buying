@@ -95,7 +95,7 @@ export default function ForecastingPage() {
   }, [view, varSel]);
 
   const monthName = (m) => MONTHS[m - 1] || m;
-  const fmtM = (v) => (v == null ? '-' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`);
+  const fmtM = (v) => (v == null ? '-' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`);
 
   const agencies = useMemo(() => {
     const m = new Map();
