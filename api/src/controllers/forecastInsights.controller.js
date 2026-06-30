@@ -87,16 +87,43 @@ function buildScheduleWhere(filters) {
   return where;
 }
 
-// "Account Manager" = the client's Team Head (TeamClient -> Team.headUserId),
-// the same grouping the Executive Dashboard's Group Contribution charts use.
-async function teamHeadByClient(clientIds) {
+// "Account Manager" = the group head who manages the client, resolved through the
+// same paths as GROUP_HEAD_CLIENT_OR (so a client never shows "Unassigned" while a
+// group head actually manages it): the team's head (Team.headUserId), else a
+// GROUP_HEAD member of the client's team, else a directly-assigned GROUP_HEAD user
+// (UserClientAccess). Returns a Map of clientId -> group head name.
+async function accountManagerByClient(clientIds) {
   if (!clientIds.length) return new Map();
-  const teamClients = await prisma.teamClient.findMany({
-    where: { clientId: { in: clientIds } },
-    include: { team: { include: { head: { select: { name: true } } } } },
-  });
+  const [teamClients, directAccess] = await Promise.all([
+    prisma.teamClient.findMany({
+      where: { clientId: { in: clientIds } },
+      include: {
+        team: {
+          include: {
+            head: { select: { name: true, role: true } },
+            members: { where: { user: { role: 'GROUP_HEAD' } }, include: { user: { select: { name: true } } }, orderBy: { userId: 'asc' } },
+          },
+        },
+      },
+    }),
+    prisma.userClientAccess.findMany({
+      where: { clientId: { in: clientIds }, user: { role: 'GROUP_HEAD' } },
+      include: { user: { select: { name: true } } },
+      orderBy: { userId: 'asc' },
+    }),
+  ]);
+
   const map = new Map();
-  for (const tc of teamClients) map.set(tc.clientId, tc.team);
+  for (const tc of teamClients) {
+    if (map.has(tc.clientId)) continue;
+    const t = tc.team;
+    if (t?.head?.name && t.head.role === 'GROUP_HEAD') { map.set(tc.clientId, t.head.name); continue; }
+    const ghMember = t?.members?.[0]?.user;
+    if (ghMember?.name) map.set(tc.clientId, ghMember.name);
+  }
+  for (const ua of directAccess) {
+    if (!map.has(ua.clientId) && ua.user?.name) map.set(ua.clientId, ua.user.name);
+  }
   return map;
 }
 
@@ -123,18 +150,16 @@ export async function getInsightsSummary(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    const teamMap = await teamHeadByClient(clients.map((c) => c.id));
+    const amMap = await accountManagerByClient(clients.map((c) => c.id));
 
     const clientRows = clients.map((c) => {
-      const team = teamMap.get(c.id);
       const totalForecastMillions = Number((forecastByClient.get(c.id) || 0).toFixed(2));
       return {
         clientId: c.id,
         clientName: c.name,
         agencyId: c.agency?.id || null,
         agencyName: c.agency?.name || '',
-        accountManager: team?.head?.name || 'Unassigned',
-        teamId: team?.id || null,
+        accountManager: amMap.get(c.id) || 'Unassigned',
         year: filters.year,
         month: filters.month,
         totalForecastMillions,
@@ -204,7 +229,7 @@ export async function getInsightsVariance(req, res) {
     const entries = [...map.values()];
 
     let nameMap = new Map();
-    let teamMap = new Map();
+    let amMap = new Map();
     if (groupBy === 'client') {
       const clientIds = entries.map((e) => e.key);
       const clients = await prisma.client.findMany({
@@ -212,7 +237,7 @@ export async function getInsightsVariance(req, res) {
         select: { id: true, name: true, agency: { select: { name: true } } },
       });
       nameMap = new Map(clients.map((c) => [c.id, c]));
-      teamMap = await teamHeadByClient(clientIds);
+      amMap = await accountManagerByClient(clientIds);
     } else {
       const channelIds = entries.map((e) => e.key).filter((v) => v != null);
       const channels = await prisma.channelMaster.findMany({
@@ -231,12 +256,11 @@ export async function getInsightsVariance(req, res) {
 
       if (groupBy === 'client') {
         const c = nameMap.get(e.key);
-        const team = teamMap.get(e.key);
         return {
           clientId: e.key,
           clientName: c?.name || `#${e.key}`,
           agencyName: c?.agency?.name || '',
-          accountManager: team?.head?.name || 'Unassigned',
+          accountManager: amMap.get(e.key) || 'Unassigned',
           forecastMillions, actualMillions, varianceMillions, variancePct, flag,
         };
       }
