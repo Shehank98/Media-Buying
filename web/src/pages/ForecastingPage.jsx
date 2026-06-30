@@ -23,8 +23,8 @@ const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 const CHART_COLORS = ['#1e3a5f', '#E85D24', '#059669', '#6B3FB5', '#C2185B', '#0E7490', '#d97706', '#dc2626', '#0ea5e9', '#14b8a6'];
 
-const fmtM = (v) => (v == null ? '—' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`);
-const fmtPct = (v) => (v == null ? '—' : `${v >= 0 ? '' : ''}${Number(v).toFixed(1)}%`);
+const fmtM = (v) => (v == null ? '-' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`);
+const fmtPct = (v) => (v == null ? '-' : `${v >= 0 ? '' : ''}${Number(v).toFixed(1)}%`);
 const monthName = (m) => MONTHS[m - 1] || m;
 
 // The month group heads forecast (client-side mirror of the server helper):
@@ -78,7 +78,7 @@ function ExportButtons({ onExcel, onCsv, onPdf, busy }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Insights — SUPER_ADMIN-only analytics suite (lives inside the Forecast tab).
+// Insights - SUPER_ADMIN-only analytics suite (lives inside the Forecast tab).
 // ════════════════════════════════════════════════════════════════════════════
 function InsightsTab() {
   const def = clientNextMonth();
@@ -275,11 +275,11 @@ function InsightsTab() {
       ? ['Client', 'Account Manager', 'Agency', 'Forecast (M)', 'Actual (M)', 'Variance (M)', 'Variance %']
       : ['Channel', 'Medium', 'Forecast (M)', 'Actual (M)', 'Variance (M)', 'Variance %'];
     const body = varianceRows.map((r) => vGroupBy === 'client'
-      ? [r.clientName, r.accountManager, r.agencyName, r.forecastMillions, r.actualMillions, r.varianceMillions, r.variancePct == null ? '—' : `${r.variancePct}%`]
-      : [r.channelName, r.medium, r.forecastMillions, r.actualMillions, r.varianceMillions, r.variancePct == null ? '—' : `${r.variancePct}%`]);
+      ? [r.clientName, r.accountManager, r.agencyName, r.forecastMillions, r.actualMillions, r.varianceMillions, r.variancePct == null ? '-' : `${r.variancePct}%`]
+      : [r.channelName, r.medium, r.forecastMillions, r.actualMillions, r.varianceMillions, r.variancePct == null ? '-' : `${r.variancePct}%`]);
     const totalRow = vGroupBy === 'client'
-      ? ['TOTAL', '', '', variance?.totals.forecastMillions ?? 0, variance?.totals.actualMillions ?? 0, variance?.totals.varianceMillions ?? 0, variance?.totals.variancePct == null ? '—' : `${variance.totals.variancePct}%`]
-      : ['TOTAL', '', variance?.totals.forecastMillions ?? 0, variance?.totals.actualMillions ?? 0, variance?.totals.varianceMillions ?? 0, variance?.totals.variancePct == null ? '—' : `${variance.totals.variancePct}%`];
+      ? ['TOTAL', '', '', variance?.totals.forecastMillions ?? 0, variance?.totals.actualMillions ?? 0, variance?.totals.varianceMillions ?? 0, variance?.totals.variancePct == null ? '-' : `${variance.totals.variancePct}%`]
+      : ['TOTAL', '', variance?.totals.forecastMillions ?? 0, variance?.totals.actualMillions ?? 0, variance?.totals.varianceMillions ?? 0, variance?.totals.variancePct == null ? '-' : `${variance.totals.variancePct}%`];
     return [filterSheet, { name: 'Forecast vs Actual', rows: [head, ...body, totalRow] }];
   };
 
@@ -290,11 +290,11 @@ function InsightsTab() {
       ['Total Forecast (M LKR)', t.forecastMillions ?? 0],
       ['Total Actual (M LKR)', t.actualMillions ?? 0],
       ['Total Variance (M LKR)', t.varianceMillions ?? 0],
-      ['Forecast Accuracy %', t.forecastAccuracyPct == null ? '—' : `${t.forecastAccuracyPct}%`],
+      ['Forecast Accuracy %', t.forecastAccuracyPct == null ? '-' : `${t.forecastAccuracyPct}%`],
       [],
-      ['Best Forecasting Client', accuracy?.bestClient ? `${accuracy.bestClient.clientName} (${accuracy.bestClient.accuracyPct}%)` : '—'],
-      ['Least Accurate Client', accuracy?.leastAccurateClient ? `${accuracy.leastAccurateClient.clientName} (${accuracy.leastAccurateClient.accuracyPct}%)` : '—'],
-      ['Highest Spending Client', accuracy?.highestSpendingClient ? `${accuracy.highestSpendingClient.clientName} (${fmtM(accuracy.highestSpendingClient.actualMillions)})` : '—'],
+      ['Best Forecasting Client', accuracy?.bestClient ? `${accuracy.bestClient.clientName} (${accuracy.bestClient.accuracyPct}%)` : '-'],
+      ['Least Accurate Client', accuracy?.leastAccurateClient ? `${accuracy.leastAccurateClient.clientName} (${accuracy.leastAccurateClient.accuracyPct}%)` : '-'],
+      ['Highest Spending Client', accuracy?.highestSpendingClient ? `${accuracy.highestSpendingClient.clientName} (${fmtM(accuracy.highestSpendingClient.actualMillions)})` : '-'],
     ];
     return [filterSheet, { name: 'Accuracy', rows }];
   };
@@ -302,7 +302,7 @@ function InsightsTab() {
   const trendSheets = () => {
     const monthRows = [
       ['Month', 'Forecast (M)', 'Actual (M)', 'Variance (M)', 'Growth % (vs prev)'],
-      ...(trend?.months || []).map((m) => [m.label, m.forecastMillions, m.actualMillions, m.varianceMillions, m.growthPct == null ? '—' : `${m.growthPct}%`]),
+      ...(trend?.months || []).map((m) => [m.label, m.forecastMillions, m.actualMillions, m.varianceMillions, m.growthPct == null ? '-' : `${m.growthPct}%`]),
     ];
     const topChRows = [['Channel', 'Medium', 'Actual (M)'], ...(trend?.topChannels || []).map((c) => [c.channelName, c.medium, c.actualMillions])];
     const topClRows = [['Client', 'Actual (M)'], ...(trend?.topClients || []).map((c) => [c.clientName, c.actualMillions])];
@@ -459,7 +459,7 @@ function InsightsTab() {
                           <tr key={c.clientId}>
                             <td className="strong">{c.clientName}</td>
                             <td>{c.accountManager}</td>
-                            <td>{c.agencyName || '—'}</td>
+                            <td>{c.agencyName || '-'}</td>
                             <td className="mono" style={{ textAlign: 'right' }}>{fmtM(c.totalForecastMillions)}</td>
                             <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6B7790' }}><span style={{ width: 9, height: 9, borderRadius: '50%', background: st.dot }} />{st.label}</span></td>
                           </tr>
@@ -530,12 +530,12 @@ function InsightsTab() {
                           <td>{r.accountManager}</td>
                         </> : <>
                           <td className="strong">{r.channelName}</td>
-                          <td>{r.medium ? <span className="medium-tag" data-medium={r.medium}>{r.medium}</span> : '—'}</td>
+                          <td>{r.medium ? <span className="medium-tag" data-medium={r.medium}>{r.medium}</span> : '-'}</td>
                         </>}
                         <td className="mono" style={{ textAlign: 'right' }}>{fmtM(r.forecastMillions)}</td>
                         <td className="mono" style={{ textAlign: 'right' }}>{fmtM(r.actualMillions)}</td>
                         <td className="mono" style={{ textAlign: 'right', color: varianceColor(r.flag) }}>{r.varianceMillions > 0 ? '+' : ''}{fmtM(r.varianceMillions)}</td>
-                        <td className="mono" style={{ textAlign: 'right', color: varianceColor(r.flag) }}>{r.variancePct == null ? '—' : `${r.variancePct > 0 ? '+' : ''}${fmtPct(r.variancePct)}`}</td>
+                        <td className="mono" style={{ textAlign: 'right', color: varianceColor(r.flag) }}>{r.variancePct == null ? '-' : `${r.variancePct > 0 ? '+' : ''}${fmtPct(r.variancePct)}`}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -545,7 +545,7 @@ function InsightsTab() {
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtM(variance.totals.forecastMillions)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{fmtM(variance.totals.actualMillions)}</td>
                       <td className="mono" style={{ textAlign: 'right', color: variance.totals.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>{variance.totals.varianceMillions > 0 ? '+' : ''}{fmtM(variance.totals.varianceMillions)}</td>
-                      <td className="mono" style={{ textAlign: 'right', color: variance.totals.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>{variance.totals.variancePct == null ? '—' : `${variance.totals.variancePct > 0 ? '+' : ''}${fmtPct(variance.totals.variancePct)}`}</td>
+                      <td className="mono" style={{ textAlign: 'right', color: variance.totals.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)' }}>{variance.totals.variancePct == null ? '-' : `${variance.totals.variancePct > 0 ? '+' : ''}${fmtPct(variance.totals.variancePct)}`}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -560,7 +560,7 @@ function InsightsTab() {
                 <Stat label="Total Forecast" value={fmtM(accuracy.totals.forecastMillions)} />
                 <Stat label="Total Actual" value={fmtM(accuracy.totals.actualMillions)} />
                 <Stat label="Total Variance" value={`${accuracy.totals.varianceMillions > 0 ? '+' : ''}${fmtM(accuracy.totals.varianceMillions)}`} color={accuracy.totals.varianceMillions >= 0 ? 'var(--green-600)' : 'var(--red-600)'} />
-                <Stat label="Forecast Accuracy" value={accuracy.totals.forecastAccuracyPct == null ? '—' : `${accuracy.totals.forecastAccuracyPct}%`} color="#1e3a5f" />
+                <Stat label="Forecast Accuracy" value={accuracy.totals.forecastAccuracyPct == null ? '-' : `${accuracy.totals.forecastAccuracyPct}%`} color="#1e3a5f" />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
                 <HighlightCard label="Best Forecasting Client" name={accuracy.bestClient?.clientName} sub={accuracy.bestClient ? `${accuracy.bestClient.accuracyPct}% accurate` : null} color="#15814B" />
@@ -573,7 +573,7 @@ function InsightsTab() {
           {/* ── TRENDS ── */}
           {sub === 'trends' && trend && (
             <div style={{ display: 'grid', gap: 16 }}>
-              <Card title="Forecast vs Actual — monthly">
+              <Card title="Forecast vs Actual - monthly">
                 <div ref={chartFvA} style={{ width: '100%', height: 300 }}>
                   <ResponsiveContainer>
                     <ComposedChart data={trend.months} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
@@ -704,7 +704,7 @@ function HighlightCard({ label, name, sub, color }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, padding: 18, borderLeft: `3px solid ${color}` }}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: '#16243C' }}>{name || '—'}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#16243C' }}>{name || '-'}</div>
       {sub && <div style={{ fontSize: 12.5, color: '#6B7790', marginTop: 3 }}>{sub}</div>}
     </div>
   );
@@ -845,7 +845,7 @@ export default function ForecastingPage() {
       const seed = {};
       data.items.forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
       setAmounts(seed);
-      setSavedMsg(`Copied ${MONTHS[data.month - 1]} ${data.year} — edit the amounts and submit.`);
+      setSavedMsg(`Copied ${MONTHS[data.month - 1]} ${data.year} - edit the amounts and submit.`);
     } catch (err) {
       setEntryError(err.response?.data?.error || 'Failed to copy previous forecast.');
     } finally {
@@ -919,7 +919,7 @@ export default function ForecastingPage() {
                   setSelectedPeriod((y === anchorMonth.year && m === anchorMonth.month) ? null : { year: y, month: m });
                 }}
                 style={{ maxWidth: 200 }}
-                title="Forecast month to enter/view — pick a past month to backfill it, then copy it forward"
+                title="Forecast month to enter/view - pick a past month to backfill it, then copy it forward"
               >
                 {monthOptions.map(o => (
                   <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>
