@@ -168,11 +168,11 @@ export async function listForecastClients(req, res) {
 }
 
 // Categories that list every channel individually; the rest take a single total.
-const FULL_LIST_MEDIA = ['TV', 'RADIO', 'CINEMA', 'OOH'];
-const TOTAL_LABEL = { PRINT: 'Print', DIGITAL: 'Digital' };
+const FULL_LIST_MEDIA = ['TV', 'RADIO', 'CINEMA', 'OOH', 'DIGITAL'];
+const TOTAL_LABEL = { PRINT: 'Print' };
 
-// Channels for the forecast entry table. TV, Radio, Cinema & OOH list every
-// channel; Print and Digital collapse to a single "<category> total" bucket row.
+// Channels for the forecast entry table. TV, Radio, Cinema, OOH & Digital list
+// every channel; only Print collapses to a single "<category> total" bucket row.
 export async function listForecastChannels(req, res) {
   try {
     const channels = await prisma.channelMaster.findMany({
