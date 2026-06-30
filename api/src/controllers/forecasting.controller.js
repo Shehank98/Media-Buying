@@ -132,7 +132,9 @@ export async function listForecastClients(req, res) {
   try {
     const user = req.user;
     const ids = await accessibleClientIds(user);
-    const where = { isActive: true };
+    // Only forecast clients that have been assigned to a group head's team —
+    // clients with no team head are old/inactive and are hidden from the roster.
+    const where = { isActive: true, teams: { some: { team: { headUserId: { not: null } } } } };
     if (ids) where.id = { in: ids };
     if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
 
