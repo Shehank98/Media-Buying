@@ -14,6 +14,21 @@ function nextMonth() {
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
+// A client counts as "assigned to a group head" — and so is shown in the
+// forecasting roster — when it sits on a team that either has a head set
+// (Team.headUserId) or has a GROUP_HEAD member. Clients on no such team are
+// old/unassigned and are hidden. Exported so the Insights roster stays in sync.
+export const GROUP_HEAD_TEAM_FILTER = {
+  some: {
+    team: {
+      OR: [
+        { headUserId: { not: null } },
+        { members: { some: { user: { role: 'GROUP_HEAD' } } } },
+      ],
+    },
+  },
+};
+
 // Client ids the caller may access (null = unrestricted, for SUPER_ADMIN).
 async function accessibleClientIds(user) {
   if (user.role === 'SUPER_ADMIN') return null;
@@ -132,9 +147,9 @@ export async function listForecastClients(req, res) {
   try {
     const user = req.user;
     const ids = await accessibleClientIds(user);
-    // Only forecast clients that have been assigned to a group head's team —
-    // clients with no team head are old/inactive and are hidden from the roster.
-    const where = { isActive: true, teams: { some: { team: { headUserId: { not: null } } } } };
+    // Only forecast clients assigned to a group head (see GROUP_HEAD_TEAM_FILTER) —
+    // clients on no group-head team are old/inactive and hidden from the roster.
+    const where = { isActive: true, teams: GROUP_HEAD_TEAM_FILTER };
     if (ids) where.id = { in: ids };
     if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
 
