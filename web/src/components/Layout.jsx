@@ -62,6 +62,9 @@ export default function Layout() {
   const [searchResults, setSearchResults] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Mobile: the sidebar collapses into a hamburger-triggered drawer.
+  const [navOpen, setNavOpen] = useState(false);
+
   useEffect(() => {
     const q = searchQ.trim();
     if (q.length < 2) { setSearchResults([]); setSearchOpen(false); return; }
@@ -125,7 +128,7 @@ export default function Layout() {
     if (to) { setShowNotifs(false); navigate(to); }
   };
 
-  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); setShowNotifs(false); };
+  const go = (path) => { navigate(path); window.scrollTo?.(0, 0); setShowNotifs(false); setNavOpen(false); };
 
   const activeKey = (key) => {
     if (key === '/') return location.pathname === '/';
@@ -145,7 +148,8 @@ export default function Layout() {
 
   return (
     <div className="app">
-      <div className="sidebar">
+      <div className={`sidebar-scrim${navOpen ? ' show' : ''}`} onClick={() => setNavOpen(false)} />
+      <div className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-orbit">
             <span className="bo-ring" />
@@ -204,6 +208,9 @@ export default function Layout() {
 
       <div className="main">
         <div className="topbar">
+          <button className="menu-btn" aria-label="Open menu" onClick={() => setNavOpen(true)}>
+            <Icon name="menu" size={20} />
+          </button>
           <div className="crumb">
             <Breadcrumbs go={go} />
           </div>
@@ -297,7 +304,7 @@ export default function Layout() {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 6 }}>
-            <div style={{ textAlign: 'right' }}>
+            <div className="topbar-user-meta" style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.1, whiteSpace: 'nowrap' }}>{userName}</div>
               <div style={{ marginTop: 3 }}><RoleBadge role={userRole} small /></div>
             </div>

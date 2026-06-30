@@ -683,7 +683,7 @@ function Card({ title, right, children }) {
         <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>{title}</div>
         {right}
       </div>
-      {children}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>{children}</div>
     </div>
   );
 }
