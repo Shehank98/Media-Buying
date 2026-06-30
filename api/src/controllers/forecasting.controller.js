@@ -15,19 +15,17 @@ function nextMonth() {
 }
 
 // A client counts as "assigned to a group head" — and so is shown in the
-// forecasting roster — when it sits on a team that either has a head set
-// (Team.headUserId) or has a GROUP_HEAD member. Clients on no such team are
-// old/unassigned and are hidden. Exported so the Insights roster stays in sync.
-export const GROUP_HEAD_TEAM_FILTER = {
-  some: {
-    team: {
-      OR: [
-        { headUserId: { not: null } },
-        { members: { some: { user: { role: 'GROUP_HEAD' } } } },
-      ],
-    },
-  },
-};
+// forecasting roster — when it is linked to a group head through ANY of the
+// admin assignment paths: on a team that has a head set (Team.headUserId) or a
+// GROUP_HEAD member (Teams tab / "Assign Accounts to Heads"), OR directly
+// assigned to a GROUP_HEAD user (Users tab → UserClientAccess). Clients linked
+// to no group head are old/unassigned and are hidden. Spread into a Client
+// `where` as an `OR`; exported so the Insights roster stays in sync.
+export const GROUP_HEAD_CLIENT_OR = [
+  { teams: { some: { team: { headUserId: { not: null } } } } },
+  { teams: { some: { team: { members: { some: { user: { role: 'GROUP_HEAD' } } } } } } },
+  { users: { some: { user: { role: 'GROUP_HEAD' } } } },
+];
 
 // Client ids the caller may access (null = unrestricted, for SUPER_ADMIN).
 async function accessibleClientIds(user) {
@@ -147,9 +145,9 @@ export async function listForecastClients(req, res) {
   try {
     const user = req.user;
     const ids = await accessibleClientIds(user);
-    // Only forecast clients assigned to a group head (see GROUP_HEAD_TEAM_FILTER) —
-    // clients on no group-head team are old/inactive and hidden from the roster.
-    const where = { isActive: true, teams: GROUP_HEAD_TEAM_FILTER };
+    // Only forecast clients assigned to a group head (see GROUP_HEAD_CLIENT_OR) —
+    // clients linked to no group head are old/inactive and hidden from the roster.
+    const where = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
     if (ids) where.id = { in: ids };
     if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
 

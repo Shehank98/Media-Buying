@@ -1,5 +1,5 @@
 import prisma from '../utils/prisma.js';
-import { GROUP_HEAD_TEAM_FILTER } from './forecasting.controller.js';
+import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
@@ -96,8 +96,8 @@ export async function getInsightsSummary(req, res) {
     });
     const forecastByClient = new Map(byClient.map((g) => [g.clientId, Number(g._sum.amountMillions) || 0]));
 
-    // Only clients assigned to a group head (see GROUP_HEAD_TEAM_FILTER) — others are old/inactive.
-    const clientWhere = { isActive: true, teams: GROUP_HEAD_TEAM_FILTER };
+    // Only clients assigned to a group head (see GROUP_HEAD_CLIENT_OR) — others are old/inactive.
+    const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
     if (filters.clientIds) clientWhere.id = { in: filters.clientIds };
     if (filters.agencyId) clientWhere.agencyId = filters.agencyId;
     const clients = await prisma.client.findMany({
