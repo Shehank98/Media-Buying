@@ -24,6 +24,13 @@ const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGIT
 const CHART_COLORS = ['#1e3a5f', '#E85D24', '#059669', '#6B3FB5', '#C2185B', '#0E7490', '#d97706', '#dc2626', '#0ea5e9', '#14b8a6'];
 
 const fmtM = (v) => (v == null ? '-' : `${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}M`);
+// Abbreviated LKR for the entry summary chips (amounts are full rupees).
+const fmtShortLKR = (v) => {
+  const n = Number(v) || 0, a = Math.abs(n);
+  if (a >= 1e6) return `${(n / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e3) return `${Math.round(n / 1e3)}K`;
+  return String(Math.round(n));
+};
 const fmtPct = (v) => (v == null ? '-' : `${v >= 0 ? '' : ''}${Number(v).toFixed(1)}%`);
 const monthName = (m) => MONTHS[m - 1] || m;
 
@@ -858,6 +865,15 @@ export default function ForecastingPage() {
     Object.values(amounts).reduce((s, v) => s + (parseFloat(v?.amount) || 0), 0)
   , [amounts]);
 
+  // Per-medium subtotals (TV/Radio/Print/…) for the entry summary, computed from
+  // the full category list so the breakdown is stable while searching channels.
+  const categoryTotals = useMemo(() =>
+    categories.map(cat => ({
+      category: cat.category,
+      total: cat.channels.reduce((s, ch) => s + (parseFloat(amounts[ch.id]?.amount) || 0), 0),
+    })).filter(ct => ct.total > 0)
+  , [categories, amounts]);
+
   const submit = async () => {
     setSaving(true); setEntryError(''); setSavedMsg('');
     try {
@@ -1044,11 +1060,24 @@ export default function ForecastingPage() {
                 </>
               )}
             </div>
-            <div className="modal-foot" style={{ justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
-                <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
+            <div className="modal-foot" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+              {categoryTotals.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5' }}>By medium</span>
+                  {categoryTotals.map(ct => (
+                    <span key={ct.category} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 8, padding: '4px 9px' }}>
+                      <span className="medium-tag" data-medium={ct.category}>{ct.category}</span>
+                      <span className="mono" style={{ fontSize: 12.5, fontWeight: 650, color: '#16243C' }}>LKR {fmtShortLKR(ct.total)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
+                  <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
+                </div>
               </div>
             </div>
           </div>
