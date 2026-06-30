@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
@@ -23,8 +24,25 @@ function prevMonth(year, month) {
   return { year: y, month: m };
 }
 
-// Shared filter resolver: ?year&month&agencyId&clientId&medium&channelMasterId&teamId.
-// teamId resolves to the team's clients via TeamClient, intersected with an explicit clientId.
+// Resolve every client a group head (account manager) manages, via any path:
+// team membership + direct UserClientAccess (getAccessibleClientIds) plus any
+// team they head (Team.headUserId). Mirrors GROUP_HEAD_CLIENT_OR's branches.
+async function clientsForHead(headUserId) {
+  const [accessIds, headedTeams] = await Promise.all([
+    getAccessibleClientIds(headUserId, 'GROUP_HEAD'),
+    prisma.team.findMany({ where: { headUserId }, select: { id: true } }),
+  ]);
+  const ids = new Set(accessIds);
+  if (headedTeams.length) {
+    const tcs = await prisma.teamClient.findMany({ where: { teamId: { in: headedTeams.map((t) => t.id) } }, select: { clientId: true } });
+    tcs.forEach((tc) => ids.add(tc.clientId));
+  }
+  return [...ids];
+}
+
+// Shared filter resolver: ?year&month&agencyId&clientId&medium&channelMasterId&headUserId.
+// headUserId (an "Account Manager" = GROUP_HEAD user) resolves to the clients that
+// group head manages, intersected with an explicit clientId.
 async function resolveInsightFilters(req) {
   let year = parseInt(req.query.year);
   let month = parseInt(req.query.month);
@@ -37,19 +55,18 @@ async function resolveInsightFilters(req) {
   const agencyId = req.query.agencyId ? parseInt(req.query.agencyId) : null;
   const medium = req.query.medium && MEDIUM_ORDER.includes(req.query.medium) ? req.query.medium : null;
   const channelMasterId = req.query.channelMasterId ? parseInt(req.query.channelMasterId) : null;
-  const teamId = req.query.teamId ? parseInt(req.query.teamId) : null;
+  const headUserId = req.query.headUserId ? parseInt(req.query.headUserId) : null;
   const explicitClientId = req.query.clientId ? parseInt(req.query.clientId) : null;
 
   let clientIds = null; // null = unrestricted
-  if (teamId) {
-    const tcs = await prisma.teamClient.findMany({ where: { teamId }, select: { clientId: true } });
-    clientIds = tcs.map((t) => t.clientId);
+  if (headUserId) {
+    clientIds = await clientsForHead(headUserId);
   }
   if (explicitClientId) {
     clientIds = clientIds ? clientIds.filter((id) => id === explicitClientId) : [explicitClientId];
   }
 
-  return { year, month, agencyId, medium, channelMasterId, teamId, clientIds };
+  return { year, month, agencyId, medium, channelMasterId, headUserId, clientIds };
 }
 
 function buildForecastWhere(filters) {

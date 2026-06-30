@@ -82,13 +82,13 @@ function ExportButtons({ onExcel, onCsv, onPdf, busy }) {
 // ════════════════════════════════════════════════════════════════════════════
 function InsightsTab() {
   const def = clientNextMonth();
-  const [filters, setFilters] = useState({ year: def.year, month: def.month, agencyId: '', clientId: '', medium: '', channelMasterId: '', teamId: '' });
+  const [filters, setFilters] = useState({ year: def.year, month: def.month, agencyId: '', clientId: '', medium: '', channelMasterId: '', headUserId: '' });
   const [sub, setSub] = useState('summary'); // 'summary' | 'variance' | 'accuracy' | 'trends'
 
   // Dropdown sources (loaded once).
   const [filterClients, setFilterClients] = useState([]);
   const [channelMasters, setChannelMasters] = useState([]);
-  const [teams, setTeams] = useState([]);
+  const [groupHeads, setGroupHeads] = useState([]); // account managers = GROUP_HEAD users
 
   // Per-sub-tab data.
   const [summary, setSummary] = useState(null);
@@ -125,11 +125,12 @@ function InsightsTab() {
     Promise.all([
       api.get('/forecasting/clients').catch(() => ({ data: { clients: [] } })),
       api.get('/masterdata/channel-masters').catch(() => ({ data: { channelMasters: [] } })),
-      api.get('/admin/teams').catch(() => ({ data: [] })),
-    ]).then(([cl, ch, tm]) => {
+      api.get('/admin/users').catch(() => ({ data: [] })),
+    ]).then(([cl, ch, us]) => {
       setFilterClients(cl.data.clients || []);
       setChannelMasters(ch.data.channelMasters || []);
-      setTeams(Array.isArray(tm.data) ? tm.data : []);
+      const users = Array.isArray(us.data) ? us.data : [];
+      setGroupHeads(users.filter((u) => u.role === 'GROUP_HEAD').sort((a, b) => a.name.localeCompare(b.name)));
     });
   }, []);
 
@@ -158,7 +159,7 @@ function InsightsTab() {
     if (filters.clientId) p.clientId = filters.clientId;
     if (filters.medium) p.medium = filters.medium;
     if (filters.channelMasterId) p.channelMasterId = filters.channelMasterId;
-    if (filters.teamId) p.teamId = filters.teamId;
+    if (filters.headUserId) p.headUserId = filters.headUserId;
     return p;
   }, [filters]);
 
@@ -169,12 +170,12 @@ function InsightsTab() {
     if (filters.clientId) rows.push(['Client', filterClients.find((c) => String(c.id) === String(filters.clientId))?.name || filters.clientId]);
     if (filters.medium) rows.push(['Medium', filters.medium]);
     if (filters.channelMasterId) rows.push(['Channel', channelMasters.find((c) => String(c.id) === String(filters.channelMasterId))?.name || filters.channelMasterId]);
-    if (filters.teamId) {
-      const t = teams.find((x) => String(x.id) === String(filters.teamId));
-      rows.push(['Account Manager', t?.head?.name || t?.name || filters.teamId]);
+    if (filters.headUserId) {
+      const gh = groupHeads.find((x) => String(x.id) === String(filters.headUserId));
+      rows.push(['Account Manager', gh?.name || filters.headUserId]);
     }
     return rows;
-  }, [filters, agencyOptions, filterClients, channelMasters, teams]);
+  }, [filters, agencyOptions, filterClients, channelMasters, groupHeads]);
 
   // Fetch summary whenever filters change (used by Summary + Trends pie).
   useEffect(() => {
@@ -222,7 +223,7 @@ function InsightsTab() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setF = (patch) => setFilters((p) => ({ ...p, ...patch }));
-  const resetFilters = () => setFilters({ year: def.year, month: def.month, agencyId: '', clientId: '', medium: '', channelMasterId: '', teamId: '' });
+  const resetFilters = () => setFilters({ year: def.year, month: def.month, agencyId: '', clientId: '', medium: '', channelMasterId: '', headUserId: '' });
 
   const sortArrow = (active, dir) => (active ? (dir === 'asc' ? ' ▲' : ' ▼') : '');
 
@@ -414,9 +415,9 @@ function InsightsTab() {
           </select>
         </FilterField>
         <FilterField label="Account Manager">
-          <select className="select" value={filters.teamId} onChange={(e) => setF({ teamId: e.target.value })} style={{ minWidth: 160 }}>
-            <option value="">All managers</option>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.head?.name || t.name}</option>)}
+          <select className="select" value={filters.headUserId} onChange={(e) => setF({ headUserId: e.target.value })} style={{ minWidth: 160 }}>
+            <option value="">All group heads</option>
+            {groupHeads.map((gh) => <option key={gh.id} value={gh.id}>{gh.name}</option>)}
           </select>
         </FilterField>
         <button className="btn btn-ghost btn-sm" onClick={resetFilters} style={{ marginLeft: 'auto' }}><Icon name="x" size={13} /> Reset</button>
