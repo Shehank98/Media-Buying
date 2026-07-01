@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
@@ -638,6 +639,66 @@ export default function AdminPage({ initialTab = 'users' }) {
 
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
+  // Export every admin dataset into one workbook, a sheet per entity.
+  const exportAll = () => {
+    const wb = XLSX.utils.book_new();
+    const add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
+    const yn = (v, def = 'Yes') => (v === false ? 'No' : v === true ? 'Yes' : def);
+
+    add('Users', [
+      ['Name', 'Email', 'Role', 'Agencies', 'Clients', 'Must Change Pwd', 'Can Export', 'Read Only', 'Created'],
+      ...users.map(u => [
+        u.name || '', u.email || '', u.role || '',
+        (u.agencies || []).map(a => a.name).join(', '),
+        (u.clients || []).map(c => c.name).join(', '),
+        u.mustChangePassword ? 'Yes' : 'No',
+        u.canExport === false ? 'No' : 'Yes',
+        u.readOnly ? 'Yes' : 'No',
+        u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-GB') : '',
+      ]),
+    ]);
+
+    add('Agencies', [
+      ['Agency', 'Clients'],
+      ...agencies.map(a => [a.name || '', (a.clients || []).length]),
+    ]);
+
+    add('Clients', [
+      ['Client', 'Agency', 'Active'],
+      ...allClients.map(c => [c.name || '', c.agencyName || '', yn(c.isActive)]),
+    ]);
+
+    add('Channels', [
+      ['Channel', 'Medium', 'Media Group', 'Active', 'Aliases', 'Schedule Logs'],
+      ...channelMasters.map(ch => [
+        ch.name || '', ch.medium || '', ch.mediaGroup?.name || '',
+        yn(ch.isActive),
+        Array.isArray(ch.aliases) ? ch.aliases.join(', ') : '',
+        ch._count?.scheduleLogs ?? '',
+      ]),
+    ]);
+
+    add('Media Groups', [
+      ['Media Group', 'Active', 'Channels'],
+      ...mediaGroups.map(g => [
+        g.name || '', yn(g.isActive),
+        channelMasters.filter(ch => ch.mediaGroup?.id === g.id).length,
+      ]),
+    ]);
+
+    add('Teams', [
+      ['Team', 'Agency', 'Head', 'Members', 'Clients'],
+      ...teams.map(t => [
+        t.name || '', t.agency?.name || '', t.head?.name || '',
+        (t.members || []).map(m => m.name).join(', '),
+        (t.clients || []).map(c => c.name).join(', '),
+      ]),
+    ]);
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `ogilvy-orbit-admin-export-${stamp}.xlsx`);
+  };
+
   if (loading) {
     return <OrbitLoader fullHeight label="Loading…" />;
   }
@@ -663,9 +724,14 @@ export default function AdminPage({ initialTab = 'users' }) {
           <h1 className="page-title">User Management</h1>
           <p className="page-sub">Super Admin &middot; {users.length} users across {agencies.length} agencies</p>
         </div>
-        <button className="btn btn-primary" onClick={openAddUser}>
-          <Icon name="plus" size={16} /> Create user
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" onClick={exportAll} title="Export all admin data to one Excel workbook (a sheet per entity)">
+            <Icon name="download" size={16} /> Export all
+          </button>
+          <button className="btn btn-primary" onClick={openAddUser}>
+            <Icon name="plus" size={16} /> Create user
+          </button>
+        </div>
       </div>
 
       {error && (

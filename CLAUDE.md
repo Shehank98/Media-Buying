@@ -408,7 +408,7 @@ GET    /api/notifications/master-sheet           (AUTH + SUPER_ADMIN|MANAGER)
 | ReportsPage | `/reports` | SUPER_ADMIN, MANAGER | Report generation by channel/client/agency |
 | UploadTrackerPage | `/upload-tracker` | SUPER_ADMIN | Monthly upload status tracking, send reminders |
 | MediaBuyingPage | `/media-buying` | SUPER_ADMIN | Channel negotiation intelligence — agency/client discount & bonus deal history, year-over-year trend arrows, Negotiation Planner, Excel export |
-| AdminPage | `/admin` | SUPER_ADMIN | User, team, agency, client management (tabbed). Channels tab has a per-row "Merge" action (calls `POST /masterdata/channel-masters/merge`) to consolidate duplicate channel masters — moves schedule logs/upload rows + aliases onto the picked target and deactivates the source |
+| AdminPage | `/admin` | SUPER_ADMIN | User, team, agency, client management (tabbed). Channels tab has a per-row "Merge" action (calls `POST /masterdata/channel-masters/merge`) to consolidate duplicate channel masters — moves schedule logs/upload rows + aliases onto the picked target and deactivates the source. Header has an **"Export all"** button (`exportAll`, client-side SheetJS) that dumps every already-loaded admin dataset into one `.xlsx`, a sheet per entity: **Users, Agencies, Clients, Channels** (channel + medium + media group + active + aliases + schedule-log count), **Media Groups, Teams** — no new endpoint, it reuses the page's existing state |
 | PackagesPage | `/packages` | SUPER_ADMIN | Build packages (card grid), send to team heads, track responses |
 | MyPackagesPage | `/my-packages` | GROUP_HEAD | Inbox of shared packages; reply Interested/Negotiate/Not interested |
 
