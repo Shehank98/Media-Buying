@@ -555,6 +555,140 @@ export async function toggleClientActive(req, res) {
   }
 }
 
+// Merge one client (source) into another (target): move every related record —
+// schedule logs, channels/properties, brands/campaigns, forecasts, deals, and
+// user/team assignments — onto the target, resolving unique-constraint clashes,
+// then delete the now-empty source. Used to consolidate same-name duplicates.
+export async function mergeClients(req, res) {
+  try {
+    const sid = parseInt(req.body.sourceId);
+    const tid = parseInt(req.body.targetId);
+    if (!Number.isInteger(sid) || !Number.isInteger(tid)) return res.status(400).json({ error: 'sourceId and targetId are required' });
+    if (sid === tid) return res.status(400).json({ error: 'sourceId and targetId must be different' });
+
+    const [source, target] = await Promise.all([
+      prisma.client.findUnique({ where: { id: sid }, select: { id: true, name: true } }),
+      prisma.client.findUnique({ where: { id: tid }, select: { id: true, name: true, agencyId: true } }),
+    ]);
+    if (!source) return res.status(404).json({ error: 'Source client not found' });
+    if (!target) return res.status(404).json({ error: 'Target client not found' });
+
+    await prisma.$transaction(async (tx) => {
+      // 1) Schedule logs — bulk re-point (also align agency to the target's).
+      await tx.scheduleLog.updateMany({ where: { clientId: sid }, data: { clientId: tid, agencyId: target.agencyId } });
+
+      // 2) Client channels — unique [clientId, name]. Same-name → move its
+      //    properties onto the target's channel and drop the duplicate.
+      const [srcChannels, tgtChannels] = await Promise.all([
+        tx.channel.findMany({ where: { clientId: sid }, select: { id: true, name: true } }),
+        tx.channel.findMany({ where: { clientId: tid }, select: { id: true, name: true } }),
+      ]);
+      const tgtChannelByName = new Map(tgtChannels.map(c => [c.name, c.id]));
+      for (const ch of srcChannels) {
+        const dup = tgtChannelByName.get(ch.name);
+        if (dup) {
+          await tx.property.updateMany({ where: { channelId: ch.id }, data: { channelId: dup } });
+          await tx.channel.delete({ where: { id: ch.id } });
+        } else {
+          await tx.channel.update({ where: { id: ch.id }, data: { clientId: tid } });
+        }
+      }
+
+      // 3) Brands — unique [clientId, name]. Same-name → fold campaigns +
+      //    schedule logs into the target's brand, then drop the duplicate.
+      const [srcBrands, tgtBrands] = await Promise.all([
+        tx.brand.findMany({ where: { clientId: sid }, select: { id: true, name: true } }),
+        tx.brand.findMany({ where: { clientId: tid }, select: { id: true, name: true } }),
+      ]);
+      const tgtBrandByName = new Map(tgtBrands.map(b => [b.name, b.id]));
+      for (const br of srcBrands) {
+        const dupBrand = tgtBrandByName.get(br.name);
+        if (dupBrand) {
+          const [srcCamps, tgtCamps] = await Promise.all([
+            tx.campaign.findMany({ where: { brandId: br.id }, select: { id: true, name: true } }),
+            tx.campaign.findMany({ where: { brandId: dupBrand }, select: { id: true, name: true } }),
+          ]);
+          const tgtCampByName = new Map(tgtCamps.map(c => [c.name, c.id]));
+          for (const cmp of srcCamps) {
+            const dupCamp = tgtCampByName.get(cmp.name);
+            if (dupCamp) {
+              await tx.scheduleLog.updateMany({ where: { campaignId: cmp.id }, data: { campaignId: dupCamp } });
+              await tx.campaign.delete({ where: { id: cmp.id } });
+            } else {
+              await tx.campaign.update({ where: { id: cmp.id }, data: { brandId: dupBrand, clientId: tid } });
+            }
+          }
+          await tx.scheduleLog.updateMany({ where: { brandId: br.id }, data: { brandId: dupBrand } });
+          await tx.brand.delete({ where: { id: br.id } });
+        } else {
+          await tx.brand.update({ where: { id: br.id }, data: { clientId: tid } });
+          await tx.campaign.updateMany({ where: { brandId: br.id }, data: { clientId: tid } });
+        }
+      }
+
+      // 4) Monthly forecasts — unique [year,month,clientId,channelMasterId].
+      //    Clash → add the source amount into the target row, then drop source.
+      const srcForecasts = await tx.monthlyForecast.findMany({ where: { clientId: sid } });
+      for (const f of srcForecasts) {
+        const existing = await tx.monthlyForecast.findUnique({
+          where: { year_month_clientId_channelMasterId: { year: f.year, month: f.month, clientId: tid, channelMasterId: f.channelMasterId } },
+          select: { id: true, amountMillions: true },
+        });
+        if (existing) {
+          await tx.monthlyForecast.update({ where: { id: existing.id }, data: { amountMillions: Number(existing.amountMillions) + Number(f.amountMillions) } });
+          await tx.monthlyForecast.delete({ where: { id: f.id } });
+        } else {
+          await tx.monthlyForecast.update({ where: { id: f.id }, data: { clientId: tid, agencyId: target.agencyId } });
+        }
+      }
+
+      // 5) Channel-client deals — unique [channelMasterId, clientId, year]. Keep target's on clash.
+      const srcDeals = await tx.channelClientDeal.findMany({ where: { clientId: sid }, select: { id: true, channelMasterId: true, year: true } });
+      for (const d of srcDeals) {
+        const existing = await tx.channelClientDeal.findUnique({
+          where: { channelMasterId_clientId_year: { channelMasterId: d.channelMasterId, clientId: tid, year: d.year } },
+          select: { id: true },
+        });
+        if (existing) await tx.channelClientDeal.delete({ where: { id: d.id } });
+        else await tx.channelClientDeal.update({ where: { id: d.id }, data: { clientId: tid } });
+      }
+
+      // 6) User access — unique [userId, clientId]. Dedupe.
+      const [srcUA, tgtUA] = await Promise.all([
+        tx.userClientAccess.findMany({ where: { clientId: sid }, select: { id: true, userId: true } }),
+        tx.userClientAccess.findMany({ where: { clientId: tid }, select: { userId: true } }),
+      ]);
+      const tgtUAUsers = new Set(tgtUA.map(u => u.userId));
+      for (const u of srcUA) {
+        if (tgtUAUsers.has(u.userId)) await tx.userClientAccess.delete({ where: { id: u.id } });
+        else await tx.userClientAccess.update({ where: { id: u.id }, data: { clientId: tid } });
+      }
+
+      // 7) Team assignments — one team per client: if the target already sits on a
+      //    team, drop the source's; otherwise move the source's single assignment.
+      const tgtTC = await tx.teamClient.findFirst({ where: { clientId: tid }, select: { id: true } });
+      if (tgtTC) {
+        await tx.teamClient.deleteMany({ where: { clientId: sid } });
+      } else {
+        const srcTC = await tx.teamClient.findMany({ where: { clientId: sid }, select: { id: true } });
+        // Keep only the first (a client belongs to one team); move it, drop the rest.
+        for (let i = 0; i < srcTC.length; i++) {
+          if (i === 0) await tx.teamClient.update({ where: { id: srcTC[i].id }, data: { clientId: tid } });
+          else await tx.teamClient.delete({ where: { id: srcTC[i].id } });
+        }
+      }
+
+      // 8) Source is now empty — delete it.
+      await tx.client.delete({ where: { id: sid } });
+    });
+
+    return res.json({ message: `Merged client "${source.name}" into "${target.name}"`, clientId: tid });
+  } catch (error) {
+    console.error('Merge clients error:', error);
+    return res.status(500).json({ error: 'Failed to merge clients', detail: error.message });
+  }
+}
+
 // ── Client & Channel requests (forecasting) ──────────────────────────────────
 
 export async function listClientRequests(req, res) {

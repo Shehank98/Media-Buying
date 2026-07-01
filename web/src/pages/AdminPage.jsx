@@ -87,6 +87,13 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [mergeSubmitting, setMergeSubmitting] = useState(false);
   const [mergeError, setMergeError] = useState('');
 
+  /* ---- merge client modal ---- */
+  const [showClientMerge, setShowClientMerge] = useState(false);
+  const [clientMergeSource, setClientMergeSource] = useState(null);
+  const [clientMergeTargetId, setClientMergeTargetId] = useState('');
+  const [clientMergeSubmitting, setClientMergeSubmitting] = useState(false);
+  const [clientMergeError, setClientMergeError] = useState('');
+
   /* ---- media group modal ---- */
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
@@ -482,6 +489,34 @@ export default function AdminPage({ initialTab = 'users' }) {
       setMergeError(err.response?.data?.error || err.response?.data?.message || 'Failed to merge channels.');
     } finally {
       setMergeSubmitting(false);
+    }
+  };
+
+  /* ---- Merge client ---- */
+  const openClientMerge = c => {
+    setClientMergeSource(c);
+    setClientMergeTargetId('');
+    setClientMergeError('');
+    setShowClientMerge(true);
+  };
+  const handleClientMergeSubmit = async e => {
+    e.preventDefault();
+    setClientMergeError('');
+    if (!clientMergeTargetId) { setClientMergeError('Please select a client to merge into.'); return; }
+    setClientMergeSubmitting(true);
+    try {
+      await api.post('/admin/clients/merge', {
+        sourceId: clientMergeSource.id,
+        targetId: parseInt(clientMergeTargetId),
+      });
+      setShowClientMerge(false);
+      setClientMergeSource(null);
+      setClientMergeTargetId('');
+      await fetchData();
+    } catch (err) {
+      setClientMergeError(err.response?.data?.error || err.response?.data?.detail || 'Failed to merge clients.');
+    } finally {
+      setClientMergeSubmitting(false);
     }
   };
 
@@ -986,6 +1021,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                               </button>
                               <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to group heads' : 'Hide from group heads'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
                                 <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
+                              </button>
+                              <button className="act-btn" onClick={() => openClientMerge(c)} title="Merge into another client">
+                                <Icon name="merge" size={15} />
                               </button>
                               <button className="act-btn" onClick={() => confirmDelete(c, 'clients')} title="Delete client" style={{ color: 'var(--red-600,#dc2626)' }}>
                                 <Icon name="x" size={15} />
@@ -1774,6 +1812,55 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => { setShowMergeModal(false); setMergeSource(null); }}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={mergeSubmitting}>{mergeSubmitting ? 'Merging...' : 'Merge Channels'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MERGE CLIENT MODAL ============ */}
+      {showClientMerge && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) { setShowClientMerge(false); setClientMergeSource(null); } }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Merge Client</h2>
+              <button className="act-btn" onClick={() => { setShowClientMerge(false); setClientMergeSource(null); }}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleClientMergeSubmit}>
+              <div className="modal-body">
+                {clientMergeError && (
+                  <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{clientMergeError}</div>
+                )}
+                <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+                  Use this when two clients are duplicates of the same real client. All schedule logs, channels, brands,
+                  forecasts, deals, and team/user assignments on <strong style={{ color: 'var(--ink)' }}>{clientMergeSource?.name}</strong> will
+                  move to the client you pick below, and <strong style={{ color: 'var(--ink)' }}>{clientMergeSource?.name}</strong> will be deleted.
+                  This cannot be undone.
+                </p>
+                <div className="field">
+                  <label className="field-label">Merging</label>
+                  <input className="input" type="text" value={clientMergeSource ? `${clientMergeSource.name}${clientMergeSource.agencyName ? ` (${clientMergeSource.agencyName})` : ''}` : ''} disabled />
+                </div>
+                <div className="field">
+                  <label className="field-label">Merge into <span className="req">*</span></label>
+                  <select className="select" value={clientMergeTargetId} onChange={e => setClientMergeTargetId(e.target.value)}>
+                    <option value="">Select target client...</option>
+                    {allClients
+                      .filter(c => c.id !== clientMergeSource?.id)
+                      .slice()
+                      .sort((a, b) => a.name.localeCompare(b.name) || (a.agencyName || '').localeCompare(b.agencyName || ''))
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.agencyName ? ` (${c.agencyName})` : ''}</option>
+                      ))}
+                  </select>
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    All data from "{clientMergeSource?.name}" will appear under this client going forward.
+                  </span>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => { setShowClientMerge(false); setClientMergeSource(null); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={clientMergeSubmitting}>{clientMergeSubmitting ? 'Merging...' : 'Merge Clients'}</button>
               </div>
             </form>
           </div>
