@@ -61,6 +61,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [userError, setUserError] = useState('');
   const [userFieldErrors, setUserFieldErrors] = useState({});
+  const [userClientSearch, setUserClientSearch] = useState('');
 
   /* ---- team modal ---- */
   const [showTeamModal, setShowTeamModal] = useState(false);
@@ -278,10 +279,12 @@ export default function AdminPage({ initialTab = 'users' }) {
     setUserForm({ name: '', email: '', password: '', role: 'PLANNER', agencyIds: [], clientIds: [], pageAccess: [], canExport: true, readOnly: false });
     setUserError('');
     setUserFieldErrors({});
+    setUserClientSearch('');
     setShowUserModal(true);
   };
   const openEditUser = u => {
     setEditingUser(u);
+    setUserClientSearch('');
     setUserForm({
       name: u.name,
       email: u.email,
@@ -1481,19 +1484,32 @@ export default function AdminPage({ initialTab = 'users' }) {
                     {userForm.agencyIds.length === 0 && (
                       <span style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Select an agency first to see its clients</span>
                     )}
+                    {userForm.agencyIds.length > 0 && allClients.filter(c => userForm.agencyIds.includes(c.agencyId)).length > 0 && (
+                      <div style={{ position: 'relative', marginBottom: 10 }}>
+                        <Icon name="search" size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                        <input className="input" placeholder="Search clients…" value={userClientSearch} onChange={e => setUserClientSearch(e.target.value)} style={{ paddingLeft: 32 }} />
+                      </div>
+                    )}
                     <div className="chips">
-                      {allClients
-                        .filter(c => userForm.agencyIds.includes(c.agencyId))
-                        .map(c => (
+                      {(() => {
+                        const q = userClientSearch.trim().toLowerCase();
+                        const list = allClients
+                          .filter(c => userForm.agencyIds.includes(c.agencyId))
+                          .filter(c => !q || c.name.toLowerCase().includes(q) || (c.agencyName || '').toLowerCase().includes(q));
+                        if (userForm.agencyIds.length > 0 && allClients.filter(c => userForm.agencyIds.includes(c.agencyId)).length === 0) {
+                          return <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients in selected agencies</span>;
+                        }
+                        if (q && list.length === 0) {
+                          return <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients match “{userClientSearch.trim()}”</span>;
+                        }
+                        return list.map(c => (
                           <button key={c.id} type="button" className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
                             {c.name}
                             {userForm.agencyIds.length > 1 && c.agencyName && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>({c.agencyName})</span>}
                             {userForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                           </button>
-                        ))}
-                      {userForm.agencyIds.length > 0 && allClients.filter(c => userForm.agencyIds.includes(c.agencyId)).length === 0 && (
-                        <span style={{ fontSize: 13, color: 'var(--muted)' }}>No clients in selected agencies</span>
-                      )}
+                        ));
+                      })()}
                     </div>
                   </div>
                 )}
