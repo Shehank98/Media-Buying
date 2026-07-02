@@ -85,6 +85,47 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
 // Format a value already expressed in LKR millions for chart labels.
 const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
 
+// Distinct color for the forecast-fill segment of the "Actual upto X" bar —
+// deliberately not the green "actual" color or any other bar's color, so the
+// blend is visually obvious.
+const FORECAST_FILL_COLOR = '#F2A93B';
+
+// Custom tooltip for the Annual Achievement bars: the blended "Actual upto X"
+// row breaks down into its real-actual and forecast-fill components; the
+// other rows (Budget Forecast, Upto Target) show a single value.
+const AchievementTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: 'var(--muted)' }}>{label}</div>
+      {row.isBlended ? (
+        <>
+          {row.actualRangeLabel && (
+            <div style={{ fontSize: 13, marginBottom: 2 }}>
+              <span style={{ marginRight: 6, fontWeight: 600, color: row.fill }}>Actual ({row.actualRangeLabel}):</span>
+              {fmtM(row.actualPart)}
+            </div>
+          )}
+          {row.forecastFillLabel && (
+            <div style={{ fontSize: 13, marginBottom: 2 }}>
+              <span style={{ marginRight: 6, fontWeight: 600, color: FORECAST_FILL_COLOR }}>Forecast-fill ({row.forecastFillLabel}):</span>
+              {fmtM(row.forecastPart)}
+              {!row.forecastFillComplete && <span style={{ color: '#C5391F', marginLeft: 6 }}>⚠ incomplete</span>}
+            </div>
+          )}
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+            Total: {fmtM(row.total)}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 13 }}>{fmtM(row.actualPart)}</div>
+      )}
+    </div>
+  );
+};
+
 // Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
 function AchievementSection({
   year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
@@ -93,10 +134,21 @@ function AchievementSection({
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
   const bars = achievement ? [
-    { name: 'Budget Forecast', value: achievement.targetMillions || 0, fill: '#1F5BB5' },
-    { name: `Upto ${achievement.uptoMonthLabel || '-'} Target`, value: achievement.uptoTargetMillions || 0, fill: '#9A5B00' },
-    { name: achievement.uptoMonthLabel ? `Actual upto ${achievement.uptoMonthLabel}` : 'Actual', value: achievement.actualMillions || 0, fill: '#15814B' },
+    { name: 'Budget Forecast', actualPart: achievement.targetMillions || 0, forecastPart: 0, total: achievement.targetMillions || 0, fill: '#1F5BB5' },
+    { name: `Upto ${achievement.uptoMonthLabel || '-'} Target`, actualPart: achievement.uptoTargetMillions || 0, forecastPart: 0, total: achievement.uptoTargetMillions || 0, fill: '#9A5B00' },
+    {
+      name: achievement.uptoMonthLabel ? `Actual upto ${achievement.uptoMonthLabel}` : 'Actual',
+      actualPart: achievement.actualOnlyMillions ?? achievement.actualMillions ?? 0,
+      forecastPart: achievement.forecastFillMillions || 0,
+      fill: '#15814B',
+      isBlended: true,
+      actualRangeLabel: achievement.actualRangeLabel,
+      forecastFillLabel: achievement.forecastFillLabel,
+      forecastFillComplete: achievement.forecastFillComplete,
+      total: achievement.actualMillions || 0,
+    },
   ] : [];
+  const hasForecastFill = !!(achievement?.forecastFillMillions > 0 && achievement?.forecastFillLabel);
   const fc = forecastMonthly?.data || [];
   const gcMonths = groupContribution?.months || [];
   const gcData = groupContribution?.groups || [];
@@ -140,7 +192,9 @@ function AchievementSection({
             <div className="chart-card-title">Annual Achievement</div>
             <div className="chart-card-sub">
               {achievement?.hasTarget
-                ? `Budget vs pacing vs actual (incl. ${achievement.uptoMonthLabel} forecast) · LKR millions`
+                ? (hasForecastFill
+                  ? `Budget vs pacing vs actual (incl. ${achievement.forecastFillLabel} forecast-fill) · LKR millions`
+                  : `Budget vs pacing vs actual · LKR millions`)
                 : 'No annual target set for this year — add one in Admin → Annual Targets'}
             </div>
           </div>
@@ -155,13 +209,27 @@ function AchievementSection({
               <CartesianGrid horizontal={false} stroke="var(--border)" />
               <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
               <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }} />
-              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-              <Bar dataKey="value" radius={[0, 5, 5, 0]} barSize={34}>
+              <Tooltip content={<AchievementTooltip />} />
+              <Bar dataKey="actualPart" stackId="a" barSize={34}>
                 {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
-                <LabelList dataKey="value" position="right" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
+              </Bar>
+              <Bar dataKey="forecastPart" stackId="a" radius={[0, 5, 5, 0]} barSize={34}>
+                {bars.map((b, i) => <Cell key={i} fill={b.forecastPart > 0 ? FORECAST_FILL_COLOR : b.fill} />)}
+                <LabelList dataKey="total" position="right" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        )}
+        {hasForecastFill && (
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: FORECAST_FILL_COLOR }} />
+            Forecast (est.) — {achievement.forecastFillLabel}
+            {!achievement.forecastFillComplete && (
+              <span style={{ color: '#C5391F', fontWeight: 600 }}>
+                ⚠ {achievement.forecastFillSubmittedClients}/{achievement.forecastFillExpectedClients} clients submitted
+              </span>
+            )}
+          </div>
         )}
         {achievement?.achievementPct != null && (
           <div style={{ marginTop: 8, textAlign: 'right', fontSize: 13, fontWeight: 700, color: achievement.achievementPct >= 100 ? '#15814B' : '#C5391F' }}>

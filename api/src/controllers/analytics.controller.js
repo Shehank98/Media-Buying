@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 
 // Client ids the user may see (null = unrestricted, for SUPER_ADMIN).
 // Covers MANAGER (agency clients), GROUP_HEAD (team + direct), PLANNER (direct).
@@ -1168,15 +1169,54 @@ export async function getAchievement(req, res) {
     }
 
     let actualSum = 0, forecastUsed = 0;
+    const forecastFillMonths = [];
     for (let m = 1; m <= positionMonth; m++) {
       const mv = monthValue(m);
       actualSum += mv.v;
-      if (mv.fc) forecastUsed += mv.v;
+      if (mv.fc) { forecastUsed += mv.v; forecastFillMonths.push(m); }
     }
+    // The real-actual segment stops at the last month with real data — any
+    // earlier forecast-filled month (a mid-year gap) is still forecast, not actual.
+    let lastActualMonth = 0;
+    for (let m = 1; m <= positionMonth; m++) if (!monthValue(m).fc && !monthValue(m).empty) lastActualMonth = m;
+    const actualOnlyMillions = Number((actualSum - forecastUsed).toFixed(2));
+    const forecastFillMillions = Number(forecastUsed.toFixed(2));
 
     const uptoTargetMillions = target ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
     const actualMillions = Number(actualSum.toFixed(2));
     const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
+
+    const actualRangeLabel = lastActualMonth > 0
+      ? (lastActualMonth === 1 ? MONTH_NAMES[0] : `${MONTH_NAMES[0]}–${MONTH_NAMES[lastActualMonth - 1]}`)
+      : null;
+    const forecastFillLabel = forecastFillMonths.length
+      ? forecastFillMonths.map(m => MONTH_NAMES[m - 1]).join(', ')
+      : null;
+
+    // Completeness: forecast-fill only reflects clients who have actually
+    // submitted a forecast for the gap month(s) — clients who haven't are
+    // simply absent from the total (not zero-filled), so surface a warning
+    // when the roster of expected (active, group-head-assigned) clients isn't
+    // fully covered yet.
+    let forecastFillComplete = true;
+    let forecastFillExpectedClients = 0;
+    let forecastFillSubmittedClients = 0;
+    if (forecastFillMonths.length) {
+      const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+      if (ids) clientWhere.agencyId = { in: ids };
+      const expectedClients = await prisma.client.findMany({ where: clientWhere, select: { id: true } });
+      const expectedIds = expectedClients.map(c => c.id);
+      forecastFillExpectedClients = expectedIds.length;
+      if (expectedIds.length) {
+        const submitted = await prisma.monthlyForecast.findMany({
+          where: { year, month: { in: forecastFillMonths }, clientId: { in: expectedIds } },
+          select: { clientId: true },
+          distinct: ['clientId'],
+        });
+        forecastFillSubmittedClients = submitted.length;
+        forecastFillComplete = forecastFillSubmittedClients >= forecastFillExpectedClients;
+      }
+    }
 
     return res.json({
       year,
@@ -1186,7 +1226,15 @@ export async function getAchievement(req, res) {
       uptoMonthLabel: target ? MONTH_NAMES[positionMonth - 1] : null,
       uptoTargetMillions,
       actualMillions,
-      forecastMillions: Number(forecastUsed.toFixed(2)),
+      forecastMillions: forecastFillMillions,
+      actualOnlyMillions,
+      forecastFillMillions,
+      forecastFillMonths,
+      actualRangeLabel,
+      forecastFillLabel,
+      forecastFillComplete,
+      forecastFillExpectedClients,
+      forecastFillSubmittedClients,
       achievementPct,
       availableYears: years,
     });
