@@ -1011,22 +1011,24 @@ export default function ForecastingPage() {
             </div>
             <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
             <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <select
-                className="select"
-                value={`${exportPeriod.year}-${exportPeriod.month}`}
-                onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setExportPeriod({ year: y, month: m }); }}
-                style={{ maxWidth: 150 }}
-                title="Month to export"
-              >
-                {exportMonths.map(o => (
-                  <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}</option>
-                ))}
-              </select>
-              <button className="btn btn-ghost btn-sm" onClick={exportForecasts} disabled={exporting} title="Export the entered forecasts for this month (client-wise) to Excel">
-                <Icon name="download" size={14} /> {exporting ? 'Exporting…' : 'Export'}
-              </button>
-            </div>
+            {isAdmin && (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select
+                  className="select"
+                  value={`${exportPeriod.year}-${exportPeriod.month}`}
+                  onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setExportPeriod({ year: y, month: m }); }}
+                  style={{ maxWidth: 150 }}
+                  title="Month to export"
+                >
+                  {exportMonths.map(o => (
+                    <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}</option>
+                  ))}
+                </select>
+                <button className="btn btn-ghost btn-sm" onClick={exportForecasts} disabled={exporting} title="Export the entered forecasts for this month (client-wise) to Excel">
+                  <Icon name="download" size={14} /> {exporting ? 'Exporting…' : 'Export'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
