@@ -281,7 +281,7 @@ export default function ChannelIntelligencePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           <div>
             <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>One line per year, Jan-Dec — click a dot to see the schedule logs behind that month</p>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>One line per year, Jan-Dec. Click a dot to see the schedule logs behind that month</p>
           </div>
           {monthlyInsights && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -340,7 +340,7 @@ export default function ChannelIntelligencePage() {
         <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setMonthDetail(null); }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
             <div className="modal-head">
-              <h2>{monthDetail.label} — Schedule Logs</h2>
+              <h2>{monthDetail.label}: Schedule Logs</h2>
               <button className="act-btn" onClick={() => setMonthDetail(null)}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body" style={{ overflow: 'auto', flex: 1 }}>
@@ -429,7 +429,7 @@ export default function ChannelIntelligencePage() {
       {clientPareto.length > 0 && (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, marginBottom: 32 }}>
           <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Client Spend Concentration</h3>
-          <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Which clients drive this channel's spend — bars are each client's spend, the line is the running share of the total (dashed = 80%)</p>
+          <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Which clients drive this channel's spend. Bars are each client's spend, the line is the running share of the total (dashed = 80%)</p>
           <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={clientPareto} margin={{ top: 8, right: 16, bottom: 64, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

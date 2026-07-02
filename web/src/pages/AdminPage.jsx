@@ -1049,7 +1049,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         <div className="card" style={{ marginBottom: 20 }}>
           <h3 style={{ margin: '0 0 4px' }}>Assign Accounts to Heads</h3>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
-            Click a client to assign it to that team's head. A client belongs to one team at a time —
+            Click a client to assign it to that team's head. A client belongs to one team at a time;
             assigning it here moves it off any other team instantly.
           </div>
           {accountAssignError && (
@@ -1082,7 +1082,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                             className={'chip' + (active ? ' active' : '')}
                             disabled={busy}
                             onClick={() => toggleAccountForTeam(team, c.id)}
-                            title={owner ? `Currently on team "${owner.name}" — assigning here will move it` : ''}
+                            title={owner ? `Currently on team "${owner.name}": assigning here will move it` : ''}
                           >
                             {c.name}{owner ? ` (on ${owner.name})` : ''}
                             {active ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
@@ -1717,7 +1717,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       .map(c => {
                         const owner = teams.find(t => t.id !== editingTeam?.id && t.clients?.some(tc => tc.id === c.id));
                         return (
-                          <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))} title={owner ? `Currently on team "${owner.name}" — adding here will move it` : ''}>
+                          <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))} title={owner ? `Currently on team "${owner.name}": adding here will move it` : ''}>
                             {c.name}{owner ? ` (on ${owner.name})` : ''}
                             {teamForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
                           </button>

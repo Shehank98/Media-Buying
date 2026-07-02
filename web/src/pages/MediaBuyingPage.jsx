@@ -498,7 +498,7 @@ export default function MediaBuyingPage() {
       const wb = XLSX.utils.book_new();
 
       const summaryRows = [
-        ['Media Buying — Channel Negotiation Intelligence'],
+        ['Media Buying: Channel Negotiation Intelligence'],
         ['Channel', data.channel.name],
         ['Medium', data.channel.medium],
         ['Clients on Channel', sortedClients.length],

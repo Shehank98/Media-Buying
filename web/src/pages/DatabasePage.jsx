@@ -1213,7 +1213,7 @@ export default function DatabasePage() {
                         {importCheck.errors.slice(0, 200).map((e, i) => (
                           <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
                         ))}
-                        {importCheck.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importCheck.errors.length - 200} more — download to see them all.</div>}
+                        {importCheck.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importCheck.errors.length - 200} more. Download to see them all.</div>}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
                         A duplicate = same <b>Year+Month, Client, Channel and Schedule Value</b> as a row already in the database (brand &amp; RO are ignored; repeats within this file are kept). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
@@ -1263,7 +1263,7 @@ export default function DatabasePage() {
                         {importResult.errors.slice(0, 200).map((e, i) => (
                           <div key={i} style={{ fontSize: 12, color: '#6B7790', padding: '2px 0' }}>Row {e.row}: {e.error}</div>
                         ))}
-                        {importResult.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importResult.errors.length - 200} more — download to see them all.</div>}
+                        {importResult.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importResult.errors.length - 200} more. Download to see them all.</div>}
                       </div>
                     </>
                   )}

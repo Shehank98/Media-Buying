@@ -221,11 +221,11 @@ function AchievementSection({
                 ? (hasForecastFill
                   ? `Budget vs pacing vs actual (incl. ${achievement.forecastFillLabel} forecast-fill) · LKR millions`
                   : `Budget vs pacing vs actual · LKR millions`)
-                : 'No annual target set for this year — add one in Admin → Annual Targets'}
+                : 'No annual target set for this year. Add one in Admin → Annual Targets'}
             </div>
           </div>
           <select className="select" value={String(year || achievement?.year || '')} onChange={e => setYear(e.target.value)} style={{ maxWidth: 130 }}>
-            {selYears.length === 0 && <option value="">—</option>}
+            {selYears.length === 0 && <option value="">-</option>}
             {selYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -246,7 +246,7 @@ function AchievementSection({
         {hasForecastFill && (
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: FORECAST_FILL_COLOR }} />
-            Forecast (est.) — {achievement.forecastFillLabel}
+            Forecast (est.): {achievement.forecastFillLabel}
             {!achievement.forecastFillComplete && (
               <span style={{ color: '#C5391F', fontWeight: 600 }}>
                 ⚠ {achievement.forecastFillSubmittedClients}/{achievement.forecastFillExpectedClients} clients submitted
@@ -321,7 +321,7 @@ function AchievementSection({
       </div>
 
       <div className="chart-card" style={{ marginTop: 16 }}>
-        <div className="chart-card-title">Group Contribution — Actual Avg vs Forecast</div>
+        <div className="chart-card-title">Group Contribution: Actual Avg vs Forecast</div>
         <div className="chart-card-sub">{gcvTitle}</div>
         {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={300} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={320}>

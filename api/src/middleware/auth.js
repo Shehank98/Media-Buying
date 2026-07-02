@@ -47,7 +47,7 @@ export async function authenticate(req, res, next) {
     if (user.readOnly && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
       const path = (req.originalUrl || '').split('?')[0];
       if (!path.startsWith('/api/auth/')) {
-        return res.status(403).json({ error: 'Your account is read-only — changes are not permitted.' });
+        return res.status(403).json({ error: 'Your account is read-only. Changes are not permitted.' });
       }
     }
 

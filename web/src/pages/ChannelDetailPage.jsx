@@ -873,7 +873,7 @@ export default function ChannelDetailPage() {
                   />
                   {editingDeal && (
                     <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                      To record a different year, use "Add deal" instead — editing only updates this year's terms.
+                      To record a different year, use "Add deal" instead. Editing only updates this year's terms.
                     </div>
                   )}
                 </div>
