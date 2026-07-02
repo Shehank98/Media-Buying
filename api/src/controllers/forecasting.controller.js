@@ -140,6 +140,50 @@ export async function getVariance(req, res) {
   }
 }
 
+// Every forecast row the caller can see for a month (client × channel), for the
+// client-wise export. Read-only, so any month is allowed (entered or previous),
+// scoped to the caller's accessible clients (SUPER_ADMIN: all).
+export async function exportForecastEntries(req, res) {
+  try {
+    const user = req.user;
+    const ids = await accessibleClientIds(user);
+    let year = parseInt(req.query.year);
+    let month = parseInt(req.query.month);
+    if (!(year >= 2000 && month >= 1 && month <= 12)) {
+      const nm = nextMonth();
+      year = nm.year;
+      month = nm.month;
+    }
+    const where = { year, month };
+    if (ids) where.clientId = { in: ids };
+
+    const rows = await prisma.monthlyForecast.findMany({
+      where,
+      include: {
+        client: { select: { name: true, agency: { select: { name: true } } } },
+        channelMaster: { select: { name: true, medium: true } },
+      },
+    });
+
+    return res.json({
+      year,
+      month,
+      rows: rows.map(r => ({
+        clientId: r.clientId,
+        clientName: r.client?.name || `#${r.clientId}`,
+        agencyName: r.client?.agency?.name || '',
+        channelName: r.channelMaster?.name || '',
+        medium: r.channelMaster?.medium || '',
+        amountMillions: Number(r.amountMillions),
+        notes: r.notes || '',
+      })),
+    });
+  } catch (error) {
+    console.error('exportForecastEntries error:', error);
+    return res.status(500).json({ error: 'Failed to export forecast data', detail: error.message });
+  }
+}
+
 // Active clients the caller can forecast for, each with next-month status.
 export async function listForecastClients(req, res) {
   try {

@@ -758,6 +758,60 @@ export default function ForecastingPage() {
   // view toggle (admins only): client entry grid vs the Insights analytics suite
   const [view, setView] = useState('clients'); // 'clients' | 'insights'
 
+  // Export entered forecasts (client-wise) for a chosen month — the upcoming
+  // month or any of the prior 12; read-only so it's not tied to the entry lock.
+  const [exportPeriod, setExportPeriod] = useState(clientNextMonth());
+  const [exporting, setExporting] = useState(false);
+  const exportMonths = useMemo(() => {
+    const out = [];
+    let { year: y, month: m } = clientNextMonth();
+    for (let i = 0; i < 13; i++) {
+      out.push({ year: y, month: m });
+      m -= 1; if (m < 1) { m = 12; y -= 1; }
+    }
+    return out;
+  }, []);
+  const exportForecasts = async () => {
+    setExporting(true);
+    try {
+      const { data } = await api.get('/forecasting/export-entries', { params: { year: exportPeriod.year, month: exportPeriod.month } });
+      const rows = data.rows || [];
+      const label = `${MONTHS[data.month - 1]} ${data.year}`;
+      const toLKR = (m) => Math.round(Number(m) * 1e6);
+      // Detail sheet: one row per client × channel.
+      const detail = rows.slice().sort((a, b) =>
+        a.clientName.localeCompare(b.clientName) ||
+        (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) ||
+        a.channelName.localeCompare(b.channelName));
+      const detailRows = [
+        ['Client', 'Agency', 'Channel', 'Medium', 'Amount (LKR)', 'Notes'],
+        ...detail.map(r => [r.clientName, r.agencyName, r.channelName, r.medium, toLKR(r.amountMillions), r.notes]),
+        ['TOTAL', '', '', '', toLKR(rows.reduce((s, r) => s + r.amountMillions, 0)), ''],
+      ];
+      // Client-wise summary sheet.
+      const byClient = new Map();
+      for (const r of rows) {
+        const e = byClient.get(r.clientId) || { name: r.clientName, agency: r.agencyName, total: 0 };
+        e.total += r.amountMillions;
+        byClient.set(r.clientId, e);
+      }
+      const summaryRows = [
+        ['Client', 'Agency', 'Total Forecast (LKR)'],
+        ...[...byClient.values()].sort((a, b) => a.name.localeCompare(b.name)).map(c => [c.name, c.agency, toLKR(c.total)]),
+        ['TOTAL', '', toLKR(rows.reduce((s, r) => s + r.amountMillions, 0))],
+      ];
+      const sheets = [
+        { name: 'By Client', rows: summaryRows },
+        { name: 'Detail', rows: detailRows },
+      ];
+      downloadXLSX(sheets, `forecast-${data.year}-${String(data.month).padStart(2, '0')}`);
+    } catch {
+      setError('Failed to export forecast data.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // entry modal
   const [active, setActive] = useState(null); // the client being edited/viewed
   const [categories, setCategories] = useState([]);
@@ -957,6 +1011,22 @@ export default function ForecastingPage() {
             </div>
             <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
             <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <select
+                className="select"
+                value={`${exportPeriod.year}-${exportPeriod.month}`}
+                onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setExportPeriod({ year: y, month: m }); }}
+                style={{ maxWidth: 150 }}
+                title="Month to export"
+              >
+                {exportMonths.map(o => (
+                  <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}</option>
+                ))}
+              </select>
+              <button className="btn btn-ghost btn-sm" onClick={exportForecasts} disabled={exporting} title="Export the entered forecasts for this month (client-wise) to Excel">
+                <Icon name="download" size={14} /> {exporting ? 'Exporting…' : 'Export'}
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   getNextMonth,
   getVariance,
+  exportForecastEntries,
   listForecastClients,
   listForecastChannels,
   getForecastEntry,
@@ -17,6 +18,7 @@ const router = Router();
 
 router.get('/next-month', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getNextMonth);
 router.get('/clients', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), listForecastClients);
+router.get('/export-entries', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), exportForecastEntries);
 router.get('/channels', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), listForecastChannels);
 router.get('/entry', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getForecastEntry);
 router.get('/previous', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getPreviousForecast);
