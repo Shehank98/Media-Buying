@@ -1166,6 +1166,12 @@ export async function getAchievement(req, res) {
       let last = 0;
       for (let m = 1; m <= 12; m++) if (!monthValue(m).empty) last = m;
       positionMonth = last || (target ? remoteMonth : 12);
+      // Never pace past the current calendar month for an in-progress year, so
+      // the "Actual upto [month]" bar (and its forecast-fill) stops at this
+      // month even when a forecast for a future month has already been
+      // submitted — the bar covers only up to the current month (spec).
+      const now = new Date();
+      if (year === now.getFullYear()) positionMonth = Math.min(positionMonth, now.getMonth() + 1);
     }
 
     let actualSum = 0, forecastUsed = 0;

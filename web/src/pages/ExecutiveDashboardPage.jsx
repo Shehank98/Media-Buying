@@ -90,6 +90,32 @@ const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('
 // blend is visually obvious.
 const FORECAST_FILL_COLOR = '#F2A93B';
 
+// Path for a rect with only its RIGHT corners rounded (horizontal bar).
+const roundedRightRectPath = (x, y, w, h, r) => {
+  const rr = Math.max(0, Math.min(r, h / 2, w));
+  return `M${x},${y} h${w - rr} a${rr},${rr} 0 0 1 ${rr},${rr} v${h - 2 * rr} a${rr},${rr} 0 0 1 ${-rr},${rr} h${-(w - rr)} z`;
+};
+
+// Custom shapes for the Annual Achievement stacked bars so the OUTER (rightmost
+// drawn) segment keeps rounded right corners: the actual segment rounds only
+// when there's no forecast-fill on top of it; the forecast-fill segment always
+// rounds (it's only ever the outermost). Fill comes from the datum (payload).
+const ActualBarShape = (props) => {
+  const { x, y, width, height, payload } = props;
+  if (!(width > 0) || !(height > 0)) return null;
+  const round = !(payload?.forecastPart > 0);
+  const d = round
+    ? roundedRightRectPath(x, y, width, height, 5)
+    : `M${x},${y} h${width} v${height} h${-width} z`;
+  return <path d={d} fill={payload?.fill} />;
+};
+
+const ForecastBarShape = (props) => {
+  const { x, y, width, height } = props;
+  if (!(width > 0) || !(height > 0)) return null;
+  return <path d={roundedRightRectPath(x, y, width, height, 5)} fill={FORECAST_FILL_COLOR} />;
+};
+
 // Custom tooltip for the Annual Achievement bars: the blended "Actual upto X"
 // row breaks down into its real-actual and forecast-fill components; the
 // other rows (Budget Forecast, Upto Target) show a single value.
@@ -210,11 +236,8 @@ function AchievementSection({
               <XAxis type="number" tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} />
               <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12, fill: 'var(--ink)' }} />
               <Tooltip content={<AchievementTooltip />} />
-              <Bar dataKey="actualPart" stackId="a" barSize={34}>
-                {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
-              </Bar>
-              <Bar dataKey="forecastPart" stackId="a" radius={[0, 5, 5, 0]} barSize={34}>
-                {bars.map((b, i) => <Cell key={i} fill={b.forecastPart > 0 ? FORECAST_FILL_COLOR : b.fill} />)}
+              <Bar dataKey="actualPart" stackId="a" barSize={34} shape={<ActualBarShape />} />
+              <Bar dataKey="forecastPart" stackId="a" barSize={34} shape={<ForecastBarShape />}>
                 <LabelList dataKey="total" position="right" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
               </Bar>
             </BarChart>
