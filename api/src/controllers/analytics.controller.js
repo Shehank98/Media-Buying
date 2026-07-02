@@ -1199,29 +1199,34 @@ export async function getAchievement(req, res) {
       ? forecastFillMonths.map(m => MONTH_NAMES[m - 1]).join(', ')
       : null;
 
-    // Completeness: forecast-fill only reflects clients who have actually
-    // submitted a forecast for the gap month(s) — clients who haven't are
-    // simply absent from the total (not zero-filled), so surface a warning
-    // when the roster of expected (active, group-head-assigned) clients isn't
-    // fully covered yet.
+    // Completeness. The forecast-fill total sums EVERY forecast in scope for the
+    // gap month(s), so the "submitted" count is the distinct clients behind that
+    // total (never contradicting the money — e.g. no "11M but 0 submitted"). The
+    // "expected" denominator is that set of forecasters UNIONed with the tracked
+    // roster (active clients assigned to a group head), so roster clients that
+    // haven't forecasted yet still surface via the warning.
     let forecastFillComplete = true;
     let forecastFillExpectedClients = 0;
     let forecastFillSubmittedClients = 0;
     if (forecastFillMonths.length) {
       const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
       if (ids) clientWhere.agencyId = { in: ids };
-      const expectedClients = await prisma.client.findMany({ where: clientWhere, select: { id: true } });
-      const expectedIds = expectedClients.map(c => c.id);
-      forecastFillExpectedClients = expectedIds.length;
-      if (expectedIds.length) {
-        const submitted = await prisma.monthlyForecast.findMany({
-          where: { year, month: { in: forecastFillMonths }, clientId: { in: expectedIds } },
-          select: { clientId: true },
-          distinct: ['clientId'],
-        });
-        forecastFillSubmittedClients = submitted.length;
-        forecastFillComplete = forecastFillSubmittedClients >= forecastFillExpectedClients;
-      }
+      const rosterClients = await prisma.client.findMany({ where: clientWhere, select: { id: true } });
+      const rosterIds = rosterClients.map(c => c.id);
+
+      const fillWhere = { year, month: { in: forecastFillMonths } };
+      if (ids) fillWhere.agencyId = { in: ids };
+      const submittedRows = await prisma.monthlyForecast.findMany({
+        where: fillWhere,
+        select: { clientId: true },
+        distinct: ['clientId'],
+      });
+      const submittedIds = submittedRows.map(r => r.clientId);
+
+      const expectedSet = new Set([...rosterIds, ...submittedIds]);
+      forecastFillSubmittedClients = submittedIds.length;
+      forecastFillExpectedClients = expectedSet.size;
+      forecastFillComplete = forecastFillSubmittedClients >= forecastFillExpectedClients;
     }
 
     return res.json({
