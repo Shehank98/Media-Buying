@@ -97,7 +97,7 @@ function ExportButtons({ onExcel, onCsv, onPdf, busy }) {
 function InsightsTab() {
   const def = clientNextMonth();
   const [filters, setFilters] = useState({ year: def.year, month: def.month, agencyId: '', clientId: '', medium: '', channelMasterId: '', headUserId: '' });
-  const [sub, setSub] = useState('summary'); // 'summary' | 'variance' | 'accuracy' | 'trends'
+  const [sub, setSub] = useState('summary'); // 'summary' | 'variance' | 'accuracy' | 'trends' | 'budget'
 
   // Dropdown sources (loaded once).
   const [filterClients, setFilterClients] = useState([]);
@@ -109,6 +109,7 @@ function InsightsTab() {
   const [variance, setVariance] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
   const [trend, setTrend] = useState(null);
+  const [budget, setBudget] = useState(null);
   const [loading, setLoading] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
 
@@ -228,6 +229,15 @@ function InsightsTab() {
       .finally(() => setLoading(false));
   }, [params, sub]);
 
+  useEffect(() => {
+    if (sub !== 'budget') return;
+    setLoading(true);
+    api.get('/forecasting/insights/budget', { params })
+      .then((r) => setBudget(r.data))
+      .catch(() => setBudget(null))
+      .finally(() => setLoading(false));
+  }, [params, sub]);
+
   const yearOptions = useMemo(() => {
     const cur = new Date().getFullYear();
     const top = Math.max(cur + 1, def.year);
@@ -324,7 +334,21 @@ function InsightsTab() {
     return [filterSheet, { name: 'Monthly Trend', rows: monthRows }, { name: 'Top Channels', rows: topChRows }, { name: 'Top Clients', rows: topClRows }];
   };
 
-  const sheetsForSub = () => (sub === 'summary' ? summarySheets() : sub === 'variance' ? varianceSheets() : sub === 'accuracy' ? accuracySheets() : trendSheets());
+  const budgetSheets = () => {
+    const mgrRows = [
+      ['Account Manager', 'Clients', 'Actual (LKR)', 'Best (LKR)', 'Billing - Last Month (LKR)'],
+      ...(budget?.byManager || []).map((m) => [m.accountManager, m.clientCount, m.actualAmount, m.bestAmount, m.billingLastMonth]),
+      ['TOTAL', '', budget?.managerTotals.actualAmount ?? 0, budget?.managerTotals.bestAmount ?? 0, budget?.managerTotals.billingLastMonth ?? 0],
+    ];
+    const chRows = [
+      ['Channel', 'Medium', 'Forecast (LKR)'],
+      ...(budget?.byChannel || []).map((c) => [c.channelName, c.medium, c.forecastAmount]),
+      ['TOTAL', '', budget?.channelTotalAmount ?? 0],
+    ];
+    return [filterSheet, { name: 'By Account Manager', rows: mgrRows }, { name: 'By Channel', rows: chRows }];
+  };
+
+  const sheetsForSub = () => (sub === 'summary' ? summarySheets() : sub === 'variance' ? varianceSheets() : sub === 'accuracy' ? accuracySheets() : sub === 'budget' ? budgetSheets() : trendSheets());
 
   const onExcel = () => downloadXLSX(sheetsForSub(), `${baseName}-${sub}`);
   const onCsv = () => downloadCSV(sheetsForSub(), `${baseName}-${sub}`);
@@ -336,7 +360,7 @@ function InsightsTab() {
       const pageW = pdf.internal.pageSize.getWidth();
       const margin = 15;
       const contentW = pageW - margin * 2;
-      const title = sub === 'summary' ? 'Next Month Forecast Summary' : sub === 'variance' ? 'Forecast vs Actual' : sub === 'accuracy' ? 'Forecast Accuracy' : 'Trend Analysis';
+      const title = sub === 'summary' ? 'Next Month Forecast Summary' : sub === 'variance' ? 'Forecast vs Actual' : sub === 'accuracy' ? 'Forecast Accuracy' : sub === 'budget' ? 'Overall Budget' : 'Trend Analysis';
       pdf.setFontSize(18); pdf.setTextColor(30, 58, 95); pdf.text(`Forecasting · ${title}`, margin, 20);
       pdf.setFontSize(9); pdf.setTextColor(100);
       pdf.text(appliedFilters.map((f) => `${f[0]}: ${f[1]}`).join('   |   '), margin, 27, { maxWidth: contentW });
@@ -354,6 +378,10 @@ function InsightsTab() {
       } else if (sub === 'accuracy') {
         const s = accuracySheets();
         autoTable(pdf, { startY: 35, head: [s[1].rows[0]], body: s[1].rows.slice(1), ...tableStyles });
+      } else if (sub === 'budget') {
+        const s = budgetSheets();
+        autoTable(pdf, { startY: 35, head: [s[1].rows[0]], body: s[1].rows.slice(1), ...tableStyles });
+        autoTable(pdf, { startY: pdf.lastAutoTable.finalY + 8, head: [s[2].rows[0]], body: s[2].rows.slice(1), ...tableStyles });
       } else {
         const captureChart = async (ref) => {
           if (!ref?.current) return null;
@@ -440,7 +468,7 @@ function InsightsTab() {
       {/* Sub-tabs + export */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3 }}>
-          {[['summary', 'Summary'], ['variance', 'Forecast vs Actual'], ['accuracy', 'Accuracy'], ['trends', 'Trends']].map(([k, label]) => (
+          {[['summary', 'Summary'], ['variance', 'Forecast vs Actual'], ['accuracy', 'Accuracy'], ['trends', 'Trends'], ['budget', 'Overall Budget']].map(([k, label]) => (
             <button key={k} onClick={() => setSub(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 14px', borderRadius: 7, fontFamily: 'inherit', background: sub === k ? '#fff' : 'transparent', color: sub === k ? '#16243C' : '#6B7790', boxShadow: sub === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{label}</button>
           ))}
         </div>
@@ -673,6 +701,68 @@ function InsightsTab() {
                   </div>
                 </Card>
               </div>
+            </div>
+          )}
+
+          {/* ── OVERALL BUDGET ── */}
+          {sub === 'budget' && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              <Card title="Overall Budget - by Account Manager">
+                {(budget?.byManager || []).length === 0 ? <Empty /> : (
+                  <table className="tbl" style={{ fontSize: 12.5 }}>
+                    <thead><tr>
+                      <th>Account Manager</th>
+                      <th style={{ textAlign: 'right' }}>Clients</th>
+                      <th style={{ textAlign: 'right' }}>Actual</th>
+                      <th style={{ textAlign: 'right' }}>Best</th>
+                      <th style={{ textAlign: 'right' }}>Billing <span style={{ fontWeight: 500, fontSize: 11, color: '#93A0B5' }}>(Last Month schedules)</span></th>
+                    </tr></thead>
+                    <tbody>
+                      {budget.byManager.map((m) => (
+                        <tr key={m.accountManager}>
+                          <td className="strong">{m.accountManager}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: '#6B7790' }}>{m.clientCount}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(m.actualAmount)}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(m.bestAmount)}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(m.billingLastMonth)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot><tr style={{ fontWeight: 700 }}>
+                      <td>Total</td>
+                      <td />
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(budget?.managerTotals.actualAmount)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(budget?.managerTotals.bestAmount)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(budget?.managerTotals.billingLastMonth)}</td>
+                    </tr></tfoot>
+                  </table>
+                )}
+              </Card>
+
+              <Card title="Forecast by Channel">
+                {(budget?.byChannel || []).length === 0 ? <Empty /> : (
+                  <table className="tbl" style={{ fontSize: 12.5 }}>
+                    <thead><tr>
+                      <th>Channel</th>
+                      <th>Medium</th>
+                      <th style={{ textAlign: 'right' }}>Forecast</th>
+                    </tr></thead>
+                    <tbody>
+                      {budget.byChannel.map((c) => (
+                        <tr key={c.channelMasterId ?? c.channelName}>
+                          <td className="strong">{c.channelName}</td>
+                          <td>{c.medium ? <span className="medium-tag" data-medium={c.medium}>{c.medium}</span> : '-'}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(c.forecastAmount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot><tr style={{ fontWeight: 700 }}>
+                      <td colSpan={2}>Total</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(budget?.channelTotalAmount)}</td>
+                    </tr></tfoot>
+                  </table>
+                )}
+              </Card>
             </div>
           )}
         </>

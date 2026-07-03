@@ -210,6 +210,100 @@ export async function getInsightsSummary(req, res) {
   }
 }
 
+// Overall Budget insights (SUPER_ADMIN): the entry-side Overall Budget worksheet
+// aggregated for admins. Two sections, both for the resolved month and scoped to
+// the same group-head roster as the Summary, so they refresh live as group heads
+// update forecasts/budgets:
+//   1) by account manager (group head): Actual (their clients' total forecast,
+//      full LKR) + Best + Billing-last-month (from MonthlyBudget, full LKR).
+//   2) by channel: total forecast amount per ChannelMaster (full LKR).
+export async function getInsightsBudget(req, res) {
+  try {
+    const filters = await resolveInsightFilters(req);
+    const { year, month } = filters;
+
+    const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    if (filters.clientIds) clientWhere.id = { in: filters.clientIds };
+    if (filters.agencyId) clientWhere.agencyId = filters.agencyId;
+    const clients = await prisma.client.findMany({ where: clientWhere, select: { id: true, name: true } });
+    const clientIds = clients.map((c) => c.id);
+
+    const amMap = await accountManagerByClient(clientIds); // clientId -> group head name
+
+    const [byClientF, byChannelF, budgets] = await Promise.all([
+      prisma.monthlyForecast.groupBy({ by: ['clientId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
+      prisma.monthlyForecast.groupBy({ by: ['channelMasterId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
+      prisma.monthlyBudget.findMany({ where: { year, month, clientId: { in: clientIds } } }),
+    ]);
+    // Forecast is stored in millions; the budget worksheet works in full LKR.
+    const forecastByClient = new Map(byClientF.map((g) => [g.clientId, (Number(g._sum.amountMillions) || 0) * 1e6]));
+    const budgetByClient = new Map(budgets.map((b) => [b.clientId, b]));
+
+    // ── 1) By account manager (group head). Every roster client rolls up under
+    // its manager even with nothing entered yet (so pending managers still show).
+    const managers = new Map();
+    for (const c of clients) {
+      const mgr = amMap.get(c.id) || 'Unassigned';
+      const e = managers.get(mgr) || { accountManager: mgr, actualAmount: 0, bestAmount: 0, billingLastMonth: 0, clientCount: 0 };
+      e.actualAmount += forecastByClient.get(c.id) || 0;
+      const b = budgetByClient.get(c.id);
+      if (b) {
+        e.bestAmount += b.bestAmount != null ? Number(b.bestAmount) : 0;
+        e.billingLastMonth += b.billingLastMonth != null ? Number(b.billingLastMonth) : 0;
+      }
+      e.clientCount += 1;
+      managers.set(mgr, e);
+    }
+    const byManager = [...managers.values()]
+      .map((m) => ({
+        accountManager: m.accountManager,
+        clientCount: m.clientCount,
+        actualAmount: Number(m.actualAmount.toFixed(2)),
+        bestAmount: Number(m.bestAmount.toFixed(2)),
+        billingLastMonth: Number(m.billingLastMonth.toFixed(2)),
+      }))
+      .sort((a, b) => b.actualAmount - a.actualAmount || a.accountManager.localeCompare(b.accountManager));
+    const managerTotals = byManager.reduce(
+      (t, m) => ({ actual: t.actual + m.actualAmount, best: t.best + m.bestAmount, billing: t.billing + m.billingLastMonth }),
+      { actual: 0, best: 0, billing: 0 },
+    );
+
+    // ── 2) By channel: total forecast per ChannelMaster (respects medium/channel filters).
+    const channelIds = byChannelF.map((g) => g.channelMasterId).filter((v) => v != null);
+    const channels = await prisma.channelMaster.findMany({ where: { id: { in: channelIds } }, select: { id: true, name: true, medium: true } });
+    const chMap = new Map(channels.map((c) => [c.id, c]));
+    let byChannel = byChannelF.map((g) => {
+      const ch = g.channelMasterId != null ? chMap.get(g.channelMasterId) : null;
+      return {
+        channelMasterId: g.channelMasterId,
+        channelName: ch?.name || 'Unlinked',
+        medium: ch?.medium || '',
+        forecastAmount: Number(((Number(g._sum.amountMillions) || 0) * 1e6).toFixed(2)),
+      };
+    });
+    if (filters.medium) byChannel = byChannel.filter((r) => r.medium === filters.medium);
+    if (filters.channelMasterId) byChannel = byChannel.filter((r) => r.channelMasterId === filters.channelMasterId);
+    byChannel.sort((a, b) => (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || a.channelName.localeCompare(b.channelName));
+    const channelTotalAmount = byChannel.reduce((s, r) => s + r.forecastAmount, 0);
+
+    return res.json({
+      year,
+      month,
+      byManager,
+      managerTotals: {
+        actualAmount: Number(managerTotals.actual.toFixed(2)),
+        bestAmount: Number(managerTotals.best.toFixed(2)),
+        billingLastMonth: Number(managerTotals.billing.toFixed(2)),
+      },
+      byChannel,
+      channelTotalAmount: Number(channelTotalAmount.toFixed(2)),
+    });
+  } catch (error) {
+    console.error('getInsightsBudget error:', error);
+    return res.status(500).json({ error: 'Failed to build budget insights', detail: error.message });
+  }
+}
+
 // Spec §2 + §3: forecast vs actual, grouped by client or by individual channel.
 export async function getInsightsVariance(req, res) {
   try {
