@@ -168,10 +168,15 @@ export async function getInsightsSummary(req, res) {
     });
     const grandTotal = clientRows.reduce((s, r) => s + r.totalForecastMillions, 0);
 
-    // Medium-level breakdown (TV/Radio/Print/Digital/Cinema/OOH totals + % of total).
+    // Medium-level breakdown (TV/Radio/Print/Digital/Cinema/OOH totals + % of
+    // total) — restricted to the SAME group-head roster as the client table
+    // above, so this card reflects exactly that month's tracked forecasts and
+    // its total matches the client-wise total (not inflated by forecasts from
+    // off-roster / old / inactive clients that the client table already excludes).
+    const rosterIds = clients.map((c) => c.id);
     const byChannel = await prisma.monthlyForecast.groupBy({
       by: ['channelMasterId'],
-      where: fWhere,
+      where: { ...fWhere, clientId: { in: rosterIds } },
       _sum: { amountMillions: true },
     });
     const channelMasters = await prisma.channelMaster.findMany({
