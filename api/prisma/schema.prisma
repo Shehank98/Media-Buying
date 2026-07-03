@@ -50,6 +50,13 @@ enum ResponseFollowUp {
   CLOSED
 }
 
+// A client's negotiated agency remuneration: either a commission percentage
+// (COMMISSION, value = %) or a fixed Agency-of-Record fee (AOR, value = LKR).
+enum CommissionType {
+  COMMISSION
+  AOR
+}
+
 model User {
   id                    Int                  @id @default(autoincrement())
   email                 String               @unique
@@ -116,20 +123,25 @@ model UserAgencyAccess {
 }
 
 model Client {
-  id           Int                @id @default(autoincrement())
-  agencyId     Int                @map("agency_id")
-  name         String
-  isActive     Boolean            @default(true) @map("is_active")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  agency       Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  users        UserClientAccess[]
-  channels     Channel[]
-  teams        TeamClient[]
-  brands       Brand[]
-  campaigns    Campaign[]
-  scheduleLogs ScheduleLog[]
-  forecasts    MonthlyForecast[]
-  channelDeals ChannelClientDeal[]
+  id              Int                @id @default(autoincrement())
+  agencyId        Int                @map("agency_id")
+  name            String
+  isActive        Boolean            @default(true) @map("is_active")
+  // Agency remuneration for the Overall Budget tab: type = COMMISSION (value is
+  // a %) or AOR (value is a fixed LKR fee). Both null = not set.
+  commissionType  CommissionType?    @map("commission_type")
+  commissionValue Decimal?           @map("commission_value") @db.Decimal(14, 2)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  agency          Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  users           UserClientAccess[]
+  channels        Channel[]
+  teams           TeamClient[]
+  brands          Brand[]
+  campaigns       Campaign[]
+  scheduleLogs    ScheduleLog[]
+  forecasts       MonthlyForecast[]
+  budgets         MonthlyBudget[]
+  channelDeals    ChannelClientDeal[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -517,6 +529,29 @@ model MonthlyForecast {
   @@unique([year, month, clientId, channelMasterId])
   @@index([year, month])
   @@map("monthly_forecasts")
+}
+
+// Overall Budget worksheet, one row per client per month (the month rolls on
+// the 15th, mirroring MonthlyForecast). "Actual" is NOT stored here — it is
+// derived live from that client's MonthlyForecast total. Only the group-head
+// entered figures live here: bestAmount and billingLastMonth (both full LKR).
+model MonthlyBudget {
+  id               Int      @id @default(autoincrement())
+  year             Int
+  month            Int // 1=Jan
+  clientId         Int      @map("client_id")
+  agencyId         Int      @map("agency_id")
+  bestAmount       Decimal? @map("best_amount") @db.Decimal(16, 2)
+  billingLastMonth Decimal? @map("billing_last_month") @db.Decimal(16, 2)
+  submittedById    Int      @map("submitted_by_id")
+  submittedAt      DateTime @default(now()) @map("submitted_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([year, month, clientId])
+  @@index([year, month])
+  @@map("monthly_budgets")
 }
 
 model ClientRequest {

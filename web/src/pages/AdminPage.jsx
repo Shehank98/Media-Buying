@@ -47,7 +47,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- client modal ---- */
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
-  const [clientForm, setClientForm] = useState({ name: '', agencyId: '' });
+  const [clientForm, setClientForm] = useState({ name: '', agencyId: '', commissionType: '', commissionValue: '' });
   const [clientSubmitting, setClientSubmitting] = useState(false);
   const [clientError, setClientError] = useState('');
 
@@ -220,13 +220,18 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- Client CRUD ---- */
   const openAddClient = () => {
     setEditingClient(null);
-    setClientForm({ name: '', agencyId: agencies[0]?.id ? String(agencies[0].id) : '' });
+    setClientForm({ name: '', agencyId: agencies[0]?.id ? String(agencies[0].id) : '', commissionType: '', commissionValue: '' });
     setClientError('');
     setShowClientModal(true);
   };
   const openEditClient = c => {
     setEditingClient(c);
-    setClientForm({ name: c.name, agencyId: String(c.agencyId || '') });
+    setClientForm({
+      name: c.name,
+      agencyId: String(c.agencyId || ''),
+      commissionType: c.commissionType || '',
+      commissionValue: c.commissionValue == null ? '' : String(c.commissionValue),
+    });
     setClientError('');
     setShowClientModal(true);
   };
@@ -235,12 +240,24 @@ export default function AdminPage({ initialTab = 'users' }) {
     setClientError('');
     if (!clientForm.name.trim()) { setClientError('Client name is required.'); return; }
     if (!clientForm.agencyId) { setClientError('Please select an agency.'); return; }
+    if (clientForm.commissionType && (clientForm.commissionValue === '' || Number.isNaN(parseFloat(clientForm.commissionValue)))) {
+      setClientError('Enter a value for the selected commission/AOR, or clear the type.'); return;
+    }
     setClientSubmitting(true);
     try {
+      let clientId = editingClient?.id;
       if (editingClient) {
         await api.put(`/clients/${editingClient.id}`, { name: clientForm.name.trim(), agencyId: parseInt(clientForm.agencyId) });
       } else {
-        await api.post(`/agencies/${clientForm.agencyId}/clients`, { name: clientForm.name.trim() });
+        const res = await api.post(`/agencies/${clientForm.agencyId}/clients`, { name: clientForm.name.trim() });
+        clientId = res.data?.client?.id ?? res.data?.id;
+      }
+      // Save the commission/AOR setting (empty type clears it).
+      if (clientId) {
+        await api.put(`/admin/clients/${clientId}/commission`, {
+          commissionType: clientForm.commissionType || null,
+          commissionValue: clientForm.commissionType ? clientForm.commissionValue : null,
+        });
       }
       setShowClientModal(false);
       await fetchData();
@@ -1651,6 +1668,35 @@ export default function AdminPage({ initialTab = 'users' }) {
                       Changing the agency moves this client (and all its channels &amp; properties) to the selected agency.
                     </p>
                   )}
+                </div>
+                <div className="field">
+                  <label className="field-label">Commission / AOR</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <select
+                      className="select"
+                      value={clientForm.commissionType}
+                      onChange={e => setClientForm(p => ({ ...p, commissionType: e.target.value, commissionValue: e.target.value ? p.commissionValue : '' }))}
+                      style={{ maxWidth: 180 }}
+                    >
+                      <option value="">None</option>
+                      <option value="COMMISSION">Commission (%)</option>
+                      <option value="AOR">AOR (fixed LKR)</option>
+                    </select>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      disabled={!clientForm.commissionType}
+                      value={clientForm.commissionValue}
+                      onChange={e => setClientForm(p => ({ ...p, commissionValue: e.target.value }))}
+                      placeholder={clientForm.commissionType === 'AOR' ? 'e.g. 50000' : clientForm.commissionType === 'COMMISSION' ? 'e.g. 4' : '-'}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
+                    Shown in the Forecasting → Overall Budget tab. Commission is a %, AOR is a fixed LKR fee.
+                  </p>
                 </div>
               </div>
               <div className="modal-foot">

@@ -454,3 +454,126 @@ export async function forecastHistory(req, res) {
     return res.status(500).json({ error: 'Failed to load forecast history', detail: error.message });
   }
 }
+
+// ── Overall Budget worksheet ─────────────────────────────────────────────────
+// Same roster + month-rollover rules as forecasting. One row per roster client
+// for the resolved month: "Actual" is derived live from that client's
+// MonthlyForecast total (→ full LKR), plus the group-head-entered Best and
+// Billing-last-month figures and the client's commission setting (from Admin).
+
+export async function listBudget(req, res) {
+  try {
+    const user = req.user;
+    const ids = await accessibleClientIds(user);
+    const where = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    if (ids) where.id = { in: ids };
+    if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
+
+    const clients = await prisma.client.findMany({
+      where,
+      select: { id: true, name: true, commissionType: true, commissionValue: true, agency: { select: { id: true, name: true } } },
+      orderBy: { name: 'asc' },
+    });
+    const clientIds = clients.map(c => c.id);
+    const { year, month } = resolveTargetMonth(req);
+
+    const [forecastRows, budgetRows] = await Promise.all([
+      prisma.monthlyForecast.groupBy({ by: ['clientId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
+      prisma.monthlyBudget.findMany({ where: { year, month, clientId: { in: clientIds } } }),
+    ]);
+    // Forecast amounts are stored in millions; Actual is shown in full LKR.
+    const actualByClient = new Map(forecastRows.map(r => [r.clientId, (Number(r._sum.amountMillions) || 0) * 1e6]));
+    const budgetByClient = new Map(budgetRows.map(b => [b.clientId, b]));
+
+    const rows = clients.map(c => {
+      const b = budgetByClient.get(c.id);
+      return {
+        clientId: c.id,
+        clientName: c.name,
+        agencyId: c.agency?.id || null,
+        agencyName: c.agency?.name || '',
+        actualAmount: Number((actualByClient.get(c.id) || 0).toFixed(2)),
+        bestAmount: b?.bestAmount != null ? Number(b.bestAmount) : null,
+        billingLastMonth: b?.billingLastMonth != null ? Number(b.billingLastMonth) : null,
+        commissionType: c.commissionType || null,
+        commissionValue: c.commissionValue == null ? null : Number(c.commissionValue),
+      };
+    });
+
+    const totals = rows.reduce((t, r) => ({
+      actual: t.actual + (r.actualAmount || 0),
+      best: t.best + (r.bestAmount || 0),
+      billing: t.billing + (r.billingLastMonth || 0),
+    }), { actual: 0, best: 0, billing: 0 });
+
+    return res.json({
+      year,
+      month,
+      rows,
+      totals: {
+        actualAmount: Number(totals.actual.toFixed(2)),
+        bestAmount: Number(totals.best.toFixed(2)),
+        billingLastMonth: Number(totals.billing.toFixed(2)),
+      },
+    });
+  } catch (error) {
+    console.error('listBudget error:', error);
+    return res.status(500).json({ error: 'Failed to load budget', detail: error.message });
+  }
+}
+
+// Save a client's Best / Billing-last-month for a month. Group heads: upcoming
+// month + own clients only (admins any). Clearing both removes the row.
+export async function submitBudget(req, res) {
+  try {
+    const user = req.user;
+    const { clientId, year, month, bestAmount, billingLastMonth } = req.body;
+    const cid = parseInt(clientId);
+    const y = parseInt(year);
+    const m = parseInt(month);
+    if (!Number.isInteger(cid) || !Number.isInteger(y) || !(m >= 1 && m <= 12)) {
+      return res.status(400).json({ error: 'clientId, year and month are required' });
+    }
+    const ids = await accessibleClientIds(user);
+    if (ids && !ids.includes(cid)) return res.status(403).json({ error: 'You do not have access to this client' });
+
+    const client = await prisma.client.findUnique({ where: { id: cid }, select: { id: true, agencyId: true, isActive: true } });
+    if (!client || !client.isActive) return res.status(404).json({ error: 'Client not found or inactive' });
+
+    // Group heads may only submit the upcoming month.
+    const nm = nextMonth();
+    if (user.role !== 'SUPER_ADMIN' && (y !== nm.year || m !== nm.month)) {
+      return res.status(403).json({ error: "You can only submit the upcoming month's budget" });
+    }
+
+    const parseAmt = (v) => {
+      if (v == null || v === '') return null;
+      const n = parseFloat(v);
+      return Number.isNaN(n) || n < 0 ? null : n;
+    };
+    const best = parseAmt(bestAmount);
+    const billing = parseAmt(billingLastMonth);
+
+    if (best == null && billing == null) {
+      await prisma.monthlyBudget.deleteMany({ where: { year: y, month: m, clientId: cid } });
+      return res.json({ message: 'Budget cleared' });
+    }
+
+    const row = await prisma.monthlyBudget.upsert({
+      where: { year_month_clientId: { year: y, month: m, clientId: cid } },
+      update: { bestAmount: best, billingLastMonth: billing, submittedById: user.id, agencyId: client.agencyId },
+      create: { year: y, month: m, clientId: cid, agencyId: client.agencyId, bestAmount: best, billingLastMonth: billing, submittedById: user.id },
+    });
+    return res.json({
+      message: 'Budget saved',
+      budget: {
+        clientId: cid,
+        bestAmount: row.bestAmount == null ? null : Number(row.bestAmount),
+        billingLastMonth: row.billingLastMonth == null ? null : Number(row.billingLastMonth),
+      },
+    });
+  } catch (error) {
+    console.error('submitBudget error:', error);
+    return res.status(500).json({ error: 'Failed to save budget', detail: error.message });
+  }
+}

@@ -26,6 +26,7 @@ import {
   deleteAnnualTarget,
   listAdminClients,
   toggleClientActive,
+  setClientCommission,
   mergeClients,
   listClientRequests,
   reviewClientRequest,
@@ -62,6 +63,7 @@ router.post('/teams/:id/clients', assignTeamClients);
 // Clients (active/hide for forecasting visibility)
 router.get('/clients', listAdminClients);
 router.put('/clients/:id/toggle', toggleClientActive);
+router.put('/clients/:id/commission', setClientCommission);
 router.post('/clients/merge', mergeClients);
 
 // Forecasting requests

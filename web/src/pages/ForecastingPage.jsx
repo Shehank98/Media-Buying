@@ -33,6 +33,13 @@ const fmtShortLKR = (v) => {
 };
 const fmtPct = (v) => (v == null ? '-' : `${v >= 0 ? '' : ''}${Number(v).toFixed(1)}%`);
 const monthName = (m) => MONTHS[m - 1] || m;
+// Full LKR amount with thousands separators + 2 decimals (Overall Budget worksheet).
+const fmtAmt = (v) => (v == null || v === '' ? '-' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+// A client's commission cell: "4%" for a percentage or "LKR 50,000.00" for an AOR fee.
+const commissionLabel = (row) => {
+  if (!row || !row.commissionType || row.commissionValue == null) return '';
+  return row.commissionType === 'COMMISSION' ? `${Number(row.commissionValue)}%` : `LKR ${fmtAmt(row.commissionValue)}`;
+};
 
 // The month group heads forecast (client-side mirror of the server helper):
 // current month through the 14th, then next month from the 15th onward.
@@ -722,6 +729,203 @@ function Empty({ text = 'No data for this selection.' }) {
   return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>{text}</div>;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Overall Budget - worksheet of Actual (auto from forecast) + group-head-entered
+// Best & Billing-last-month + the client's commission. Same 15th-rollover month
+// as the entry grid (admins can target any month). GROUP_HEAD + SUPER_ADMIN.
+// ════════════════════════════════════════════════════════════════════════════
+function BudgetTab({ isAdmin }) {
+  const [anchorMonth, setAnchorMonth] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState(null); // admin override
+  const [agencyFilter, setAgencyFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [data, setData] = useState(null);
+  const [drafts, setDrafts] = useState({}); // clientId -> { best, billing } (strings)
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [savingId, setSavingId] = useState(null);
+  const [savedId, setSavedId] = useState(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/forecasting/next-month').then(r => setAnchorMonth({ year: r.data.year, month: r.data.month })).catch(() => {});
+  }, [isAdmin]);
+
+  const monthOptions = useMemo(() => {
+    if (!anchorMonth) return [];
+    const out = [];
+    let y = anchorMonth.year, m = anchorMonth.month;
+    for (let i = 0; i < 13; i++) { out.push({ year: y, month: m }); m -= 1; if (m < 1) { m = 12; y -= 1; } }
+    return out;
+  }, [anchorMonth]);
+
+  const params = useMemo(() => {
+    const p = {};
+    if (agencyFilter) p.agencyId = agencyFilter;
+    if (isAdmin && selectedPeriod) { p.year = selectedPeriod.year; p.month = selectedPeriod.month; }
+    return p;
+  }, [agencyFilter, selectedPeriod, isAdmin]);
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/forecasting/budget', { params })
+      .then(r => {
+        setData(r.data);
+        const d = {};
+        (r.data.rows || []).forEach(row => { d[row.clientId] = { best: row.bestAmount ?? '', billing: row.billingLastMonth ?? '' }; });
+        setDrafts(d);
+      })
+      .catch(() => setError('Failed to load budget.'))
+      .finally(() => setLoading(false));
+  }, [params]);
+
+  const rows = data?.rows || [];
+  const num = (v) => { const n = parseFloat(v); return Number.isNaN(n) ? 0 : n; };
+  const norm = (v) => (v === '' || v == null ? null : num(v));
+
+  const agencies = useMemo(() => {
+    const m = new Map();
+    rows.forEach(r => { if (r.agencyId) m.set(r.agencyId, r.agencyName); });
+    return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return rows;
+    const q = search.toLowerCase();
+    return rows.filter(r => r.clientName.toLowerCase().includes(q) || (r.agencyName || '').toLowerCase().includes(q));
+  }, [rows, search]);
+
+  const totals = useMemo(() => filtered.reduce((t, r) => {
+    const d = drafts[r.clientId] || {};
+    return { actual: t.actual + (r.actualAmount || 0), best: t.best + num(d.best), billing: t.billing + num(d.billing) };
+  }, { actual: 0, best: 0, billing: 0 }), [filtered, drafts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commit = async (row) => {
+    if (!data) return;
+    const d = drafts[row.clientId] || {};
+    if (norm(d.best) === norm(row.bestAmount) && norm(d.billing) === norm(row.billingLastMonth)) return; // unchanged
+    setSavingId(row.clientId);
+    try {
+      await api.post('/forecasting/budget', {
+        clientId: row.clientId, year: data.year, month: data.month,
+        bestAmount: d.best === '' ? null : d.best, billingLastMonth: d.billing === '' ? null : d.billing,
+      });
+      setData(prev => ({ ...prev, rows: prev.rows.map(r => r.clientId === row.clientId ? { ...r, bestAmount: norm(d.best), billingLastMonth: norm(d.billing) } : r) }));
+      setSavedId(row.clientId);
+      setTimeout(() => setSavedId(s => (s === row.clientId ? null : s)), 1200);
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to save.');
+    } finally { setSavingId(null); }
+  };
+
+  const exportXlsx = () => {
+    if (!data) return;
+    const label = `${MONTHS[data.month - 1]} ${data.year}`;
+    const body = [
+      ['Client', 'Actual', 'Best', 'Commission', 'Billing - Last Month schedules'],
+      ...filtered.map(r => {
+        const d = drafts[r.clientId] || {};
+        return [r.clientName, r.actualAmount || 0, norm(d.best) ?? '', commissionLabel(r), norm(d.billing) ?? ''];
+      }),
+      ['TOTAL', totals.actual, totals.best, '', totals.billing],
+    ];
+    downloadXLSX([{ name: 'Overall Budget', rows: [[`Overall Budget - ${label}`], [], ...body] }], `overall-budget-${data.year}-${String(data.month).padStart(2, '0')}`);
+  };
+
+  const inputStyle = { textAlign: 'right', width: 140, height: 30, fontSize: 12.5 };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        {isAdmin && monthOptions.length > 0 && (
+          <select
+            className="select"
+            value={selectedPeriod ? `${selectedPeriod.year}-${selectedPeriod.month}` : `${anchorMonth.year}-${anchorMonth.month}`}
+            onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setSelectedPeriod((y === anchorMonth.year && m === anchorMonth.month) ? null : { year: y, month: m }); }}
+            style={{ maxWidth: 200 }}
+            title="Budget month - pick a past month to view/backfill it"
+          >
+            {monthOptions.map(o => (
+              <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}{o.year === anchorMonth.year && o.month === anchorMonth.month ? ' (upcoming)' : ''}</option>
+            ))}
+          </select>
+        )}
+        {agencies.length > 1 && (
+          <select className="select" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={{ maxWidth: 220 }}>
+            <option value="">All agencies</option>
+            {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
+        <div style={{ position: 'relative' }}>
+          <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+          <input className="input" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32, maxWidth: 240 }} />
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <button className="btn btn-ghost btn-sm" onClick={exportXlsx} disabled={!data}><Icon name="download" size={14} /> Export</button>
+        </div>
+      </div>
+
+      {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>{error}</div>}
+
+      {loading ? <OrbitLoader label="Loading budget…" /> : (
+        <div style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tbl" style={{ fontSize: 13, minWidth: 760 }}>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th style={{ textAlign: 'right' }}>Actual</th>
+                  <th style={{ textAlign: 'right' }}>Best</th>
+                  <th style={{ textAlign: 'center' }}>Commission</th>
+                  <th style={{ textAlign: 'right' }}>Billing <span style={{ fontWeight: 500, fontSize: 11, color: '#93A0B5' }}>(Last Month schedules)</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6B7790', padding: 28 }}>No clients available.</td></tr>
+                ) : filtered.map(r => {
+                  const d = drafts[r.clientId] || {};
+                  const cl = commissionLabel(r);
+                  return (
+                    <tr key={r.clientId}>
+                      <td className="strong">
+                        {r.clientName}
+                        {savingId === r.clientId && <span style={{ fontSize: 11, color: '#93A0B5', marginLeft: 8 }}>Saving…</span>}
+                        {savedId === r.clientId && <span style={{ fontSize: 11, color: '#15814B', marginLeft: 8 }}>✓ Saved</span>}
+                      </td>
+                      <td className="mono" style={{ textAlign: 'right', color: r.actualAmount ? '#16243C' : '#93A0B5' }}>{r.actualAmount ? fmtAmt(r.actualAmount) : '-'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input className="input mono" inputMode="decimal" value={d.best ?? ''} placeholder="0.00"
+                          onChange={e => setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], best: e.target.value } }))}
+                          onBlur={() => commit(r)} style={inputStyle} />
+                      </td>
+                      <td style={{ textAlign: 'center', color: cl ? '#16243C' : '#C7D0DD', fontWeight: 600 }}>{cl || '-'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input className="input mono" inputMode="decimal" value={d.billing ?? ''} placeholder="0.00"
+                          onChange={e => setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], billing: e.target.value } }))}
+                          onBlur={() => commit(r)} style={inputStyle} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: 700, background: '#FBF6EC' }}>
+                  <td>Total ({filtered.length})</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(totals.actual)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(totals.best)}</td>
+                  <td />
+                  <td className="mono" style={{ textAlign: 'right' }}>{fmtAmt(totals.billing)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ForecastingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
@@ -976,7 +1180,9 @@ export default function ForecastingPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: '#16243C' }}>Forecasting</h1>
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>
-            {view === 'insights' ? 'Forecast accuracy, variance and spend insights' : `Enter the ${periodLabel} forecast for your clients`}
+            {view === 'insights' ? 'Forecast accuracy, variance and spend insights'
+              : view === 'budget' ? 'Best-case & last-month billing per client · Actual auto-fills from entered forecasts'
+              : `Enter the ${periodLabel} forecast for your clients`}
           </p>
         </div>
         {view === 'clients' && (
@@ -1033,18 +1239,21 @@ export default function ForecastingPage() {
         )}
       </div>
 
-      {isAdmin && (
-        <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3, marginBottom: 18 }}>
-          {[['clients', 'Clients'], ['insights', 'Insights']].map(([k, label]) => (
-            <button key={k} onClick={() => setView(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 14px', borderRadius: 7, fontFamily: 'inherit', background: view === k ? '#fff' : 'transparent', color: view === k ? '#16243C' : '#6B7790', boxShadow: view === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{label}</button>
-          ))}
-        </div>
-      )}
+      <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 10, padding: 3, marginBottom: 18 }}>
+        {(isAdmin
+          ? [['clients', 'Clients'], ['budget', 'Overall Budget'], ['insights', 'Insights']]
+          : [['clients', 'Clients'], ['budget', 'Overall Budget']]
+        ).map(([k, label]) => (
+          <button key={k} onClick={() => setView(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '6px 14px', borderRadius: 7, fontFamily: 'inherit', background: view === k ? '#fff' : 'transparent', color: view === k ? '#16243C' : '#6B7790', boxShadow: view === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{label}</button>
+        ))}
+      </div>
 
       {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>{error}</div>}
 
       {isAdmin && view === 'insights' ? (
         <InsightsTab />
+      ) : view === 'budget' ? (
+        <BudgetTab isAdmin={isAdmin} />
       ) : filtered.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>No clients available.</div>
       ) : (

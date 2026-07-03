@@ -12,6 +12,8 @@ import {
   forecastHistory,
   requestClient,
   requestChannel,
+  listBudget,
+  submitBudget,
 } from '../controllers/forecasting.controller.js';
 
 const router = Router();
@@ -27,5 +29,9 @@ router.get('/history', authenticate, requireRole('SUPER_ADMIN'), forecastHistory
 router.get('/variance', authenticate, requireRole('SUPER_ADMIN'), getVariance);
 router.post('/request-client', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestClient);
 router.post('/request-channel', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), requestChannel);
+
+// Overall Budget worksheet (Actual auto from forecast, Best + Billing entered)
+router.get('/budget', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), listBudget);
+router.post('/budget', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), submitBudget);
 
 export default router;

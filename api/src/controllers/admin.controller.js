@@ -39,7 +39,7 @@ export async function listAgencies(req, res) {
     const agencies = await prisma.agency.findMany({
       orderBy: { name: 'asc' },
       include: {
-        clients: { select: { id: true, name: true, isActive: true, _count: { select: { channels: true } } } },
+        clients: { select: { id: true, name: true, isActive: true, commissionType: true, commissionValue: true, _count: { select: { channels: true } } } },
         _count: { select: { clients: true, users: true } },
       },
     });
@@ -532,9 +532,18 @@ export async function listAdminClients(req, res) {
   try {
     const clients = await prisma.client.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, isActive: true, agency: { select: { id: true, name: true } }, _count: { select: { channels: true } } },
+      select: { id: true, name: true, isActive: true, commissionType: true, commissionValue: true, agency: { select: { id: true, name: true } }, _count: { select: { channels: true } } },
     });
-    return res.json(clients.map(c => ({ id: c.id, name: c.name, isActive: c.isActive, agencyId: c.agency?.id, agencyName: c.agency?.name, channelCount: c._count.channels })));
+    return res.json(clients.map(c => ({
+      id: c.id,
+      name: c.name,
+      isActive: c.isActive,
+      commissionType: c.commissionType,
+      commissionValue: c.commissionValue == null ? null : Number(c.commissionValue),
+      agencyId: c.agency?.id,
+      agencyName: c.agency?.name,
+      channelCount: c._count.channels,
+    })));
   } catch (error) {
     console.error('List admin clients error:', error);
     return res.status(500).json({ error: 'Failed to list clients' });
@@ -552,6 +561,39 @@ export async function toggleClientActive(req, res) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
     console.error('Toggle client error:', error);
     return res.status(500).json({ error: 'Failed to update client status' });
+  }
+}
+
+// Set a client's agency remuneration (used by the Overall Budget tab): either a
+// COMMISSION (value = %) or an AOR fixed fee (value = LKR). Sending an empty/blank
+// type clears both.
+export async function setClientCommission(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    let { commissionType, commissionValue } = req.body;
+    if (commissionType == null || commissionType === '') {
+      commissionType = null;
+      commissionValue = null;
+    } else {
+      if (commissionType !== 'COMMISSION' && commissionType !== 'AOR') {
+        return res.status(400).json({ error: 'commissionType must be COMMISSION or AOR' });
+      }
+      const v = parseFloat(commissionValue);
+      if (Number.isNaN(v) || v < 0) return res.status(400).json({ error: 'A valid commission value is required' });
+      // A percentage above 100 is almost certainly a typo.
+      if (commissionType === 'COMMISSION' && v > 100) return res.status(400).json({ error: 'Commission % cannot exceed 100' });
+      commissionValue = v;
+    }
+    const client = await prisma.client.update({
+      where: { id },
+      data: { commissionType, commissionValue },
+      select: { id: true, name: true, commissionType: true, commissionValue: true },
+    });
+    return res.json({ client: { ...client, commissionValue: client.commissionValue == null ? null : Number(client.commissionValue) } });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
+    console.error('Set client commission error:', error);
+    return res.status(500).json({ error: 'Failed to update client commission' });
   }
 }
 
