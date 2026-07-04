@@ -427,7 +427,7 @@ export async function respondToMyPackage(req, res) {
     }
     // A closed (past-deadline) proposal can't take new responses.
     if (recipient.package.deadline && new Date(recipient.package.deadline) < new Date()) {
-      return res.status(409).json({ error: 'This proposal has closed — its deadline has passed.' });
+      return res.status(409).json({ error: 'This proposal has closed. Its deadline has passed.' });
     }
 
     // Keep only client ids the team head actually manages.

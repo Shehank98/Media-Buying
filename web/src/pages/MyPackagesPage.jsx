@@ -100,7 +100,7 @@ function PackageCard({ item, myClients, onResponded }) {
           </div>
         ) : expired ? (
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: 'var(--muted)' }}>
-            This proposal has closed — its deadline has passed, so responses are no longer accepted.
+            This proposal has closed. Its deadline has passed, so responses are no longer accepted.
           </div>
         ) : (
           <div>
