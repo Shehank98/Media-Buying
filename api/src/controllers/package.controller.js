@@ -156,11 +156,17 @@ export async function deletePackage(req, res) {
     const existing = await prisma.mediaPackage.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return res.status(404).json({ error: 'Package not found' });
 
-    const recipientCount = await prisma.packageRecipient.count({ where: { packageId: id } });
-    if (recipientCount > 0) {
-      return res.status(409).json({
-        error: `This package has already been sent to ${recipientCount} recipient(s). Deactivate it instead of deleting to keep response history.`,
-      });
+    // A sent package is guarded by default (keeps response history); `?force=true`
+    // permanently deletes it — cascade removes its recipients + line items.
+    const force = String(req.query.force) === 'true';
+    if (!force) {
+      const recipientCount = await prisma.packageRecipient.count({ where: { packageId: id } });
+      if (recipientCount > 0) {
+        return res.status(409).json({
+          recipientCount,
+          error: `This package has already been sent to ${recipientCount} recipient(s). Deactivate it instead of deleting to keep response history.`,
+        });
+      }
     }
     await prisma.mediaPackage.delete({ where: { id } });
     return res.json({ message: 'Package deleted' });

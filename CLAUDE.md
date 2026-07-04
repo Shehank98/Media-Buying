@@ -297,7 +297,7 @@ POST   /api/packages                              (AUTH + SUPER_ADMIN)
 GET    /api/packages/:id                          (AUTH + SUPER_ADMIN)
 PUT    /api/packages/:id                          (AUTH + SUPER_ADMIN)
 PATCH  /api/packages/:id/toggle                   (AUTH + SUPER_ADMIN)
-DELETE /api/packages/:id                          (AUTH + SUPER_ADMIN)
+DELETE /api/packages/:id          ?force=true      (AUTH + SUPER_ADMIN)   sent packages 409 unless force=true (then cascades recipients+line items)
 POST   /api/packages/:id/send                     (AUTH + SUPER_ADMIN)   creates recipients, emails + notifies
 GET    /api/packages/:id/responses                (AUTH + SUPER_ADMIN)
 PATCH  /api/packages/recipients/:id/follow-up     (AUTH + SUPER_ADMIN)

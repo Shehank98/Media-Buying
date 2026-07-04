@@ -45,6 +45,9 @@ export default function PackagesPage() {
   const [formErr, setFormErr] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // delete choice (for sent packages): deactivate vs permanently delete
+  const [deletePrompt, setDeletePrompt] = useState(null); // the package object
+
   // send
   const [sendPkg, setSendPkg] = useState(null);
   const [groupHeads, setGroupHeads] = useState([]);
@@ -115,9 +118,19 @@ export default function PackagesPage() {
     catch (err) { setError(err.response?.data?.error || 'Failed to toggle package.'); }
   };
   const deletePkg = async (pkg) => {
+    // Already sent → let the user choose deactivate vs permanent delete.
+    if ((pkg._count?.recipients || 0) > 0) { setDeletePrompt(pkg); return; }
     if (!window.confirm(`Delete package "${pkg.name}"? This cannot be undone.`)) return;
     try { await api.delete(`/packages/${pkg.id}`); fetchPackages(); }
     catch (err) { setError(err.response?.data?.error || 'Failed to delete package.'); }
+  };
+  const forceDeletePkg = async (pkg) => {
+    try { await api.delete(`/packages/${pkg.id}`, { params: { force: true } }); setDeletePrompt(null); fetchPackages(); }
+    catch (err) { setError(err.response?.data?.error || 'Failed to delete package.'); setDeletePrompt(null); }
+  };
+  const deactivateFromPrompt = async (pkg) => {
+    try { if (pkg.isActive) await api.patch(`/packages/${pkg.id}/toggle`); setDeletePrompt(null); fetchPackages(); }
+    catch (err) { setError(err.response?.data?.error || 'Failed to deactivate package.'); setDeletePrompt(null); }
   };
 
   // ── send ──
@@ -279,6 +292,44 @@ export default function PackagesPage() {
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Package'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete choice modal (sent packages): deactivate vs permanent delete */}
+      {deletePrompt && (
+        <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) setDeletePrompt(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 470 }}>
+            <div className="modal-head">
+              <h2>Delete or deactivate?</h2>
+              <button className="act-btn" onClick={() => setDeletePrompt(null)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 13.5, color: 'var(--ink-soft,#3B4A63)', margin: 0, lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--ink)' }}>{deletePrompt.name}</strong> has been sent to {deletePrompt._count?.recipients} team head(s). Choose how to remove it:
+              </p>
+              <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+                {deletePrompt.isActive && (
+                  <button type="button" onClick={() => deactivateFromPrompt(deletePrompt)}
+                    style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', display: 'block', width: '100%' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--coral-400,#E8834F)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--ink)' }}>Deactivate</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Hide it from new use but keep the package and all response history.</div>
+                  </button>
+                )}
+                <button type="button" onClick={() => forceDeletePkg(deletePrompt)}
+                  style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--red-200,#fecaca)', background: 'var(--red-50,#fef2f2)', cursor: 'pointer', display: 'block', width: '100%' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--red-600,#dc2626)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--red-200,#fecaca)'; }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--red-700,#b91c1c)' }}>Delete permanently</div>
+                  <div style={{ fontSize: 12, color: 'var(--red-700,#b91c1c)', opacity: 0.85, marginTop: 2 }}>Remove the package and its {deletePrompt._count?.recipients} response record(s) for good. Cannot be undone.</div>
+                </button>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-ghost" onClick={() => setDeletePrompt(null)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
