@@ -22,7 +22,6 @@ import DeepDashboardPage from './pages/DeepDashboardPage';
 import ChannelIntelligencePage from './pages/ChannelIntelligencePage';
 import DatabasePage from './pages/DatabasePage';
 import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
-import UploadTrackerPage from './pages/UploadTrackerPage';
 import ForecastingPage from './pages/ForecastingPage';
 import MediaBuyingPage from './pages/MediaBuyingPage';
 import ProfitPage from './pages/ProfitPage';
@@ -150,14 +149,6 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['GROUP_HEAD']}>
                   <MyPackagesPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/upload-tracker"
-              element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
-                  <UploadTrackerPage />
                 </ProtectedRoute>
               }
             />

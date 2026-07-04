@@ -11,7 +11,6 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const fmtLKR = (v) => 'LKR ' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtPct = (v) => `${(Number(v) || 0).toFixed(2)}%`;
 const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return `${MONTHS[+m - 1]} ${y}`; };
-const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // Commission label for the detail table: "4%" for COMMISSION, "AOR LKR X" for AOR.
 const commissionLabel = (type, value) => {
@@ -22,11 +21,8 @@ const commissionLabel = (type, value) => {
 const AGENCY_COLOR = '#1F5BB5';
 
 export default function ProfitPage() {
-  const firstOfMonth = new Date();
-  firstOfMonth.setDate(1);
-
-  const [startDate, setStartDate] = useState(toISO(firstOfMonth));
-  const [endDate, setEndDate] = useState(toISO(new Date()));
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState([]);
   const [agencyId, setAgencyId] = useState('');
   const [clientIds, setClientIds] = useState([]);
   const [agencies, setAgencies] = useState([]);
@@ -70,11 +66,11 @@ export default function ProfitPage() {
   }, [agencyId, clients]);
 
   const params = useMemo(() => {
-    const p = { startDate, endDate };
+    const p = { year };
     if (agencyId) p.agencyId = agencyId;
     if (clientIds.length) p.clientId = clientIds.join(',');
     return p;
-  }, [startDate, endDate, agencyId, clientIds]);
+  }, [year, agencyId, clientIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +84,7 @@ export default function ProfitPage() {
     ]).then(([s, m, a, c]) => {
       if (cancelled) return;
       setSummary(s.data);
+      setAvailableYears(s.data.availableYears || []);
       setMonthly(m.data.months || []);
       setByAgency(a.data.agencies || []);
       setByClient(c.data.clients || []);
@@ -111,8 +108,15 @@ export default function ProfitPage() {
   };
   const sortArrow = (key) => (sortBy === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
 
-  const monthlyData = useMemo(() => monthly.map((m) => ({ ...m, label: fmtMonth(m.month) })), [monthly]);
-  const monthlyMax = Math.max(1, ...byClient.map((c) => c.profit));
+  // Fixed Jan–Dec for the selected year; months with no schedule data show 0.
+  const monthlyData = useMemo(() => {
+    const byMonth = new Map(monthly.map((m) => [m.month, m]));
+    return MONTHS.map((label, i) => {
+      const key = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const m = byMonth.get(key);
+      return { label, month: key, revenue: m?.revenue || 0, profit: m?.profit || 0 };
+    });
+  }, [monthly, year]);
 
   const Card = ({ label, value, sub }) => (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px' }}>
@@ -128,20 +132,15 @@ export default function ProfitPage() {
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       <div style={{ marginBottom: 18 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: 'var(--ink)' }}>Profit</h1>
-        <p style={{ fontSize: 13.5, color: 'var(--muted)', margin: '6px 0 0' }}>
-          Agency profit on confirmed actual spend only. Revenue = actual spend (ex-VAT); Profit = Revenue x commission snapshotted at entry. Monthly buckets use the entry date.
-        </p>
       </div>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 18 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
-          From (entry date)
-          <input className="input" type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} style={{ maxWidth: 170 }} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
-          To (entry date)
-          <input className="input" type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} style={{ maxWidth: 170 }} />
+          Year
+          <select className="select" value={year} onChange={(e) => setYear(parseInt(e.target.value))} style={{ maxWidth: 140 }}>
+            {(availableYears.length ? availableYears : [year]).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
           Agency
@@ -185,7 +184,7 @@ export default function ProfitPage() {
 
           {/* Monthly Profit Trend */}
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>Monthly Profit Trend <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>· by entry month</span></div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>Monthly Profit Trend <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>· {year} · by schedule month</span></div>
             {monthlyData.length === 0 ? <Empty /> : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={monthlyData} margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>

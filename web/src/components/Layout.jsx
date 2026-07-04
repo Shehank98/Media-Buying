@@ -18,7 +18,6 @@ const NAV_ADMIN = [
   { key: '/profit', label: 'Profit', icon: 'trending-up', roles: ['SUPER_ADMIN'] },
   { key: '/media-buying', label: 'Media Buying', icon: 'sparkle', roles: ['SUPER_ADMIN'] },
   { key: '/packages', label: 'Media Packages', icon: 'mail', roles: ['SUPER_ADMIN'] },
-  { key: '/upload-tracker', label: 'Upload Tracker', icon: 'upload', roles: ['SUPER_ADMIN'] },
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
   { key: '/profile', label: 'Profile', icon: 'user' },
 ];
@@ -45,7 +44,6 @@ function Breadcrumbs({ go }) {
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/packages') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Media Packages</b></>;
   if (path === '/my-packages') return <>{home}{sep}<b>Media Packages</b></>;
-  if (path === '/upload-tracker') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Upload Tracker</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
   if (path === '/profile') return <>{home}{sep}<b>Profile</b></>;
   return <>{home}</>;

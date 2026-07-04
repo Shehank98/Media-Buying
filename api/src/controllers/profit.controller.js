@@ -3,30 +3,24 @@ import prisma from '../utils/prisma.js';
 import { blendedPct } from '../services/profit.service.js';
 
 // ── Filters ──────────────────────────────────────────────────────────────────
-// All buckets/ranges are by ENTRY date (schedule_logs.created_at), per spec — the
-// date the actual spend was recorded in the system, NOT the flight month.
+// Buckets/ranges are by the SCHEDULE (flight) month — the month the spend ran in
+// (schedule_logs.schedule_month, "YYYY-MM") — filtered to a single calendar year
+// (Jan–Dec). A month with no uploaded ScheduleLog rows shows 0 (never fabricated).
 function parseFilters(req) {
   const now = new Date();
-  const start = req.query.startDate ? new Date(req.query.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-  let endExclusive;
-  if (req.query.endDate) {
-    const e = new Date(req.query.endDate);
-    endExclusive = new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1); // inclusive of the endDate day
-  } else {
-    endExclusive = new Date(now.getFullYear(), now.getMonth() + 1, 1); // through end of the current month
-  }
+  const year = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : now.getFullYear();
   const agencyId = req.query.agencyId ? parseInt(req.query.agencyId) : null;
   const clientIds = req.query.clientId
     ? String(req.query.clientId).split(',').map((s) => parseInt(s)).filter(Number.isInteger)
     : [];
-  return { start, endExclusive, agencyId, clientIds };
+  return { year, agencyId, clientIds };
 }
 
-function whereFragment({ start, endExclusive, agencyId, clientIds }) {
+function whereFragment({ year, agencyId, clientIds }) {
   const parts = [
     Prisma.sql`sl.is_deleted = false`,
-    Prisma.sql`sl.created_at >= ${start}`,
-    Prisma.sql`sl.created_at < ${endExclusive}`,
+    Prisma.sql`sl.schedule_month >= ${`${year}-01`}`,
+    Prisma.sql`sl.schedule_month <= ${`${year}-12`}`,
   ];
   if (agencyId) parts.push(Prisma.sql`c.agency_id = ${agencyId}`);
   if (clientIds.length) parts.push(Prisma.sql`sl.client_id IN (${Prisma.join(clientIds)})`);
@@ -36,11 +30,11 @@ function whereFragment({ start, endExclusive, agencyId, clientIds }) {
 // Atomic rows — the single source every aggregate sums from, so the numbers
 // reconcile by construction. Revenue = SUM(schedule_value) (ex-VAT). Profit:
 //   COMMISSION -> ROUND(revenue x rate%, 2)
-//   AOR        -> the fixed fee, counted ONCE per (client, entry-month, fee)
+//   AOR        -> the fixed fee, counted ONCE per (client, schedule-month, fee)
 function atomsSql(filter) {
   return Prisma.sql`
     SELECT sl.client_id, c.agency_id,
-           to_char(sl.created_at, 'YYYY-MM') AS ym,
+           sl.schedule_month AS ym,
            'COMMISSION'::text AS ctype,
            sl.commission_rate_at_entry AS crate,
            ROUND(SUM(sl.schedule_value), 2) AS revenue,
@@ -52,7 +46,7 @@ function atomsSql(filter) {
     SELECT a.client_id, a.agency_id, a.ym, 'AOR'::text AS ctype, a.crate, a.revenue, a.crate AS profit
       FROM (
         SELECT sl.client_id, c.agency_id,
-               to_char(sl.created_at, 'YYYY-MM') AS ym,
+               sl.schedule_month AS ym,
                sl.commission_rate_at_entry AS crate,
                ROUND(SUM(sl.schedule_value), 2) AS revenue
           FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id
@@ -62,7 +56,7 @@ function atomsSql(filter) {
     UNION ALL
     -- Confirmed actual spend with NO commission snapshot: revenue counts, profit
     -- is 0 (never fabricated). Keeps "Total Revenue" = total client-side spend.
-    SELECT sl.client_id, c.agency_id, to_char(sl.created_at, 'YYYY-MM') AS ym,
+    SELECT sl.client_id, c.agency_id, sl.schedule_month AS ym,
            NULL::text AS ctype, NULL::numeric AS crate,
            ROUND(SUM(sl.schedule_value), 2) AS revenue, 0::numeric AS profit
       FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id
@@ -72,7 +66,19 @@ function atomsSql(filter) {
 
 const num = (v) => (v == null ? 0 : Number(v));
 
-// GET /api/profit/summary — the 3 cards.
+// Distinct calendar years that have any (non-deleted) schedule data, newest
+// first, always including the current year so the picker is never empty.
+async function availableYears() {
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT left(schedule_month, 4) AS y
+      FROM schedule_logs WHERE is_deleted = false AND schedule_month ~ '^[0-9]{4}-'
+     ORDER BY y DESC`;
+  const set = new Set(rows.map((r) => parseInt(r.y)).filter(Boolean));
+  set.add(new Date().getFullYear());
+  return [...set].sort((a, b) => b - a);
+}
+
+// GET /api/profit/summary — the 3 cards + the year list for the filter.
 export async function getProfitSummary(req, res) {
   try {
     const f = parseFilters(req);
@@ -81,14 +87,14 @@ export async function getProfitSummary(req, res) {
       SELECT COALESCE(SUM(revenue), 0) AS revenue, COALESCE(SUM(profit), 0) AS profit FROM atoms`;
     const revenue = num(rows[0]?.revenue);
     const profit = num(rows[0]?.profit);
-    return res.json({ revenue, profit, blendedCommissionPct: blendedPct(profit, revenue) });
+    return res.json({ year: f.year, revenue, profit, blendedCommissionPct: blendedPct(profit, revenue), availableYears: await availableYears() });
   } catch (error) {
     console.error('getProfitSummary error:', error);
     return res.status(500).json({ error: 'Failed to build profit summary', detail: error.message });
   }
 }
 
-// GET /api/profit/monthly — profit per entry-month.
+// GET /api/profit/monthly — profit per schedule (flight) month.
 export async function getProfitMonthly(req, res) {
   try {
     const f = parseFilters(req);
