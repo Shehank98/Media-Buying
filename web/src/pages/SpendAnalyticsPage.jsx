@@ -145,6 +145,19 @@ export default function SpendAnalyticsPage() {
     });
   }, [data]);
 
+  // Monthly Spend Trend pivoted: X axis = Jan–Dec, one series (line) per year.
+  const monthlyByYear = useMemo(() => {
+    if (!data?.byMonth?.length) return { years: [], rows: [] };
+    const years = [...new Set(data.byMonth.map(m => String(m.month).slice(0, 4)))].sort();
+    const rows = MONTHS.map((label, i) => ({ monthNum: i + 1, label }));
+    for (const m of data.byMonth) {
+      const [y, mm] = String(m.month).split('-');
+      const idx = parseInt(mm, 10) - 1;
+      if (idx >= 0 && idx < 12) rows[idx][y] = (rows[idx][y] || 0) + (m.value || 0);
+    }
+    return { years, rows };
+  }, [data]);
+
   // Derived insights
   const insights = useMemo(() => {
     if (!data) return null;
@@ -673,32 +686,27 @@ export default function SpendAnalyticsPage() {
             );
           })()}
 
-          {/* Monthly Trend Chart (value vs VAT, with bars + line) */}
-          {chartMonthly.length > 0 && (
+          {/* Monthly Trend Chart — X axis = Jan–Dec, one line per year */}
+          {monthlyByYear.years.length > 0 && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                 <div>
                   <h3 className="spa-ctitle">Monthly Spend Trend</h3>
-                  <p className="spa-csub">Committed schedule value by month{insights?.peak ? ` · peak ${fmtMonth(insights.peak.month)}` : ''}</p>
+                  <p className="spa-csub">Committed schedule value by month · one line per year{insights?.peak ? ` · peak ${fmtMonth(insights.peak.month)}` : ''}</p>
                 </div>
               </div>
               <div ref={chartMonthlyRef}>
                 <ResponsiveContainer width="100%" height={300}>
-                  <ComposedChart data={chartMonthly} margin={{ top: 8, right: 16, bottom: 5, left: 8 }}>
-                    <defs>
-                      <linearGradient id="spaVat" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#E85D24" stopOpacity={0.18} />
-                        <stop offset="100%" stopColor="#E85D24" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
+                  <LineChart data={monthlyByYear.rows} margin={{ top: 8, right: 16, bottom: 5, left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
                     <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={48} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip formatter={(v, n) => [fmtLKR(v), n]} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="value" name="Schedule Value" fill="#0A1729" radius={[4, 4, 0, 0]} maxBarSize={46} />
-                    {chartMonthly.length > 6 && <Brush dataKey="label" height={18} stroke="#E85D24" travellerWidth={8} />}
-                  </ComposedChart>
+                    {monthlyByYear.years.map((y, i) => (
+                      <Line key={y} type="monotone" dataKey={y} name={y} stroke={COLORS[i % COLORS.length]} strokeWidth={2.4} dot={{ r: 2.5 }} activeDot={{ r: 5 }} connectNulls={false} />
+                    ))}
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
