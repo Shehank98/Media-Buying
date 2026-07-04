@@ -50,6 +50,8 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [clientForm, setClientForm] = useState({ name: '', agencyId: '', commissionType: '', commissionValue: '' });
   const [clientSubmitting, setClientSubmitting] = useState(false);
   const [clientError, setClientError] = useState('');
+  // Set when a commission change on an existing client needs a "past records?" choice.
+  const [scopePrompt, setScopePrompt] = useState(null); // { clientId, clientName }
 
   /* ---- user modal ---- */
   const [showUserModal, setShowUserModal] = useState(false);
@@ -252,13 +254,27 @@ export default function AdminPage({ initialTab = 'users' }) {
         const res = await api.post(`/agencies/${clientForm.agencyId}/clients`, { name: clientForm.name.trim() });
         clientId = res.data?.client?.id ?? res.data?.id;
       }
-      // Save the commission/AOR setting (empty type clears it).
-      if (clientId) {
-        await api.put(`/admin/clients/${clientId}/commission`, {
-          commissionType: clientForm.commissionType || null,
-          commissionValue: clientForm.commissionType ? clientForm.commissionValue : null,
-        });
+      if (!clientId) { setShowClientModal(false); await fetchData(); return; }
+
+      // Did the commission change vs what the client already had?
+      const origType = editingClient?.commissionType || '';
+      const origVal = editingClient?.commissionValue == null ? '' : String(editingClient.commissionValue);
+      const newType = clientForm.commissionType || '';
+      const newVal = clientForm.commissionType ? String(clientForm.commissionValue) : '';
+      const commissionChanged = newType !== origType || newVal !== origVal;
+
+      if (editingClient && newType && commissionChanged) {
+        // Existing client + a (changed) commission → ask how it applies to past
+        // records. Name/agency are already saved; the commission is applied on choice.
+        setShowClientModal(false);
+        setScopePrompt({ clientId, clientName: clientForm.name.trim() });
+        setClientSubmitting(false);
+        return;
       }
+
+      // New client, cleared commission, or unchanged: save directly (no past
+      // records to reconcile, so scope is moot).
+      await applyCommission(clientId, 'all');
       setShowClientModal(false);
       await fetchData();
     } catch (err) {
@@ -267,6 +283,26 @@ export default function AdminPage({ initialTab = 'users' }) {
       setClientSubmitting(false);
     }
   };
+  const applyCommission = (clientId, scope) => api.put(`/admin/clients/${clientId}/commission`, {
+    commissionType: clientForm.commissionType || null,
+    commissionValue: clientForm.commissionType ? clientForm.commissionValue : null,
+    scope,
+  });
+  const chooseScope = async (scope) => {
+    if (!scopePrompt) return;
+    setClientSubmitting(true);
+    setClientError('');
+    try {
+      await applyCommission(scopePrompt.clientId, scope);
+      setScopePrompt(null);
+      await fetchData();
+    } catch (err) {
+      setClientError(err.response?.data?.error || 'Failed to update commission.');
+    } finally {
+      setClientSubmitting(false);
+    }
+  };
+  const cancelScope = async () => { setScopePrompt(null); setClientError(''); await fetchData(); };
   const toggleClient = async c => {
     try {
       await api.put(`/admin/clients/${c.id}/toggle`);
@@ -1704,6 +1740,43 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <button type="submit" className="btn btn-primary" disabled={clientSubmitting}>{clientSubmitting ? 'Saving...' : editingClient ? 'Save Changes' : 'Add Client'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ COMMISSION SCOPE MODAL ============ */}
+      {scopePrompt && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) cancelScope(); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 470 }}>
+            <div className="modal-head">
+              <h2>Apply commission to records?</h2>
+              <button className="act-btn" onClick={cancelScope}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {clientError && (
+                <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{clientError}</div>
+              )}
+              <p style={{ fontSize: 13.5, color: 'var(--ink-soft,#3B4A63)', margin: 0, lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--ink)' }}>{scopePrompt.clientName}</strong> has existing spend records. How should the new commission apply to the Profit tab?
+              </p>
+              <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+                {[
+                  { scope: 'all', title: 'Change all records', desc: 'Recalculate every past month with the new rate (overwrites earlier snapshots). Use this to fix a wrong rate.' },
+                  { scope: 'forward', title: 'From now on only', desc: 'Keep past records exactly as they are; apply the new rate only to spend uploaded from now on.' },
+                ].map(o => (
+                  <button key={o.scope} type="button" disabled={clientSubmitting} onClick={() => chooseScope(o.scope)}
+                    style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', cursor: clientSubmitting ? 'wait' : 'pointer', display: 'block', width: '100%' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--coral-400,#E8834F)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--ink)' }}>{o.title}</div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{o.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button type="button" className="btn btn-ghost" onClick={cancelScope} disabled={clientSubmitting}>Cancel</button>
+            </div>
           </div>
         </div>
       )}

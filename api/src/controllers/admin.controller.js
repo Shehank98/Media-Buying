@@ -590,16 +590,28 @@ export async function setClientCommission(req, res) {
       select: { id: true, name: true, commissionType: true, commissionValue: true },
     });
 
-    // Apply the newly-set commission to this client's existing ScheduleLog rows
-    // so the Profit tab reflects it immediately (instead of only after the next
-    // deploy's seed backfill). Targets rows with NO snapshot yet AND rows that
-    // were previously BACKFILLED — never genuine at-entry snapshots (rows uploaded
-    // while a commission was set, commission_backfilled = false), which stay
-    // frozen so real historical profit never changes. This also lets an admin
-    // correct a mistyped commission and have it re-apply to the backfilled rows.
-    let backfilled = 0;
-    if (commissionType) {
-      backfilled = await prisma.$executeRaw`
+    // How the new commission applies to this client's EXISTING ScheduleLog rows,
+    // which drive the Profit tab:
+    //   scope 'all'     -> rewrite every row for the client (snapshotted ones too)
+    //                      — use when correcting a mistyped rate on past records.
+    //   scope 'forward' -> touch nothing; only rows uploaded from now on snapshot
+    //                      the new rate (past profit stays exactly as it was).
+    //   (default)       -> fill only un-snapshotted / previously-backfilled rows,
+    //                      leaving genuine at-entry snapshots frozen.
+    const scope = req.body.scope;
+    let updatedRows = 0;
+    if (commissionType && scope === 'all') {
+      // Rewrite every row for the client (snapshotted ones too).
+      updatedRows = await prisma.$executeRaw`
+        UPDATE schedule_logs
+        SET commission_type_at_entry = ${commissionType},
+            commission_rate_at_entry = ${commissionValue},
+            commission_backfilled = true
+        WHERE client_id = ${id} AND is_deleted = false`;
+    } else if (commissionType && scope !== 'forward') {
+      // Default: fill only un-snapshotted / previously-backfilled rows; leave
+      // genuine at-entry snapshots frozen.
+      updatedRows = await prisma.$executeRaw`
         UPDATE schedule_logs
         SET commission_type_at_entry = ${commissionType},
             commission_rate_at_entry = ${commissionValue},
@@ -610,7 +622,7 @@ export async function setClientCommission(req, res) {
 
     return res.json({
       client: { ...client, commissionValue: client.commissionValue == null ? null : Number(client.commissionValue) },
-      backfilledRows: backfilled,
+      updatedRows,
     });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
