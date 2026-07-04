@@ -219,17 +219,17 @@ export default function ProfitPage() {
 
             {/* Profit by Client (ranked table) */}
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px 10px', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Profit by Client <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>· top {Math.min(byClient.length, 15)}</span></div>
+              <div style={{ padding: '16px 20px 10px', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Profit by Client <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>· {byClient.length} client(s)</span></div>
               <div style={{ maxHeight: 360, overflow: 'auto' }}>
                 {byClient.length === 0 ? <div style={{ padding: 20 }}><Empty /></div> : (
                   <table className="tbl" style={{ margin: 0, fontSize: 12.5 }}>
-                    <thead><tr><th>Client</th><th>Agency</th><th style={{ textAlign: 'right' }}>Profit</th></tr></thead>
+                    <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Revenue</th><th style={{ textAlign: 'right' }}>Profit</th></tr></thead>
                     <tbody>
-                      {byClient.slice(0, 15).map((c) => (
+                      {byClient.map((c) => (
                         <tr key={c.clientId}>
-                          <td className="strong">{c.client}</td>
-                          <td style={{ color: 'var(--muted)' }}>{c.agency}</td>
-                          <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(c.profit)}</td>
+                          <td className="strong">{c.client}<div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{c.agency}</div></td>
+                          <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--muted)' }}>{fmtLKR(c.revenue)}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtLKR(c.profit)}</td>
                         </tr>
                       ))}
                     </tbody>
