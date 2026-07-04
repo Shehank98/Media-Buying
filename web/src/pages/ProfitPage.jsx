@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import api from '../lib/api';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
@@ -14,7 +14,8 @@ const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); ret
 
 // Commission label for the detail table: "4%" for COMMISSION, "AOR LKR X" for AOR.
 const commissionLabel = (type, value) => {
-  if (!type) return '-';
+  if (type === 'MIXED') return 'Mixed';
+  if (!type) return 'Not set';
   return type === 'COMMISSION' ? `${Number(value)}%` : `AOR ${fmtLKR(value)}`;
 };
 
@@ -34,11 +35,11 @@ export default function ProfitPage() {
   const [monthly, setMonthly] = useState([]);
   const [byAgency, setByAgency] = useState([]);
   const [byClient, setByClient] = useState([]);
-  const [details, setDetails] = useState(null);
+  const [breakdown, setBreakdown] = useState([]);
+  const [expanded, setExpanded] = useState(() => new Set()); // clientIds expanded to show months
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState('profit');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -93,20 +94,29 @@ export default function ProfitPage() {
     return () => { cancelled = true; };
   }, [params]);
 
-  useEffect(() => { setPage(1); }, [params, sortBy, sortDir]);
-
   useEffect(() => {
-    api.get('/profit/details', { params: { ...params, page, pageSize: 50, sortBy, sortDir } })
-      .then((r) => setDetails(r.data))
-      .catch(() => setDetails(null));
-  }, [params, page, sortBy, sortDir]);
+    api.get('/profit/client-breakdown', { params })
+      .then((r) => setBreakdown(r.data.clients || []))
+      .catch(() => setBreakdown([]));
+  }, [params]);
 
   const toggleClient = (id) => setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const toggleExpand = (id) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const setSort = (key) => {
     if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortBy(key); setSortDir('desc'); }
+    else { setSortBy(key); setSortDir(key === 'client' || key === 'agency' ? 'asc' : 'desc'); }
   };
   const sortArrow = (key) => (sortBy === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+
+  // Client-side sort of the breakdown rows (full year, so no pagination needed).
+  const breakdownSorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return breakdown.slice().sort((a, b) => {
+      const va = a[sortBy], vb = b[sortBy];
+      if (typeof va === 'string' || typeof vb === 'string') return String(va ?? '').localeCompare(String(vb ?? '')) * dir;
+      return ((va ?? 0) - (vb ?? 0)) * dir;
+    });
+  }, [breakdown, sortBy, sortDir]);
 
   // Fixed Jan–Dec for the selected year; months with no schedule data show 0.
   const monthlyData = useMemo(() => {
@@ -239,49 +249,54 @@ export default function ProfitPage() {
             </div>
           </div>
 
-          {/* Detail table (ground truth) */}
+          {/* Detailed Breakdown — per client (year totals), expand for months */}
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>Detailed Breakdown</span>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{details ? `${details.total} rows` : ''}</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{breakdown.length} client(s) · {year} · expand a row for monthly figures</span>
             </div>
             <div style={{ overflow: 'auto' }}>
               <table className="tbl" style={{ margin: 0, fontSize: 12.5 }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 30 }}></th>
                     <Th onClick={() => setSort('client')}>Client{sortArrow('client')}</Th>
                     <Th onClick={() => setSort('agency')}>Agency{sortArrow('agency')}</Th>
                     <Th onClick={() => setSort('revenue')} right>Revenue{sortArrow('revenue')}</Th>
-                    <Th onClick={() => setSort('commission')} right>Commission (at entry){sortArrow('commission')}</Th>
+                    <Th onClick={() => setSort('commission')} right>Commission{sortArrow('commission')}</Th>
                     <Th onClick={() => setSort('profit')} right>Profit{sortArrow('profit')}</Th>
-                    <Th onClick={() => setSort('month')}>Month{sortArrow('month')}</Th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(details?.rows || []).length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No confirmed actuals in this period.</td></tr>
-                  ) : details.rows.map((r, i) => (
-                    <tr key={i}>
-                      <td className="strong">{r.client}</td>
-                      <td style={{ color: 'var(--muted)' }}>{r.agency}</td>
-                      <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(r.revenue)}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{commissionLabel(r.commissionType, r.commissionValue)}</td>
-                      <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtLKR(r.profit)}</td>
-                      <td>{fmtMonth(r.month)}</td>
-                    </tr>
-                  ))}
+                  {breakdownSorted.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>No confirmed actuals in {year}.</td></tr>
+                  ) : breakdownSorted.map((c) => {
+                    const open = expanded.has(c.clientId);
+                    return (
+                      <Fragment key={c.clientId}>
+                        <tr style={{ cursor: 'pointer' }} onClick={() => toggleExpand(c.clientId)}>
+                          <td style={{ textAlign: 'center' }}><Icon name={open ? 'chevD' : 'chevR'} size={14} style={{ color: 'var(--muted)' }} /></td>
+                          <td className="strong">{c.client}</td>
+                          <td style={{ color: 'var(--muted)' }}>{c.agency}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(c.revenue)}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: c.commissionType ? 'var(--ink)' : '#9A5B00' }}>{commissionLabel(c.commissionType, c.commissionValue)}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtLKR(c.profit)}</td>
+                        </tr>
+                        {open && c.months.map((m) => (
+                          <tr key={m.month} style={{ background: 'var(--bg,#F5F6F8)' }}>
+                            <td></td>
+                            <td colSpan={2} style={{ paddingLeft: 24, color: 'var(--ink-soft)' }}>{fmtMonth(m.month)}</td>
+                            <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--muted)' }}>{fmtLKR(m.revenue)}</td>
+                            <td></td>
+                            <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(m.profit)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            {details && details.totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--border)', fontSize: 12.5 }}>
-                <span style={{ color: 'var(--muted)' }}>Page {details.page} of {details.totalPages}</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
-                  <button className="btn btn-ghost btn-sm" disabled={page >= details.totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
-                </div>
-              </div>
-            )}
           </div>
         </>
       )}

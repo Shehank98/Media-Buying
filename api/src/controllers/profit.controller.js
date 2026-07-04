@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma.js';
-import { blendedPct } from '../services/profit.service.js';
+import { blendedPct, round2 } from '../services/profit.service.js';
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 // Buckets/ranges are by the SCHEDULE (flight) month — the month the spend ran in
@@ -138,6 +138,65 @@ export async function getProfitByClient(req, res) {
   } catch (error) {
     console.error('getProfitByClient error:', error);
     return res.status(500).json({ error: 'Failed to build client profit', detail: error.message });
+  }
+}
+
+// GET /api/profit/client-breakdown — the Detailed Breakdown: one row per client
+// (year totals + commission) with a nested month-by-month revenue/profit list.
+export async function getProfitClientBreakdown(req, res) {
+  try {
+    const f = parseFilters(req);
+    const filter = whereFragment(f);
+    const [rows, commRows] = await Promise.all([
+      prisma.$queryRaw`
+        WITH atoms AS (${atomsSql(filter)})
+        SELECT atoms.client_id, cl.name AS client, ag.name AS agency, atoms.ym,
+               SUM(atoms.revenue) AS revenue, SUM(atoms.profit) AS profit
+          FROM atoms JOIN clients cl ON cl.id = atoms.client_id JOIN agencies ag ON ag.id = atoms.agency_id
+         GROUP BY atoms.client_id, cl.name, ag.name, atoms.ym`,
+      // Distinct commission snapshots per client, to label the rate column.
+      prisma.$queryRaw`
+        SELECT DISTINCT sl.client_id, sl.commission_type_at_entry AS ctype, sl.commission_rate_at_entry AS crate
+          FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id WHERE ${filter}`,
+    ]);
+
+    // One commission label per client: the single snapshot if uniform, else "MIXED".
+    const commByClient = new Map();
+    for (const r of commRows) {
+      if (!r.ctype) continue;
+      const list = commByClient.get(r.client_id) || [];
+      list.push({ ctype: r.ctype, crate: r.crate == null ? null : Number(r.crate) });
+      commByClient.set(r.client_id, list);
+    }
+    const commissionOf = (cid) => {
+      const list = commByClient.get(cid) || [];
+      if (!list.length) return { commissionType: null, commissionValue: null };
+      const uniq = [...new Map(list.map((x) => [`${x.ctype}:${x.crate}`, x])).values()];
+      return uniq.length === 1
+        ? { commissionType: uniq[0].ctype, commissionValue: uniq[0].crate }
+        : { commissionType: 'MIXED', commissionValue: null };
+    };
+
+    const byClient = new Map();
+    for (const r of rows) {
+      const g = byClient.get(r.client_id) || { clientId: r.client_id, client: r.client, agency: r.agency, revenue: 0, profit: 0, months: [] };
+      const revenue = num(r.revenue), profit = num(r.profit);
+      g.months.push({ month: r.ym, revenue, profit });
+      g.revenue = round2(g.revenue + revenue);
+      g.profit = round2(g.profit + profit);
+      byClient.set(r.client_id, g);
+    }
+
+    const clients = [...byClient.values()].map((g) => {
+      g.months.sort((a, b) => a.month.localeCompare(b.month));
+      const comm = commissionOf(g.clientId);
+      return { ...g, revenue: round2(g.revenue), profit: round2(g.profit), ...comm };
+    }).sort((a, b) => b.profit - a.profit || b.revenue - a.revenue || a.client.localeCompare(b.client));
+
+    return res.json({ clients });
+  } catch (error) {
+    console.error('getProfitClientBreakdown error:', error);
+    return res.status(500).json({ error: 'Failed to build client breakdown', detail: error.message });
   }
 }
 
