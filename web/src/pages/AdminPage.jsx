@@ -1050,6 +1050,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <th>Client</th>
                         <th>Channels</th>
                         <th>Status</th>
+                        <th>Commission</th>
                         <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
@@ -1069,6 +1070,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                               background: c.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)',
                               color: c.isActive === false ? 'var(--muted)' : 'var(--green-600)',
                             }}>{c.isActive === false ? 'Hidden' : 'Active'}</span>
+                          </td>
+                          <td>
+                            {c.commissionType === 'COMMISSION' ? (
+                              <span className="mono" style={{ fontWeight: 600 }}>{Number(c.commissionValue)}%</span>
+                            ) : c.commissionType === 'AOR' ? (
+                              <span className="mono" style={{ fontWeight: 600 }}>LKR {Number(c.commissionValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--amber-50,#FCF4E2)', color: '#9A5B00' }}>Not set</span>
+                            )}
                           </td>
                           <td>
                             <div className="row-actions">
