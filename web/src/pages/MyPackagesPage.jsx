@@ -21,25 +21,29 @@ const INTEREST_OPTS = [
 ];
 const INTEREST_BY_KEY = Object.fromEntries(INTEREST_OPTS.map((o) => [o.key, o]));
 
-function PackageCard({ item, onResponded }) {
+function PackageCard({ item, myClients, onResponded }) {
   const responded = !!item.respondedAt;
-  const [editing, setEditing] = useState(!responded);
+  const pkg = item.package;
+  const expired = pkg.expired;
+  const [editing, setEditing] = useState(!responded && !expired);
   const [interest, setInterest] = useState(item.response.interest || '');
-  const [clientName, setClientName] = useState(item.response.clientName || '');
+  const [interestedIds, setInterestedIds] = useState(item.response.interestedClientIds || []);
   const [budgetNote, setBudgetNote] = useState(item.response.budgetNote || '');
   const [notes, setNotes] = useState(item.response.notes || '');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const pkg = item.package;
+  const clientNameById = new Map(myClients.map((c) => [c.id, c.name]));
+  const respondedClientNames = (item.response.interestedClientIds || []).map((id) => clientNameById.get(id) || `#${id}`);
 
   const submit = async () => {
     setErr('');
     if (!interest) { setErr('Please choose your interest level.'); return; }
     setSaving(true);
     try {
-      await api.post(`/packages/inbox/${item.recipientId}/respond`, { interest, clientName, budgetNote, notes });
-      onResponded(item.recipientId, { interest, clientName, budgetNote, notes });
+      const payload = { interest, interestedClientIds: interestedIds, budgetNote, notes };
+      await api.post(`/packages/inbox/${item.recipientId}/respond`, payload);
+      onResponded(item.recipientId, payload);
       setEditing(false);
     } catch (e) {
       setErr(e.response?.data?.error || 'Failed to submit response.');
@@ -54,13 +58,13 @@ function PackageCard({ item, onResponded }) {
     <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h3 style={{ fontSize: 15.5, fontWeight: 700, margin: 0, color: 'var(--ink)' }}>{pkg.name}</h3>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-sunken)', color: 'var(--muted)' }}>{pkg.category}</span>
-            {pkg.isActive === false && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-sunken)', color: 'var(--muted)' }}>Inactive</span>}
+            {expired && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: '#FCEBEA', color: '#C5391F' }}>Closed</span>}
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
             Shared by {pkg.sharedBy || 'the media team'} · {fmtDate(item.sentAt)}
+            {pkg.deadline && <> · <span style={{ color: expired ? '#C5391F' : 'inherit' }}>Respond by {fmtDate(pkg.deadline)}</span></>}
           </div>
         </div>
         {statusPill}
@@ -72,7 +76,7 @@ function PackageCard({ item, onResponded }) {
         {pkg.lineItems.length > 0 && (
           <div className="tbl-wrap" style={{ marginBottom: 16 }}>
             <table className="tbl" style={{ fontSize: 13 }}>
-              <thead><tr><th>Item / slot</th><th style={{ textAlign: 'right' }}>Rate</th></tr></thead>
+              <thead><tr><th>Channel</th><th style={{ textAlign: 'right' }}>Rate</th></tr></thead>
               <tbody>
                 {pkg.lineItems.map((li) => (
                   <tr key={li.id}><td className="strong">{li.label}</td><td style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtLKR(li.rate)}</td></tr>
@@ -85,13 +89,18 @@ function PackageCard({ item, onResponded }) {
         {/* Response */}
         {!editing && responded ? (
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: item.response.clientName || item.response.budgetNote || item.response.notes ? 10 : 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Your response · {fmtDate(item.respondedAt)}</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> Update</button>
+              {!expired && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> Update</button>}
             </div>
-            {item.response.clientName && <div style={{ fontSize: 13 }}><span style={{ color: 'var(--muted)' }}>Client:</span> {item.response.clientName}</div>}
+            {respondedClientNames.length > 0 && <div style={{ fontSize: 13 }}><span style={{ color: 'var(--muted)' }}>Interested clients:</span> {respondedClientNames.join(', ')}</div>}
+            {item.response.clientName && respondedClientNames.length === 0 && <div style={{ fontSize: 13 }}><span style={{ color: 'var(--muted)' }}>Client:</span> {item.response.clientName}</div>}
             {item.response.budgetNote && <div style={{ fontSize: 13, marginTop: 4 }}><span style={{ color: 'var(--muted)' }}>Budget:</span> {item.response.budgetNote}</div>}
             {item.response.notes && <div style={{ fontSize: 13, marginTop: 4 }}><span style={{ color: 'var(--muted)' }}>Notes:</span> {item.response.notes}</div>}
+          </div>
+        ) : expired ? (
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: 'var(--muted)' }}>
+            This proposal has closed — its deadline has passed, so responses are no longer accepted.
           </div>
         ) : (
           <div>
@@ -117,15 +126,24 @@ function PackageCard({ item, onResponded }) {
               })}
             </div>
 
-            <div className="field-grid2">
-              <div className="field">
-                <label className="field-label">Client (optional)</label>
-                <input className="input" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Which client is this for?" />
-              </div>
-              <div className="field">
-                <label className="field-label">Budget note (optional)</label>
-                <input className="input" value={budgetNote} onChange={(e) => setBudgetNote(e.target.value)} placeholder="e.g. within Q3 budget" />
-              </div>
+            <div className="field">
+              <label className="field-label">Interested clients (optional)</label>
+              {myClients.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No clients are assigned to you yet.</div>
+              ) : (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 9, maxHeight: 170, overflow: 'auto', padding: 6 }}>
+                  {myClients.map((c) => (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: 13, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={interestedIds.includes(c.id)} onChange={() => setInterestedIds((ids) => ids.includes(c.id) ? ids.filter((x) => x !== c.id) : [...ids, c.id])} />
+                      {c.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <label className="field-label">Budget note (optional)</label>
+              <input className="input" value={budgetNote} onChange={(e) => setBudgetNote(e.target.value)} placeholder="e.g. within Q3 budget" />
             </div>
             <div className="field">
               <label className="field-label">Notes (optional)</label>
@@ -147,13 +165,14 @@ function PackageCard({ item, onResponded }) {
 
 export default function MyPackagesPage() {
   const [items, setItems] = useState([]);
+  const [myClients, setMyClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const fetchInbox = useCallback(() => {
     setLoading(true);
     api.get('/packages/inbox')
-      .then((r) => setItems(r.data.items || []))
+      .then((r) => { setItems(r.data.items || []); setMyClients(r.data.myClients || []); })
       .catch(() => setError('Failed to load your packages.'))
       .finally(() => setLoading(false));
   }, []);
@@ -187,7 +206,7 @@ export default function MyPackagesPage() {
           <p>No packages have been shared with you yet.</p>
         </div>
       ) : (
-        items.map((it) => <PackageCard key={it.recipientId} item={it} onResponded={onResponded} />)
+        items.map((it) => <PackageCard key={it.recipientId} item={it} myClients={myClients} onResponded={onResponded} />)
       )}
     </div>
   );

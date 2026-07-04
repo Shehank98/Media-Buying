@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
@@ -22,7 +22,7 @@ const FOLLOW_UPS = ['PENDING', 'FOLLOWED_UP', 'BOOKED', 'CLOSED'];
 const FOLLOW_LABEL = { PENDING: 'Pending', FOLLOWED_UP: 'Followed up', BOOKED: 'Booked', CLOSED: 'Closed' };
 const MAX_PDF_MB = 10;
 
-const emptyForm = () => ({ name: '', category: '', emailIntro: '', lineItems: [{ label: '', rate: '' }] });
+const emptyForm = () => ({ name: '', emailIntro: '', deadline: '', lineItems: [{ label: '', rate: '' }] });
 
 function Detail({ label, value }) {
   return (
@@ -63,6 +63,10 @@ export default function PackagesPage() {
   const [respDetail, setRespDetail] = useState(null);
   const [respLoading, setRespLoading] = useState(false);
 
+  // list search + status filter (keeps the page manageable with many proposals)
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // all | active | expired | inactive
+
   const fetchPackages = useCallback(() => {
     setLoading(true);
     api.get('/packages')
@@ -73,6 +77,15 @@ export default function PackagesPage() {
 
   useEffect(() => { fetchPackages(); }, [fetchPackages]);
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return packages.filter((p) => {
+      if (statusFilter !== 'all' && (p.status || (p.isActive ? 'active' : 'inactive')) !== statusFilter) return false;
+      if (q && !p.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [packages, search, statusFilter]);
+
   // ── create / edit ──
   const openCreate = () => { setEditingId(null); setForm(emptyForm()); setFormErr(''); setShowForm(true); };
   const openEdit = async (pkg) => {
@@ -82,7 +95,8 @@ export default function PackagesPage() {
       const p = data.package;
       setEditingId(p.id);
       setForm({
-        name: p.name, category: p.category, emailIntro: p.emailIntro || '',
+        name: p.name, emailIntro: p.emailIntro || '',
+        deadline: p.deadline ? String(p.deadline).slice(0, 10) : '',
         lineItems: p.lineItems.length ? p.lineItems.map((li) => ({ label: li.label, rate: String(li.rate) })) : [{ label: '', rate: '' }],
       });
       setShowForm(true);
@@ -97,10 +111,11 @@ export default function PackagesPage() {
   const saveForm = async (e) => {
     e.preventDefault();
     setFormErr('');
-    if (!form.name.trim() || !form.category.trim()) { setFormErr('Name and category are required.'); return; }
+    if (!form.name.trim()) { setFormErr('Name is required.'); return; }
     setSaving(true);
     const payload = {
-      name: form.name, category: form.category, emailIntro: form.emailIntro,
+      name: form.name, emailIntro: form.emailIntro,
+      deadline: form.deadline || null,
       lineItems: form.lineItems.filter((li) => li.label.trim()).map((li) => ({ label: li.label, rate: li.rate })),
     };
     try {
@@ -200,6 +215,21 @@ export default function PackagesPage() {
         </div>
       )}
 
+      {!loading && packages.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+          <div style={{ position: 'relative' }}>
+            <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+            <input className="input" placeholder="Search proposals…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 32, maxWidth: 260 }} />
+          </div>
+          <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 9, padding: 3 }}>
+            {[['all', 'All'], ['active', 'Active'], ['expired', 'Expired'], ['inactive', 'Inactive']].map(([k, lbl]) => (
+              <button key={k} onClick={() => setStatusFilter(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, fontFamily: 'inherit', background: statusFilter === k ? '#fff' : 'transparent', color: statusFilter === k ? '#16243C' : '#6B7790', boxShadow: statusFilter === k ? '0 1px 2px rgba(15,31,61,.08)' : 'none' }}>{lbl}</button>
+            ))}
+          </div>
+          <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--muted)' }}>{filtered.length} of {packages.length}</span>
+        </div>
+      )}
+
       {loading ? (
         <OrbitLoader fullHeight label="Loading packages…" />
       ) : packages.length === 0 ? (
@@ -207,22 +237,28 @@ export default function PackagesPage() {
           <Icon name="folder" size={36} style={{ opacity: 0.25, marginBottom: 10 }} />
           <p>No packages yet. Create your first one.</p>
         </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>No proposals match your filters.</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 18 }}>
-          {packages.map((p) => {
+          {filtered.map((p) => {
             const active = p.isActive !== false;
+            const expired = p.expired;
             const r = p.responses || {};
+            const statusChip = expired
+              ? { bg: '#FCEBEA', fg: '#C5391F', label: 'Expired' }
+              : active ? { bg: '#ECF8F1', fg: '#15814B', label: 'Active' } : { bg: '#EEF0F3', fg: '#93A0B5', label: 'Inactive' };
             return (
               <div key={p.id} style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 20, opacity: active ? 1 : 0.72 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{p.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: '#3B4A63', background: '#EEF0F3', padding: '2px 9px', borderRadius: 6 }}>{p.category}</span>
-                      <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} line items</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} channel(s)</span>
+                      {p.deadline && <span style={{ fontSize: 11.5, color: expired ? '#C5391F' : '#6B7790' }}>· Due {fmtDate(p.deadline)}</span>}
                     </div>
                   </div>
-                  <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: active ? '#ECF8F1' : '#EEF0F3', color: active ? '#15814B' : '#93A0B5', whiteSpace: 'nowrap' }}>{active ? 'Active' : 'Inactive'}</span>
+                  <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: statusChip.bg, color: statusChip.fg, whiteSpace: 'nowrap' }}>{statusChip.label}</span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderTop: '1px solid #EEF0F3', borderBottom: '1px solid #EEF0F3' }}>
@@ -267,8 +303,8 @@ export default function PackagesPage() {
                     <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Package name" />
                   </div>
                   <div className="field">
-                    <label className="field-label">Category <span className="req">*</span></label>
-                    <input className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} placeholder="Category" />
+                    <label className="field-label">Proposal deadline</label>
+                    <input className="input" type="date" value={form.deadline} onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))} />
                   </div>
                 </div>
                 <div className="field">
@@ -276,15 +312,15 @@ export default function PackagesPage() {
                   <textarea className="input" rows={3} value={form.emailIntro} onChange={(e) => setForm((f) => ({ ...f, emailIntro: e.target.value }))} placeholder="Short intro shown in the email body…" />
                 </div>
                 <div className="field">
-                  <label className="field-label">Line items</label>
+                  <label className="field-label">Channels &amp; rates</label>
                   {form.lineItems.map((li, idx) => (
                     <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <input className="input" style={{ flex: 2 }} value={li.label} onChange={(e) => setLineItem(idx, 'label', e.target.value)} placeholder="Item / slot" />
+                      <input className="input" style={{ flex: 2 }} value={li.label} onChange={(e) => setLineItem(idx, 'label', e.target.value)} placeholder="Channel name" />
                       <input className="input" style={{ flex: 1 }} type="number" step="0.01" value={li.rate} onChange={(e) => setLineItem(idx, 'rate', e.target.value)} placeholder="Rate (LKR)" />
                       <button type="button" className="act-btn" onClick={() => removeLineItem(idx)} title="Remove" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="x" size={15} /></button>
                     </div>
                   ))}
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={addLineItem}><Icon name="plus" size={14} /> Add line item</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={addLineItem}><Icon name="plus" size={14} /> Add channel</button>
                 </div>
               </div>
               <div className="modal-foot">
@@ -383,12 +419,12 @@ export default function PackagesPage() {
               <div>
                 <h2 style={{ margin: 0 }}>Responses - {respPkg.name}</h2>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
-                  {respPkg.category}
-                  {respDetail?.lineItems?.length ? ` · ${respDetail.lineItems.length} line items` : ''}
+                  {respDetail?.lineItems?.length ? `${respDetail.lineItems.length} channel(s)` : ''}
                   {(() => {
                     const val = respDetail?.lineItems?.reduce((s, li) => s + Number(li.rate || 0), 0);
                     return val ? ` · ${fmtLKR(val)}` : '';
                   })()}
+                  {respDetail?.deadline ? ` · Due ${fmtDate(respDetail.deadline)}` : ''}
                 </div>
               </div>
               <button className="act-btn" onClick={() => setRespPkg(null)}><Icon name="x" size={18} /></button>
@@ -443,7 +479,7 @@ export default function PackagesPage() {
 
                             {r.respondedAt && (
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                                <Detail label="Client / brand" value={r.clientName} />
+                                <Detail label="Interested clients" value={(r.interestedClients?.length ? r.interestedClients.map((c) => c.name).join(', ') : null) || r.clientName} />
                                 <Detail label="Budget note" value={r.budgetNote} />
                                 <Detail label="Sent" value={fmtDate(r.sentAt || r.createdAt)} />
                                 <Detail label="Responded" value={fmtDate(r.respondedAt)} />

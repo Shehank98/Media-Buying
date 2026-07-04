@@ -11,11 +11,11 @@
  *   Welcome:  { type: "welcome",  to, name, password, loginUrl }
  *   Reset:    { type: "reset",    to, name, resetLink }
  *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
- *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
+ *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, deadline?, pdfBase64?, pdfFileName? }
  */
 
 var BRAND_NAME = "Ogilvy Orbit";
-var FROM_NAME  = "Ogilvy Orbit";
+var FROM_NAME  = "Shehan Kavishka";
 
 // Brand palette (mirrors the app design system)
 var C_NAVY    = "#0A1729";
@@ -231,9 +231,6 @@ function buildResetHtml(name, resetLink) {
         'For your security the reset link is valid for 60 minutes. After that you&rsquo;ll need to request a new one.') +
       spacer(24) +
 
-      '<p style="margin:0 0 8px;color:' + C_MUTED + ';font-size:13px;">If the button doesn&rsquo;t work, copy this link into your browser:</p>' +
-      '<p style="margin:0 0 26px;word-break:break-all;"><a href="' + resetLink + '" style="color:' + C_CORAL_D + ';font-size:13px;text-decoration:none;">' + resetLink + '</a></p>' +
-
       callout('red', '&#128274;', 'Didn&rsquo;t request this?',
         'If you didn&rsquo;t request a password reset, your account may be at risk. Contact your administrator. You can safely ignore this email otherwise.') +
     bodyClose() +
@@ -296,9 +293,10 @@ function sendPackageEmail(data) {
   var intro        = data.intro        || "";
   var lineItems    = data.lineItems    || [];
   var responseLink = data.responseLink || "#";
+  var deadline     = data.deadline     || "";
 
   var subject = packageName + ": media package shared with you";
-  var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink);
+  var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink, deadline);
 
   var options = { name: FROM_NAME, htmlBody: html };
 
@@ -312,7 +310,7 @@ function sendPackageEmail(data) {
   GmailApp.sendEmail(to, subject, stripTags(html), options);
 }
 
-function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
+function buildPackageHtml(name, packageName, intro, lineItems, responseLink, deadline) {
   var rows = "";
   for (var i = 0; i < lineItems.length; i++) {
     var li = lineItems[i] || {};
@@ -334,17 +332,17 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
       (rows
         ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:28px;border-collapse:separate;overflow:hidden;">' +
             '<tr>' +
-              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Item / slot</td>' +
+              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Channel</td>' +
               '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;">Rate</td>' +
             '</tr>' + rows +
           '</table>'
         : '') +
 
-      ctaButton(responseLink, 'Open in Ogilvy Orbit &rarr;') +
-      spacer(26) +
+      (deadline
+        ? '<p style="margin:0 0 24px;color:' + C_INK + ';font-size:13px;">Please respond by <strong>' + escHtml(deadline) + '</strong>.</p>'
+        : '') +
 
-      '<p style="margin:0 0 8px;color:' + C_MUTED + ';font-size:13px;">Or paste this link into your browser:</p>' +
-      '<p style="margin:0;word-break:break-all;"><a href="' + responseLink + '" style="color:' + C_CORAL_D + ';font-size:13px;text-decoration:none;">' + responseLink + '</a></p>' +
+      ctaButton(responseLink, 'Open in Ogilvy Orbit &rarr;') +
     bodyClose() +
     emailFooter(
       '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Review and respond from your Media Packages inbox.',

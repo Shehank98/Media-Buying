@@ -174,9 +174,9 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 
 | Model | Purpose |
 |---|---|
-| MediaPackage | A channel package (name, category, emailIntro, isActive) created by an admin |
-| PackageLineItem | A line item within a package (label + rate) |
-| PackageRecipient | Per-team-head send record + in-app response (interest, budgetNote, clientName, notes, followUp). `tokenHash`/`expiresAt` are legacy/optional — the flow is now in-app, not token links |
+| MediaPackage | A channel package (name, emailIntro, isActive, optional `deadline`, legacy-optional `category`) created by an admin. Past its `deadline` it auto-deactivates (lazy, on every list/inbox fetch via `deactivateExpiredPackages`) |
+| PackageLineItem | A line item within a package: `label` holds the **channel name** + `rate` (the UI calls it "Channel", one row per channel) |
+| PackageRecipient | Per-team-head send record + in-app response (interest, budgetNote, `interestedClientIds` Int[] — the team head's own clients they mark interested, legacy `clientName`, notes, followUp). `tokenHash`/`expiresAt` are legacy/optional — the flow is now in-app, not token links |
 
 ### Default Seed Data
 
@@ -568,9 +568,11 @@ Cost of `0` displays as "Added value" in the UI.
 
 ## Media Packages (in-app flow)
 
-A SUPER_ADMIN builds a package (name, category, line items with rates) and **sends** it to GROUP_HEADs. Sending does **not** create a public token link — instead each recipient gets:
+A SUPER_ADMIN builds a package (name, **per-channel line items** = channel name + rate, optional **proposal deadline**, optional email intro) and **sends** it to GROUP_HEADs. Sending does **not** create a public token link — instead each recipient gets:
 - an **email** (Apps Script) linking to `/my-packages` (login required), and
 - an **in-app notification**.
+
+**Recent changes:** the package form dropped the Category field and renamed line items to **Channels** (channel name + rate, "Add channel"); a **proposal deadline** was added — past it the package auto-deactivates and stops accepting responses (lazy `deactivateExpiredPackages`, no cron), and expired packages stay listed with an **Expired** badge. The admin PackagesPage list has a **search box + status filter** (All/Active/Expired/Inactive) to stay manageable with many proposals. Team heads respond by **multi-selecting their own clients** (`interestedClientIds`, validated against `getAccessibleClientIds`) instead of a free-text client — `listMyPackages` returns `myClients` for the picker and the admin Responses view shows the resolved names. **Emails now send with sender name "Shehan Kavishka"** (`FROM_NAME` in `appscript/Code.gs`) and the redundant "copy this link" fallback under CTA buttons was removed (package + reset templates) — *`Code.gs` changes require a manual redeploy in the Apps Script project to take effect*.
 
 GROUP_HEADs open `/my-packages`, review the package, and reply **Interested / Open to negotiate / Not interested** with optional client, budget note, and notes. The admin sees every reply (and follow-up status) on the Packages → Responses view, and gets a notification per response. `PackageRecipient.tokenHash`/`expiresAt` are nullable legacy columns from the old token flow.
 

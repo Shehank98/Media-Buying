@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { sendEmail } from '../services/email.service.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
 
 const INTERESTS = ['INTERESTED', 'NOT_INTERESTED', 'NEGOTIATE'];
 const FOLLOW_UPS = ['PENDING', 'FOLLOWED_UP', 'BOOKED', 'CLOSED'];
@@ -13,6 +14,23 @@ function num(v) {
   return v == null ? null : Number(v);
 }
 
+function parseDeadline(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Auto-deactivate any package whose deadline has passed (lazy; runs on every
+// list/inbox fetch since there's no scheduler). Best-effort.
+async function deactivateExpiredPackages() {
+  try {
+    await prisma.mediaPackage.updateMany({
+      where: { isActive: true, deadline: { not: null, lt: new Date() } },
+      data: { isActive: false },
+    });
+  } catch (e) { console.warn('deactivateExpiredPackages skipped:', e.message); }
+}
+
 function serializeLineItem(li) {
   return { ...li, rate: num(li.rate) };
 }
@@ -21,6 +39,7 @@ function serializeLineItem(li) {
 
 export async function listPackages(req, res) {
   try {
+    await deactivateExpiredPackages();
     const packages = await prisma.mediaPackage.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -30,6 +49,7 @@ export async function listPackages(req, res) {
         _count: { select: { lineItems: true, recipients: true } },
       },
     });
+    const now = new Date();
     const shaped = packages.map(p => {
       const totalValue = p.lineItems.reduce((s, li) => s + (num(li.rate) || 0), 0);
       const responses = { interested: 0, negotiate: 0, declined: 0, pending: 0 };
@@ -39,8 +59,10 @@ export async function listPackages(req, res) {
         else if (r.interest === 'NOT_INTERESTED') responses.declined++;
         else responses.pending++;
       }
+      const expired = !!(p.deadline && new Date(p.deadline) < now);
+      const status = expired ? 'expired' : (p.isActive ? 'active' : 'inactive');
       const { lineItems, recipients, ...rest } = p;
-      return { ...rest, totalValue, responses };
+      return { ...rest, totalValue, responses, expired, status };
     });
     return res.json({ packages: shaped });
   } catch (error) {
@@ -82,15 +104,16 @@ function lineItemRows(lineItems) {
 
 export async function createPackage(req, res) {
   try {
-    const { name, category, emailIntro, lineItems } = req.body;
-    if (!name || !category) {
-      return res.status(400).json({ error: 'name and category are required' });
+    const { name, category, emailIntro, lineItems, deadline } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
     }
     const pkg = await prisma.mediaPackage.create({
       data: {
         name: String(name).trim(),
-        category: String(category).trim(),
+        category: category ? String(category).trim() : null,
         emailIntro: emailIntro ? String(emailIntro) : '',
+        deadline: parseDeadline(deadline),
         createdById: req.user.id,
         lineItems: { create: lineItemRows(lineItems) },
       },
@@ -106,12 +129,13 @@ export async function createPackage(req, res) {
 export async function updatePackage(req, res) {
   try {
     const id = parseInt(req.params.id);
-    const { name, category, emailIntro, lineItems } = req.body;
+    const { name, category, emailIntro, lineItems, deadline } = req.body;
 
     const data = {};
     if (name !== undefined) data.name = String(name).trim();
-    if (category !== undefined) data.category = String(category).trim();
+    if (category !== undefined) data.category = category ? String(category).trim() : null;
     if (emailIntro !== undefined) data.emailIntro = String(emailIntro);
+    if (deadline !== undefined) data.deadline = parseDeadline(deadline);
 
     // Replace line items atomically when provided.
     const ops = [prisma.mediaPackage.update({ where: { id }, data })];
@@ -253,6 +277,7 @@ export async function sendPackage(req, res) {
           packageName: pkg.name,
           intro: pkg.emailIntro,
           lineItems: lineItemsForEmail,
+          deadline: pkg.deadline ? new Date(pkg.deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
           responseLink: inboxLink,
           pdfBase64: pdfBase64 || null,
           pdfFileName: pdfFileName || `${pkg.name}.pdf`,
@@ -284,9 +309,21 @@ export async function getPackageResponses(req, res) {
       },
     });
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
+
+    // Resolve every recipient's interested-client ids to names in one query.
+    const allIds = [...new Set(pkg.recipients.flatMap(r => r.interestedClientIds || []))];
+    const clients = allIds.length
+      ? await prisma.client.findMany({ where: { id: { in: allIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(clients.map(c => [c.id, c.name]));
+    const recipients = pkg.recipients.map(r => ({
+      ...r,
+      interestedClients: (r.interestedClientIds || []).map(cid => ({ id: cid, name: nameById.get(cid) || `#${cid}` })),
+    }));
+
     return res.json({
-      package: { id: pkg.id, name: pkg.name, category: pkg.category, lineItems: pkg.lineItems.map(serializeLineItem) },
-      recipients: pkg.recipients,
+      package: { id: pkg.id, name: pkg.name, category: pkg.category, deadline: pkg.deadline, lineItems: pkg.lineItems.map(serializeLineItem) },
+      recipients,
     });
   } catch (error) {
     console.error('Get package responses error:', error);
@@ -318,6 +355,7 @@ export async function updateFollowUp(req, res) {
 // Packages shared with the signed-in team head — opened in their own interface.
 export async function listMyPackages(req, res) {
   try {
+    await deactivateExpiredPackages();
     const rows = await prisma.packageRecipient.findMany({
       where: { userId: req.user.id, sentAt: { not: null } },
       orderBy: { sentAt: 'desc' },
@@ -331,27 +369,40 @@ export async function listMyPackages(req, res) {
       },
     });
 
-    const items = rows.map(r => ({
-      recipientId: r.id,
-      sentAt: r.sentAt,
-      respondedAt: r.respondedAt,
-      response: {
-        interest: r.interest,
-        budgetNote: r.budgetNote || '',
-        clientName: r.clientName || '',
-        notes: r.notes || '',
-      },
-      package: {
-        id: r.package.id,
-        name: r.package.name,
-        category: r.package.category,
-        emailIntro: r.package.emailIntro,
-        isActive: r.package.isActive,
-        sharedBy: r.package.creator?.name || '',
-        lineItems: r.package.lineItems.map(serializeLineItem),
-      },
-    }));
-    return res.json({ items });
+    // The team head's own clients — for the "interested clients" multi-select.
+    const myClientIds = await getAccessibleClientIds(req.user.id, 'GROUP_HEAD');
+    const myClients = myClientIds.length
+      ? await prisma.client.findMany({ where: { id: { in: myClientIds } }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
+      : [];
+
+    const now = new Date();
+    const items = rows.map(r => {
+      const expired = !!(r.package.deadline && new Date(r.package.deadline) < now);
+      return {
+        recipientId: r.id,
+        sentAt: r.sentAt,
+        respondedAt: r.respondedAt,
+        response: {
+          interest: r.interest,
+          budgetNote: r.budgetNote || '',
+          clientName: r.clientName || '',
+          interestedClientIds: r.interestedClientIds || [],
+          notes: r.notes || '',
+        },
+        package: {
+          id: r.package.id,
+          name: r.package.name,
+          category: r.package.category,
+          emailIntro: r.package.emailIntro,
+          isActive: r.package.isActive,
+          deadline: r.package.deadline,
+          expired,
+          sharedBy: r.package.creator?.name || '',
+          lineItems: r.package.lineItems.map(serializeLineItem),
+        },
+      };
+    });
+    return res.json({ items, myClients });
   } catch (error) {
     console.error('List my packages error:', error);
     return res.status(500).json({ error: 'Failed to load your packages', detail: error.message });
@@ -361,7 +412,7 @@ export async function listMyPackages(req, res) {
 export async function respondToMyPackage(req, res) {
   try {
     const recipientId = parseInt(req.params.recipientId);
-    const { interest, budgetNote, clientName, notes } = req.body;
+    const { interest, budgetNote, clientName, notes, interestedClientIds } = req.body;
     if (!INTERESTS.includes(interest)) {
       return res.status(400).json({ error: 'Please select your interest level.' });
     }
@@ -374,6 +425,17 @@ export async function respondToMyPackage(req, res) {
     if (!recipient || recipient.userId !== req.user.id) {
       return res.status(404).json({ error: 'Package not found.' });
     }
+    // A closed (past-deadline) proposal can't take new responses.
+    if (recipient.package.deadline && new Date(recipient.package.deadline) < new Date()) {
+      return res.status(409).json({ error: 'This proposal has closed — its deadline has passed.' });
+    }
+
+    // Keep only client ids the team head actually manages.
+    let clientIds = [];
+    if (Array.isArray(interestedClientIds) && interestedClientIds.length) {
+      const accessible = new Set(await getAccessibleClientIds(req.user.id, 'GROUP_HEAD'));
+      clientIds = [...new Set(interestedClientIds.map(Number).filter(n => Number.isInteger(n) && accessible.has(n)))];
+    }
 
     await prisma.packageRecipient.update({
       where: { id: recipientId },
@@ -381,6 +443,7 @@ export async function respondToMyPackage(req, res) {
         interest,
         budgetNote: budgetNote ? String(budgetNote) : null,
         clientName: clientName ? String(clientName) : null,
+        interestedClientIds: clientIds,
         notes: notes ? String(notes) : null,
         respondedAt: recipient.respondedAt || new Date(),
       },

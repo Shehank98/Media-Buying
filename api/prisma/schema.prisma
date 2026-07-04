@@ -607,8 +607,9 @@ model PasswordResetToken {
 model MediaPackage {
   id          Int                @id @default(autoincrement())
   name        String
-  category    String
+  category    String?
   emailIntro  String             @map("email_intro")
+  deadline    DateTime?          // proposal deadline; past it the package auto-deactivates
   isActive    Boolean            @default(true) @map("is_active")
   createdById Int                @map("created_by_id")
   createdAt   DateTime           @default(now()) @map("created_at")
@@ -642,6 +643,7 @@ model PackageRecipient {
   interest    PackageInterest?
   budgetNote  String?          @map("budget_note")
   clientName  String?          @map("client_name")
+  interestedClientIds Int[]    @default([]) @map("interested_client_ids")
   notes       String?
   followUp    ResponseFollowUp @default(PENDING) @map("follow_up")
   createdAt   DateTime         @default(now()) @map("created_at")
