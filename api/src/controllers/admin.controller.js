@@ -589,7 +589,29 @@ export async function setClientCommission(req, res) {
       data: { commissionType, commissionValue },
       select: { id: true, name: true, commissionType: true, commissionValue: true },
     });
-    return res.json({ client: { ...client, commissionValue: client.commissionValue == null ? null : Number(client.commissionValue) } });
+
+    // Apply the newly-set commission to this client's existing ScheduleLog rows
+    // so the Profit tab reflects it immediately (instead of only after the next
+    // deploy's seed backfill). Targets rows with NO snapshot yet AND rows that
+    // were previously BACKFILLED — never genuine at-entry snapshots (rows uploaded
+    // while a commission was set, commission_backfilled = false), which stay
+    // frozen so real historical profit never changes. This also lets an admin
+    // correct a mistyped commission and have it re-apply to the backfilled rows.
+    let backfilled = 0;
+    if (commissionType) {
+      backfilled = await prisma.$executeRaw`
+        UPDATE schedule_logs
+        SET commission_type_at_entry = ${commissionType},
+            commission_rate_at_entry = ${commissionValue},
+            commission_backfilled = true
+        WHERE client_id = ${id}
+          AND (commission_type_at_entry IS NULL OR commission_backfilled = true)`;
+    }
+
+    return res.json({
+      client: { ...client, commissionValue: client.commissionValue == null ? null : Number(client.commissionValue) },
+      backfilledRows: backfilled,
+    });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Client not found' });
     console.error('Set client commission error:', error);
