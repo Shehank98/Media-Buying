@@ -155,7 +155,7 @@ const AchievementTooltip = ({ active, payload, label }) => {
 // Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
 function AchievementSection({
   year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
-  groupContributionVariance, groupContributionVarianceLoading, monthlyAvgByYear, monthlyAvgByYearLoading,
+  monthlyAvgByYear, monthlyAvgByYearLoading,
 }) {
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
@@ -187,26 +187,6 @@ function AchievementSection({
   };
   const donut1 = gcMonths[0] ? donutFor('m1') : [];
   const donut2 = gcMonths[1] ? donutFor('m2') : [];
-
-  const gcvGroups = groupContributionVariance?.groups || [];
-  const gcvActualLabel = groupContributionVariance?.actualMonthsLabel;
-  const gcvForecastLabel = groupContributionVariance?.forecastMonthLabel;
-  const gcvTitle = gcvActualLabel && gcvForecastLabel
-    ? `${gcvActualLabel} actual average vs ${gcvForecastLabel} forecast (from Forecasting submissions) · by team head's client portfolio · LKR millions`
-    : 'No schedule data yet to compute an actual-vs-forecast comparison';
-  // Renders the %-diff label above whichever bar of the pair is shorter, so the
-  // label never collides with the taller bar (matches the reference slide layout).
-  const diffLabelFor = (barKey) => ({ x, y, width, payload }) => {
-    if (payload == null || payload.avgActual == null || payload.forecast == null) return null;
-    const isLowerBar = barKey === 'avgActual' ? payload.avgActual <= payload.forecast : payload.forecast < payload.avgActual;
-    if (!isLowerBar) return null;
-    const diff = payload.diffPct;
-    return (
-      <text x={Number(x) + Number(width) / 2} y={Number(y) - 8} textAnchor="middle" fontSize={11} fontWeight={700} fill={diff >= 0 ? '#15814B' : '#C5391F'}>
-        {diff == null ? '' : `${diff > 0 ? '+' : ''}${diff}%`}
-      </text>
-    );
-  };
 
   const mabyYears = monthlyAvgByYear?.years || [];
 
@@ -321,31 +301,6 @@ function AchievementSection({
       </div>
 
       <div className="chart-card" style={{ marginTop: 16 }}>
-        <div className="chart-card-title">Group Contribution: Actual Avg vs Forecast</div>
-        <div className="chart-card-sub">{gcvTitle}</div>
-        {groupContributionVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={300} /></div> : gcvGroups.length === 0 ? <ChartEmpty /> : (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={gcvGroups} margin={{ top: 30, right: 20, bottom: 30, left: 6 }} barCategoryGap="22%">
-              <CartesianGrid vertical={false} stroke="var(--border)" />
-              <XAxis
-                dataKey="name" tick={{ fontSize: 11, fill: 'var(--ink)' }} interval={0}
-                tickFormatter={(v, i) => gcvGroups[i]?.headName || v}
-              />
-              <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
-              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="avgActual" name={`${gcvActualLabel || 'Actual'} Avg`} fill="#1F5BB5" radius={[4, 4, 0, 0]} barSize={26}>
-                <LabelList dataKey="diffPct" content={diffLabelFor('avgActual')} />
-              </Bar>
-              <Bar dataKey="forecast" name={`${gcvForecastLabel || 'Next Month'} Forecast`} fill="#E85D24" radius={[4, 4, 0, 0]} barSize={26}>
-                <LabelList dataKey="diffPct" content={diffLabelFor('forecast')} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Monthly Avg</div>
         <div className="chart-card-sub">Average monthly spend per calendar year, all clients · LKR millions</div>
         {monthlyAvgByYearLoading ? <div style={{ marginTop: 12 }}><Skeleton h={240} /></div> : mabyYears.length === 0 ? <ChartEmpty /> : (
@@ -409,8 +364,6 @@ export default function ExecutiveDashboardPage() {
   const [forecastMonthly, setForecastMonthly] = useState(null);
   const [groupContribution, setGroupContribution] = useState(null);
   const [groupContributionLoading, setGroupContributionLoading] = useState(true);
-  const [groupContributionVariance, setGroupContributionVariance] = useState(null);
-  const [groupContributionVarianceLoading, setGroupContributionVarianceLoading] = useState(true);
   const [monthlyAvgByYear, setMonthlyAvgByYear] = useState(null);
   const [monthlyAvgByYearLoading, setMonthlyAvgByYearLoading] = useState(true);
 
@@ -495,15 +448,6 @@ export default function ExecutiveDashboardPage() {
       .then(r => setGroupContribution(r.data))
       .catch(() => setGroupContribution(null))
       .finally(() => setGroupContributionLoading(false));
-  }, []);
-
-  // Group contribution variance (avg of completed months this year vs latest month, by team)
-  useEffect(() => {
-    setGroupContributionVarianceLoading(true);
-    api.get('/analytics/dashboard/group-contribution-variance')
-      .then(r => setGroupContributionVariance(r.data))
-      .catch(() => setGroupContributionVariance(null))
-      .finally(() => setGroupContributionVarianceLoading(false));
   }, []);
 
   // Monthly average spend per calendar year (company-wide)
@@ -865,7 +809,6 @@ export default function ExecutiveDashboardPage() {
       <AchievementSection
         year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading}
         groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
-        groupContributionVariance={groupContributionVariance} groupContributionVarianceLoading={groupContributionVarianceLoading}
         monthlyAvgByYear={monthlyAvgByYear} monthlyAvgByYearLoading={monthlyAvgByYearLoading}
       />
 
