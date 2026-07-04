@@ -28,15 +28,15 @@ import {
 const router = Router();
 
 // Channel Intelligence
-router.get('/channel/:channelMasterId/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelSummary);
-router.get('/channel/:channelMasterId/monthly-spend', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelMonthlySpend);
-router.get('/channel/:channelMasterId/month-detail', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelMonthDetail);
-router.get('/channel/:channelMasterId/agency-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelAgencyMonthly);
-router.get('/channel/:channelMasterId/clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelClients);
-router.get('/channel/:channelMasterId/property-history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getChannelPropertyHistory);
+router.get('/channel/:channelMasterId/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelSummary);
+router.get('/channel/:channelMasterId/monthly-spend', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelMonthlySpend);
+router.get('/channel/:channelMasterId/month-detail', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelMonthDetail);
+router.get('/channel/:channelMasterId/agency-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelAgencyMonthly);
+router.get('/channel/:channelMasterId/clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelClients);
+router.get('/channel/:channelMasterId/property-history', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getChannelPropertyHistory);
 
 // Client dashboard / overview
-router.get('/client/:clientId/overview', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), checkClientAccess, getClientOverview);
+router.get('/client/:clientId/overview', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), checkClientAccess, getClientOverview);
 
 // Executive Dashboard
 router.get('/dashboard/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getDashboardSummary);

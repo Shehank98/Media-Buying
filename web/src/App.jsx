@@ -69,7 +69,7 @@ export default function App() {
             <Route
               path="/spend-analytics"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER']}>
                   <SpendAnalyticsPage />
                 </ProtectedRoute>
               }
@@ -99,7 +99,7 @@ export default function App() {
             <Route
               path="/channel-masters/:channelMasterId"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER']}>
                   <ChannelIntelligencePage />
                 </ProtectedRoute>
               }

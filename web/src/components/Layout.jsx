@@ -9,7 +9,7 @@ const NAV = [
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
   { key: '/forecasting', label: 'Forecasting', icon: 'calendar', roles: ['SUPER_ADMIN', 'GROUP_HEAD'] },
   { key: '/database', label: 'Database', icon: 'database' },
-  { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/my-packages', label: 'Media Packages', icon: 'mail', roles: ['GROUP_HEAD'] },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },

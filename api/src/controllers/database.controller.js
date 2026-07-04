@@ -246,11 +246,22 @@ export async function getAnalytics(req, res) {
       } else {
         where.agencyId = { in: allowedAgencyIds };
       }
+      if (clientId) where.clientId = parseInt(clientId);
+    } else if (user.role === 'GROUP_HEAD' || user.role === 'PLANNER') {
+      // Client-scoped roles: restrict to the clients they can access.
+      const ids = await getAccessibleClientIds(user.id, user.role);
+      if (clientId) {
+        const cid = parseInt(clientId);
+        if (!ids.includes(cid)) return res.status(403).json({ error: 'Access denied to this client' });
+        where.clientId = cid;
+      } else {
+        where.clientId = { in: ids };
+      }
     } else {
+      // SUPER_ADMIN
       if (agencyId) where.agencyId = parseInt(agencyId);
+      if (clientId) where.clientId = parseInt(clientId);
     }
-
-    if (clientId) where.clientId = parseInt(clientId);
 
     const logs = await prisma.scheduleLog.findMany({
       where,
@@ -262,6 +273,7 @@ export async function getAnalytics(req, res) {
         scheduleValueWithVat: true,
         channelMasterId: true,
         channelMaster: { select: { name: true } },
+        clientId: true,
         client: { select: { name: true } },
         agency: { select: { name: true } },
         brandName: true,
@@ -299,7 +311,7 @@ export async function getAnalytics(req, res) {
       byMedium[med].count++;
 
       const ch = log.channelMaster?.name || 'Unknown';
-      if (!byChannel[ch]) byChannel[ch] = { name: ch, medium: med, mediaGroup: mg, value: 0, count: 0 };
+      if (!byChannel[ch]) byChannel[ch] = { name: ch, medium: med, mediaGroup: mg, channelMasterId: log.channelMasterId ?? null, value: 0, count: 0 };
       byChannel[ch].value += val;
       byChannel[ch].count++;
 
@@ -310,7 +322,7 @@ export async function getAnalytics(req, res) {
       byMonth[month].count++;
 
       const client = log.client?.name || 'Unknown';
-      if (!byClient[client]) byClient[client] = { name: client, value: 0, count: 0 };
+      if (!byClient[client]) byClient[client] = { name: client, clientId: log.clientId ?? null, value: 0, count: 0 };
       byClient[client].value += val;
       byClient[client].count++;
 
@@ -387,6 +399,73 @@ export async function getAnalytics(req, res) {
   } catch (error) {
     console.error('Get analytics error:', error);
     return res.status(500).json({ error: 'Failed to get analytics', detail: error.message });
+  }
+}
+
+// Negotiated deals (Property rows) for the clients the viewer can access — the
+// Spend Analytics "Deals & Properties" section. Same access model as getAnalytics
+// (SUPER_ADMIN all, MANAGER their agencies, GROUP_HEAD/PLANNER their clients).
+// Each row links to its client channel page (/channels/:channelId).
+export async function getScopedProperties(req, res) {
+  try {
+    const { agencyId, clientId } = req.query;
+    const user = req.user;
+
+    const channelWhere = {};
+    // Resolve the client scope.
+    let allowedClientIds = null; // null = unrestricted (SUPER_ADMIN)
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({ where: { userId: user.id }, select: { agencyId: true } });
+      const agencyIds = access.map(a => a.agencyId);
+      const clients = await prisma.client.findMany({ where: { agencyId: { in: agencyIds } }, select: { id: true } });
+      allowedClientIds = clients.map(c => c.id);
+    } else if (user.role === 'GROUP_HEAD' || user.role === 'PLANNER') {
+      allowedClientIds = await getAccessibleClientIds(user.id, user.role);
+    }
+
+    if (clientId) {
+      const cid = parseInt(clientId);
+      if (allowedClientIds && !allowedClientIds.includes(cid)) return res.status(403).json({ error: 'Access denied to this client' });
+      channelWhere.clientId = cid;
+    } else if (allowedClientIds) {
+      channelWhere.clientId = { in: allowedClientIds };
+    } else if (agencyId) {
+      // SUPER_ADMIN agency filter.
+      channelWhere.client = { agencyId: parseInt(agencyId) };
+    }
+
+    const props = await prisma.property.findMany({
+      where: { channel: channelWhere },
+      select: {
+        id: true, name: true, type: true, category: true, cost: true,
+        bonusValue: true, bonusPct: true, startDate: true, endDate: true,
+        channel: { select: { id: true, name: true, type: true, client: { select: { id: true, name: true, agency: { select: { name: true } } } } } },
+      },
+      orderBy: [{ channel: { client: { name: 'asc' } } }, { name: 'asc' }],
+    });
+
+    return res.json({
+      properties: props.map(p => ({
+        id: p.id,
+        name: p.name,
+        propertyType: p.type || '',
+        category: p.category || '',
+        cost: Number(p.cost),
+        bonusValue: Number(p.bonusValue),
+        bonusPct: p.bonusPct == null ? null : Number(p.bonusPct),
+        startDate: p.startDate,
+        endDate: p.endDate,
+        channelId: p.channel.id,
+        channelName: p.channel.name,
+        medium: p.channel.type,
+        clientId: p.channel.client.id,
+        clientName: p.channel.client.name,
+        agencyName: p.channel.client.agency?.name || '',
+      })),
+    });
+  } catch (error) {
+    console.error('Get scoped properties error:', error);
+    return res.status(500).json({ error: 'Failed to load properties', detail: error.message });
   }
 }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { canExport } from '../lib/permissions';
 import Icon from '../components/Icon';
@@ -37,10 +38,18 @@ function fmtShort(v) {
   if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
   return n.toFixed(0);
 }
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  return `${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
+}
 
 export default function SpendAnalyticsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -100,6 +109,16 @@ export default function SpendAnalyticsPage() {
     };
     load();
   }, [monthFrom, monthTo, agencyId, clientId]);
+
+  // Deals & properties for the accessible clients (not month-dependent).
+  useEffect(() => {
+    const params = {};
+    if (agencyId) params.agencyId = agencyId;
+    if (clientId) params.clientId = clientId;
+    api.get('/database/properties', { params })
+      .then(({ data }) => setProperties(data.properties || []))
+      .catch(() => setProperties([]));
+  }, [agencyId, clientId]);
 
   // Comparison period (Period B)
   useEffect(() => {
@@ -992,37 +1011,123 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
-          {/* By Channel - Full width bar chart + table */}
+          {/* By Channel + By Client - ranked clickable lists → intelligence pages */}
           {(() => {
             const channelsView = (mediumFilter ? data.byChannel.filter(c => c.medium === mediumFilter) : data.byChannel).slice(0, 15);
+            const clientsView = (data.byClient || []).slice(0, 15);
+            const maxCh = channelsView[0]?.value || 1;
+            const maxCl = clientsView[0]?.value || 1;
+            const RankRow = ({ rank, name, sub, value, max, color, onClick, clickable }) => (
+              <div
+                onClick={clickable ? onClick : undefined}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderRadius: 8, cursor: clickable ? 'pointer' : 'default', transition: 'background .12s' }}
+                onMouseEnter={e => { if (clickable) e.currentTarget.style.background = '#F5F6F8'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ width: 20, fontSize: 12, fontWeight: 700, color: '#93A0B5', textAlign: 'right', flex: 'none' }}>{rank}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: clickable ? '#16243C' : '#6B7790', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {name}{clickable && <Icon name="chevR" size={12} style={{ marginLeft: 4, color: '#93A0B5', verticalAlign: 'middle' }} />}
+                    </span>
+                    <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: '#16243C', flex: 'none' }}>{fmtLKR(value)}</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: '#EEF0F3', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(2, (value / max) * 100)}%`, height: '100%', background: color }} />
+                  </div>
+                  {sub && <div style={{ fontSize: 11, color: '#93A0B5', marginTop: 2 }}>{sub}</div>}
+                </div>
+              </div>
+            );
             return (
-            <div className="section-card" style={{ padding: '20px', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Spend by Channel (Top 15)</h3>
-                {mediumFilter && (
-                  <button onClick={() => setMediumFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: MEDIUM_COLORS[mediumFilter] || '#16243C', background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}>
-                    {mediumFilter} <Icon name="x" size={12} />
-                  </button>
-                )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 20 }}>
+                <div className="section-card" style={{ padding: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Spend by Channel (Top 15)</h3>
+                    {mediumFilter && (
+                      <button onClick={() => setMediumFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: MEDIUM_COLORS[mediumFilter] || '#16243C', background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}>
+                        {mediumFilter} <Icon name="x" size={12} />
+                      </button>
+                    )}
+                    <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#93A0B5' }}>Click to open Channel Intelligence</span>
+                  </div>
+                  <div ref={chartChannelRef}>
+                    {channelsView.length === 0 ? <div style={{ color: '#93A0B5', fontSize: 13, padding: 16 }}>No channels for the current filters.</div> : (
+                      channelsView.map((ch, i) => (
+                        <RankRow key={ch.name} rank={i + 1} name={ch.name} sub={ch.medium} value={ch.value} max={maxCh}
+                          color={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]}
+                          clickable={!!ch.channelMasterId}
+                          onClick={() => navigate(`/channel-masters/${ch.channelMasterId}`)} />
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="section-card" style={{ padding: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Spend by Client (Top 15)</h3>
+                    <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#93A0B5' }}>Click to open Client Dashboard</span>
+                  </div>
+                  <div>
+                    {clientsView.length === 0 ? <div style={{ color: '#93A0B5', fontSize: 13, padding: 16 }}>No clients for the current filters.</div> : (
+                      clientsView.map((cl, i) => (
+                        <RankRow key={cl.name} rank={i + 1} name={cl.name} value={cl.value} max={maxCl}
+                          color={COLORS[i % COLORS.length]}
+                          clickable={!!cl.clientId}
+                          onClick={() => navigate(`/clients/${cl.clientId}/dashboard`)} />
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
-              <div ref={chartChannelRef}>
-                <ResponsiveContainer width="100%" height={Math.min(400, channelsView.length * 32 + 40)}>
-                  <BarChart data={channelsView} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 120 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e8ed" />
-                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="Schedule Value" radius={[0, 4, 4, 0]}>
-                      {channelsView.map((ch, idx) => (
-                        <Cell key={idx} fill={MEDIUM_COLORS[ch.medium] || COLORS[idx % COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
             );
           })()}
+
+          {/* Deals & Properties - scoped to accessible clients, row → channel page */}
+          <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Deals &amp; Properties ({properties.length})</span>
+              {properties.length > 0 && <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#93A0B5' }}>Click a row to open the channel</span>}
+            </div>
+            {properties.length === 0 ? (
+              <div style={{ padding: 24, color: '#93A0B5', fontSize: 13 }}>No properties recorded for your accounts.</div>
+            ) : (
+              <div style={{ overflow: 'auto', maxHeight: 460 }}>
+                <table className="tbl" style={{ margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Channel</th>
+                      <th>Medium</th>
+                      <th>Property</th>
+                      <th>Type</th>
+                      <th style={{ textAlign: 'right' }}>Cost</th>
+                      <th style={{ textAlign: 'right' }}>Bonus</th>
+                      <th>Period</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {properties.map(p => (
+                      <tr key={p.id} style={{ cursor: 'pointer' }}
+                        onClick={() => navigate(`/channels/${p.channelId}`)}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#F5F6F8'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                        <td className="strong">{p.clientName}</td>
+                        <td>{p.channelName}</td>
+                        <td>{p.medium ? <span className="medium-tag" data-medium={p.medium}>{p.medium}</span> : '-'}</td>
+                        <td>{p.name}</td>
+                        <td>{p.propertyType || '-'}</td>
+                        <td className="mono" style={{ textAlign: 'right' }}>{p.cost === 0 ? 'Added value' : fmtLKR(p.cost)}</td>
+                        <td className="mono" style={{ textAlign: 'right' }}>{p.bonusPct != null ? `${p.bonusPct}%` : (p.bonusValue ? fmtLKR(p.bonusValue) : '-')}</td>
+                        <td style={{ fontSize: 12, color: '#6B7790', whiteSpace: 'nowrap' }}>
+                          {p.startDate ? fmtDate(p.startDate) : ''}{(p.startDate || p.endDate) ? ' - ' : ''}{p.endDate ? fmtDate(p.endDate) : (p.startDate ? 'ongoing' : '')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* Grouped Breakdown: Media Group → Channels */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
