@@ -383,6 +383,30 @@ async function main() {
     console.warn('Zero-usage channel reconcile skipped:', e.message);
   }
 
+  // ── Backfill agency-commission snapshots on historical ScheduleLog rows ──────
+  // The Profit tab reads a per-row commission snapshot (commission_type_at_entry /
+  // commission_rate_at_entry) captured at insert time. Rows created before that
+  // shipped have no snapshot, so fill them from the client's CURRENT commission —
+  // but only for clients that actually have a commission set (a null-commission
+  // client's rows earn 0 profit regardless, so we leave them null). Rows touched
+  // here are flagged commission_backfilled = true for audit. Idempotent: once a
+  // row has a non-null commission_type_at_entry it is never re-touched, and new
+  // inserts already carry their own snapshot, so this only ever fills true gaps.
+  try {
+    const backfilled = await prisma.$executeRaw`
+      UPDATE schedule_logs sl
+      SET commission_type_at_entry = c.commission_type,
+          commission_rate_at_entry = c.commission_value,
+          commission_backfilled = true
+      FROM clients c
+      WHERE sl.client_id = c.id
+        AND sl.commission_type_at_entry IS NULL
+        AND c.commission_type IS NOT NULL`;
+    console.log(`Commission snapshot backfill: ${backfilled} schedule log(s) filled`);
+  } catch (e) {
+    console.warn('Commission snapshot backfill skipped:', e.message);
+  }
+
   console.log('\nSeeding complete!');
 }
 

@@ -15,6 +15,7 @@ const NAV = [
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [
+  { key: '/profit', label: 'Profit', icon: 'trending-up', roles: ['SUPER_ADMIN'] },
   { key: '/media-buying', label: 'Media Buying', icon: 'sparkle', roles: ['SUPER_ADMIN'] },
   { key: '/packages', label: 'Media Packages', icon: 'mail', roles: ['SUPER_ADMIN'] },
   { key: '/upload-tracker', label: 'Upload Tracker', icon: 'upload', roles: ['SUPER_ADMIN'] },
@@ -39,6 +40,7 @@ function Breadcrumbs({ go }) {
   if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Channel</b></>;
   if (path.startsWith('/channel-masters/')) return <>{home}{sep}<b>Channel Intelligence</b></>;
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
+  if (path === '/profit') return <>{home}{sep}<b>Profit</b></>;
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/packages') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Media Packages</b></>;

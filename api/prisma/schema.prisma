@@ -394,6 +394,13 @@ model ScheduleLog {
   brandName            String?   @map("brand_name")
   scheduleValue        Decimal   @map("schedule_value") @db.Decimal(14, 2)
   scheduleValueWithVat Decimal   @map("schedule_value_with_vat") @db.Decimal(14, 2)
+  // Agency commission snapshotted at entry (immutable) for the Profit tab.
+  // type = COMMISSION (rate is a %) or AOR (rate holds the fixed LKR fee); null
+  // when the client had no commission set. commissionBackfilled flags rows whose
+  // snapshot was filled in retroactively rather than captured at true entry time.
+  commissionTypeAtEntry String?  @map("commission_type_at_entry")
+  commissionRateAtEntry Decimal? @map("commission_rate_at_entry") @db.Decimal(14, 2)
+  commissionBackfilled  Boolean  @default(false) @map("commission_backfilled")
   propertyId           Int?      @map("property_id")
   isDeleted            Boolean   @default(false) @map("is_deleted")
   deletedById          Int?      @map("deleted_by_id")

@@ -27,6 +27,7 @@ import searchRoutes from './routes/search.routes.js';
 import forecastingRoutes from './routes/forecasting.routes.js';
 import forecastInsightsRoutes from './routes/forecastInsights.routes.js';
 import mediaBuyingRoutes from './routes/mediabuying.routes.js';
+import profitRoutes from './routes/profit.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -66,6 +67,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/forecasting', forecastingRoutes);
 app.use('/api/forecasting', forecastInsightsRoutes);
 app.use('/api/media-buying', mediaBuyingRoutes);
+app.use('/api/profit', profitRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

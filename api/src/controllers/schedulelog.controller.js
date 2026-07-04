@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import { commissionSnapshot } from '../utils/commission.js';
 
 // True if the caller can reach the client this log belongs to.
 async function logClientReachable(user, clientId) {
@@ -84,7 +85,7 @@ export async function createScheduleLog(req, res) {
     });
     if (!cm) return res.status(400).json({ error: 'Channel master not found' });
 
-    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { agencyId: true } });
+    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { agencyId: true, commissionType: true, commissionValue: true } });
     if (!client) return res.status(400).json({ error: 'Client not found' });
 
     const sv = parseFloat(scheduleValue);
@@ -105,6 +106,7 @@ export async function createScheduleLog(req, res) {
         mediaGroup: cm.mediaGroup?.name || '',
         scheduleValue: sv,
         scheduleValueWithVat: parseFloat((sv * 1.18).toFixed(2)),
+        ...commissionSnapshot(client),
       },
       include: logIncludes,
     });

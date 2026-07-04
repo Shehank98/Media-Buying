@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import { commissionSnapshot } from '../utils/commission.js';
 
 // ── helpers ──
 
@@ -498,9 +499,10 @@ export async function createScheduleLog(req, res) {
 
     const client = await prisma.client.findUnique({
       where: { id: cid },
-      select: { agencyId: true },
+      select: { agencyId: true, commissionType: true, commissionValue: true },
     });
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    const commission = commissionSnapshot(client);
 
     const channelMasterRec = await prisma.channelMaster.findUnique({
       where: { id: parseInt(channelMasterId) },
@@ -527,6 +529,8 @@ export async function createScheduleLog(req, res) {
         brandName: brandName || null,
         scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat,
+        commissionTypeAtEntry: commission.commissionTypeAtEntry,
+        commissionRateAtEntry: commission.commissionRateAtEntry,
       },
       include: logIncludes,
     });
@@ -605,8 +609,8 @@ export async function bulkCreateScheduleLogs(req, res) {
     for (const cid of clientIds) {
       const accessed = await resolveClientAccess(user, cid);
       const client = accessed === null ? null
-        : await prisma.client.findUnique({ where: { id: cid }, select: { agencyId: true } });
-      clientInfo.set(cid, { allowed: accessed !== null && !!client, agencyId: client?.agencyId });
+        : await prisma.client.findUnique({ where: { id: cid }, select: { agencyId: true, commissionType: true, commissionValue: true } });
+      clientInfo.set(cid, { allowed: accessed !== null && !!client, agencyId: client?.agencyId, commission: commissionSnapshot(client) });
     }
 
     // Fetch all referenced channel masters in one query.
@@ -664,6 +668,8 @@ export async function bulkCreateScheduleLogs(req, res) {
         brandName: brandName || null,
         scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+        commissionTypeAtEntry: ci.commission.commissionTypeAtEntry,
+        commissionRateAtEntry: ci.commission.commissionRateAtEntry,
       });
     }
 
@@ -758,7 +764,7 @@ export async function importAllScheduleLogs(req, res) {
     // Pre-load lookups
     const [agencies, clients, channels] = await Promise.all([
       prisma.agency.findMany({ select: { id: true, name: true } }),
-      prisma.client.findMany({ select: { id: true, name: true, agencyId: true } }),
+      prisma.client.findMany({ select: { id: true, name: true, agencyId: true, commissionType: true, commissionValue: true } }),
       prisma.channelMaster.findMany({ include: { mediaGroup: { select: { name: true } } } }),
     ]);
 
@@ -861,6 +867,7 @@ export async function importAllScheduleLogs(req, res) {
         brandName: brandName ? String(brandName).trim() : null,
         scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+        ...commissionSnapshot(client),
       });
     }
 
