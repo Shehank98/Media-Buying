@@ -349,14 +349,6 @@ export default function ExecutiveDashboardPage() {
   const [mediumSplit, setMediumSplit] = useState(null);
   const [mediumLoading, setMediumLoading] = useState(true);
 
-  const [activityLog, setActivityLog] = useState([]);
-  const [activityLoading, setActivityLoading] = useState(true);
-  const [activityPage, setActivityPage] = useState(1);
-  const [activityTotal, setActivityTotal] = useState(0);
-
-  const [recentUploads, setRecentUploads] = useState([]);
-  const [uploadsLoading, setUploadsLoading] = useState(true);
-
   // Forecasting: annual achievement + monthly spend-with-forecast
   const [year, setYear] = useState('');
   const [achievement, setAchievement] = useState(null);
@@ -468,29 +460,6 @@ export default function ExecutiveDashboardPage() {
       .finally(() => setMediumLoading(false));
   }, [agencyId, buildAgencyParam]);
 
-  // Activity log
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    setActivityLoading(true);
-    api.get('/analytics/dashboard/activity-log', {
-      params: { page: activityPage, limit: 50, ...(agencyId ? { agencyId } : {}) }
-    })
-      .then(r => {
-        setActivityLog(r.data.items || []);
-        setActivityTotal(r.data.total || 0);
-      })
-      .catch(() => setActivityLog([]))
-      .finally(() => setActivityLoading(false));
-  }, [isSuperAdmin, agencyId, activityPage]);
-
-  // Recent uploads
-  useEffect(() => {
-    setUploadsLoading(true);
-    api.get('/analytics/dashboard/recent-uploads')
-      .then(r => setRecentUploads(r.data || []))
-      .catch(() => setRecentUploads([]))
-      .finally(() => setUploadsLoading(false));
-  }, []);
 
   // Build agency comparison chart data
   const agencyCompChartData = (() => {
@@ -985,115 +954,6 @@ export default function ExecutiveDashboardPage() {
                   )}
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Section 6: Activity Log (SUPER_ADMIN only) */}
-      {isSuperAdmin && (
-        <div className="dash-section">
-          <div className="chart-card">
-            <div className="chart-card-title" style={{ marginBottom: 4 }}>Activity Log</div>
-            <div className="chart-card-sub">Recent system activity</div>
-            {activityLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} h={34} />)}
-              </div>
-            ) : !activityLog.length ? (
-              <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--muted)', fontSize: 13 }}>No activity recorded</div>
-            ) : (
-              <>
-                <div className="activity-table-wrap">
-                  <table className="tbl" style={{ fontSize: 12.5 }}>
-                    <thead>
-                      <tr>
-                        <th>User</th>
-                        <th>Agency</th>
-                        <th>Client</th>
-                        <th>Action</th>
-                        <th>Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activityLog.map((item, i) => (
-                        <tr key={i}>
-                          <td className="strong">{item.userName}</td>
-                          <td style={{ color: 'var(--muted)' }}>{item.agencyName || '-'}</td>
-                          <td style={{ color: 'var(--muted)' }}>{item.clientName || '-'}</td>
-                          <td>
-                            <span style={{
-                              fontSize: 11, fontWeight: 700,
-                              background: item.type === 'CREATE' ? 'var(--green-100)' : item.type === 'DELETE' ? 'var(--red-50)' : 'var(--blue-50)',
-                              color: item.type === 'CREATE' ? 'var(--green-600)' : item.type === 'DELETE' ? 'var(--red-600)' : 'var(--blue-700)',
-                              padding: '2px 7px', borderRadius: 4, marginRight: 6,
-                            }}>{item.type || item.action}</span>
-                            {item.detail && <span style={{ color: 'var(--muted)', fontSize: 12 }}>{item.detail}</span>}
-                          </td>
-                          <td style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                            {item.timestamp ? new Date(item.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {activityTotal > 50 && (
-                  <div className="pagination">
-                    <button className="btn btn-ghost" disabled={activityPage <= 1} onClick={() => setActivityPage(p => p - 1)}>
-                      <Icon name="chevL" size={15} />
-                    </button>
-                    <span style={{ fontSize: 13, color: 'var(--muted)' }}>Page {activityPage} of {Math.ceil(activityTotal / 50)}</span>
-                    <button className="btn btn-ghost" disabled={activityPage >= Math.ceil(activityTotal / 50)} onClick={() => setActivityPage(p => p + 1)}>
-                      <Icon name="chevR" size={15} />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Section 7: Recent Uploads */}
-      <div className="dash-section">
-        <div className="chart-card">
-          <div className="chart-card-title" style={{ marginBottom: 4 }}>Recent Uploads</div>
-          <div className="chart-card-sub">Latest schedule batch uploads across agencies</div>
-          {uploadsLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={42} />)}
-            </div>
-          ) : !recentUploads.length ? (
-            <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--muted)', fontSize: 13 }}>No uploads recorded</div>
-          ) : (
-            <div>
-              {recentUploads.map((u) => {
-                const pct = u.totalRows ? Math.round((u.successfulRows / u.totalRows) * 100) : 0;
-                const st = String(u.status || '').toLowerCase();
-                const stColor = st === 'complete' ? ['#15814B', '#ECF8F1'] : st === 'failed' ? ['#C5391F', '#FBE0DA'] : ['#9A5B00', '#FBF1DD'];
-                return (
-                  <div key={u.id} className="ed-upload-row">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <Icon name="file" size={15} style={{ color: '#93A0B5', flexShrink: 0 }} />
-                        <span style={{ fontWeight: 650, fontSize: 13, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{u.fileName || 'Untitled'}</span>
-                        <span className="ed-status-pill" style={{ color: stColor[0], background: stColor[1] }}>{u.status || '-'}</span>
-                      </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                        {u.agencyName || '-'} · {u.scheduleMonth ? fmtMonth(u.scheduleMonth) : '-'} · by {u.uploadedBy}
-                        {u.createdAt && ` · ${new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: '#16243C' }}>{u.successfulRows}/{u.totalRows} rows</div>
-                      <div style={{ fontSize: 11.5, color: u.failedRows > 0 ? 'var(--red-600)' : 'var(--green-600)', marginTop: 3 }}>
-                        {u.failedRows > 0 ? `${u.failedRows} failed` : `${pct}% success`}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>
