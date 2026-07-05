@@ -982,7 +982,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <th>Agencies</th>
                 <th>Clients</th>
                 <th>Last login</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th style={{ textAlign: 'right', position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-8px 0 8px -6px rgba(15,31,61,.12)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1014,14 +1014,27 @@ export default function AdminPage({ initialTab = 'users' }) {
                     </td>
                     <td className="mono" style={{ color: 'var(--muted)' }}>{u.email}</td>
                     <td><RoleBadge role={u.role} /></td>
-                    <td>{u.agencies?.map(a => a.name).join(', ') || '-'}</td>
-                    <td>{u.clients?.map(c => c.name).join(', ') || '-'}</td>
+                    <td>
+                      {u.agencies?.length ? (
+                        <span title={u.agencies.map(a => a.name).join(', ')} style={{ display: 'inline-block', maxWidth: 160, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}>
+                          {u.agencies.map(a => a.name).join(', ')}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td>
+                      {u.clients?.length ? (
+                        <span title={u.clients.map(c => c.name).join(', ')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, maxWidth: 260 }}>
+                          <span style={{ flex: 'none', fontWeight: 700, fontSize: 11.5, color: 'var(--ink)', background: 'var(--bg,#eef1f6)', border: '1px solid var(--border)', borderRadius: 20, padding: '1px 8px', lineHeight: 1.5 }}>{u.clients.length}</span>
+                          <span style={{ minWidth: 0, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.clients.map(c => c.name).join(', ')}</span>
+                        </span>
+                      ) : '-'}
+                    </td>
                     <td style={{ color: 'var(--muted)' }}>
                       {u.lastLoginAt
                         ? new Date(u.lastLoginAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                         : '-'}
                     </td>
-                    <td>
+                    <td style={{ position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-8px 0 8px -6px rgba(15,31,61,.12)' }}>
                       <div className="row-actions">
                         <button className="act-btn" onClick={() => openEditUser(u)} title="Edit user">
                           <Icon name="edit" size={15} />
