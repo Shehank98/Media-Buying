@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar,
+  ResponsiveContainer, BarChart, Bar,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, PieChart, Pie, Cell, ComposedChart, LabelList,
 } from 'recharts';
@@ -59,6 +59,8 @@ const AGENCY_COLORS = ['#0A1729', '#E85D24', '#0891b2', '#7c3aed', '#065f46'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 // Shared per-team palette for the Group Contribution donuts + variance bars (cycles if more teams than colors).
 const TEAM_COLORS = ['#1F5BB5', '#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F'];
+// One colour per year for the Monthly Billing Trend (bar per year, Jan-Dec). Cycles if more years than colours.
+const YEAR_COLORS = ['#B4C1D6', '#7E97BE', '#1F5BB5', '#15814B', '#E85D24', '#0A1729', '#7c3aed', '#C2185B'];
 
 const ChartEmpty = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)' }}>
@@ -847,7 +849,7 @@ export default function ExecutiveDashboardPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
               <div className="chart-card-title">Monthly Billing Trend</div>
-              <div className="chart-card-sub">Last 24 months - invoice value</div>
+              <div className="chart-card-sub">{trendView === 'combined' ? 'One bar per year · Jan to Dec invoice value' : 'Last 24 months · invoice value'}</div>
             </div>
             <div className="toggle-group">
               <button className={`toggle-btn${trendView === 'combined' ? ' active' : ''}`} onClick={() => setTrendView('combined')}>Combined</button>
@@ -857,26 +859,31 @@ export default function ExecutiveDashboardPage() {
           {trendLoading ? <Skeleton h={280} /> : !trendData ? <ChartEmpty /> : (
             trendView === 'combined' ? (
               (() => {
-                const data = (trendData.combined || []).slice(-24).map(d => ({
-                  month: fmtMonth(d.month),
-                  scheduleValue: d.scheduleValue || 0,
-                }));
-                if (!data.length) return <ChartEmpty />;
+                // Pivot every month of billing into one bar series per year, plotted
+                // against a fixed Jan-Dec X axis so years compare side by side.
+                const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const rows = MONTH_LABELS.map((label, i) => ({ monthNum: i + 1, label }));
+                const years = [];
+                (trendData.combined || []).forEach(d => {
+                  const [y, m] = String(d.month).split('-').map(Number);
+                  if (!y || !m || m < 1 || m > 12) return;
+                  if (!years.includes(y)) years.push(y);
+                  rows[m - 1][y] = (rows[m - 1][y] || 0) + (d.scheduleValue || 0);
+                });
+                years.sort((a, b) => a - b);
+                if (!years.length) return <ChartEmpty />;
                 return (
                   <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={data}>
-                      <defs>
-                        <linearGradient id="gradNav" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#0A1729" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#0A1729" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
+                    <BarChart data={rows} barCategoryGap="16%" barGap={1}>
                       <CartesianGrid stroke="var(--border)" vertical={false} />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
                       <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
                       <Tooltip content={<CustomTooltipLKR />} />
-                      <Area type="monotone" dataKey="scheduleValue" name="Schedule Value" stroke="#0A1729" strokeWidth={2} fill="url(#gradNav)" />
-                    </AreaChart>
+                      <Legend />
+                      {years.map((y, i) => (
+                        <Bar key={y} dataKey={String(y)} name={String(y)} fill={YEAR_COLORS[i % YEAR_COLORS.length]} radius={[2, 2, 0, 0]} />
+                      ))}
+                    </BarChart>
                   </ResponsiveContainer>
                 );
               })()
