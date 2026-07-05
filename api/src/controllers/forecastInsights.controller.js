@@ -92,7 +92,7 @@ function buildScheduleWhere(filters) {
 // group head actually manages it): the team's head (Team.headUserId), else a
 // GROUP_HEAD member of the client's team, else a directly-assigned GROUP_HEAD user
 // (UserClientAccess). Returns a Map of clientId -> group head name.
-async function accountManagerByClient(clientIds) {
+export async function accountManagerByClient(clientIds) {
   if (!clientIds.length) return new Map();
   const [teamClients, directAccess] = await Promise.all([
     prisma.teamClient.findMany({

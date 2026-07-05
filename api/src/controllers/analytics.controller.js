@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
+import { accountManagerByClient } from './forecastInsights.controller.js';
 
 // Client ids the user may see (null = unrestricted, for SUPER_ADMIN).
 // Covers MANAGER (agency clients), GROUP_HEAD (team + direct), PLANNER (direct).
@@ -1428,24 +1429,23 @@ export async function getGroupContributionVariance(req, res) {
     });
 
     const clientIds = [...new Set([...actualRows.map(r => r.clientId), ...forecastRows.map(r => r.clientId)])];
-    const teamClients = await prisma.teamClient.findMany({
-      where: { clientId: { in: clientIds } },
-      include: { team: { include: { head: { select: { name: true } }, agency: { select: { name: true } } } } },
-    });
-    const teamByClient = {};
-    for (const tc of teamClients) teamByClient[tc.clientId] = tc.team;
+    // Resolve each client's group head the same way the forecasting roster does
+    // (team head, else a GROUP_HEAD team member, else a directly-assigned GROUP_HEAD),
+    // so this chart matches the Annual Achievement forecast-fill roster and does not
+    // come back empty when a team has a head via membership rather than headUserId.
+    const headByClient = await accountManagerByClient(clientIds);
 
     const groups = {};
     const ensureGroup = (clientId) => {
-      const team = teamByClient[clientId];
-      const key = team ? `team-${team.id}` : 'unassigned';
+      const head = headByClient.get(clientId) || null;
+      const key = head ? `head-${head}` : 'unassigned';
       if (!groups[key]) {
         groups[key] = {
           key,
-          teamId: team?.id || null,
-          name: team ? team.name : 'Unassigned',
-          headName: team?.head?.name || null,
-          agencyName: team?.agency?.name || null,
+          teamId: null,
+          name: head || 'Unassigned',
+          headName: head,
+          agencyName: null,
           actualSum: 0,
           forecast: 0,
         };
