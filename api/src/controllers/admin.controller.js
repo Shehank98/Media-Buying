@@ -851,3 +851,83 @@ export async function reviewChannelRequest(req, res) {
     return res.status(500).json({ error: 'Failed to review request', detail: error.message });
   }
 }
+
+// ── Group Revenue Contribution (admin-entered, per group head, per month) ──
+// Drives the right donut of the Executive Dashboard's Group Contribution card.
+
+export async function listGroupRevenue(req, res) {
+  try {
+    // The month the Executive Dashboard's Revenue donut reads = the latest month
+    // that has schedule data (revenue is entered for that same month). Return it so
+    // the admin form can default to the month that actually drives the chart.
+    const latest = await prisma.scheduleLog.findFirst({
+      where: { isDeleted: false },
+      orderBy: { scheduleMonth: 'desc' },
+      select: { scheduleMonth: true },
+    });
+    let currentRevenueMonth = null;
+    if (latest) {
+      const [ly, lm] = String(latest.scheduleMonth).split('-').map(Number);
+      currentRevenueMonth = { year: ly, month: lm };
+    }
+
+    let year = parseInt(req.query.year);
+    let month = parseInt(req.query.month);
+    if (!year || !month || month < 1 || month > 12) {
+      const d = new Date();
+      year = currentRevenueMonth?.year ?? d.getFullYear();
+      month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
+    }
+    const heads = await prisma.user.findMany({
+      where: { role: 'GROUP_HEAD' },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    const rows = await prisma.groupRevenue.findMany({ where: { year, month } });
+    const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
+    return res.json({
+      year,
+      month,
+      currentRevenueMonth,
+      heads: heads.map((h) => ({ headUserId: h.id, headName: h.name, amount: byHead.has(h.id) ? byHead.get(h.id) : null })),
+    });
+  } catch (error) {
+    console.error('listGroupRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to load group revenue', detail: error.message });
+  }
+}
+
+export async function setGroupRevenue(req, res) {
+  try {
+    const { year, month, amounts } = req.body || {};
+    const y = parseInt(year), m = parseInt(month);
+    if (!y || !m || m < 1 || m > 12 || typeof amounts !== 'object' || amounts === null) {
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } are required' });
+    }
+    // Only accept ids that are actually GROUP_HEAD users.
+    const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
+    const headIds = new Set(heads.map((h) => h.id));
+
+    const ops = [];
+    for (const [k, v] of Object.entries(amounts)) {
+      const headUserId = parseInt(k);
+      if (!headIds.has(headUserId)) continue;
+      const num = v === '' || v == null ? null : Number(v);
+      if (num == null || isNaN(num) || num <= 0) {
+        // clearing an entry removes the row
+        ops.push(prisma.groupRevenue.deleteMany({ where: { year: y, month: m, headUserId } }));
+      } else {
+        ops.push(prisma.groupRevenue.upsert({
+          where: { year_month_headUserId: { year: y, month: m, headUserId } },
+          update: { amount: num, createdById: req.user?.id ?? null },
+          create: { year: y, month: m, headUserId, amount: num, createdById: req.user?.id ?? null },
+        }));
+      }
+    }
+    await prisma.$transaction(ops);
+    return listGroupRevenue({ query: { year: y, month: m } }, res);
+  } catch (error) {
+    console.error('setGroupRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to save group revenue', detail: error.message });
+  }
+}

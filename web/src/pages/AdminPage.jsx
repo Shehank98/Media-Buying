@@ -124,6 +124,17 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [clientRequests, setClientRequests] = useState([]);
   const [channelRequests, setChannelRequests] = useState([]);
 
+  /* ---- group revenue contribution (per group head, per month) ---- */
+  const now = new Date();
+  const [grYear, setGrYear] = useState(now.getFullYear());
+  const [grMonth, setGrMonth] = useState(now.getMonth() + 1); // 1-12
+  const [grHeads, setGrHeads] = useState([]);          // [{ headUserId, headName, amount }]
+  const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
+  const [grLoading, setGrLoading] = useState(false);
+  const [grSaving, setGrSaving] = useState(false);
+  const [grSavedAt, setGrSavedAt] = useState(null);
+  const [grInit, setGrInit] = useState(false); // pinned form to the dashboard's revenue month yet?
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -685,8 +696,58 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- group revenue contribution ---- */
+  const fetchGroupRevenue = async () => {
+    setGrLoading(true);
+    try {
+      const { data } = await api.get('/admin/group-revenue', { params: { year: grYear, month: grMonth } });
+      // On first open, jump to the month the dashboard's Revenue donut reads.
+      const crm = data.currentRevenueMonth;
+      if (!grInit && crm && (crm.year !== grYear || crm.month !== grMonth)) {
+        setGrInit(true);
+        setGrYear(crm.year);
+        setGrMonth(crm.month);
+        return; // effect re-runs with the corrected month
+      }
+      setGrInit(true);
+      const heads = data.heads || [];
+      setGrHeads(heads);
+      const amts = {};
+      heads.forEach(h => { amts[h.headUserId] = h.amount == null ? '' : String(h.amount); });
+      setGrAmounts(amts);
+    } catch {
+      setGrHeads([]); setGrAmounts({});
+    } finally {
+      setGrLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'group-revenue') fetchGroupRevenue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, grYear, grMonth]);
+
+  const saveGroupRevenue = async () => {
+    setGrSaving(true);
+    try {
+      const amounts = {};
+      Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts });
+      const heads = data.heads || [];
+      setGrHeads(heads);
+      const amts = {};
+      heads.forEach(h => { amts[h.headUserId] = h.amount == null ? '' : String(h.amount); });
+      setGrAmounts(amts);
+      setGrSavedAt(Date.now());
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save group revenue.');
+    } finally {
+      setGrSaving(false);
+    }
+  };
+
   /* ---- helpers ---- */
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const grTotal = Object.values(grAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -803,6 +864,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
     { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
     { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
+    { key: 'group-revenue', label: 'Group Revenue' },
     { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
     { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
   ];
@@ -858,17 +920,19 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
-          <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
-          <input
-            className="input"
-            type="text"
-            placeholder={`Search ${activeTab === 'media-groups' ? 'media groups' : activeTab === 'property-categories' ? 'property categories' : activeTab}...`}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ paddingLeft: 32 }}
-          />
-        </div>
+        {activeTab !== 'group-revenue' && (
+          <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
+            <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+            <input
+              className="input"
+              type="text"
+              placeholder={`Search ${activeTab === 'media-groups' ? 'media groups' : activeTab === 'property-categories' ? 'property categories' : activeTab}...`}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ paddingLeft: 32 }}
+            />
+          </div>
+        )}
         {activeTab === 'agencies' && (
           <button className="btn btn-primary" onClick={openAddAgency} style={{ marginLeft: 'auto' }}>
             <Icon name="plus" size={16} /> Add Agency
@@ -1371,6 +1435,76 @@ export default function AdminPage({ initialTab = 'users' }) {
       )}
 
       {/* ============ ANNUAL TARGETS TABLE ============ */}
+      {activeTab === 'group-revenue' && (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Month</label>
+              <select className="select" value={grMonth} onChange={e => { setGrSavedAt(null); setGrMonth(Number(e.target.value)); }}>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Year</label>
+              <select className="select" value={grYear} onChange={e => { setGrSavedAt(null); setGrYear(Number(e.target.value)); }}>
+                {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Total entered</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>LKR {grTotal.toLocaleString('en-US')}</div>
+            </div>
+            <button className="btn btn-primary" onClick={saveGroupRevenue} disabled={grSaving || grLoading}>
+              {grSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
+            Enter each group head's revenue for <b style={{ color: 'var(--ink)' }}>{MONTHS[grMonth - 1]} {grYear}</b> (full LKR). This feeds the Revenue Contribution donut on the Executive Dashboard, which pairs it with the previous month's schedule-log budget. Leave a head blank to omit them.
+            {grSavedAt && <span style={{ color: '#15814B', fontWeight: 700, marginLeft: 8 }}>Saved.</span>}
+          </div>
+          {grLoading ? (
+            <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading group heads…" /></div>
+          ) : grHeads.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', background: '#fff', border: '1px solid var(--border)', borderRadius: 14 }}>
+              No group heads found. Add users with the GROUP_HEAD role first.
+            </div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Group Head</th>
+                    <th style={{ textAlign: 'right' }}>Revenue (LKR)</th>
+                    <th style={{ textAlign: 'right' }}>Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grHeads.map(h => {
+                    const val = Number(grAmounts[h.headUserId] || 0);
+                    const pct = grTotal > 0 ? (val / grTotal) * 100 : 0;
+                    return (
+                      <tr key={h.headUserId}>
+                        <td className="strong">{h.headName}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            className="input" type="number" min="0" step="1000"
+                            value={grAmounts[h.headUserId] ?? ''}
+                            onChange={e => { setGrSavedAt(null); setGrAmounts(a => ({ ...a, [h.headUserId]: e.target.value })); }}
+                            placeholder="0"
+                            style={{ maxWidth: 190, textAlign: 'right' }}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{val > 0 ? `${pct.toFixed(1)}%` : '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'annual-targets' && (
         <div className="tbl-wrap">
           <table className="tbl">

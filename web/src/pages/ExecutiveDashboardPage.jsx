@@ -61,6 +61,8 @@ const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGIT
 const TEAM_COLORS = ['#1F5BB5', '#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F'];
 // One colour per year for the Monthly Billing Trend (bar per year, Jan-Dec). Cycles if more years than colours.
 const YEAR_COLORS = ['#B4C1D6', '#7E97BE', '#1F5BB5', '#15814B', '#E85D24', '#0A1729', '#7c3aed', '#C2185B'];
+// Group Contribution head colours (blue #1F5BB5 is reserved for the Unassigned slice).
+const GC_HEAD_COLORS = ['#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F', '#1e3a5f', '#EAB308', '#0E7490'];
 
 const ChartEmpty = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)' }}>
@@ -178,17 +180,24 @@ function AchievementSection({
   ] : [];
   const hasForecastFill = !!(achievement?.forecastFillMillions > 0 && achievement?.forecastFillLabel);
   const fc = forecastMonthly?.data || [];
-  const gcMonths = groupContribution?.months || [];
-  const gcData = groupContribution?.groups || [];
-  // One donut per month: each team's value for that month, with its % share of that month's total.
-  const donutFor = (key) => {
-    const total = gcData.reduce((s, g) => s + (g[key] || 0), 0);
-    return gcData
-      .filter(g => (g[key] || 0) > 0)
-      .map((g, i) => ({ name: g.headName || g.name, value: g[key], pct: total > 0 ? (g[key] / total) * 100 : 0, fill: TEAM_COLORS[i % TEAM_COLORS.length] }));
+  // Group Contribution: left = Budget (schedule logs, month before latest data),
+  // right = Revenue (admin-entered, latest month). Both by group head. Unassigned
+  // is always blue; every other head keeps a stable colour across both donuts.
+  const gcBudget = groupContribution?.budget || null;
+  const gcRevenue = groupContribution?.revenue || null;
+  const gcHeadNames = [...new Set([...(gcBudget?.groups || []), ...(gcRevenue?.groups || [])]
+    .map(g => g.headName).filter(n => n && n !== 'Unassigned'))].sort();
+  const gcColor = (name) => name === 'Unassigned'
+    ? '#1F5BB5'
+    : GC_HEAD_COLORS[gcHeadNames.indexOf(name) % GC_HEAD_COLORS.length];
+  const gcDonut = (groups) => {
+    const total = (groups || []).reduce((s, g) => s + (g.value || 0), 0);
+    return (groups || [])
+      .filter(g => (g.value || 0) > 0)
+      .map(g => ({ name: g.headName, value: g.value, pct: total > 0 ? (g.value / total) * 100 : 0, fill: gcColor(g.headName) }));
   };
-  const donut1 = gcMonths[0] ? donutFor('m1') : [];
-  const donut2 = gcMonths[1] ? donutFor('m2') : [];
+  const donutBudget = gcDonut(gcBudget?.groups);
+  const donutRevenue = gcDonut(gcRevenue?.groups);
 
   const mabyYears = monthlyAvgByYear?.years || [];
 
@@ -290,18 +299,23 @@ function AchievementSection({
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Group Contribution</div>
         <div className="chart-card-sub">
-          {gcMonths.length === 2
-            ? `${gcMonths[0].label} vs ${gcMonths[1].label} spend share by team head's client portfolio`
-            : 'Spend share by team head\'s client portfolio, last two months'}
+          {gcBudget && gcRevenue
+            ? `${gcBudget.label} budget vs ${gcRevenue.label} revenue share by group head`
+            : 'Budget vs revenue share by group head'}
         </div>
-        {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : gcData.length === 0 ? <ChartEmpty /> : (
+        {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : (!gcBudget && !gcRevenue) ? <ChartEmpty /> : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-            {[{ label: gcMonths[0]?.label, donut: donut1 }, { label: gcMonths[1]?.label, donut: donut2 }].map((d, idx) => (
+            {[
+              { title: `${gcBudget?.label || ''} Budget Contribution`.trim(), donut: donutBudget, empty: 'No schedule data for the budget month' },
+              { title: `${gcRevenue?.label || ''} Revenue Contribution`.trim(), donut: donutRevenue, empty: `No revenue entered${gcRevenue ? ` for ${gcRevenue.label}` : ''}. Add it in Admin, Group Revenue.` },
+            ].map((d, idx) => (
               <div key={idx} style={{ flex: '1 1 260px', minWidth: 240 }}>
                 <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
-                  {d.label || '-'} Spend Contribution
+                  {d.title}
                 </div>
-                {d.donut.length === 0 ? <ChartEmpty /> : (
+                {d.donut.length === 0 ? (
+                  <div style={{ padding: '54px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.4 }}>{d.empty}</div>
+                ) : (
                   <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                       <Pie

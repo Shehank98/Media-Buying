@@ -1315,6 +1315,13 @@ export async function getForecastMonthly(req, res) {
 // thanks to the 1-team-per-client invariant enforced in admin.controller.js. This
 // compares how much each team's portfolio of clients spent in the latest two months
 // that have any schedule data.
+// Two donuts, both by group head (all values in LKR millions):
+//  - Budget Contribution  = schedule-log spend share for the month BEFORE the
+//    latest month that has data (data till June -> Budget = May). Heads are
+//    resolved the same way as everywhere else (team head / GROUP_HEAD member /
+//    direct assignment); clients with no head roll into an "Unassigned" slice.
+//  - Revenue Contribution = admin-entered figures (GroupRevenue) for the next
+//    month after the budget month (i.e. the latest data month), named heads only.
 export async function getGroupContribution(req, res) {
   try {
     const user = req.user;
@@ -1322,56 +1329,51 @@ export async function getGroupContribution(req, res) {
     const scope = { isDeleted: false };
     if (ids) scope.agencyId = { in: ids };
 
-    const monthRows = await prisma.scheduleLog.groupBy({
-      by: ['scheduleMonth'],
+    const latest = await prisma.scheduleLog.findFirst({
       where: scope,
       orderBy: { scheduleMonth: 'desc' },
-      take: 2,
+      select: { scheduleMonth: true },
     });
-    // Ascending order: months[0] = older month ("m1"), months[1] = newer month ("m2").
-    const months = monthRows.map(r => r.scheduleMonth).sort();
-    if (months.length === 0) return res.json({ months: [], groups: [] });
+    if (!latest) return res.json({ budget: null, revenue: null });
 
-    const rows = await prisma.scheduleLog.groupBy({
-      by: ['clientId', 'scheduleMonth'],
-      where: { ...scope, scheduleMonth: { in: months } },
+    const [ly, lm] = String(latest.scheduleMonth).split('-').map(Number);
+    let by = ly, bm = lm - 1;
+    if (bm < 1) { bm = 12; by -= 1; }
+    const budgetMonth = `${by}-${String(bm).padStart(2, '0')}`;
+    const revenueMonth = `${ly}-${String(lm).padStart(2, '0')}`;
+
+    // ── Budget donut: schedule-log spend per resolved group head (+ Unassigned) ──
+    const budgetRows = await prisma.scheduleLog.groupBy({
+      by: ['clientId'],
+      where: { ...scope, scheduleMonth: budgetMonth },
       _sum: { scheduleValue: true },
     });
-
-    const clientIds = [...new Set(rows.map(r => r.clientId))];
-    const teamClients = await prisma.teamClient.findMany({
-      where: { clientId: { in: clientIds } },
-      include: { team: { include: { head: { select: { name: true } }, agency: { select: { name: true } } } } },
-    });
-    const teamByClient = {};
-    for (const tc of teamClients) teamByClient[tc.clientId] = tc.team;
-
-    const groups = {};
-    const monthKey = (m) => (m === months[0] ? 'm1' : 'm2');
-    for (const r of rows) {
-      const team = teamByClient[r.clientId];
-      const key = team ? `team-${team.id}` : 'unassigned';
-      if (!groups[key]) {
-        groups[key] = {
-          key,
-          teamId: team?.id || null,
-          name: team ? team.name : 'Unassigned',
-          headName: team?.head?.name || null,
-          agencyName: team?.agency?.name || null,
-          m1: 0,
-          m2: 0,
-        };
-      }
-      groups[key][monthKey(r.scheduleMonth)] += (safeNum(r._sum.scheduleValue) || 0) / 1e6;
+    const headByClient = await accountManagerByClient(budgetRows.map(r => r.clientId));
+    const budgetGroups = {};
+    for (const r of budgetRows) {
+      const head = headByClient.get(r.clientId) || null;
+      const key = head ? `head-${head}` : 'unassigned';
+      if (!budgetGroups[key]) budgetGroups[key] = { key, headName: head || 'Unassigned', value: 0 };
+      budgetGroups[key].value += (safeNum(r._sum.scheduleValue) || 0) / 1e6;
     }
+    const budgetList = Object.values(budgetGroups)
+      .map(g => ({ ...g, value: Number(g.value.toFixed(2)) }))
+      .filter(g => g.value > 0)
+      .sort((a, b) => b.value - a.value);
 
-    const result = Object.values(groups)
-      .map(g => ({ ...g, m1: Number(g.m1.toFixed(2)), m2: Number(g.m2.toFixed(2)) }))
-      .sort((a, b) => (b.m1 + b.m2) - (a.m1 + a.m2));
+    // ── Revenue donut: admin-entered per group head, named heads only ──
+    const revRows = await prisma.groupRevenue.findMany({
+      where: { year: ly, month: lm },
+      include: { head: { select: { name: true } } },
+    });
+    const revenueList = revRows
+      .map(r => ({ key: `head-${r.head?.name}`, headName: r.head?.name || 'Unknown', value: Number((Number(r.amount) / 1e6).toFixed(2)) }))
+      .filter(g => g.value > 0)
+      .sort((a, b) => b.value - a.value);
 
     return res.json({
-      months: months.map(m => ({ month: m, label: MONTH_NAMES[parseInt(String(m).slice(5)) - 1] })),
-      groups: result,
+      budget: { month: budgetMonth, label: MONTH_NAMES[bm - 1], year: by, groups: budgetList },
+      revenue: { month: revenueMonth, label: MONTH_NAMES[lm - 1], year: ly, groups: revenueList },
     });
   } catch (error) {
     console.error('getGroupContribution error:', error);

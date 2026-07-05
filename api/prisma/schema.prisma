@@ -93,6 +93,7 @@ model User {
   notifications         Notification[]
   packagesCreated       MediaPackage[]       @relation("PackageCreator")
   packageRecipients     PackageRecipient[]   @relation("PackageRecipientUser")
+  groupRevenues         GroupRevenue[]       @relation("GroupRevenueHead")
 
   @@map("users")
 }
@@ -559,6 +560,26 @@ model MonthlyBudget {
   @@unique([year, month, clientId])
   @@index([year, month])
   @@map("monthly_budgets")
+}
+
+// Admin-entered Revenue Contribution per group head, per month. Drives the right
+// donut of the Executive Dashboard's Group Contribution card (the left donut is
+// derived from schedule logs). One amount (full LKR) per GROUP_HEAD user per month.
+model GroupRevenue {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  headUserId  Int      @map("head_user_id")
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  head User @relation("GroupRevenueHead", fields: [headUserId], references: [id], onDelete: Cascade)
+
+  @@unique([year, month, headUserId])
+  @@index([year, month])
+  @@map("group_revenues")
 }
 
 model ClientRequest {

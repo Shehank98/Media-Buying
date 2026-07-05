@@ -32,6 +32,8 @@ import {
   reviewClientRequest,
   listChannelRequests,
   reviewChannelRequest,
+  listGroupRevenue,
+  setGroupRevenue,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -82,5 +84,9 @@ router.get('/channel-masters', listChannelMasters);
 router.post('/channel-masters', createChannelMaster);
 router.put('/channel-masters/:id', updateChannelMaster);
 router.delete('/channel-masters/:id', deleteChannelMaster);
+
+// Group Revenue Contribution (per group head, per month) → Executive Dashboard right donut
+router.get('/group-revenue', listGroupRevenue);
+router.post('/group-revenue', setGroupRevenue);
 
 export default router;
