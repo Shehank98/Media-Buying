@@ -155,7 +155,7 @@ const AchievementTooltip = ({ active, payload, label }) => {
 // Annual Achievement (horizontal bars) + Monthly Spend with forecast (line).
 function AchievementSection({
   year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
-  monthlyAvgByYear, monthlyAvgByYearLoading,
+  monthlyAvgByYear, monthlyAvgByYearLoading, groupVariance, groupVarianceLoading,
 }) {
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
@@ -189,6 +189,27 @@ function AchievementSection({
   const donut2 = gcMonths[1] ? donutFor('m2') : [];
 
   const mabyYears = monthlyAvgByYear?.years || [];
+
+  // Group Contribution vs Forecast: average of every actual month so far this year
+  // per group head (blue) vs that head's next-month forecast (orange), with the
+  // change % labelled above the shorter of the two bars. Named heads only.
+  const gvGroups = (groupVariance?.groups || []).filter(g => g.headName);
+  const gvActualLabel = groupVariance?.actualMonthsLabel ? `${groupVariance.actualMonthsLabel} Avg` : 'Actual Avg';
+  const gvForecastLabel = groupVariance?.forecastMonthLabel ? `${groupVariance.forecastMonthLabel} Est` : 'Forecast';
+  const gvData = gvGroups.map(g => ({ head: g.headName, avgActual: g.avgActual, forecast: g.forecast, diffPct: g.diffPct }));
+  const diffLabel = (barKey) => (props) => {
+    const { x, y, width, index } = props;
+    const row = gvData[index];
+    if (!row) return null;
+    const shorter = row.avgActual <= row.forecast ? 'avgActual' : 'forecast';
+    if (barKey !== shorter) return null;
+    const up = row.diffPct >= 0;
+    return (
+      <text x={x + width / 2} y={y - 7} textAnchor="middle" fontSize={12} fontWeight={700} fill={up ? '#15814B' : '#C5391F'}>
+        {row.diffPct}%
+      </text>
+    );
+  };
 
   return (
     <div className="dash-section">
@@ -318,6 +339,32 @@ function AchievementSection({
           </ResponsiveContainer>
         )}
       </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div className="chart-card-title">Group Contribution vs Forecast</div>
+        <div className="chart-card-sub">
+          {groupVariance?.actualMonthsLabel && groupVariance?.forecastMonthLabel
+            ? `Average of ${groupVariance.actualMonthsLabel} actual vs ${groupVariance.forecastMonthLabel} forecast, by group head · LKR millions`
+            : 'Average actual vs next month forecast, by group head · LKR millions'}
+        </div>
+        {groupVarianceLoading ? <div style={{ marginTop: 12 }}><Skeleton h={280} /></div> : gvData.length === 0 ? <ChartEmpty /> : (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={gvData} margin={{ top: 30, right: 20, bottom: 6, left: 6 }} barGap={4}>
+              <CartesianGrid vertical={false} stroke="var(--border)" />
+              <XAxis dataKey="head" tick={{ fontSize: 12, fill: 'var(--ink)' }} interval={0} />
+              <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
+              <Tooltip formatter={(v, n) => [fmtM(v), n]} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="avgActual" name={gvActualLabel} fill="#1F5BB5" radius={[4, 4, 0, 0]} maxBarSize={46}>
+                <LabelList dataKey="diffPct" content={diffLabel('avgActual')} />
+              </Bar>
+              <Bar dataKey="forecast" name={gvForecastLabel} fill="#E8843A" radius={[4, 4, 0, 0]} maxBarSize={46}>
+                <LabelList dataKey="diffPct" content={diffLabel('forecast')} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </div>
   );
 }
@@ -358,6 +405,8 @@ export default function ExecutiveDashboardPage() {
   const [groupContributionLoading, setGroupContributionLoading] = useState(true);
   const [monthlyAvgByYear, setMonthlyAvgByYear] = useState(null);
   const [monthlyAvgByYearLoading, setMonthlyAvgByYearLoading] = useState(true);
+  const [groupVariance, setGroupVariance] = useState(null);
+  const [groupVarianceLoading, setGroupVarianceLoading] = useState(true);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -449,6 +498,16 @@ export default function ExecutiveDashboardPage() {
       .then(r => setMonthlyAvgByYear(r.data))
       .catch(() => setMonthlyAvgByYear(null))
       .finally(() => setMonthlyAvgByYearLoading(false));
+  }, []);
+
+  // Group Contribution vs Forecast (avg actual months so far vs next-month forecast, per group head).
+  // Scoped server-side to the user's agencies, like the Group Contribution donut.
+  useEffect(() => {
+    setGroupVarianceLoading(true);
+    api.get('/analytics/dashboard/group-contribution-variance')
+      .then(r => setGroupVariance(r.data))
+      .catch(() => setGroupVariance(null))
+      .finally(() => setGroupVarianceLoading(false));
   }, []);
 
   // Medium split
@@ -779,6 +838,7 @@ export default function ExecutiveDashboardPage() {
         year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading}
         groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
         monthlyAvgByYear={monthlyAvgByYear} monthlyAvgByYearLoading={monthlyAvgByYearLoading}
+        groupVariance={groupVariance} groupVarianceLoading={groupVarianceLoading}
       />
 
       {/* Section 2: Monthly Billing Trend */}
