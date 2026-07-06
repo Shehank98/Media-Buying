@@ -609,6 +609,70 @@ export default function ExecutiveDashboardPage() {
   ].filter(Boolean) : [];
 
   const [exporting, setExporting] = useState(false);
+  const [exportingSlides, setExportingSlides] = useState(false);
+
+  // Export every chart on the dashboard to a PowerPoint: a cover slide, one
+  // chart image per slide, and a closing thank-you slide.
+  const exportChartSlides = async () => {
+    setExportingSlides(true);
+    try {
+      const [{ default: PptxGenJS }, { default: html2canvas }] = await Promise.all([
+        import('pptxgenjs'),
+        import('html2canvas'),
+      ]);
+      const cards = Array.from(document.querySelectorAll('.dash-section .chart-card'))
+        .filter(el => el.querySelector('svg, canvas'));
+      const pptx = new PptxGenJS();
+      pptx.defineLayout({ name: 'ORBIT', width: 13.333, height: 7.5 });
+      pptx.layout = 'ORBIT';
+      const NAVY = '0A1729', CORAL = 'D9521C', MUTED = '9FB0CE', BG = 'F5F6F8';
+      const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const agencyName = agencyId ? (agencies.find(a => String(a.id) === String(agencyId))?.name || 'Selected agency') : 'All agencies';
+
+      // Cover slide
+      const cover = pptx.addSlide();
+      cover.background = { color: NAVY };
+      cover.addText('OGILVY ORBIT', { x: 0.7, y: 2.2, w: 12, h: 0.4, fontSize: 13, color: MUTED, bold: true, charSpacing: 6 });
+      cover.addText('Media Buying Dashboard', { x: 0.66, y: 2.7, w: 12, h: 1.1, fontSize: 44, color: 'FFFFFF', bold: true });
+      cover.addShape(pptx.ShapeType.rect, { x: 0.72, y: 3.95, w: 0.6, h: 0.05, fill: { color: CORAL } });
+      cover.addText(`${agencyName}   ·   ${dateStr}`, { x: 0.7, y: 4.15, w: 12, h: 0.4, fontSize: 14, color: MUTED });
+
+      // One slide per chart
+      for (const card of cards) {
+        const canvas = await html2canvas(card, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        const data = canvas.toDataURL('image/png');
+        const slide = pptx.addSlide();
+        slide.background = { color: BG };
+        const titleEl = card.querySelector('.chart-card-title');
+        const title = titleEl ? titleEl.textContent.trim() : '';
+        if (title) {
+          slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 0.5, w: 0.42, h: 0.05, fill: { color: CORAL } });
+          slide.addText(title, { x: 0.5, y: 0.62, w: 12.3, h: 0.55, fontSize: 22, color: '16243C', bold: true });
+        }
+        // Fit the chart image within the slide, preserving aspect ratio.
+        const topY = title ? 1.35 : 0.5;
+        const maxW = 12.33, maxH = 7.5 - topY - 0.4;
+        const aspect = canvas.width / canvas.height;
+        let w = maxW, h = maxW / aspect;
+        if (h > maxH) { h = maxH; w = maxH * aspect; }
+        slide.addImage({ data, x: (13.333 - w) / 2, y: topY + (maxH - h) / 2, w, h });
+      }
+
+      // Thank-you slide
+      const ty = pptx.addSlide();
+      ty.background = { color: NAVY };
+      ty.addText('Thank you', { x: 0.5, y: 3.0, w: 12.33, h: 1.2, fontSize: 46, color: 'FFFFFF', bold: true, align: 'center' });
+      ty.addShape(pptx.ShapeType.rect, { x: 6.16, y: 4.25, w: 1.0, h: 0.05, fill: { color: CORAL } });
+      ty.addText('Ogilvy Orbit', { x: 0.5, y: 4.5, w: 12.33, h: 0.4, fontSize: 14, color: MUTED, align: 'center' });
+
+      await pptx.writeFile({ fileName: `Executive_Dashboard_${new Date().toISOString().slice(0, 10)}.pptx` });
+    } catch (err) {
+      console.error('Slide export failed:', err);
+      alert('Could not export the slides. Please try again.');
+    } finally {
+      setExportingSlides(false);
+    }
+  };
 
   const exportSummaryPdf = () => {
     setExporting(true);
@@ -838,6 +902,12 @@ export default function ExecutiveDashboardPage() {
                 <button className="ed-hero-btn" onClick={exportSummaryPdf} disabled={exporting || summaryLoading}>
                   <Icon name="download" size={15} />
                   {exporting ? 'Exporting…' : 'Export summary'}
+                </button>
+              )}
+              {canExport(user) && (
+                <button className="ed-hero-btn" onClick={exportChartSlides} disabled={exportingSlides || summaryLoading} title="Export every chart to a PowerPoint, one chart per slide">
+                  <Icon name="bar-chart" size={15} />
+                  {exportingSlides ? 'Building slides…' : 'Export to PPT'}
                 </button>
               )}
               <button className="ed-hero-btn accent" onClick={() => navigate('/deep-dashboard')}>
