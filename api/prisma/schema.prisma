@@ -281,6 +281,12 @@ model Channel {
   type            ChannelType
   name            String
   channelMasterId Int?           @map("channel_master_id")
+  // Channel's rep contact (the sales/booking person AT the channel), captured
+  // when the channel is added to a client. Per-client so each client can keep
+  // its own contact for the same channel.
+  contactName     String?        @map("contact_name")
+  contactEmail    String?        @map("contact_email")
+  contactMobile   String?        @map("contact_mobile")
   createdAt       DateTime       @default(now()) @map("created_at")
   client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   channelMaster   ChannelMaster? @relation(fields: [channelMasterId], references: [id])

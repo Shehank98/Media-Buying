@@ -120,7 +120,7 @@ export async function getChannels(req, res) {
 export async function createChannel(req, res) {
   try {
     const { clientId } = req.params;
-    const { name, type, channelMasterId } = req.body;
+    const { name, type, channelMasterId, contactName, contactEmail, contactMobile } = req.body;
 
     // Prefer selecting from the channel master (User Management); derive name/medium from it.
     let chName = name;
@@ -139,12 +139,16 @@ export async function createChannel(req, res) {
       return res.status(400).json({ error: 'Channel is required' });
     }
 
+    const clean = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
     const channel = await prisma.channel.create({
       data: {
         clientId: parseInt(clientId),
         name: chName,
         type: chType,
         channelMasterId: cmId,
+        contactName: clean(contactName),
+        contactEmail: clean(contactEmail),
+        contactMobile: clean(contactMobile),
       },
     });
 
@@ -161,11 +165,15 @@ export async function createChannel(req, res) {
 export async function updateChannel(req, res) {
   try {
     const { id } = req.params;
-    const { name, type } = req.body;
+    const { name, type, contactName, contactEmail, contactMobile } = req.body;
 
+    const clean = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
     const data = {};
     if (name !== undefined) data.name = name;
     if (type !== undefined) data.type = type;
+    if (contactName !== undefined) data.contactName = clean(contactName);
+    if (contactEmail !== undefined) data.contactEmail = clean(contactEmail);
+    if (contactMobile !== undefined) data.contactMobile = clean(contactMobile);
 
     const channel = await prisma.channel.update({
       where: { id: parseInt(id) },

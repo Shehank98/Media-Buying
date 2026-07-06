@@ -52,7 +52,7 @@ export default function ClientDetailPage() {
 
   // Add channel modal
   const [showChModal, setShowChModal] = useState(false);
-  const [chForm, setChForm] = useState({ channelMasterId: '' });
+  const [chForm, setChForm] = useState({ channelMasterId: '', contactName: '', contactEmail: '', contactMobile: '' });
   const [chSubmitting, setChSubmitting] = useState(false);
   const [chError, setChError] = useState('');
 
@@ -125,11 +125,19 @@ export default function ClientDetailPage() {
   const handleAddChannel = async () => {
     setChError('');
     if (!chForm.channelMasterId) { setChError('Please select a channel.'); return; }
+    if (chForm.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(chForm.contactEmail.trim())) {
+      setChError('Please enter a valid contact email.'); return;
+    }
     setChSubmitting(true);
     try {
-      await api.post(`/clients/${clientId}/channels`, { channelMasterId: parseInt(chForm.channelMasterId) });
+      await api.post(`/clients/${clientId}/channels`, {
+        channelMasterId: parseInt(chForm.channelMasterId),
+        contactName: chForm.contactName,
+        contactEmail: chForm.contactEmail,
+        contactMobile: chForm.contactMobile,
+      });
       setShowChModal(false);
-      setChForm({ channelMasterId: '' });
+      setChForm({ channelMasterId: '', contactName: '', contactEmail: '', contactMobile: '' });
       setRefreshKey(k => k + 1);
     } catch (err) { setChError(err.response?.data?.error || 'Failed to add channel.'); }
     finally { setChSubmitting(false); }
@@ -290,6 +298,13 @@ export default function ClientDetailPage() {
                         <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 1 }}>{ch.type}</div>
                       </div>
                     </div>
+                    {(ch.contactName || ch.contactEmail || ch.contactMobile) && (
+                      <div style={{ marginBottom: 12, padding: '8px 10px', background: '#F7F8FA', borderRadius: 8, fontSize: 11.5, color: '#3B4A63', lineHeight: 1.5 }}>
+                        {ch.contactName && <div style={{ fontWeight: 700, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactName}>{ch.contactName}</div>}
+                        {ch.contactEmail && <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</div>}
+                        {ch.contactMobile && <div title={ch.contactMobile}><Icon name="phone" size={11} /> {ch.contactMobile}</div>}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: '#3B4A63' }}>{props} propert{props === 1 ? 'y' : 'ies'}</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: tc.fg }}>Open <Icon name="chevR" size={13} /></span>
@@ -400,6 +415,25 @@ export default function ClientDetailPage() {
                 <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
                   Channels are managed in User Management → Channels.
                 </span>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 14px' }} />
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>Channel contact (optional)</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>The rep at this channel you deal with for this client.</div>
+              <div className="field">
+                <label className="field-label">Contact name</label>
+                <input className="input" type="text" value={chForm.contactName}
+                  onChange={e => setChForm(p => ({ ...p, contactName: e.target.value }))} placeholder="e.g. Kasun Perera" />
+              </div>
+              <div className="field">
+                <label className="field-label">Email</label>
+                <input className="input" type="email" value={chForm.contactEmail}
+                  onChange={e => setChForm(p => ({ ...p, contactEmail: e.target.value }))} placeholder="e.g. kasun@channel.lk" />
+              </div>
+              <div className="field">
+                <label className="field-label">Mobile</label>
+                <input className="input" type="tel" value={chForm.contactMobile}
+                  onChange={e => setChForm(p => ({ ...p, contactMobile: e.target.value }))} placeholder="e.g. +94 77 123 4567" />
               </div>
             </div>
             <div className="modal-foot">

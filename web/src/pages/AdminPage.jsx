@@ -135,6 +135,34 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grSavedAt, setGrSavedAt] = useState(null);
   const [grInit, setGrInit] = useState(false); // pinned form to the dashboard's revenue month yet?
 
+  /* ---- database backup (Google Drive) ---- */
+  const [backup, setBackup] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupMsg, setBackupMsg] = useState('');
+  const fetchBackup = async () => {
+    setBackupLoading(true);
+    try {
+      const { data } = await api.get('/admin/backup/status');
+      setBackup(data);
+    } catch { setBackup(null); }
+    finally { setBackupLoading(false); }
+  };
+  useEffect(() => {
+    if (activeTab === 'backup') fetchBackup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  const runBackupNow = async () => {
+    setBackupRunning(true); setBackupMsg('');
+    try {
+      const { data } = await api.post('/admin/backup/run');
+      setBackupMsg(`Backup uploaded: ${data.result?.fileName || 'done'}`);
+      await fetchBackup();
+    } catch (err) {
+      setBackupMsg(err.response?.data?.error || 'Backup failed.');
+    } finally { setBackupRunning(false); }
+  };
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -867,6 +895,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'group-revenue', label: 'Group Revenue' },
     { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
     { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
+    { key: 'backup', label: 'Backup' },
   ];
 
   return (
@@ -920,7 +949,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {activeTab !== 'group-revenue' && (
+        {!['group-revenue', 'backup'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -1619,6 +1648,89 @@ export default function AdminPage({ initialTab = 'users' }) {
             </tbody>
           </table>
           {channelRequests.length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No channel requests</p></div>}
+        </div>
+      )}
+
+      {/* ============ BACKUP ============ */}
+      {activeTab === 'backup' && (
+        <div style={{ maxWidth: 760 }}>
+          <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Database backup to Google Drive</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
+                  A full, restorable dump of the whole database, gzipped and uploaded to your Drive folder.
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {backup && (
+                  <span className="badge" style={{ background: backup.configured ? '#ECF8F1' : '#FBE0DA', color: backup.configured ? '#15814B' : '#C5391F', fontWeight: 700 }}>
+                    {backup.configured ? 'Enabled' : 'Not configured'}
+                  </span>
+                )}
+                <button className="btn btn-primary" disabled={backupRunning || !backup?.configured} onClick={runBackupNow}>
+                  {backupRunning ? 'Backing up…' : 'Back up now'}
+                </button>
+              </div>
+            </div>
+
+            {backupMsg && (
+              <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 600, color: /fail|error|not configured/i.test(backupMsg) ? 'var(--red-600)' : 'var(--green-600)' }}>
+                {backupMsg}
+              </div>
+            )}
+
+            {backupLoading ? (
+              <div style={{ marginTop: 16, color: 'var(--muted)', fontSize: 13 }}>Loading…</div>
+            ) : !backup ? null : (
+              <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                <div className="stat" style={{ padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>Schedule</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginTop: 4 }}>{backup.schedule} <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}>(cron)</span></div>
+                </div>
+                <div className="stat" style={{ padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>Keeps</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginTop: 4 }}>{backup.retention} backups</div>
+                </div>
+                <div className="stat" style={{ padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>Last run</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4, color: backup.lastRun?.status === 'success' ? 'var(--green-600)' : backup.lastRun?.status === 'failed' ? 'var(--red-600)' : 'var(--ink)' }}>
+                    {backup.lastRun ? `${backup.lastRun.status}` : 'never'}
+                  </div>
+                  {backup.lastRun?.at && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{new Date(backup.lastRun.at).toLocaleString()}</div>}
+                </div>
+              </div>
+            )}
+
+            {backup && !backup.configured && (
+              <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--ink-soft)', background: '#F7F8FA', borderRadius: 8, padding: '12px 14px', lineHeight: 1.6 }}>
+                To enable, set these environment variables on the server and redeploy:
+                <ul style={{ margin: '8px 0 0 18px' }}>
+                  <li><code>GOOGLE_SERVICE_ACCOUNT_JSON</code> — a Google service-account key (raw JSON or base64)</li>
+                  <li><code>GDRIVE_BACKUP_FOLDER_ID</code> — the Drive folder ID, shared with the service account as Editor</li>
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {backup?.configured && (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead><tr><th>Backup file</th><th>Size</th><th style={{ textAlign: 'right' }}>Created</th></tr></thead>
+                <tbody>
+                  {(backup.backups || []).map(f => (
+                    <tr key={f.id}>
+                      <td className="strong" style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12 }}>{f.name}</td>
+                      <td>{f.size ? `${(Number(f.size) / 1024).toFixed(1)} KB` : '-'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{f.createdTime ? new Date(f.createdTime).toLocaleString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(backup.backups || []).length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No backups in the folder yet</p></div>}
+              {backup.listError && <div style={{ padding: 12, color: 'var(--red-600)', fontSize: 12.5 }}>Could not list backups: {backup.listError}</div>}
+            </div>
+          )}
         </div>
       )}
 

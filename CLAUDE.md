@@ -122,6 +122,16 @@ Railway auto-injects `DATABASE_URL` from the PostgreSQL plugin. The `railway.tom
 Build pipeline: `cd web && npm install && npm run build && cd ../api && npm install && npm run build`
 Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src/index.js`
 
+`nixpacks.toml` adds `postgresql-client` (`aptPkgs`) to the runtime image so `pg_dump` is available for the Google Drive backup below.
+
+## Database Backup (Google Drive)
+
+A daily automated backup of the whole database to Google Drive, plus an on-demand trigger. `api/src/services/backup.service.js` runs `pg_dump --format=plain | gzip` into a temp file, then multipart-uploads it to a Drive folder using a **service account** (`google-auth-library` JWT → Drive REST via `fetch`, no heavy `googleapis` dep). `node-cron` schedules it (default `0 2 * * *`, `Asia/Colombo`); after each run it prunes the folder to the newest `BACKUP_RETENTION` (default 30) files. `startBackupScheduler()` is called from `index.js` after `listen` and is a **no-op with a log line unless configured** — the app never fails to boot for lack of backup env.
+
+- **Env (backup stays DISABLED until the first two are set):** `GOOGLE_SERVICE_ACCOUNT_JSON` (raw JSON or base64 of the key), `GDRIVE_BACKUP_FOLDER_ID` (folder shared with the service account's `client_email` as Editor). Optional: `GOOGLE_IMPERSONATE_SUBJECT` (domain-wide delegation — needed if the target is a normal My Drive, since a service account has no storage quota; otherwise use a **Shared Drive** folder, which the code supports via `supportsAllDrives`), `BACKUP_CRON`, `BACKUP_RETENTION`, `PGDUMP_PATH`, `BACKUP_TZ`.
+- **API (SUPER_ADMIN only):** `GET /api/admin/backup/status` (config + last run + recent files in the folder), `POST /api/admin/backup/run` (immediate backup). Last-run status is in-memory (resets on deploy); history is read live from Drive.
+- **UI:** Admin (`/admin`) → **Backup** tab — status badge (Enabled/Not configured), schedule/retention/last-run cards, a **Back up now** button, the recent-backups table, and setup instructions when unconfigured.
+
 ## Database Schema
 
 ### Enums
@@ -151,7 +161,7 @@ Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src
 |---|---|
 | MediaGroup | Grouping of channels (e.g., "Maharaja Group") |
 | ChannelMaster | Master registry of all TV/Radio/Print channels with aliases. `isActive` channels with **zero `ScheduleLog` rows** are automatically deactivated by `seed.js`'s startup reconcile (idempotent, runs every deploy) — hides never-used channels from active-only pickers (Media Buying combobox, Add Channel forms) without deleting them; Admin's Channels tab still lists them (Inactive badge) and a manual toggle reactivates. Bulk import resolves channels by name regardless of `isActive`, so logging spend against a deactivated channel later is unaffected. The four forecasting "category total" bucket channels (`Print`/`Cinema`/`OOH`/`Digital`, see `TOTAL_BUCKETS` in `seed.js`) are exempted from this reconcile by name, since they're only ever referenced via `MonthlyForecast`, never `ScheduleLog` — without the exemption they'd get deactivated and `listForecastChannels` would silently fall back to an unrelated active channel in that medium, mis-attributing the category-total forecast (this happened in practice: a "Digital Total" entry got saved against an unrelated real digital channel). `seed.js` also runs a one-time-per-occurrence backfill that repoints any already-mis-tagged `MonthlyForecast` rows onto the correct bucket channel (merging amounts if a correct row already exists for that client/month) |
-| Channel | Client-specific channel records |
+| Channel | Client-specific channel records. Optional **channel rep contact** (`contactName`/`contactEmail`/`contactMobile`) — the sales/booking person AT the channel, captured in the client's **Add channel** form (`createChannel`/`updateChannel` in `client.controller.js`) and shown on the channel card. Per-client so each client can keep its own contact for the same channel |
 | Property | Negotiated deals on channels (cost, bonus%, sponsorship details, startDate, endDate — endDate null means still ongoing) |
 | PropertyHistory | Audit trail for property changes (previousValues, newValues JSON) |
 | ChannelAgencyDeal | Year-keyed overall agency discount %/bonus % per channel (Media Buying tab) |
