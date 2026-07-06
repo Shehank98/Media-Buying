@@ -840,14 +840,13 @@ export default function ExecutiveDashboardPage() {
         doc.text('Agency Comparison', margin, y); y += 8;
         autoTable(doc, {
           startY: y,
-          head: [['Agency', 'YTD Billings', 'Active Clients', 'Active Channels', 'YTD Growth']],
+          head: [['Agency', 'YTD Billings', 'Active Clients', 'Active Channels']],
           body: agencyComparison.map((ag) => [
             ag.agencyName, fmtLKR(ag.ytdBillings), ag.activeClients ?? '-', ag.activeChannels ?? '-',
-            ag.ytdGrowthPct != null ? (ag.ytdGrowthPct >= 0 ? '+' : '') + ag.ytdGrowthPct.toFixed(1) + '%' : '-',
           ]),
           styles: { fontSize: 9, cellPadding: 5 },
           headStyles: { fillColor: [22, 36, 60] },
-          columnStyles: { 1: { halign: 'right' }, 4: { halign: 'right' } },
+          columnStyles: { 1: { halign: 'right' } },
           margin: { left: margin, right: margin },
         });
         y = doc.lastAutoTable.finalY + 22;
@@ -1048,11 +1047,6 @@ export default function ExecutiveDashboardPage() {
                   <div className="agency-sum-row"><span>YTD Billings</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdBillings)}</span></div>
                   <div className="agency-sum-row"><span>Active clients</span><span>{ag.activeClients}</span></div>
                   <div className="agency-sum-row"><span>Active channels</span><span>{ag.activeChannels}</span></div>
-                  <div className="agency-sum-row"><span>YTD Growth</span>
-                    <span style={{ color: (ag.ytdGrowthPct || 0) >= 0 ? 'var(--green-600)' : 'var(--red-600)', fontWeight: 700 }}>
-                      {ag.ytdGrowthPct != null ? (ag.ytdGrowthPct >= 0 ? '+' : '') + ag.ytdGrowthPct.toFixed(1) + '%' : '-'}
-                    </span>
-                  </div>
                 </div>
               ))}
             </div>
