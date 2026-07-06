@@ -201,6 +201,19 @@ function AchievementSection({
   const donutRevenue = gcDonut(gcRevenue?.groups);
 
   const mabyYears = monthlyAvgByYear?.years || [];
+  // X-axis tick for Monthly Avg: year on top, and for a partial year (e.g. the
+  // in-progress current year) the month range the average is taken over below it.
+  const mabyTick = ({ x, y, payload }) => {
+    const row = mabyYears.find(r => String(r.year) === String(payload.value));
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={0} dy={13} textAnchor="middle" fontSize={12} fontWeight={700} fill="#16243C">{payload.value}</text>
+        {row?.partial && row?.rangeLabel && (
+          <text x={0} dy={27} textAnchor="middle" fontSize={10} fill="#6B7790">{row.rangeLabel} avg</text>
+        )}
+      </g>
+    );
+  };
 
   // Group Contribution vs Forecast: average of every actual month so far this year
   // per group head (blue) vs that head's next-month forecast (orange), with the
@@ -419,14 +432,14 @@ function AchievementSection({
 
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Monthly Avg</div>
-        <div className="chart-card-sub">Average monthly spend per calendar year, all clients · LKR millions</div>
+        <div className="chart-card-sub">Average monthly spend per calendar year, all clients · LKR millions. A partial year is averaged over its months with data (shown under the bar), not 12</div>
         {monthlyAvgByYearLoading ? <div style={{ marginTop: 12 }}><Skeleton h={240} /></div> : mabyYears.length === 0 ? <ChartEmpty /> : (
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={256}>
             <BarChart data={mabyYears} margin={{ top: 26, right: 20, bottom: 6, left: 6 }}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
-              <XAxis dataKey="year" tick={{ fontSize: 12, fill: 'var(--muted)' }} />
+              <XAxis dataKey="year" tick={mabyTick} interval={0} height={40} />
               <YAxis tickFormatter={fmtM} tick={{ fontSize: 11, fill: 'var(--muted)' }} width={48} />
-              <Tooltip formatter={(v) => fmtM(v)} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+              <Tooltip formatter={(v, n, p) => [fmtM(v), p?.payload?.rangeLabel ? `${p.payload.rangeLabel} avg` : 'Avg']} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
               <Bar dataKey="avgMillions" radius={[5, 5, 0, 0]} barSize={42}>
                 {mabyYears.map((_, i) => <Cell key={i} fill={TEAM_COLORS[i % TEAM_COLORS.length]} />)}
                 <LabelList dataKey="avgMillions" position="top" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />

@@ -1551,10 +1551,13 @@ export async function getMonthlyAvgByYear(req, res) {
     const byYear = new Map();
     for (const r of rows) {
       const yr = r.scheduleMonth.slice(0, 4);
-      if (!byYear.has(yr)) byYear.set(yr, { total: 0, monthCount: 0 });
+      const mo = parseInt(r.scheduleMonth.slice(5), 10);
+      if (!byYear.has(yr)) byYear.set(yr, { total: 0, monthCount: 0, minMonth: mo, maxMonth: mo });
       const y = byYear.get(yr);
       y.total += safeNum(r._sum.scheduleValue) || 0;
       y.monthCount += 1;
+      if (mo < y.minMonth) y.minMonth = mo;
+      if (mo > y.maxMonth) y.maxMonth = mo;
     }
 
     const years = [...byYear.entries()]
@@ -1563,6 +1566,12 @@ export async function getMonthlyAvgByYear(req, res) {
         year: yr,
         avgMillions: Number(((y.total / y.monthCount) / 1e6).toFixed(2)),
         monthsWithData: y.monthCount,
+        // Month range the average is computed over, so a partial year (e.g. the
+        // in-progress current year) can be labelled "Jan-Jun" under its bar.
+        rangeLabel: y.minMonth === y.maxMonth
+          ? MONTH_NAMES[y.minMonth - 1]
+          : `${MONTH_NAMES[y.minMonth - 1]}-${MONTH_NAMES[y.maxMonth - 1]}`,
+        partial: y.maxMonth < 12,
       }));
 
     return res.json({ years });
