@@ -220,7 +220,10 @@ export async function getAgencyComparison(req, res) {
     const result = await Promise.all(agencies.map(async (agency) => {
       const base = { isDeleted: false, agencyId: agency.id };
       const [ytdAgg, activeClients, activeChannels, curYearAgg, lastYearAgg, uploads, monthlyData] = await Promise.all([
-        prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, _sum: { scheduleValue: true } }),
+        // YTD Billings reflects the selected year (or current year in "All" mode),
+        // Jan to the latest month with data — matching the chart's window — not
+        // an all-time total.
+        prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: monthlyStart, lte: ym } }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, select: { clientId: true }, distinct: ['clientId'] }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: cye } }, _sum: { scheduleValue: true } }),
