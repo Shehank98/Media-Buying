@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge } from './Icon';
@@ -76,18 +76,49 @@ export default function Layout() {
     return () => clearTimeout(t);
   }, [searchQ]);
 
+  // Desktop (OS) notifications: remember which notification ids we've already
+  // surfaced so polling only pops a native toast for genuinely new ones, and
+  // never spams the whole list on the first load after sign-in.
+  const seenNotifIds = useRef(new Set());
+  const notifPrimed = useRef(false);
+
+  const maybeDesktopNotify = useCallback((list) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const unseenNew = list.filter(n => !n.isRead && !seenNotifIds.current.has(n.id));
+    list.forEach(n => seenNotifIds.current.add(n.id));
+    if (!notifPrimed.current) { notifPrimed.current = true; return; } // seed only on first load
+    if (Notification.permission !== 'granted' || !unseenNew.length) return;
+    // Show newest first, cap at 3 so a burst doesn't flood the OS tray.
+    unseenNew.slice(0, 3).forEach(n => {
+      try {
+        const note = new Notification(n.title || 'Ogilvy Orbit', { body: n.message || '', tag: `orbit-${n.id}` });
+        note.onclick = () => { window.focus(); const to = notifLink(n); if (to) navigate(to); note.close(); };
+      } catch { /* ignore */ }
+    });
+  }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fetchNotifications = useCallback(() => {
     if (!user) return;
     api.get('/notifications', { params: { unreadOnly: 'false' } })
       .then(r => {
         const n = r.data?.notifications;
-        setNotifications(Array.isArray(n) ? n : []);
+        const list = Array.isArray(n) ? n : [];
+        setNotifications(list);
         setUnreadCount(r.data?.unreadCount || 0);
+        maybeDesktopNotify(list);
       })
       .catch(() => {});
-  }, [user]);
+  }, [user, maybeDesktopNotify]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  // Ask for desktop-notification permission once (best-effort; browsers may
+  // require a gesture — the bell click below also requests it as a fallback).
+  useEffect(() => {
+    if (user && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, [user]);
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(fetchNotifications, 60000);
@@ -259,7 +290,10 @@ export default function Layout() {
           </div>
           <div className="topbar-spacer" />
           <div style={{ position: 'relative' }}>
-            <button className="icon-btn" onClick={() => setShowNotifs(p => !p)}>
+            <button className="icon-btn" onClick={() => {
+              setShowNotifs(p => !p);
+              if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+            }}>
               <Icon name="bell" size={18} />
               {unreadCount > 0 && <span className="dot" />}
             </button>

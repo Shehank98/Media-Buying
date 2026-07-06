@@ -6,6 +6,7 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  broadcastNotification,
   exportMasterSheet,
 } from '../controllers/uploadtracker.controller.js';
 
@@ -14,6 +15,7 @@ const router = Router();
 // Upload tracker (admin only)
 router.get('/upload-tracker', authenticate, requireRole('SUPER_ADMIN'), getUploadTracker);
 router.post('/send-reminder', authenticate, requireRole('SUPER_ADMIN'), sendReminder);
+router.post('/broadcast', authenticate, requireRole('SUPER_ADMIN'), broadcastNotification);
 router.get('/master-sheet', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), exportMasterSheet);
 
 // Notifications (all authenticated users)

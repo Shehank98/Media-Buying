@@ -228,6 +228,39 @@ export async function markNotificationRead(req, res) {
   }
 }
 
+// POST /api/notifications/broadcast — SUPER_ADMIN sends an announcement to any
+// mix of roles and/or specific users. Creates one in-app Notification per
+// recipient (which the frontend also surfaces as a desktop notification).
+const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
+export async function broadcastNotification(req, res) {
+  try {
+    const title = String(req.body.title || '').trim();
+    const message = String(req.body.message || '').trim();
+    const link = req.body.link ? String(req.body.link).trim() : null;
+    if (!title || !message) return res.status(400).json({ error: 'Title and message are required' });
+
+    const roles = Array.isArray(req.body.roles) ? req.body.roles.filter(r => VALID_ROLES.includes(r)) : [];
+    const userIds = Array.isArray(req.body.userIds) ? req.body.userIds.map(Number).filter(Number.isInteger) : [];
+    if (!roles.length && !userIds.length) {
+      return res.status(400).json({ error: 'Select at least one role or user to notify' });
+    }
+
+    const or = [];
+    if (roles.length) or.push({ role: { in: roles } });
+    if (userIds.length) or.push({ id: { in: userIds } });
+    const users = await prisma.user.findMany({ where: { OR: or }, select: { id: true } });
+    if (!users.length) return res.status(404).json({ error: 'No matching recipients' });
+
+    const created = await prisma.notification.createMany({
+      data: users.map(u => ({ userId: u.id, type: 'ANNOUNCEMENT', title, message, link })),
+    });
+    return res.json({ message: `Notification sent to ${users.length} user(s)`, count: created.count });
+  } catch (error) {
+    console.error('broadcastNotification error:', error);
+    return res.status(500).json({ error: 'Failed to send notification', detail: error.message });
+  }
+}
+
 export async function markAllNotificationsRead(req, res) {
   try {
     await prisma.notification.updateMany({

@@ -163,6 +163,31 @@ export default function AdminPage({ initialTab = 'users' }) {
     } finally { setBackupRunning(false); }
   };
 
+  /* ---- send notification (announcement) ---- */
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyMessage, setNotifyMessage] = useState('');
+  const [notifyLink, setNotifyLink] = useState('');
+  const [notifyRoles, setNotifyRoles] = useState([]); // ['GROUP_HEAD', ...]
+  const [notifyUserIds, setNotifyUserIds] = useState([]);
+  const [notifyUserSearch, setNotifyUserSearch] = useState('');
+  const [notifySending, setNotifySending] = useState(false);
+  const [notifyResult, setNotifyResult] = useState(null); // { ok, text }
+  const toggleNotifyRole = (r) => setNotifyRoles((s) => (s.includes(r) ? s.filter((x) => x !== r) : [...s, r]));
+  const toggleNotifyUser = (id) => setNotifyUserIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const sendNotification = async () => {
+    setNotifySending(true); setNotifyResult(null);
+    try {
+      const { data } = await api.post('/notifications/broadcast', {
+        title: notifyTitle, message: notifyMessage, link: notifyLink || undefined,
+        roles: notifyRoles, userIds: notifyUserIds,
+      });
+      setNotifyResult({ ok: true, text: data.message || 'Sent.' });
+      setNotifyTitle(''); setNotifyMessage(''); setNotifyLink(''); setNotifyRoles([]); setNotifyUserIds([]);
+    } catch (err) {
+      setNotifyResult({ ok: false, text: err.response?.data?.error || 'Failed to send.' });
+    } finally { setNotifySending(false); }
+  };
+
   /* ---- delete modal ---- */
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -895,6 +920,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'group-revenue', label: 'Group Revenue' },
     { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
     { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
+    { key: 'notify', label: 'Notify' },
     { key: 'backup', label: 'Backup' },
   ];
 
@@ -949,7 +975,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'backup'].includes(activeTab) && (
+        {!['group-revenue', 'backup', 'notify'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -1648,6 +1674,76 @@ export default function AdminPage({ initialTab = 'users' }) {
             </tbody>
           </table>
           {channelRequests.length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No channel requests</p></div>}
+        </div>
+      )}
+
+      {/* ============ NOTIFY ============ */}
+      {activeTab === 'notify' && (
+        <div style={{ maxWidth: 720 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Send a notification</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16 }}>
+              Notify whole roles and/or specific people. Recipients see it in-app and as a desktop notification (if they allowed it).
+            </div>
+
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label">Title<span className="req">*</span></label>
+              <input className="input" type="text" maxLength={120} value={notifyTitle} onChange={(e) => setNotifyTitle(e.target.value)} placeholder="e.g. June forecasts due Friday" />
+            </div>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="field-label">Message<span className="req">*</span></label>
+              <textarea className="input" rows={3} maxLength={600} value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} placeholder="Write your message…" style={{ resize: 'vertical' }} />
+            </div>
+            <div className="field" style={{ marginBottom: 16 }}>
+              <label className="field-label">Link (optional)</label>
+              <input className="input" type="text" value={notifyLink} onChange={(e) => setNotifyLink(e.target.value)} placeholder="e.g. /forecasting" />
+              <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>Where clicking the notification takes them (in-app path).</span>
+            </div>
+
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Send to roles</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              {['GROUP_HEAD', 'PLANNER', 'MANAGER', 'SUPER_ADMIN'].map((r) => {
+                const on = notifyRoles.includes(r);
+                return (
+                  <button key={r} type="button" onClick={() => toggleNotifyRole(r)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
+                      border: `1px solid ${on ? 'var(--coral-600, #E85D24)' : 'var(--border)'}`,
+                      background: on ? 'var(--coral-50, #fff3ee)' : 'var(--card)',
+                      color: on ? 'var(--coral-700, #C44A18)' : 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600 }}>
+                    {on && <Icon name="check" size={13} />}{r.replace('_', ' ')}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>
+              Or specific people {notifyUserIds.length > 0 && <span style={{ color: 'var(--muted)', fontWeight: 500 }}>· {notifyUserIds.length} selected</span>}
+            </div>
+            <input className="input" type="text" value={notifyUserSearch} onChange={(e) => setNotifyUserSearch(e.target.value)} placeholder="Search people…" style={{ marginBottom: 8 }} />
+            <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              {users
+                .filter((u) => !notifyUserSearch || (u.name || '').toLowerCase().includes(notifyUserSearch.toLowerCase()) || (u.email || '').toLowerCase().includes(notifyUserSearch.toLowerCase()))
+                .map((u) => (
+                  <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--border)' }}>
+                    <input type="checkbox" checked={notifyUserIds.includes(u.id)} onChange={() => toggleNotifyUser(u.id)} />
+                    <span style={{ flex: 1 }}>{u.name}<span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11.5 }}>{u.email}</span></span>
+                    <RoleBadge role={u.role} small />
+                  </label>
+                ))}
+              {users.length === 0 && <div style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)' }}>No users.</div>}
+            </div>
+
+            {notifyResult && (
+              <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: notifyResult.ok ? 'var(--green-600)' : 'var(--red-600)' }}>
+                {notifyResult.text}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn btn-primary" disabled={notifySending || !notifyTitle.trim() || !notifyMessage.trim() || (!notifyRoles.length && !notifyUserIds.length)} onClick={sendNotification}>
+                <Icon name="bell" size={15} />{notifySending ? 'Sending…' : 'Send notification'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

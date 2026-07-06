@@ -394,8 +394,11 @@ PATCH  /api/notifications/:id/read               (AUTH)
 PATCH  /api/notifications/read-all               (AUTH)
 GET    /api/notifications/upload-tracker          (AUTH + SUPER_ADMIN)
 POST   /api/notifications/send-reminder          (AUTH + SUPER_ADMIN)
+POST   /api/notifications/broadcast              (AUTH + SUPER_ADMIN)   send an announcement to roles and/or specific users
 GET    /api/notifications/master-sheet           (AUTH + SUPER_ADMIN|MANAGER)
 ```
+
+**Notification delivery/UX:** the topbar bell dropdown (`Layout.jsx`) renders above page content (`.topbar` carries `position:relative; z-index:30` because its `backdrop-filter` makes it a stacking context that the sibling `.content` would otherwise paint over) and closes on outside-click via a full-viewport backdrop. New notifications are also surfaced as **browser desktop notifications**: `Layout` requests `Notification` permission (on load + on bell click as a gesture fallback), tracks already-seen ids in a ref, seeds silently on first load, and fires `new Notification(...)` (capped at 3 per poll) for genuinely new unread items; clicking one focuses the window and navigates via `notifLink`. **Admin → Notify tab** (`AdminPage.jsx`, SUPER_ADMIN) composes an announcement (title, message, optional in-app link) and targets any mix of **roles** (toggle chips) and/or **specific users** (searchable checklist), posting to `broadcastNotification` (`uploadtracker.controller.js`) which creates one `type:'ANNOUNCEMENT'` `Notification` per resolved recipient (deduped via a single `OR` user query).
 
 ## Frontend Pages
 

@@ -172,6 +172,11 @@ input, select, textarea { font-family: inherit; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 16px;
   padding: 0 28px;
+  /* backdrop-filter makes the topbar its own stacking context; without a
+     z-index the sibling .content paints over it, so the notifications dropdown
+     (and its click-outside backdrop) end up UNDER the page. Lift it above
+     content (but below modals/panels at 40+). */
+  position: relative; z-index: 30;
 }
 .crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-width: 0; }
 .crumb b { color: var(--ink); font-weight: 600; }
