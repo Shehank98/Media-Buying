@@ -160,6 +160,7 @@ const AchievementTooltip = ({ active, payload, label }) => {
 function AchievementSection({
   year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
   monthlyAvgByYear, monthlyAvgByYearLoading, groupVariance, groupVarianceLoading,
+  trendData, trendLoading, trendView, setTrendView,
 }) {
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
@@ -256,7 +257,7 @@ function AchievementSection({
           </ResponsiveContainer>
         )}
         {hasForecastFill && (
-          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+          <div className="no-export" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: FORECAST_FILL_COLOR }} />
             Forecast (est.): {achievement.forecastFillLabel}
             {!achievement.forecastFillComplete && (
@@ -297,6 +298,82 @@ function AchievementSection({
       </div>
 
       <div className="chart-card" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">Monthly Billing Trend</div>
+            <div className="chart-card-sub">{trendView === 'combined' ? 'One line per year · Jan to Dec invoice value' : 'Last 24 months · invoice value'}</div>
+          </div>
+          <div className="toggle-group">
+            <button className={`toggle-btn${trendView === 'combined' ? ' active' : ''}`} onClick={() => setTrendView('combined')}>Combined</button>
+            <button className={`toggle-btn${trendView === 'byAgency' ? ' active' : ''}`} onClick={() => setTrendView('byAgency')}>By Agency</button>
+          </div>
+        </div>
+        {trendLoading ? <Skeleton h={280} /> : !trendData ? <ChartEmpty /> : (
+          trendView === 'combined' ? (
+            (() => {
+              // Pivot every month of billing into one line series per year, plotted
+              // against a fixed Jan-Dec X axis so years compare side by side.
+              const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const rows = MONTH_LABELS.map((label, i) => ({ monthNum: i + 1, label }));
+              const years = [];
+              (trendData.combined || []).forEach(d => {
+                const [y, m] = String(d.month).split('-').map(Number);
+                if (!y || !m || m < 1 || m > 12) return;
+                if (!years.includes(y)) years.push(y);
+                rows[m - 1][y] = (rows[m - 1][y] || 0) + (d.scheduleValue || 0);
+              });
+              years.sort((a, b) => a - b);
+              if (!years.length) return <ChartEmpty />;
+              return (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={rows} margin={{ top: 10, right: 20, bottom: 6, left: 6 }}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
+                    <Tooltip content={<CustomTooltipLKR />} />
+                    <Legend />
+                    {years.map((y, i) => (
+                      <Line key={y} type="monotone" dataKey={String(y)} name={String(y)} stroke={YEAR_COLORS[i % YEAR_COLORS.length]} strokeWidth={2.5} connectNulls dot={{ r: 3, strokeWidth: 1 }} activeDot={{ r: 5 }} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+            })()
+          ) : (
+            (() => {
+              const agencyLines = trendData.byAgency || [];
+              const monthSet = new Set();
+              agencyLines.forEach(ag => (ag.data || []).forEach(d => monthSet.add(d.month)));
+              const months = Array.from(monthSet).sort().slice(-24);
+              const chartData = months.map(m => {
+                const row = { month: fmtMonth(m) };
+                agencyLines.forEach(ag => {
+                  const d = (ag.data || []).find(x => x.month === m);
+                  row[ag.agencyName] = d ? d.scheduleValue : 0;
+                });
+                return row;
+              });
+              if (!chartData.length) return <ChartEmpty />;
+              return (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
+                    <Tooltip content={<CustomTooltipLKR />} />
+                    <Legend />
+                    {agencyLines.map((ag, i) => (
+                      <Line key={ag.agencyId} type="monotone" dataKey={ag.agencyName} stroke={AGENCY_COLORS[i % AGENCY_COLORS.length]} strokeWidth={2} dot={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+            })()
+          )
+        )}
+      </div>
+
+      <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Group Contribution</div>
         <div className="chart-card-sub">
           {gcBudget && gcRevenue
@@ -327,7 +404,10 @@ function AchievementSection({
                         {d.donut.map((g, i) => <Cell key={i} fill={g.fill} />)}
                       </Pie>
                       <Tooltip formatter={(v, n, p) => [`${fmtM(v)} (${p.payload.pct.toFixed(1)}%)`, n]} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} layout="vertical" align="right" verticalAlign="middle" />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11 }} layout="vertical" align="right" verticalAlign="middle"
+                        formatter={(value, entry) => `${value}${entry?.payload?.pct != null ? '  ' + entry.payload.pct.toFixed(0) + '%' : ''}`}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
@@ -476,14 +556,14 @@ export default function ExecutiveDashboardPage() {
       .finally(() => setTopChannelsLoading(false));
   }, []);
 
-  // Agency comparison
+  // Agency comparison (follows the year selector; default = current year Jan to latest month)
   useEffect(() => {
     setAgencyCompLoading(true);
-    api.get('/analytics/dashboard/agency-comparison')
+    api.get('/analytics/dashboard/agency-comparison', { params: year ? { year } : {} })
       .then(r => setAgencyComparison(r.data || []))
       .catch(() => setAgencyComparison([]))
       .finally(() => setAgencyCompLoading(false));
-  }, []);
+  }, [year]);
 
   // Annual achievement + monthly spend (with forecast for the remote month)
   useEffect(() => {
@@ -526,14 +606,14 @@ export default function ExecutiveDashboardPage() {
       .finally(() => setGroupVarianceLoading(false));
   }, []);
 
-  // Medium split
+  // Medium split (agency + year scoped; current-year-to-date vs same period last year)
   useEffect(() => {
     setMediumLoading(true);
-    api.get('/analytics/dashboard/medium-split', { params: buildAgencyParam() })
+    api.get('/analytics/dashboard/medium-split', { params: { ...buildAgencyParam(), ...(year ? { year } : {}) } })
       .then(r => setMediumSplit(r.data))
       .catch(() => setMediumSplit(null))
       .finally(() => setMediumLoading(false));
-  }, [agencyId, buildAgencyParam]);
+  }, [agencyId, buildAgencyParam, year]);
 
 
   // Build agency comparison chart data
@@ -637,6 +717,9 @@ export default function ExecutiveDashboardPage() {
       cover.addShape(pptx.ShapeType.rect, { x: 0.72, y: 3.95, w: 0.6, h: 0.05, fill: { color: CORAL } });
       cover.addText(`${agencyName}   ·   ${dateStr}`, { x: 0.7, y: 4.15, w: 12, h: 0.4, fontSize: 14, color: MUTED });
 
+      // Hide export-only-noise (forecast-fill legend/warning, Medium Split LKR
+      // amounts) while capturing chart images; restored in `finally`.
+      document.body.classList.add('exporting-pptx');
       // One slide per chart
       for (const card of cards) {
         const canvas = await html2canvas(card, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
@@ -670,6 +753,7 @@ export default function ExecutiveDashboardPage() {
       console.error('Slide export failed:', err);
       alert('Could not export the slides. Please try again.');
     } finally {
+      document.body.classList.remove('exporting-pptx');
       setExportingSlides(false);
     }
   };
@@ -804,6 +888,8 @@ export default function ExecutiveDashboardPage() {
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        /* Hidden only while capturing chart images for the PPT export. */
+        .exporting-pptx .no-export, .exporting-pptx .export-hide { display: none !important; }
         .dash-section { margin-bottom: 36px; }
         .dash-section-title { font-size: 15px; font-weight: 720; color: var(--ink); margin-bottom: 14px; letter-spacing: -0.3px; }
         .ed-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); }
@@ -925,86 +1011,8 @@ export default function ExecutiveDashboardPage() {
         groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
         monthlyAvgByYear={monthlyAvgByYear} monthlyAvgByYearLoading={monthlyAvgByYearLoading}
         groupVariance={groupVariance} groupVarianceLoading={groupVarianceLoading}
+        trendData={trendData} trendLoading={trendLoading} trendView={trendView} setTrendView={setTrendView}
       />
-
-      {/* Section 2: Monthly Billing Trend */}
-      <div className="dash-section">
-        <div className="chart-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <div className="chart-card-title">Monthly Billing Trend</div>
-              <div className="chart-card-sub">{trendView === 'combined' ? 'One bar per year · Jan to Dec invoice value' : 'Last 24 months · invoice value'}</div>
-            </div>
-            <div className="toggle-group">
-              <button className={`toggle-btn${trendView === 'combined' ? ' active' : ''}`} onClick={() => setTrendView('combined')}>Combined</button>
-              <button className={`toggle-btn${trendView === 'byAgency' ? ' active' : ''}`} onClick={() => setTrendView('byAgency')}>By Agency</button>
-            </div>
-          </div>
-          {trendLoading ? <Skeleton h={280} /> : !trendData ? <ChartEmpty /> : (
-            trendView === 'combined' ? (
-              (() => {
-                // Pivot every month of billing into one bar series per year, plotted
-                // against a fixed Jan-Dec X axis so years compare side by side.
-                const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const rows = MONTH_LABELS.map((label, i) => ({ monthNum: i + 1, label }));
-                const years = [];
-                (trendData.combined || []).forEach(d => {
-                  const [y, m] = String(d.month).split('-').map(Number);
-                  if (!y || !m || m < 1 || m > 12) return;
-                  if (!years.includes(y)) years.push(y);
-                  rows[m - 1][y] = (rows[m - 1][y] || 0) + (d.scheduleValue || 0);
-                });
-                years.sort((a, b) => a - b);
-                if (!years.length) return <ChartEmpty />;
-                return (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={rows} barCategoryGap="16%" barGap={1}>
-                      <CartesianGrid stroke="var(--border)" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
-                      <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
-                      <Tooltip content={<CustomTooltipLKR />} />
-                      <Legend />
-                      {years.map((y, i) => (
-                        <Bar key={y} dataKey={String(y)} name={String(y)} fill={YEAR_COLORS[i % YEAR_COLORS.length]} radius={[2, 2, 0, 0]} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                );
-              })()
-            ) : (
-              (() => {
-                const agencyLines = trendData.byAgency || [];
-                const monthSet = new Set();
-                agencyLines.forEach(ag => (ag.data || []).forEach(d => monthSet.add(d.month)));
-                const months = Array.from(monthSet).sort().slice(-24);
-                const chartData = months.map(m => {
-                  const row = { month: fmtMonth(m) };
-                  agencyLines.forEach(ag => {
-                    const d = (ag.data || []).find(x => x.month === m);
-                    row[ag.agencyName] = d ? d.scheduleValue : 0;
-                  });
-                  return row;
-                });
-                if (!chartData.length) return <ChartEmpty />;
-                return (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={chartData}>
-                      <CartesianGrid stroke="var(--border)" vertical={false} />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                      <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
-                      <Tooltip content={<CustomTooltipLKR />} />
-                      <Legend />
-                      {agencyLines.map((ag, i) => (
-                        <Line key={ag.agencyId} type="monotone" dataKey={ag.agencyName} stroke={AGENCY_COLORS[i % AGENCY_COLORS.length]} strokeWidth={2} dot={false} />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                );
-              })()
-            )
-          )}
-        </div>
-      </div>
 
       {/* Section 4: Agency Comparison */}
       <div className="dash-section">
@@ -1012,7 +1020,7 @@ export default function ExecutiveDashboardPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
               <div className="chart-card-title">Agency Comparison</div>
-              <div className="chart-card-sub">Monthly billings per agency - last 12 months</div>
+              <div className="chart-card-sub">Monthly billings per agency · {year ? year : `${new Date().getFullYear()} (Jan to latest month)`}</div>
             </div>
             <div className="toggle-group">
               <button className="toggle-btn active">Schedule Value</button>
@@ -1064,11 +1072,30 @@ export default function ExecutiveDashboardPage() {
           ) : !mediumSplit ? <ChartEmpty /> : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
               {[
-                { label: 'This Month', data: mediumSplit.currentMonth || [] },
-                { label: 'Year to Date', data: mediumSplit.ytd || [] },
-              ].map(({ label, data }) => (
-                <div key={label}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textAlign: 'center' }}>{label}</div>
+                {
+                  key: 'cm',
+                  // This Month: title carries the month name; per-medium change is vs last month (MoM).
+                  title: mediumSplit.currentMonthLabel || 'This Month',
+                  sub: mediumSplit.prevMonthLabel ? `vs ${mediumSplit.prevMonthLabel} (MoM)` : 'This month',
+                  data: mediumSplit.currentMonth || [],
+                  compare: mediumSplit.previousMonth || [],
+                  changeTag: 'MoM',
+                },
+                {
+                  key: 'ytd',
+                  // Year to Date: YoY compares current-year Jan-to-latest vs last year same period.
+                  title: 'Year to Date',
+                  sub: (mediumSplit.ytdLabel && mediumSplit.lastYearLabel)
+                    ? `${mediumSplit.ytdLabel} vs ${mediumSplit.lastYearLabel} (YoY)`
+                    : 'Year to date',
+                  data: mediumSplit.ytd || [],
+                  compare: mediumSplit.lastYearYtd || [],
+                  changeTag: 'YoY',
+                },
+              ].map(({ key, title, sub, data, compare, changeTag }) => (
+                <div key={key}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 2, textAlign: 'center' }}>{title}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', marginBottom: 12, textAlign: 'center' }}>{sub}</div>
                   {!data.length ? <ChartEmpty /> : (
                     <>
                       <ResponsiveContainer width="100%" height={200}>
@@ -1083,20 +1110,20 @@ export default function ExecutiveDashboardPage() {
                       </ResponsiveContainer>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
                         {data.map((entry, i) => {
-                          const isYtd = label === 'Year to Date';
-                          const lyVal = isYtd ? ((mediumSplit.lastYearYtd || []).find(m => m.medium === entry.medium)?.value || 0) : null;
-                          const yoy = isYtd && lyVal > 0 ? ((entry.value - lyVal) / lyVal) * 100 : null;
+                          const prevVal = (compare || []).find(m => m.medium === entry.medium)?.value || 0;
+                          const chg = prevVal > 0 ? ((entry.value - prevVal) / prevVal) * 100 : null;
                           return (
                             <div key={entry.medium} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
                               <span style={{ width: 10, height: 10, borderRadius: 3, background: MEDIUM_COLORS[entry.medium] || AGENCY_COLORS[i], flexShrink: 0 }} />
                               <span style={{ flex: 1, fontWeight: 600 }}>{entry.medium}</span>
-                              {yoy != null && (
-                                <span style={{ fontSize: 11, fontWeight: 700, color: yoy >= 0 ? 'var(--green-600)' : 'var(--red-600)', minWidth: 48, textAlign: 'right' }}>
-                                  {(yoy >= 0 ? '+' : '') + yoy.toFixed(0) + '% YoY'}
+                              {chg != null && (
+                                <span style={{ fontSize: 11, fontWeight: 700, color: chg >= 0 ? 'var(--green-600)' : 'var(--red-600)', minWidth: 56, textAlign: 'right' }}>
+                                  {(chg >= 0 ? '+' : '') + chg.toFixed(0) + '% ' + changeTag}
                                 </span>
                               )}
-                              <span className="mono">{fmtLKR(entry.value)}</span>
-                              <span style={{ color: 'var(--muted)', minWidth: 36, textAlign: 'right' }}>{entry.pct != null ? entry.pct.toFixed(1) + '%' : ''}</span>
+                              {/* LKR amount hidden on the PPT export image (percentages only). */}
+                              <span className="mono export-hide">{fmtLKR(entry.value)}</span>
+                              <span style={{ color: 'var(--muted)', minWidth: 42, textAlign: 'right', fontWeight: 700 }}>{entry.pct != null ? entry.pct.toFixed(1) + '%' : ''}</span>
                             </div>
                           );
                         })}

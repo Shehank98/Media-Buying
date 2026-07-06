@@ -213,7 +213,9 @@ export async function getAgencyComparison(req, res) {
     const agencies = await prisma.agency.findMany({ where: agencyWhere, orderBy: { name: 'asc' } });
     // Anchor to the selected year, or latest month with data across accessible agencies.
     const { ym, ys, lys, lycm, cys, cye } = await refPeriod({ isDeleted: false, ...(ids ? { agencyId: { in: ids } } : {}) }, req.query.year);
-    const monthlyStart = monthsBefore(ym, 11);
+    // Show the selected year (or the latest data year) from January to the latest
+    // month that has data, rather than a rolling trailing window.
+    const monthlyStart = `${parseInt(ym.slice(0, 4))}-01`;
 
     const result = await Promise.all(agencies.map(async (agency) => {
       const base = { isDeleted: false, agencyId: agency.id };
@@ -380,12 +382,27 @@ export async function getMediumSplit(req, res) {
       base.agencyId = { in: aIds };
     }
 
-    const { ym, ys, lys, lycm } = await refPeriod(base, req.query.year);
+    // Anchor to the latest month with data (optionally within a selected year).
+    const yWhere = { ...base };
+    if (req.query.year && /^\d{4}$/.test(String(req.query.year))) {
+      yWhere.scheduleMonth = { gte: `${req.query.year}-01`, lte: `${req.query.year}-12` };
+    }
+    const latest = await prisma.scheduleLog.findFirst({ where: yWhere, orderBy: { scheduleMonth: 'desc' }, select: { scheduleMonth: true } });
+    const ym = latest?.scheduleMonth && /^\d{4}-\d{2}$/.test(latest.scheduleMonth)
+      ? latest.scheduleMonth
+      : (req.query.year ? `${req.query.year}-01` : currentYM());
+    const yr = parseInt(ym.slice(0, 4));
+    const mo = parseInt(ym.slice(5));
+    const cyStart = `${yr}-01`;                                   // current year Jan
+    const lyStart = `${yr - 1}-01`;                               // last year Jan
+    const lyEnd = `${yr - 1}-${String(mo).padStart(2, '0')}`;     // last year, same month
+    const pYm = prevMonth(ym);                                    // previous month (for MoM)
 
-    const [cm, ytd, ly] = await Promise.all([
+    const [cm, pm, ytd, ly] = await Promise.all([
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
-      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, _sum: { scheduleValue: true } }),
-      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: pYm }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: cyStart, lte: ym } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: lyStart, lte: lyEnd } }, _sum: { scheduleValue: true } }),
     ]);
 
     function toSplit(rows) {
@@ -393,7 +410,20 @@ export async function getMediumSplit(req, res) {
       return rows.map(r => ({ medium: r.medium, value: safeNum(r._sum.scheduleValue) || 0, pct: total > 0 ? Number(((safeNum(r._sum.scheduleValue) || 0) / total * 100).toFixed(2)) : 0 }));
     }
 
-    return res.json({ currentMonth: toSplit(cm), ytd: toSplit(ytd), lastYearYtd: toSplit(ly) });
+    const periodLabel = mo === 1 ? `${MONTH_NAMES[0]} ${yr}` : `${MONTH_NAMES[0]} to ${MONTH_NAMES[mo - 1]} ${yr}`;
+    const lastYearLabel = mo === 1 ? `${MONTH_NAMES[0]} ${yr - 1}` : `${MONTH_NAMES[0]} to ${MONTH_NAMES[mo - 1]} ${yr - 1}`;
+
+    return res.json({
+      year: yr,
+      currentMonth: toSplit(cm),
+      previousMonth: toSplit(pm),
+      ytd: toSplit(ytd),
+      lastYearYtd: toSplit(ly),
+      currentMonthLabel: `${MONTH_NAMES[mo - 1]} ${yr}`,
+      prevMonthLabel: pYm ? `${MONTH_NAMES[parseInt(pYm.slice(5)) - 1]} ${pYm.slice(0, 4)}` : null,
+      ytdLabel: periodLabel,
+      lastYearLabel,
+    });
   } catch (error) {
     console.error('getMediumSplit error:', error);
     return res.status(500).json({ error: 'Failed to get medium split', detail: error.message });
