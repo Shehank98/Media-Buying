@@ -92,7 +92,7 @@ export default function Layout() {
     // Branded as "Ogilvy Trading" (header) with the event + message in the body.
     unseenNew.slice(0, 3).forEach(n => {
       try {
-        const body = [n.title, n.message].filter(Boolean).join(' — ');
+        const body = [n.title, n.message].filter(Boolean).join(': ');
         const note = new Notification('Ogilvy Trading', {
           body: body || 'You have a new notification',
           icon: '/notification-icon.png',
