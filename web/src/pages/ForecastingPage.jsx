@@ -1225,10 +1225,16 @@ export default function ForecastingPage() {
   const submit = async () => {
     setSaving(true); setEntryError(''); setSavedMsg('');
     try {
+      // Group heads type the full rupee amount; store it in millions. Cleared or
+      // zeroed rows are still sent (as 0) so the server removes any existing entry
+      // for them — otherwise clearing a channel would silently leave the old value,
+      // and the Overall Budget "Actual" (a live sum of these forecasts) would not drop.
       const items = Object.entries(amounts)
-        // Group heads type the full rupee amount; store it in millions.
-        .map(([channelMasterId, v]) => ({ channelMasterId: Number(channelMasterId), amountMillions: parseFloat(v.amount) / 1e6, notes: v.notes }))
-        .filter(it => !Number.isNaN(it.amountMillions) && it.amountMillions > 0);
+        .map(([channelMasterId, v]) => {
+          const raw = parseFloat(v.amount);
+          return { channelMasterId: Number(channelMasterId), amountMillions: Number.isNaN(raw) ? 0 : raw / 1e6, notes: v.notes };
+        })
+        .filter(it => Number.isInteger(it.channelMasterId));
       await api.post('/forecasting/submit', { clientId: active.id, year: period.year, month: period.month, items });
       setSavedMsg('Forecast saved.');
       fetchClients();
