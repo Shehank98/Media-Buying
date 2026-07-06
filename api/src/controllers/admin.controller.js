@@ -704,12 +704,16 @@ export async function mergeClients(req, res) {
 
       // 4) Monthly forecasts — unique [year,month,clientId,channelMasterId].
       //    Clash → add the source amount into the target row, then drop source.
-      const srcForecasts = await tx.monthlyForecast.findMany({ where: { clientId: sid } });
+      //    Target rows are prefetched into a map so this is O(1) per source row
+      //    (no findUnique per row — keeps the transaction well under its timeout).
+      const [srcForecasts, tgtForecasts] = await Promise.all([
+        tx.monthlyForecast.findMany({ where: { clientId: sid } }),
+        tx.monthlyForecast.findMany({ where: { clientId: tid }, select: { id: true, year: true, month: true, channelMasterId: true, amountMillions: true } }),
+      ]);
+      const fKey = (y, m, cm) => `${y}-${m}-${cm ?? 'null'}`;
+      const tgtForecastByKey = new Map(tgtForecasts.map(f => [fKey(f.year, f.month, f.channelMasterId), f]));
       for (const f of srcForecasts) {
-        const existing = await tx.monthlyForecast.findUnique({
-          where: { year_month_clientId_channelMasterId: { year: f.year, month: f.month, clientId: tid, channelMasterId: f.channelMasterId } },
-          select: { id: true, amountMillions: true },
-        });
+        const existing = tgtForecastByKey.get(fKey(f.year, f.month, f.channelMasterId));
         if (existing) {
           await tx.monthlyForecast.update({ where: { id: existing.id }, data: { amountMillions: Number(existing.amountMillions) + Number(f.amountMillions) } });
           await tx.monthlyForecast.delete({ where: { id: f.id } });
@@ -719,14 +723,27 @@ export async function mergeClients(req, res) {
       }
 
       // 5) Channel-client deals — unique [channelMasterId, clientId, year]. Keep target's on clash.
-      const srcDeals = await tx.channelClientDeal.findMany({ where: { clientId: sid }, select: { id: true, channelMasterId: true, year: true } });
+      const [srcDeals, tgtDeals] = await Promise.all([
+        tx.channelClientDeal.findMany({ where: { clientId: sid }, select: { id: true, channelMasterId: true, year: true } }),
+        tx.channelClientDeal.findMany({ where: { clientId: tid }, select: { channelMasterId: true, year: true } }),
+      ]);
+      const tgtDealKeys = new Set(tgtDeals.map(d => `${d.channelMasterId}-${d.year}`));
       for (const d of srcDeals) {
-        const existing = await tx.channelClientDeal.findUnique({
-          where: { channelMasterId_clientId_year: { channelMasterId: d.channelMasterId, clientId: tid, year: d.year } },
-          select: { id: true },
-        });
-        if (existing) await tx.channelClientDeal.delete({ where: { id: d.id } });
+        if (tgtDealKeys.has(`${d.channelMasterId}-${d.year}`)) await tx.channelClientDeal.delete({ where: { id: d.id } });
         else await tx.channelClientDeal.update({ where: { id: d.id }, data: { clientId: tid } });
+      }
+
+      // 5b) Monthly budgets — unique [year, month, clientId]. Keep the target's on
+      //     clash, otherwise re-point (and realign agency). Must run BEFORE the
+      //     source delete, else the source's budget rows are cascade-lost.
+      const [srcBudgets, tgtBudgets] = await Promise.all([
+        tx.monthlyBudget.findMany({ where: { clientId: sid }, select: { id: true, year: true, month: true } }),
+        tx.monthlyBudget.findMany({ where: { clientId: tid }, select: { year: true, month: true } }),
+      ]);
+      const tgtBudgetKeys = new Set(tgtBudgets.map(b => `${b.year}-${b.month}`));
+      for (const b of srcBudgets) {
+        if (tgtBudgetKeys.has(`${b.year}-${b.month}`)) await tx.monthlyBudget.delete({ where: { id: b.id } });
+        else await tx.monthlyBudget.update({ where: { id: b.id }, data: { clientId: tid, agencyId: target.agencyId } });
       }
 
       // 6) User access — unique [userId, clientId]. Dedupe.
@@ -756,6 +773,12 @@ export async function mergeClients(req, res) {
 
       // 8) Source is now empty — delete it.
       await tx.client.delete({ where: { id: sid } });
+    }, {
+      // A merge of a data-heavy client touches many rows; the default 5s
+      // interactive-transaction timeout can be exceeded, which rolls the whole
+      // merge back and leaves BOTH clients in the list. Give it ample room.
+      maxWait: 20000,
+      timeout: 120000,
     });
 
     return res.json({ message: `Merged client "${source.name}" into "${target.name}"`, clientId: tid });
