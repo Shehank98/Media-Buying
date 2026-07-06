@@ -16,11 +16,11 @@ function parseFilters(req) {
   return { year, agencyId, clientIds };
 }
 
-function whereFragment({ year, agencyId, clientIds }) {
+function whereFragment({ year, agencyId, clientIds }, { monthStart, monthEnd } = {}) {
   const parts = [
     Prisma.sql`sl.is_deleted = false`,
-    Prisma.sql`sl.schedule_month >= ${`${year}-01`}`,
-    Prisma.sql`sl.schedule_month <= ${`${year}-12`}`,
+    Prisma.sql`sl.schedule_month >= ${monthStart || `${year}-01`}`,
+    Prisma.sql`sl.schedule_month <= ${monthEnd || `${year}-12`}`,
   ];
   if (agencyId) parts.push(Prisma.sql`c.agency_id = ${agencyId}`);
   if (clientIds.length) parts.push(Prisma.sql`sl.client_id IN (${Prisma.join(clientIds)})`);
@@ -78,19 +78,66 @@ async function availableYears() {
   return [...set].sort((a, b) => b - a);
 }
 
-// GET /api/profit/summary — the 3 cards + the year list for the filter.
+// GET /api/profit/summary — headline cards + the year list for the filter.
+// Includes previous-year totals (same scope) for YoY deltas, plus the count of
+// distinct clients that contributed revenue.
 export async function getProfitSummary(req, res) {
+  try {
+    const f = parseFilters(req);
+    // Current-year totals + the latest schedule month that has data (so the
+    // prior-year comparison covers the SAME months — an in-progress year is
+    // compared Jan..latest vs last year's Jan..same-month, not vs a full year).
+    const rows = await prisma.$queryRaw`
+      WITH atoms AS (${atomsSql(whereFragment(f))})
+      SELECT COALESCE(SUM(revenue), 0) AS revenue, COALESCE(SUM(profit), 0) AS profit,
+             COUNT(DISTINCT client_id) AS clients, MAX(ym) AS max_ym FROM atoms`;
+    const revenue = num(rows[0]?.revenue);
+    const profit = num(rows[0]?.profit);
+    const clientCount = Number(rows[0]?.clients) || 0;
+    const maxYm = rows[0]?.max_ym;                          // "YYYY-MM" or null
+    const mm = maxYm && /^\d{4}-\d{2}$/.test(maxYm) ? maxYm.slice(5) : '12';
+    const prevF = { ...f, year: f.year - 1 };
+    const prevRows = await prisma.$queryRaw`
+      WITH atoms AS (${atomsSql(whereFragment(prevF, { monthStart: `${prevF.year}-01`, monthEnd: `${prevF.year}-${mm}` }))})
+      SELECT COALESCE(SUM(revenue), 0) AS revenue, COALESCE(SUM(profit), 0) AS profit FROM atoms`;
+    const prevRevenue = num(prevRows[0]?.revenue);
+    const prevProfit = num(prevRows[0]?.profit);
+    const pctChange = (cur, prev) => (prev > 0 ? round2(((cur - prev) / prev) * 100) : null);
+    return res.json({
+      year: f.year, revenue, profit,
+      blendedCommissionPct: blendedPct(profit, revenue),
+      clientCount,
+      avgProfitPerClient: clientCount ? round2(profit / clientCount) : 0,
+      prevYear: f.year - 1, prevRevenue, prevProfit,
+      // The month window the YoY covers, e.g. "Jan–Jun" for a mid-year 2026.
+      comparisonThroughMonth: mm,
+      revenueYoYPct: pctChange(revenue, prevRevenue),
+      profitYoYPct: pctChange(profit, prevProfit),
+      availableYears: await availableYears(),
+    });
+  } catch (error) {
+    console.error('getProfitSummary error:', error);
+    return res.status(500).json({ error: 'Failed to build profit summary', detail: error.message });
+  }
+}
+
+// GET /api/profit/by-commission-type — revenue/profit/client split across the
+// three commission buckets (COMMISSION, AOR, NONE) for the commission-mix chart.
+export async function getProfitByCommissionType(req, res) {
   try {
     const f = parseFilters(req);
     const rows = await prisma.$queryRaw`
       WITH atoms AS (${atomsSql(whereFragment(f))})
-      SELECT COALESCE(SUM(revenue), 0) AS revenue, COALESCE(SUM(profit), 0) AS profit FROM atoms`;
-    const revenue = num(rows[0]?.revenue);
-    const profit = num(rows[0]?.profit);
-    return res.json({ year: f.year, revenue, profit, blendedCommissionPct: blendedPct(profit, revenue), availableYears: await availableYears() });
+      SELECT COALESCE(ctype, 'NONE') AS type,
+             SUM(revenue) AS revenue, SUM(profit) AS profit,
+             COUNT(DISTINCT client_id) AS clients
+        FROM atoms GROUP BY COALESCE(ctype, 'NONE') ORDER BY profit DESC`;
+    return res.json({
+      types: rows.map((r) => ({ type: r.type, revenue: num(r.revenue), profit: num(r.profit), clients: Number(r.clients) || 0 })),
+    });
   } catch (error) {
-    console.error('getProfitSummary error:', error);
-    return res.status(500).json({ error: 'Failed to build profit summary', detail: error.message });
+    console.error('getProfitByCommissionType error:', error);
+    return res.status(500).json({ error: 'Failed to build commission mix', detail: error.message });
   }
 }
 

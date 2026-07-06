@@ -5,6 +5,7 @@ import {
   getProfitMonthly,
   getProfitByAgency,
   getProfitByClient,
+  getProfitByCommissionType,
   getProfitClientBreakdown,
   getProfitDetails,
 } from '../controllers/profit.controller.js';
@@ -19,6 +20,7 @@ router.get('/summary', getProfitSummary);
 router.get('/monthly', getProfitMonthly);
 router.get('/by-agency', getProfitByAgency);
 router.get('/by-client', getProfitByClient);
+router.get('/by-commission-type', getProfitByCommissionType);
 router.get('/client-breakdown', getProfitClientBreakdown);
 router.get('/details', getProfitDetails);
 
