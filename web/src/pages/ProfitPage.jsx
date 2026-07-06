@@ -4,7 +4,7 @@ import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  ComposedChart, Line, Area, AreaChart, PieChart, Pie, Legend, LabelList,
+  Area, AreaChart, PieChart, Pie, LabelList,
 } from 'recharts';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -17,6 +17,8 @@ const fmtShort = (v) => {
   if (a >= 1e3) return Math.round(n / 1e3) + 'K';
   return String(Math.round(n));
 };
+// Compact LKR in millions for the headline cards (full value shown on hover / export).
+const fmtLKRm = (v) => 'LKR ' + ((Number(v) || 0) / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'M';
 const fmtPct = (v) => `${(Number(v) || 0).toFixed(2)}%`;
 const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return `${MONTHS[+m - 1]} ${y}`; };
 const margin = (profit, revenue) => (revenue > 0 ? (profit / revenue) * 100 : 0);
@@ -40,7 +42,6 @@ const MIX_META = {
   AOR: { label: 'AOR (fixed fee)', color: '#9A5B00' },
   NONE: { label: 'No commission', color: '#93A0B5' },
 };
-const CLIENT_BAR = '#2E6FCB';
 
 export default function ProfitPage() {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -165,8 +166,9 @@ export default function ProfitPage() {
     return rows;
   }, [monthly, year]);
 
-  const topClients = useMemo(
-    () => byClient.slice(0, 10).map((c) => ({ ...c, marginPct: margin(c.profit, c.revenue) })).reverse(),
+  // All clients (backend already sorts by profit desc), with margin for the list.
+  const clientsRanked = useMemo(
+    () => byClient.map((c) => ({ ...c, marginPct: margin(c.profit, c.revenue) })),
     [byClient],
   );
 
@@ -176,12 +178,6 @@ export default function ProfitPage() {
     })),
     [commissionMix],
   );
-
-  const bestMonth = useMemo(() => {
-    const active = monthlyData.filter((m) => m.profit > 0);
-    if (!active.length) return null;
-    return active.reduce((a, b) => (b.profit > a.profit ? b : a));
-  }, [monthlyData]);
 
   const exportExcel = async () => {
     setExporting(true);
@@ -217,9 +213,12 @@ export default function ProfitPage() {
   const tooltipStyle = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 };
   const totalMixProfit = mixData.reduce((s, t) => s + t.profit, 0);
   // YoY compares the same month window (Jan..latest data month) against last year.
+  const throughMonth = summary?.comparisonThroughMonth ? MONTHS[parseInt(summary.comparisonThroughMonth, 10) - 1] : 'Dec';
   const yoyLabel = summary
-    ? `vs ${summary.prevYear}${summary.comparisonThroughMonth && summary.comparisonThroughMonth !== '12' ? ` (Jan–${MONTHS[parseInt(summary.comparisonThroughMonth, 10) - 1]})` : ''}`
+    ? `vs ${summary.prevYear}${summary.comparisonThroughMonth && summary.comparisonThroughMonth !== '12' ? ` (Jan–${throughMonth})` : ''}`
     : '';
+  // The data window covered, e.g. "Jan–Jun 2026" for a mid-year selection.
+  const periodLabel = summary ? `Jan–${throughMonth} ${year}` : `${year}`;
 
   return (
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
@@ -274,31 +273,25 @@ export default function ProfitPage() {
 
       {loading && !summary ? <OrbitLoader label="Loading profit…" /> : (
         <>
-          {/* KPI cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
-            <Card label="Total Revenue" value={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
-            <Card label="Total Profit" value={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
-            <Card label="Blended Commission" value={fmtPct(summary?.blendedCommissionPct)} sub="Profit / Revenue" />
-            <Card label="Active Clients" value={String(summary?.clientCount ?? 0)} sub="With actual spend" />
-            <Card label="Avg Profit / Client" value={fmtLKR(summary?.avgProfitPerClient)} sub={`${summary?.clientCount ?? 0} client(s)`} />
-            <Card label="Best Month" value={bestMonth ? fmtLKR(bestMonth.profit) : '—'} sub={bestMonth ? `${bestMonth.label} ${year} · profit` : 'No data'} />
+          {/* KPI cards — Revenue & Profit (in millions; full value on hover / in export) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 340px))', gap: 14, marginBottom: 16 }}>
+            <Card label="Total Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
+            <Card label="Total Profit" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
           </div>
 
-          {/* Monthly Revenue & Profit (composed) */}
-          <Panel title="Monthly Revenue & Profit" note={`${year} · bars = value, line = blended margin %`}>
-            {monthlyData.every((m) => !m.revenue && !m.profit) ? <Empty /> : (
+          {/* Monthly Profit (per schedule month) */}
+          <Panel title="Monthly Profit" note={`${periodLabel} · profit per schedule month`}>
+            {monthlyData.every((m) => !m.profit) ? <Empty /> : (
               <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={monthlyData} margin={{ top: 10, right: 12, left: 8, bottom: 4 }}>
+                <BarChart data={monthlyData} margin={{ top: 22, right: 12, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                  <YAxis yAxisId="l" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
-                  <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: C.margin }} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v)}%`} width={40} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => (n === 'Margin %' ? [fmtPct(v), n] : [fmtLKR(v), n])} labelStyle={{ fontWeight: 700 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="l" dataKey="revenue" name="Revenue" fill={C.revenue} fillOpacity={0.28} radius={[3, 3, 0, 0]} maxBarSize={38} />
-                  <Bar yAxisId="l" dataKey="profit" name="Profit" fill={C.profit} radius={[3, 3, 0, 0]} maxBarSize={38} />
-                  <Line yAxisId="r" type="monotone" dataKey="marginPct" name="Margin %" stroke={C.margin} strokeWidth={2.4} dot={{ r: 3 }} connectNulls />
-                </ComposedChart>
+                  <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtLKR(v), 'Profit']} labelStyle={{ fontWeight: 700 }} cursor={{ fill: 'rgba(21,129,75,0.06)' }} />
+                  <Bar dataKey="profit" name="Profit" fill={C.profit} radius={[4, 4, 0, 0]} maxBarSize={48}>
+                    <LabelList dataKey="profit" position="top" formatter={(v) => (v > 0 ? fmtShort(v) : '')} style={{ fontSize: 10.5, fill: 'var(--ink)', fontWeight: 700 }} />
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             )}
           </Panel>
@@ -356,7 +349,7 @@ export default function ProfitPage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
             {/* Profit by Agency */}
-            <Panel title="Profit by Agency" noMargin>
+            <Panel title="Profit by Agency" note={periodLabel} noMargin>
               {byAgency.length === 0 ? <Empty /> : (
                 <ResponsiveContainer width="100%" height={Math.max(170, byAgency.length * 48 + 30)}>
                   <BarChart data={byAgency} layout="vertical" margin={{ top: 4, right: 60, left: 8, bottom: 4 }}>
@@ -372,22 +365,30 @@ export default function ProfitPage() {
               )}
             </Panel>
 
-            {/* Top clients by profit */}
-            <Panel title="Top Clients by Profit" note={`Top ${topClients.length}`} noMargin>
-              {topClients.length === 0 ? <Empty /> : (
-                <ResponsiveContainer width="100%" height={Math.max(170, topClients.length * 30 + 30)}>
-                  <BarChart data={topClients} layout="vertical" margin={{ top: 4, right: 60, left: 8, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
-                    <YAxis type="category" dataKey="client" tick={{ fontSize: 11, fill: 'var(--ink)' }} tickLine={false} axisLine={false} width={130} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v, n, p) => [`${fmtLKR(v)} · ${fmtPct(p.payload.marginPct)} margin`, 'Profit']} />
-                    <Bar dataKey="profit" radius={[0, 4, 4, 0]} maxBarSize={20} fill={CLIENT_BAR}>
-                      <LabelList dataKey="profit" position="right" formatter={fmtShort} style={{ fontSize: 10.5, fill: 'var(--ink)', fontWeight: 700 }} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            {/* Profit by Client — every client, ranked by profit */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px 10px' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Profit by Client</span>
+                <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}> · {clientsRanked.length} client(s) · {periodLabel}</span>
+              </div>
+              {clientsRanked.length === 0 ? <div style={{ padding: 20 }}><Empty /></div> : (
+                <div style={{ maxHeight: 380, overflow: 'auto' }}>
+                  <table className="tbl" style={{ margin: 0, fontSize: 12.5 }}>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th>Client</th><th style={{ textAlign: 'right' }}>Revenue</th><th style={{ textAlign: 'right' }}>Profit</th></tr></thead>
+                    <tbody>
+                      {clientsRanked.map((c, i) => (
+                        <tr key={c.clientId}>
+                          <td style={{ color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</td>
+                          <td className="strong">{c.client}<div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{c.agency}</div></td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(c.revenue)}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(c.profit)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </Panel>
+            </div>
           </div>
 
           {/* Detailed Breakdown — per client (year totals), expand for months */}
@@ -448,7 +449,7 @@ export default function ProfitPage() {
   );
 }
 
-function Card({ label, value, sub, yoy, yoyLabel, accent }) {
+function Card({ label, value, title, sub, yoy, yoyLabel, accent }) {
   const hasYoy = yoy != null;
   const up = (yoy || 0) >= 0;
   return (
@@ -462,7 +463,8 @@ function Card({ label, value, sub, yoy, yoyLabel, accent }) {
           </span>
         )}
       </div>
-      <div className="mono" style={{ fontSize: 24, fontWeight: 700, color: 'var(--ink)', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div className="mono" style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {title && <div className="mono" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{title}</div>}
       {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{sub}{hasYoy && yoyLabel ? ` · ${yoyLabel}` : ''}</div>}
     </div>
   );
