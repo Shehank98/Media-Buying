@@ -89,9 +89,16 @@ export default function Layout() {
     if (!notifPrimed.current) { notifPrimed.current = true; return; } // seed only on first load
     if (Notification.permission !== 'granted' || !unseenNew.length) return;
     // Show newest first, cap at 3 so a burst doesn't flood the OS tray.
+    // Branded as "Ogilvy Trading" (header) with the event + message in the body.
     unseenNew.slice(0, 3).forEach(n => {
       try {
-        const note = new Notification(n.title || 'Ogilvy Orbit', { body: n.message || '', tag: `orbit-${n.id}` });
+        const body = [n.title, n.message].filter(Boolean).join(' — ');
+        const note = new Notification('Ogilvy Trading', {
+          body: body || 'You have a new notification',
+          icon: '/notification-icon.png',
+          badge: '/notification-icon.png',
+          tag: `orbit-${n.id}`,
+        });
         note.onclick = () => { window.focus(); const to = notifLink(n); if (to) navigate(to); note.close(); };
       } catch { /* ignore */ }
     });
