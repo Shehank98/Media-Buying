@@ -3,7 +3,7 @@ import api from '../lib/api';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Area, AreaChart, PieChart, Pie, LabelList,
 } from 'recharts';
 
@@ -36,6 +36,8 @@ const C = {
   margin: '#E85D24',
   navy: '#0A1729',
 };
+// Fixed categorical order for the client-contribution donut (9th+ folds to "Other").
+const CAT = ['#1F5BB5', '#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#0E7490'];
 // Commission-mix bucket meta.
 const MIX_META = {
   COMMISSION: { label: 'Commission %', color: '#1F5BB5' },
@@ -179,6 +181,20 @@ export default function ProfitPage() {
     [commissionMix],
   );
 
+  // Profit contribution donut — top 8 clients by profit, the rest folded to "Other".
+  const clientDonut = useMemo(() => {
+    const sorted = byClient.filter((c) => c.profit > 0).slice().sort((a, b) => b.profit - a.profit);
+    const top = sorted.slice(0, 8).map((c, i) => ({ name: c.client, profit: c.profit, color: CAT[i % CAT.length] }));
+    const restProfit = sorted.slice(8).reduce((s, c) => s + c.profit, 0);
+    if (restProfit > 0) top.push({ name: `Other (${sorted.length - 8})`, profit: Math.round(restProfit * 100) / 100, color: '#C7D0DD' });
+    return top;
+  }, [byClient]);
+  const totalClientProfit = clientDonut.reduce((s, c) => s + c.profit, 0);
+  const clientTotals = useMemo(
+    () => byClient.reduce((a, c) => ({ revenue: a.revenue + c.revenue, profit: a.profit + c.profit }), { revenue: 0, profit: 0 }),
+    [byClient],
+  );
+
   const exportExcel = async () => {
     setExporting(true);
     try {
@@ -274,9 +290,13 @@ export default function ProfitPage() {
       {loading && !summary ? <OrbitLoader label="Loading profit…" /> : (
         <>
           {/* KPI cards — Revenue & Profit (in millions; full value on hover / in export) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 340px))', gap: 14, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14, marginBottom: 16 }}>
             <Card label="Total Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
             <Card label="Total Profit" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
+            <Card label="Blended Commission" value={fmtPct(summary?.blendedCommissionPct)} sub="Profit ÷ revenue" accent={C.margin} />
+            <Card label="Active Clients" value={String(summary?.clientCount ?? 0)} plain sub="With confirmed spend" />
+            <Card label="Avg Profit / Client" value={fmtLKRm(summary?.avgProfitPerClient)} title={fmtLKR(summary?.avgProfitPerClient)} sub="Mean across clients" />
+            <Card label="Top Client" value={clientsRanked[0]?.client || '—'} valueSize={16} plain sub={clientsRanked[0] ? `${fmtLKRm(clientsRanked[0].profit)} profit` : 'No data'} />
           </div>
 
           {/* Monthly Profit (per schedule month) */}
@@ -348,6 +368,48 @@ export default function ProfitPage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
+            {/* Profit Margin by Month */}
+            <Panel title="Profit Margin by Month" note="Profit ÷ revenue per month" noMargin>
+              {monthlyData.every((m) => m.marginPct == null) ? <Empty /> : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={monthlyData} margin={{ top: 12, right: 16, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} width={44} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtPct(v), 'Margin']} labelStyle={{ fontWeight: 700 }} />
+                    <Line type="monotone" dataKey="marginPct" stroke={C.margin} strokeWidth={2.4} dot={{ r: 3, fill: C.margin, stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 5 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </Panel>
+
+            {/* Profit Contribution by Client */}
+            <Panel title="Profit Contribution by Client" note="Top 8 by profit share" noMargin>
+              {clientDonut.length === 0 ? <Empty /> : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <ResponsiveContainer width="55%" height={220} minWidth={180}>
+                    <PieChart>
+                      <Pie data={clientDonut} dataKey="profit" nameKey="name" cx="50%" cy="50%" innerRadius={54} outerRadius={90} paddingAngle={2}>
+                        {clientDonut.map((c, i) => <Cell key={i} fill={c.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${fmtLKR(v)} (${((v / (totalClientProfit || 1)) * 100).toFixed(1)}%)`, n]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ flex: 1, minWidth: 150, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {clientDonut.map((c, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, background: c.color, flexShrink: 0 }} />
+                        <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.name}>{c.name}</span>
+                        <span className="mono" style={{ fontWeight: 700, color: 'var(--ink)' }}>{((c.profit / (totalClientProfit || 1)) * 100).toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Panel>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
             {/* Profit by Agency */}
             <Panel title="Profit by Agency" note={periodLabel} noMargin>
               {byAgency.length === 0 ? <Empty /> : (
@@ -385,6 +447,14 @@ export default function ProfitPage() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700 }}>
+                        <td></td>
+                        <td style={{ fontWeight: 700 }}>Total</td>
+                        <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(clientTotals.revenue)}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtLKR(clientTotals.profit)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
@@ -449,7 +519,7 @@ export default function ProfitPage() {
   );
 }
 
-function Card({ label, value, title, sub, yoy, yoyLabel, accent }) {
+function Card({ label, value, title, sub, yoy, yoyLabel, accent, valueSize = 26, plain }) {
   const hasYoy = yoy != null;
   const up = (yoy || 0) >= 0;
   return (
@@ -463,7 +533,7 @@ function Card({ label, value, title, sub, yoy, yoyLabel, accent }) {
           </span>
         )}
       </div>
-      <div className="mono" style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div className={plain ? '' : 'mono'} title={plain ? String(value) : undefined} style={{ fontSize: valueSize, fontWeight: 700, color: 'var(--ink)', marginTop: 8, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
       {title && <div className="mono" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>{title}</div>}
       {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{sub}{hasYoy && yoyLabel ? ` · ${yoyLabel}` : ''}</div>}
     </div>
