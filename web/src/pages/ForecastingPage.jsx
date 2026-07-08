@@ -34,19 +34,6 @@ const fmtShortLKR = (v) => {
 const fmtPct = (v) => (v == null ? '-' : `${v >= 0 ? '' : ''}${Number(v).toFixed(1)}%`);
 const monthName = (m) => MONTHS[m - 1] || m;
 
-// Pick each toggle-able medium's initial entry mode from existing amounts:
-// "total" when the medium's total bucket is filled (or there are no per-channel
-// rows to split into), otherwise per-channel.
-function deriveModes(categories, seed) {
-  const modes = {};
-  for (const cat of categories) {
-    if (!cat.totalChannel) continue;
-    const totalFilled = parseFloat(seed[cat.totalChannel.id]?.amount) > 0;
-    const anyChannelFilled = cat.channels.some(ch => parseFloat(seed[ch.id]?.amount) > 0);
-    modes[cat.category] = (cat.channels.length === 0 || (totalFilled && !anyChannelFilled)) ? 'total' : 'channel';
-  }
-  return modes;
-}
 // Full LKR amount with thousands separators + 2 decimals (Overall Budget worksheet).
 const fmtAmt = (v) => (v == null || v === '' ? '-' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 // A client's commission cell: "4%" for a percentage or "LKR 50,000.00" for an AOR fee.
@@ -1124,7 +1111,6 @@ export default function ForecastingPage() {
   const [active, setActive] = useState(null); // the client being edited/viewed
   const [categories, setCategories] = useState([]);
   const [amounts, setAmounts] = useState({}); // channelMasterId -> { amount, notes }
-  const [catMode, setCatMode] = useState({}); // category -> 'channel' | 'total'
   const [entryLoading, setEntryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [entryError, setEntryError] = useState('');
@@ -1178,33 +1164,33 @@ export default function ForecastingPage() {
       // Stored in millions; show group heads the full rupee value.
       (enRes.data.items || []).forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
       setAmounts(seed);
-      setCatMode(deriveModes(cats, seed));
     } catch {
       setEntryError('Failed to load the forecast.');
     } finally {
       setEntryLoading(false);
     }
   };
-  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); setCatMode({}); };
+  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); };
 
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
+
+  // The rows shown for a medium: its real channels plus one "Unspecified" catch-all
+  // (the medium's total bucket) at the end. The Unspecified amount is ADDITIVE —
+  // it just counts toward the medium's total for the part the head can't split by
+  // channel yet.
+  const entryRows = (cat) => (cat.totalChannel ? [...cat.channels, { ...cat.totalChannel, name: 'Unspecified', unspecified: true }] : cat.channels);
 
   const filteredCategories = useMemo(() => {
     if (!channelSearch.trim()) return categories;
     const q = channelSearch.toLowerCase();
     return categories
       .map(cat => ({ ...cat, channels: cat.channels.filter(ch => ch.name.toLowerCase().includes(q)) }))
-      // Keep a category if a channel matches, or it can be entered as a total.
+      // Keep a category if a channel matches, or it has an Unspecified row.
       .filter(cat => cat.channels.length > 0 || cat.totalChannel);
   }, [categories, channelSearch]);
 
-  const modeOf = (cat) => (cat.totalChannel ? (catMode[cat.category] || 'channel') : 'channel');
-  // Effective LKR total for a category, honouring its entry mode (so a lingering
-  // per-channel value in the other mode never double-counts).
-  const effectiveCatTotal = (cat) => {
-    if (modeOf(cat) === 'total') return parseFloat(amounts[cat.totalChannel.id]?.amount) || 0;
-    return cat.channels.reduce((s, ch) => s + (parseFloat(amounts[ch.id]?.amount) || 0), 0);
-  };
+  // Medium subtotal = every channel filled + the Unspecified amount (additive).
+  const catTotal = (cat) => entryRows(cat).reduce((s, ch) => s + (parseFloat(amounts[ch.id]?.amount) || 0), 0);
 
   // Comma-grouped display while typing; raw digits/decimal kept in state.
   const fmtAmountInput = (v) => (v === undefined || v === null || v === '' || Number.isNaN(Number(v)))
@@ -1227,7 +1213,6 @@ export default function ForecastingPage() {
       const seed = {};
       data.items.forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
       setAmounts(seed);
-      setCatMode(deriveModes(categories, seed));
       setSavedMsg(`Copied ${MONTHS[data.month - 1]} ${data.year} - edit the amounts and submit.`);
     } catch (err) {
       setEntryError(err.response?.data?.error || 'Failed to copy previous forecast.');
@@ -1236,40 +1221,31 @@ export default function ForecastingPage() {
     }
   };
 
-  // Per-medium subtotals (TV/Radio/Print/…) for the entry summary, computed from
-  // the full category list (mode-aware) so the breakdown is stable while
-  // searching channels and never double-counts a total against its channels.
+  // Per-medium subtotals (TV/Radio/Print/…) for the entry summary — each is the
+  // sum of that medium's channels + its Unspecified row (additive).
   const categoryTotals = useMemo(() =>
-    categories.map(cat => ({ category: cat.category, total: effectiveCatTotal(cat) })).filter(ct => ct.total > 0)
+    categories.map(cat => ({ category: cat.category, total: catTotal(cat) })).filter(ct => ct.total > 0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  , [categories, amounts, catMode]);
+  , [categories, amounts]);
 
   const total = useMemo(() => categoryTotals.reduce((s, ct) => s + ct.total, 0), [categoryTotals]);
 
   const submit = async () => {
     setSaving(true); setEntryError(''); setSavedMsg('');
     try {
-      // Group heads type the full rupee amount; store it in millions. Cleared or
-      // zeroed rows are still sent (as 0) so the server removes any existing entry
-      // for them — otherwise clearing a channel would silently leave the old value.
-      // Build the rows mode-aware: a medium entered as a Total sends its bucket
-      // amount and ZEROES its per-channel rows (and vice-versa), so a medium is
-      // only ever counted one way — no double counting.
+      // Group heads type the full rupee amount; store it in millions. Every row
+      // (each channel + the Unspecified catch-all) is sent, including cleared ones
+      // as 0 so the server removes any existing entry — otherwise clearing a
+      // channel would silently leave the old value. Channels and Unspecified are
+      // additive: the medium's forecast = its channels + its Unspecified amount.
       const toM = (v) => { const raw = parseFloat(v?.amount); return Number.isNaN(raw) ? 0 : raw / 1e6; };
-      const pairs = []; // [channelMasterId, amountMillions, notes]
+      const items = [];
       for (const cat of categories) {
-        if (cat.totalChannel) {
-          const totalMode = modeOf(cat) === 'total';
-          pairs.push([cat.totalChannel.id, totalMode ? toM(amounts[cat.totalChannel.id]) : 0, amounts[cat.totalChannel.id]?.notes]);
-          cat.channels.forEach(ch => pairs.push([ch.id, totalMode ? 0 : toM(amounts[ch.id]), amounts[ch.id]?.notes]));
-        } else {
-          cat.channels.forEach(ch => pairs.push([ch.id, toM(amounts[ch.id]), amounts[ch.id]?.notes]));
+        for (const ch of entryRows(cat)) {
+          items.push({ channelMasterId: ch.id, amountMillions: toM(amounts[ch.id]), notes: amounts[ch.id]?.notes });
         }
       }
-      const items = pairs
-        .filter(([id]) => Number.isInteger(id))
-        .map(([channelMasterId, amountMillions, notes]) => ({ channelMasterId, amountMillions, notes }));
-      await api.post('/forecasting/submit', { clientId: active.id, year: period.year, month: period.month, items });
+      await api.post('/forecasting/submit', { clientId: active.id, year: period.year, month: period.month, items: items.filter(it => Number.isInteger(it.channelMasterId)) });
       setSavedMsg('Forecast saved.');
       fetchClients();
       setTimeout(closeEntry, 700);
@@ -1440,40 +1416,29 @@ export default function ForecastingPage() {
               {entryLoading ? <OrbitLoader label="Loading…" /> : (
                 <>
                   {categories.length > 0 && (
+                    <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 8, padding: '9px 13px', fontSize: 12.5, color: '#9A5B00', marginBottom: 14, lineHeight: 1.5 }}>
+                      <Icon name="clock" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                      Enter each channel where you can. If you don’t yet know the split for a medium, put the amount in its <strong>Unspecified</strong> row — it still counts toward that medium’s total. Please finalise the per-channel breakdown <strong>before the 15th</strong>.
+                    </div>
+                  )}
+                  {categories.length > 0 && (
                     <div style={{ position: 'relative', marginBottom: 16 }}>
                       <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
                       <input className="input" placeholder="Search channels…" value={channelSearch} onChange={e => setChannelSearch(e.target.value)} style={{ paddingLeft: 32 }} />
                     </div>
                   )}
-                  {filteredCategories.map(cat => {
-                    const isTotal = modeOf(cat) === 'total';
-                    const rows = cat.totalChannel && isTotal ? [cat.totalChannel] : cat.channels;
-                    return (
+                  {filteredCategories.map(cat => (
                     <div key={cat.category} style={{ marginBottom: 18 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 6px 2px' }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5' }}>{cat.category}</div>
-                        {cat.totalChannel && cat.channels.length > 0 && (
-                          <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
-                            {['channel', 'total'].map(mode => (
-                              <button
-                                key={mode} type="button"
-                                onClick={() => setCatMode(p => ({ ...p, [cat.category]: mode }))}
-                                style={{
-                                  fontSize: 11, fontWeight: 700, padding: '3px 10px', border: 'none', cursor: 'pointer',
-                                  background: (catMode[cat.category] || 'channel') === mode ? 'var(--navy-100, #1F5BB5)' : 'transparent',
-                                  color: (catMode[cat.category] || 'channel') === mode ? '#fff' : 'var(--muted)',
-                                }}
-                              >{mode === 'channel' ? 'By channel' : 'Total only'}</button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
                       <table className="tbl" style={{ fontSize: 12.5 }}>
-                        <thead><tr><th style={{ width: '42%', position: 'static' }}>{isTotal ? 'Medium' : 'Channel'}</th><th style={{ width: '26%', position: 'static' }}>Amount (LKR)</th><th style={{ position: 'static' }}>Notes</th></tr></thead>
+                        <thead><tr><th style={{ width: '42%', position: 'static' }}>Channel</th><th style={{ width: '26%', position: 'static' }}>Amount (LKR)</th><th style={{ position: 'static' }}>Notes</th></tr></thead>
                         <tbody>
-                          {rows.map(ch => (
+                          {entryRows(cat).map(ch => (
                             <tr key={ch.id}>
-                              <td>{ch.name}</td>
+                              <td style={ch.unspecified ? { fontStyle: 'italic', color: 'var(--muted)' } : undefined}>
+                                {ch.name}
+                                {ch.unspecified && <span style={{ fontStyle: 'normal', fontSize: 10.5, color: '#93A0B5', marginLeft: 6 }}>· counts as {cat.category}</span>}
+                              </td>
                               <td>
                                 <input className="input" type="text" inputMode="decimal" value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder="e.g. 100,000,000" style={{ height: 32, fontSize: 12.5 }} />
                               </td>
@@ -1482,14 +1447,10 @@ export default function ForecastingPage() {
                               </td>
                             </tr>
                           ))}
-                          {rows.length === 0 && (
-                            <tr><td colSpan={3} style={{ color: 'var(--muted)', fontSize: 12 }}>No channels — use “Total only”.</td></tr>
-                          )}
                         </tbody>
                       </table>
                     </div>
-                    );
-                  })}
+                  ))}
                   {categories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No active channels configured.</div>}
                   {categories.length > 0 && filteredCategories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No channels match "{channelSearch}".</div>}
                 </>
