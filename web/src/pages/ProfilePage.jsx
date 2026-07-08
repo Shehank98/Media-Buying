@@ -31,14 +31,14 @@ const LABEL_STYLE = {
 
 const ROLE_PILL_COLORS = {
   SUPER_ADMIN: { color: '#6B3FB5', background: '#E8DEF8' },
-  MANAGER: { color: '#1F5BB5', background: '#EDF3FD' },
+  ADMIN_LEVEL_1: { color: '#1F5BB5', background: '#EDF3FD' },
   GROUP_HEAD: { color: '#D9521C', background: '#FDF1EB' },
   PLANNER: { color: '#3B4A63', background: '#EEF0F3' },
 };
 
 const ROLE_LABELS = {
   SUPER_ADMIN: 'Super Admin',
-  MANAGER: 'Manager',
+  ADMIN_LEVEL_1: 'ADMIN_LEVEL_1',
   GROUP_HEAD: 'Group Head',
   PLANNER: 'Planner',
 };
