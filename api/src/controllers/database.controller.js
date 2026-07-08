@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { commissionSnapshot } from '../utils/commission.js';
+import { bestMatch, rankMatches, clusterNames } from '../utils/fuzzy.js';
 
 // ── helpers ──
 
@@ -750,6 +751,255 @@ function combineYearMonth(year, month) {
   return normalizeMonthServer(m);
 }
 
+// ── Bulk-import reconciliation ────────────────────────────────────────────────
+// Given the distinct client & channel names in an uploaded file, tell the client
+// which resolve exactly (name or alias), which are ambiguous, and which don't
+// match — with a fuzzy suggestion for each. Unmatched CHANNEL names are clustered
+// (likely variants of the same channel grouped together) for one-tap review.
+export async function reconcileImport(req, res) {
+  try {
+    const clientNames = Array.isArray(req.body.clientNames) ? req.body.clientNames : [];
+    const channelNames = Array.isArray(req.body.channelNames) ? req.body.channelNames : [];
+
+    const [clients, agencies, channels] = await Promise.all([
+      prisma.client.findMany({ select: { id: true, name: true, agencyId: true, aliases: true, isActive: true } }),
+      prisma.agency.findMany({ select: { id: true, name: true } }),
+      prisma.channelMaster.findMany({ select: { id: true, name: true, medium: true, aliases: true, isActive: true } }),
+    ]);
+    const agencyName = new Map(agencies.map((a) => [a.id, a.name]));
+    const shapeClient = (c, extra = {}) => ({ id: c.id, name: c.name, agencyId: c.agencyId, agencyName: agencyName.get(c.agencyId) || '', ...extra });
+    const shapeChannel = (ch, extra = {}) => ({ id: ch.id, name: ch.name, medium: ch.medium, isActive: ch.isActive, ...extra });
+
+    // Exact index (norm = trim+lower, matching how the importer resolves).
+    const clientExact = new Map();
+    for (const c of clients) {
+      for (const key of [c.name, ...(c.aliases || [])]) {
+        const k = norm(key);
+        if (!clientExact.has(k)) clientExact.set(k, []);
+        clientExact.get(k).push(c);
+      }
+    }
+    const clientCand = clients.map((c) => ({ id: c.id, name: c.name, aliases: c.aliases, agencyId: c.agencyId }));
+
+    const clientResults = clientNames.map(({ raw, count }) => {
+      const uniq = [...new Map((clientExact.get(norm(raw)) || []).map((h) => [h.id, h])).values()];
+      if (uniq.length === 1) return { raw, count, status: 'matched', match: shapeClient(uniq[0]) };
+      if (uniq.length > 1) return { raw, count, status: 'ambiguous', options: uniq.map((c) => shapeClient(c)) };
+      const bm = bestMatch(raw, clientCand);
+      return {
+        raw, count, status: 'unmatched',
+        suggestion: bm ? shapeClient(bm.candidate, { score: bm.score }) : null,
+        options: rankMatches(raw, clientCand, 8).map((m) => shapeClient(m, { score: m.score })),
+      };
+    });
+
+    const channelExact = new Map();
+    for (const ch of channels) {
+      for (const key of [ch.name, ...(ch.aliases || [])]) {
+        const k = norm(key);
+        if (!channelExact.has(k)) channelExact.set(k, ch);
+      }
+    }
+    const chCand = channels.map((ch) => ({ id: ch.id, name: ch.name, aliases: ch.aliases, medium: ch.medium, isActive: ch.isActive }));
+
+    const matchedChannels = [];
+    const unmatched = [];
+    for (const { raw, count } of channelNames) {
+      const hit = channelExact.get(norm(raw));
+      if (hit) matchedChannels.push({ raw, count, match: shapeChannel(hit) });
+      else unmatched.push({ raw, count });
+    }
+    const channelClusters = clusterNames(unmatched, 0.8).map((cl) => {
+      const rep = cl.slice().sort((a, b) => b.count - a.count)[0];
+      const bm = bestMatch(rep.raw, chCand);
+      return {
+        variants: cl,
+        suggestion: bm ? shapeChannel(bm.candidate, { score: bm.score }) : null,
+        options: rankMatches(rep.raw, chCand, 8).map((m) => shapeChannel(m, { score: m.score })),
+      };
+    });
+
+    const hasIssues = clientResults.some((r) => r.status !== 'matched') || channelClusters.length > 0;
+    return res.json({ clients: clientResults, matchedChannels, channelClusters, hasIssues });
+  } catch (error) {
+    console.error('reconcileImport error:', error);
+    return res.status(500).json({ error: 'Failed to reconcile import', detail: error.message });
+  }
+}
+
+// Apply the user's reconciliation choices BEFORE the actual insert:
+//  - learn each raw→system mapping as an alias (client.aliases / channelMaster.aliases)
+//    so this and future imports resolve it automatically;
+//  - file a ClientRequest / ChannelRequest for each "request new" and HOLD the
+//    file's rows that depend on it (PendingImportRow) until an admin approves.
+// Returns the raw names now held (so the caller drops those rows) + request ids.
+export async function applyImportReconciliation(req, res) {
+  try {
+    const user = req.user;
+    const fileName = String(req.body.fileName || 'import');
+    const clientMappings = Array.isArray(req.body.clientMappings) ? req.body.clientMappings : []; // [{ raw, clientId }]
+    const channelMappings = Array.isArray(req.body.channelMappings) ? req.body.channelMappings : []; // [{ raw, channelId }]
+    const newClients = Array.isArray(req.body.newClients) ? req.body.newClients : []; // [{ raw, name, agencyId, notes }]
+    const newChannels = Array.isArray(req.body.newChannels) ? req.body.newChannels : []; // [{ raw, name, medium, notes }]
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : []; // full parsed rows (reconciled names optional)
+
+    // 1) Learn aliases. Skip a raw that already equals the target's name/alias.
+    for (const m of channelMappings) {
+      const chId = parseInt(m.channelId); const raw = String(m.raw || '').trim();
+      if (!Number.isInteger(chId) || !raw) continue;
+      const ch = await prisma.channelMaster.findUnique({ where: { id: chId }, select: { name: true, aliases: true } });
+      if (!ch) continue;
+      const known = new Set([norm(ch.name), ...(ch.aliases || []).map(norm)]);
+      if (!known.has(norm(raw))) await prisma.channelMaster.update({ where: { id: chId }, data: { aliases: { push: raw } } });
+    }
+    for (const m of clientMappings) {
+      const cId = parseInt(m.clientId); const raw = String(m.raw || '').trim();
+      if (!Number.isInteger(cId) || !raw) continue;
+      const c = await prisma.client.findUnique({ where: { id: cId }, select: { name: true, aliases: true } });
+      if (!c) continue;
+      const known = new Set([norm(c.name), ...(c.aliases || []).map(norm)]);
+      if (!known.has(norm(raw))) await prisma.client.update({ where: { id: cId }, data: { aliases: { push: raw } } });
+    }
+
+    // 2) File "request new" records; map each raw → request id.
+    const clientReqByRaw = new Map();
+    for (const nc of newClients) {
+      const name = String(nc.name || nc.raw || '').trim();
+      if (!name) continue;
+      const r = await prisma.clientRequest.create({
+        data: { requestedById: user.id, clientName: name, agencyId: nc.agencyId ? parseInt(nc.agencyId) : null, notes: nc.notes ? String(nc.notes).slice(0, 500) : `Bulk import: ${fileName}` },
+      });
+      clientReqByRaw.set(norm(nc.raw), r.id);
+    }
+    const channelReqByRaw = new Map();
+    for (const nch of newChannels) {
+      const name = String(nch.name || nch.raw || '').trim();
+      const category = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'].includes(nch.medium) ? nch.medium : 'TV';
+      if (!name) continue;
+      const r = await prisma.channelRequest.create({
+        data: { requestedById: user.id, channelName: name, category, notes: nch.notes ? String(nch.notes).slice(0, 500) : `Bulk import: ${fileName}` },
+      });
+      channelReqByRaw.set(norm(nch.raw), r.id);
+    }
+    await notifyAdminsOfRequests(clientReqByRaw.size + channelReqByRaw.size, fileName).catch(() => {});
+
+    // 3) Hold rows that reference a pending new client and/or channel.
+    let held = 0;
+    if (clientReqByRaw.size || channelReqByRaw.size) {
+      const heldData = [];
+      for (const r of rows) {
+        const cReq = clientReqByRaw.get(norm(r.client ?? r.clientName)) || null;
+        const chReq = channelReqByRaw.get(norm(r.channel ?? r.channelName)) || null;
+        if (cReq || chReq) heldData.push({ fileName, rowData: r, clientReqId: cReq, channelReqId: chReq, createdById: user.id });
+      }
+      if (heldData.length) { await prisma.pendingImportRow.createMany({ data: heldData }); held = heldData.length; }
+    }
+
+    return res.json({
+      message: 'Reconciliation applied',
+      aliasesAdded: { clients: clientMappings.length, channels: channelMappings.length },
+      requests: { clients: clientReqByRaw.size, channels: channelReqByRaw.size },
+      held,
+      // Raw names now pending (caller excludes their rows from the immediate import).
+      pendingClientNames: [...clientReqByRaw.keys()],
+      pendingChannelNames: [...channelReqByRaw.keys()],
+    });
+  } catch (error) {
+    console.error('applyImportReconciliation error:', error);
+    return res.status(500).json({ error: 'Failed to apply reconciliation', detail: error.message });
+  }
+}
+
+// Best-effort notify SUPER_ADMINs that bulk import filed new client/channel requests.
+async function notifyAdminsOfRequests(n, fileName) {
+  if (!n) return;
+  const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
+  await prisma.notification.createMany({
+    data: admins.map((a) => ({ userId: a.id, type: 'IMPORT_REQUEST', title: `${n} new name request(s) from import`, message: `Bulk import "${fileName}" needs ${n} new client/channel(s) approved before its held rows import.`, link: '/admin' })),
+  });
+}
+
+// Resolve a batch of reconciled parsed rows (client/channel names, already mapped
+// or newly created) and insert them as ScheduleLogs under a fresh UploadBatch.
+// Returns the number inserted. Used to release held import rows after approval.
+async function insertResolvedRows(rows, userId, fileName) {
+  if (!rows.length) return 0;
+  const [agencies, clients, channels] = await Promise.all([
+    prisma.agency.findMany({ select: { id: true, name: true } }),
+    prisma.client.findMany({ select: { id: true, name: true, agencyId: true, aliases: true, commissionType: true, commissionValue: true } }),
+    prisma.channelMaster.findMany({ include: { mediaGroup: { select: { name: true } } } }),
+  ]);
+  const agencyByName = new Map(agencies.map((a) => [norm(a.name), a]));
+  const clientByKey = new Map();
+  const clientsByName = new Map();
+  for (const c of clients) {
+    for (const key of [c.name, ...(c.aliases || [])]) {
+      const nk = norm(key);
+      clientByKey.set(`${c.agencyId}::${nk}`, c);
+      if (!clientsByName.has(nk)) clientsByName.set(nk, []);
+      if (!clientsByName.get(nk).some((x) => x.id === c.id)) clientsByName.get(nk).push(c);
+    }
+  }
+  const channelByName = new Map();
+  for (const ch of channels) {
+    channelByName.set(norm(ch.name), ch);
+    for (const al of ch.aliases || []) channelByName.set(norm(al), ch);
+  }
+
+  const data = [];
+  for (const r of rows) {
+    const clientName = r.client ?? r.clientName;
+    const channelName = r.channel ?? r.channelName;
+    const scheduleMonth = combineYearMonth(r.year, r.scheduleMonth ?? r.month);
+    if (!/^\d{4}-\d{2}$/.test(scheduleMonth)) continue;
+    const value = parseFloat(String(r.scheduleValue ?? r.value).replace(/,/g, ''));
+    if (Number.isNaN(value)) continue;
+    const agency = (r.agency ?? r.agencyName) ? agencyByName.get(norm(r.agency ?? r.agencyName)) : null;
+    let client = agency ? clientByKey.get(`${agency.id}::${norm(clientName)}`) : (clientsByName.get(norm(clientName)) || [])[0];
+    if (!client) continue;
+    const channel = channelByName.get(norm(channelName));
+    if (!channel) continue;
+    data.push({
+      agencyId: client.agencyId, clientId: client.id, channelMasterId: channel.id, uploadedById: userId,
+      roNumber: String(r.roNumber ?? r.ro ?? '-'), scheduleMonth, invoiceMonth: computeInvoiceMonth(scheduleMonth),
+      medium: channel.medium, mediaGroup: channel.mediaGroup.name, brandName: (r.brand ?? r.brandName) ? String(r.brand ?? r.brandName).trim() : null,
+      scheduleValue: Math.round(value * 100) / 100, scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+      importExtra: (r.extra && typeof r.extra === 'object' && Object.keys(r.extra).length) ? r.extra : null,
+      ...commissionSnapshot(client),
+    });
+  }
+  if (!data.length) return 0;
+  const months = data.map((d) => d.scheduleMonth).sort();
+  const batch = await prisma.uploadBatch.create({
+    data: {
+      fileName, uploadedById: userId, totalRows: data.length, status: 'COMPLETE',
+      agencyId: data[0].agencyId, clientIds: [...new Set(data.map((d) => d.clientId))],
+      scheduleMonth: months[0] === months[months.length - 1] ? months[0] : `${months[0]}..${months[months.length - 1]}`,
+    },
+  });
+  await prisma.scheduleLog.createMany({ data: data.map((d) => ({ ...d, uploadBatchId: batch.id })) });
+  return data.length;
+}
+
+// Called after a ClientRequest/ChannelRequest is APPROVED (entity now exists).
+// Clears that dependency on held rows; any row whose deps are all clear is
+// inserted and removed from the hold queue.
+export async function releaseHeldImportRows({ clientReqId = null, channelReqId = null }, userId) {
+  const where = clientReqId ? { clientReqId } : channelReqId ? { channelReqId } : null;
+  if (!where) return { released: 0 };
+  const held = await prisma.pendingImportRow.findMany({ where });
+  if (!held.length) return { released: 0 };
+  const field = clientReqId ? 'clientReqId' : 'channelReqId';
+  await prisma.pendingImportRow.updateMany({ where, data: { [field]: null } });
+  const ids = held.map((h) => h.id);
+  const refreshed = await prisma.pendingImportRow.findMany({ where: { id: { in: ids } } });
+  const ready = refreshed.filter((r) => r.clientReqId == null && r.channelReqId == null);
+  if (!ready.length) return { released: 0 };
+  const released = await insertResolvedRows(ready.map((r) => r.rowData), userId, `${ready[0].fileName} (held rows)`);
+  await prisma.pendingImportRow.deleteMany({ where: { id: { in: ready.map((r) => r.id) } } });
+  return { released };
+}
+
 export async function importAllScheduleLogs(req, res) {
   try {
     const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false } = req.body;
@@ -764,19 +1014,23 @@ export async function importAllScheduleLogs(req, res) {
     // Pre-load lookups
     const [agencies, clients, channels] = await Promise.all([
       prisma.agency.findMany({ select: { id: true, name: true } }),
-      prisma.client.findMany({ select: { id: true, name: true, agencyId: true, commissionType: true, commissionValue: true } }),
+      prisma.client.findMany({ select: { id: true, name: true, agencyId: true, aliases: true, commissionType: true, commissionValue: true } }),
       prisma.channelMaster.findMany({ include: { mediaGroup: { select: { name: true } } } }),
     ]);
 
     const agencyByName = new Map(agencies.map((a) => [norm(a.name), a]));
     const agencyById = new Map(agencies.map((a) => [a.id, a]));
-    const clientByKey = new Map(clients.map((c) => [`${c.agencyId}::${norm(c.name)}`, c]));
-    // Client name -> list of clients (for resolving when no agency column is given)
+    // Client resolution matches on name OR any learned alias (from reconciliation).
+    const clientByKey = new Map();
     const clientsByName = new Map();
     for (const c of clients) {
-      const k = norm(c.name);
-      if (!clientsByName.has(k)) clientsByName.set(k, []);
-      clientsByName.get(k).push(c);
+      for (const key of [c.name, ...(c.aliases || [])]) {
+        const nk = norm(key);
+        clientByKey.set(`${c.agencyId}::${nk}`, c);
+        if (!clientsByName.has(nk)) clientsByName.set(nk, []);
+        // Avoid listing the same client twice under one key (name === alias edge).
+        if (!clientsByName.get(nk).some((x) => x.id === c.id)) clientsByName.get(nk).push(c);
+      }
     }
     const channelByName = new Map();
     for (const ch of channels) {

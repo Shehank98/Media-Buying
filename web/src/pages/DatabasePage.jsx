@@ -55,6 +55,9 @@ function normalizeMonth(raw) {
 
 const EDITABLE_FIELDS = ['roNumber', 'scheduleMonth', 'brandName', 'channelMasterId', 'scheduleValue'];
 
+// trim+lower — the same normalization the importer uses to key names.
+const nrm = (s) => String(s ?? '').trim().toLowerCase();
+
 // Normalized headers the bulk import maps to system fields (or derives) — every
 // OTHER column in the sheet is retained verbatim in the row's `extra` JSON.
 const CORE_IMPORT_HEADERS = new Set([
@@ -112,6 +115,11 @@ export default function DatabasePage() {
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadScheduleMonth, setUploadScheduleMonth] = useState('');
   const fileInputRef = useRef(null);
+  // Per-client upload channel reconciliation (fuzzy-match unmatched channels)
+  const [uploadRecon, setUploadRecon] = useState(null);        // { channelClusters, matchedChannels }
+  const [uploadReconChoice, setUploadReconChoice] = useState({}); // clusterIdx -> { action, channelId, name, medium, notes }
+  const [uploadReconBusy, setUploadReconBusy] = useState(false);
+  const [uploadHeld, setUploadHeld] = useState(0);
 
   // Bulk import (all clients) modal
   const isSuperAdmin = role === 'SUPER_ADMIN';
@@ -123,6 +131,12 @@ export default function DatabasePage() {
   const [importResult, setImportResult] = useState(null);
   const [importCheck, setImportCheck] = useState(null); // dry-run result (new vs duplicate)
   const importInputRef = useRef(null);
+  // Reconciliation (name matching) before commit
+  const [recon, setRecon] = useState(null);            // { clients, channelClusters, matchedChannels }
+  const [reconClient, setReconClient] = useState({});  // raw -> { action:'map'|'new', clientId, name, agencyId, notes }
+  const [reconChannel, setReconChannel] = useState({}); // clusterIdx -> { action:'map'|'new', channelId, name, medium, notes }
+  const [reconciling, setReconciling] = useState(false);
+  const [importAllClients, setImportAllClients] = useState([]); // full client list for the reconcile map dropdown
 
   // Upload batches
   const [uploadBatches, setUploadBatches] = useState([]);
@@ -206,7 +220,8 @@ export default function DatabasePage() {
   const matchChannelByName = (name) => {
     if (!name) return '';
     const lower = name.trim().toLowerCase();
-    const match = channelMasters.find(cm => cm.name.toLowerCase() === lower);
+    const match = channelMasters.find(cm =>
+      cm.name.toLowerCase() === lower || (cm.aliases || []).some(a => String(a).toLowerCase() === lower));
     return match ? String(match.id) : '';
   };
 
@@ -444,8 +459,101 @@ export default function DatabasePage() {
 
   const confirmUpload = () => {
     setNewRows(prev => [...prev, ...uploadPreview]);
+    closeUpload();
+  };
+
+  const closeUpload = () => {
     setShowUpload(false);
     setUploadPreview([]);
+    setUploadRecon(null);
+    setUploadReconChoice({});
+    setUploadHeld(0);
+  };
+
+  // ── Per-client upload: channel reconciliation ──
+  // Distinct channel names in the preview that didn't resolve to a channel id.
+  const uploadUnmatchedChannels = () => {
+    const m = new Map();
+    for (const r of uploadPreview) {
+      if (!r.channelMasterId && r._channelRaw) m.set(r._channelRaw, (m.get(r._channelRaw) || 0) + 1);
+    }
+    return [...m.entries()].map(([raw, count]) => ({ raw, count }));
+  };
+
+  // Fuzzy-match the unmatched channels against the master list. Exact/alias hits
+  // are auto-applied to the preview; the rest are clustered for the user to map
+  // or request as new (backed by the same reconcile endpoint as the bulk import).
+  const runUploadRecon = async () => {
+    const names = uploadUnmatchedChannels();
+    if (!names.length || uploadReconBusy) return;
+    setUploadReconBusy(true);
+    try {
+      const { data } = await api.post('/database/import-reconcile', { clientNames: [], channelNames: names });
+      // Auto-apply alias/exact hits reconcile found but the grid's exact matcher missed.
+      if (data.matchedChannels?.length) {
+        const hit = new Map(data.matchedChannels.map(m => [nrm(m.raw), m.match.id]));
+        setUploadPreview(prev => prev.map(row => (!row.channelMasterId && row._channelRaw && hit.has(nrm(row._channelRaw)))
+          ? { ...row, channelMasterId: String(hit.get(nrm(row._channelRaw))) } : row));
+      }
+      const choice = {};
+      (data.channelClusters || []).forEach((cl, i) => {
+        choice[i] = cl.suggestion
+          ? { action: 'map', channelId: cl.suggestion.id, name: cl.variants[0].raw, medium: cl.suggestion.medium || 'TV', notes: '' }
+          : { action: 'new', channelId: '', name: cl.variants[0].raw, medium: 'TV', notes: '' };
+      });
+      setUploadReconChoice(choice);
+      setUploadRecon((data.channelClusters || []).length ? data : null);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Auto-match failed');
+    }
+    setUploadReconBusy(false);
+  };
+
+  const uploadChannelResolved = (i) => {
+    const r = uploadReconChoice[i]; if (!r) return false;
+    return r.action === 'map' ? !!r.channelId : !!(r.name && r.medium);
+  };
+  const allUploadReconciled = uploadRecon && (uploadRecon.channelClusters || []).every((_, i) => uploadChannelResolved(i));
+
+  // Apply the choices: learn aliases for mapped channels (+ rewrite the preview
+  // rows onto them), file requests for new channels and HOLD their rows until an
+  // admin approves — dropping those rows from the grid preview.
+  const applyUploadRecon = async () => {
+    if (!allUploadReconciled || uploadReconBusy) return;
+    setUploadReconBusy(true);
+    try {
+      const channelMappings = [], newChannels = [];
+      const pendingRaws = new Set();
+      (uploadRecon.channelClusters || []).forEach((cl, i) => {
+        const r = uploadReconChoice[i];
+        if (r.action === 'new') { newChannels.push({ raw: cl.variants[0].raw, name: r.name, medium: r.medium, notes: r.notes }); cl.variants.forEach(v => pendingRaws.add(nrm(v.raw))); }
+        else { cl.variants.forEach(v => channelMappings.push({ raw: v.raw, channelId: r.channelId })); }
+      });
+      const agencyNm = agencies.find(a => String(a.id) === String(selectedAgencyId))?.name || '';
+      const heldRowsData = uploadPreview
+        .filter(row => !row.channelMasterId && row._channelRaw && pendingRaws.has(nrm(row._channelRaw)))
+        .map(row => ({ client: clientName, agency: agencyNm, channel: row._channelRaw, roNumber: row.roNumber, scheduleMonth: row.scheduleMonth, scheduleValue: row.scheduleValue, brand: row.brandName }));
+
+      const { data } = await api.post('/database/import-apply', {
+        fileName: uploadFileName, rows: heldRowsData,
+        clientMappings: [], channelMappings, newClients: [], newChannels,
+      });
+      // Refresh masters so newly-learned aliases resolve on subsequent uploads.
+      api.get('/masterdata/channel-masters').then(r => setChannelMasters(r.data.channelMasters || r.data || [])).catch(() => {});
+
+      const mapByRaw = new Map(channelMappings.map(m => [nrm(m.raw), String(m.channelId)]));
+      const pendingChannels = new Set(data.pendingChannelNames || []);
+      setUploadPreview(prev => prev
+        .filter(row => !(!row.channelMasterId && row._channelRaw && pendingChannels.has(nrm(row._channelRaw))))
+        .map(row => (!row.channelMasterId && row._channelRaw && mapByRaw.has(nrm(row._channelRaw)))
+          ? { ...row, channelMasterId: mapByRaw.get(nrm(row._channelRaw)) } : row));
+      setUploadHeld(h => h + (data.held || 0));
+      setUploadRecon(null);
+      setUploadReconChoice({});
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to apply');
+    }
+    setUploadReconBusy(false);
   };
 
   // ── Bulk import across all clients ──
@@ -537,6 +645,7 @@ export default function DatabasePage() {
         setImportRows(rows);
         setImportResult(null);
         setImportCheck(null);
+        setRecon(null); setReconClient({}); setReconChannel({});
         setShowImport(true);
       } catch {
         alert('Failed to read the file. Please use the template format.');
@@ -549,26 +658,130 @@ export default function DatabasePage() {
   // Step 1: dry-run check — how many rows are new vs already in the database.
   // Nothing is written. If there are no duplicates we import straight away;
   // otherwise we ask the user how to proceed.
+  const distinctNames = (rows, key) => {
+    const m = new Map();
+    for (const r of rows) { const raw = String(r[key] ?? '').trim(); if (!raw) continue; m.set(raw, (m.get(raw) || 0) + 1); }
+    return [...m.entries()].map(([raw, count]) => ({ raw, count }));
+  };
+
+  // Full client list (with agency) for the reconciliation "map to existing" picker.
+  useEffect(() => {
+    if (!showImport || !isSuperAdmin || importAllClients.length) return;
+    api.get('/admin/clients').then(r => setImportAllClients(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+  }, [showImport, isSuperAdmin, importAllClients.length]);
+
+  // Step 1: name reconciliation. Flag client/channel names with no exact match so
+  // the user maps them (or requests new) before anything is committed.
   const submitImport = async () => {
-    if (!importRows.length || importing) return;
-    setImporting(true);
+    if (!importRows.length || importing || reconciling) return;
+    setReconciling(true);
     setImportResult(null);
     setImportCheck(null);
     try {
-      const { data } = await api.post('/database/import-all', {
-        rows: importRows,
-        fileName: importFileName,
-        createMissingClients: importCreateClients,
-        dryRun: true,
+      const { data } = await api.post('/database/import-reconcile', {
+        clientNames: distinctNames(importRows, 'client'),
+        channelNames: distinctNames(importRows, 'channel'),
       });
+      if (data.hasIssues) {
+        // Seed default resolutions (pre-select the fuzzy suggestion).
+        const rc = {};
+        for (const c of data.clients) {
+          if (c.status === 'matched') continue;
+          if (c.status === 'ambiguous') rc[c.raw] = { action: 'map', clientId: c.options[0]?.id, name: c.raw, agencyId: '', notes: '' };
+          else rc[c.raw] = { action: 'map', clientId: c.suggestion?.id || '', name: c.raw, agencyId: '', notes: '' };
+        }
+        const rch = {};
+        (data.channelClusters || []).forEach((cl, i) => {
+          rch[i] = cl.suggestion ? { action: 'map', channelId: cl.suggestion.id, name: cl.variants[0].raw, medium: 'TV', notes: '' }
+            : { action: 'new', channelId: '', name: cl.variants[0].raw, medium: 'TV', notes: '' };
+        });
+        setReconClient(rc);
+        setReconChannel(rch);
+        setRecon(data);
+        setReconciling(false);
+      } else {
+        setRecon(null);
+        await proceedDryRun(importRows);
+      }
+    } catch (err) {
+      setImportResult({ error: err.response?.data?.error || 'Reconciliation failed' });
+      setReconciling(false);
+    }
+  };
+
+  const clientResolved = (c) => {
+    const r = reconClient[c.raw]; if (!r) return false;
+    return r.action === 'map' ? !!r.clientId : !!(r.name && r.agencyId);
+  };
+  const channelResolved = (i) => {
+    const r = reconChannel[i]; if (!r) return false;
+    return r.action === 'map' ? !!r.channelId : !!(r.name && r.medium);
+  };
+  const allReconciled = recon
+    && recon.clients.filter(c => c.status !== 'matched').every(clientResolved)
+    && (recon.channelClusters || []).every((_, i) => channelResolved(i));
+
+  // Step 2: apply mappings (learn aliases) + file new-name requests + hold their
+  // rows, then dry-run the remaining rows.
+  const confirmReconciliation = async () => {
+    if (!allReconciled || reconciling) return;
+    setReconciling(true);
+    try {
+      const clientMappings = [], newClients = [], channelMappings = [], newChannels = [];
+      const ambiguousAgency = {}; // raw client -> agency name (to pin the row)
+      const agencyName = (id) => agencies.find(a => String(a.id) === String(id))?.name || '';
+      for (const c of recon.clients) {
+        if (c.status === 'matched') continue;
+        const r = reconClient[c.raw];
+        if (r.action === 'new') { newClients.push({ raw: c.raw, name: r.name, agencyId: r.agencyId, notes: r.notes }); }
+        else {
+          clientMappings.push({ raw: c.raw, clientId: r.clientId });
+          if (c.status === 'ambiguous') { const opt = c.options.find(o => o.id === r.clientId); if (opt) ambiguousAgency[c.raw] = opt.agencyName; }
+        }
+      }
+      const pendingChannelRaws = new Set();
+      (recon.channelClusters || []).forEach((cl, i) => {
+        const r = reconChannel[i];
+        if (r.action === 'new') { newChannels.push({ raw: cl.variants[0].raw, name: r.name, medium: r.medium, notes: r.notes }); cl.variants.forEach(v => pendingChannelRaws.add(v.raw)); }
+        else { cl.variants.forEach(v => channelMappings.push({ raw: v.raw, channelId: r.channelId })); }
+      });
+
+      const { data } = await api.post('/database/import-apply', {
+        fileName: importFileName, rows: importRows,
+        clientMappings, channelMappings, newClients, newChannels,
+      });
+      const pendingClients = new Set((data.pendingClientNames || []));
+      const pendingChannels = new Set((data.pendingChannelNames || []));
+      // Rewrite ambiguous clients' agency + drop held rows (tied to a new request).
+      const remaining = importRows
+        .map(row => (ambiguousAgency[String(row.client ?? '').trim()] ? { ...row, agency: ambiguousAgency[String(row.client).trim()] } : row))
+        .filter(row => !pendingClients.has(nrm(row.client)) && !pendingChannels.has(nrm(row.channel)));
+      setRecon(null);
+      if (!remaining.length) {
+        setImportResult({ created: 0, held: data.held || 0, onlyHeld: true });
+        setReconciling(false);
+        return;
+      }
+      await proceedDryRun(remaining, data.held || 0);
+    } catch (err) {
+      setImportResult({ error: err.response?.data?.error || 'Failed to apply reconciliation' });
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const proceedDryRun = async (rows, heldCount = 0) => {
+    setImporting(true);
+    try {
+      const { data } = await api.post('/database/import-all', {
+        rows, fileName: importFileName, createMissingClients: importCreateClients, dryRun: true,
+      });
+      data.__rows = rows; data.__held = heldCount;
       if (data.duplicates > 0 || data.failed > 0) {
-        // Duplicates and/or rows that can't be imported (e.g. ambiguous client) —
-        // show the breakdown + error list and let the user decide.
         setImportCheck(data);
         setImporting(false);
       } else {
-        // All rows new and valid — just import.
-        await runImport(false);
+        await runImport(false, rows, heldCount);
       }
     } catch (err) {
       setImportResult({ error: err.response?.data?.error || 'Import failed' });
@@ -576,17 +789,17 @@ export default function DatabasePage() {
     }
   };
 
-  // Step 2: actually import. allowDuplicates=false → only new rows; true → all rows.
-  const runImport = async (allowDuplicates) => {
+  // Step 3: actually import. allowDuplicates=false → only new rows; true → all rows.
+  const runImport = async (allowDuplicates, rows = importRows, heldCount = 0) => {
     setImporting(true);
     try {
       const { data } = await api.post('/database/import-all', {
-        rows: importRows,
+        rows,
         fileName: importFileName,
         createMissingClients: importCreateClients,
         allowDuplicates,
       });
-      setImportResult(data);
+      setImportResult({ ...data, held: heldCount });
       setImportCheck(null);
       if (selectedClientId) { fetchLogs(); fetchBatches(); }
     } catch (err) {
@@ -1026,14 +1239,14 @@ export default function DatabasePage() {
 
       {/* Upload Preview Modal */}
       {showUpload && (
-        <div className="modal-scrim show" onClick={() => setShowUpload(false)}>
+        <div className="modal-scrim show" onClick={closeUpload}>
           <div className="modal" style={{ maxWidth: 1100, width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <h2>Review Upload</h2>
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>{uploadFileName} - {uploadPreview.length} rows detected</span>
               </div>
-              <button className="act-btn" onClick={() => setShowUpload(false)}><Icon name="x" size={18} /></button>
+              <button className="act-btn" onClick={closeUpload}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body" style={{ overflow: 'auto', flex: 1, padding: 0 }}>
               {/* Auto-fill bar: pick the schedule month once for the whole sheet */}
@@ -1060,6 +1273,77 @@ export default function DatabasePage() {
               <div style={{ padding: '10px 16px', background: '#eff6ff', fontSize: 12, color: '#1d4ed8', borderBottom: '1px solid var(--border)' }}>
                 Schedule month, invoice month, client, medium and media group are filled automatically. Unmatched channels appear in red - select the correct channel from the dropdown.
               </div>
+
+              {/* Channel reconciliation: fuzzy-match unmatched channels in one step */}
+              {uploadRecon ? (
+                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', background: '#fff' }}>
+                  <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 10, padding: '11px 14px', fontSize: 12.5, color: '#9A5B00', marginBottom: 14, lineHeight: 1.5 }}>
+                    <Icon name="alert" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    Map each channel to an existing one, or request it as new. A mapping is remembered as an alias so it auto-matches next time. Rows for a requested new channel are held until an admin approves it.
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Channels to resolve ({uploadRecon.channelClusters.length} group{uploadRecon.channelClusters.length === 1 ? '' : 's'})</div>
+                  {uploadRecon.channelClusters.map((cl, i) => {
+                    const r = uploadReconChoice[i] || {};
+                    const set = (patch) => setUploadReconChoice(p => ({ ...p, [i]: { ...p[i], ...patch } }));
+                    const chList = [...(cl.suggestion ? [cl.suggestion] : []), ...channelMasters.filter(x => x.isActive !== false && x.id !== cl.suggestion?.id).map(x => ({ id: x.id, name: x.name, medium: x.medium })).sort((a, b) => a.name.localeCompare(b.name))];
+                    return (
+                      <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: 12.5, flex: 1, minWidth: 200 }}>
+                            <span style={{ color: 'var(--muted)' }}>Variants: </span>
+                            {cl.variants.map(v => <span key={v.raw} style={{ display: 'inline-block', background: '#EEF0F3', borderRadius: 5, padding: '1px 7px', margin: '0 4px 4px 0', fontSize: 11.5 }}>{v.raw} ×{v.count}</span>)}
+                            {cl.suggestion && <div style={{ color: '#15814B', fontSize: 11.5, marginTop: 2 }}>Did you mean <b>{cl.suggestion.name}</b>? ({Math.round(cl.suggestion.score * 100)}% match)</div>}
+                          </div>
+                          <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                            {['map', 'new'].map(a => (
+                              <button key={a} type="button" onClick={() => set({ action: a })}
+                                style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', border: 'none', cursor: 'pointer', background: (r.action || 'map') === a ? '#1F5BB5' : 'transparent', color: (r.action || 'map') === a ? '#fff' : 'var(--muted)' }}>
+                                {a === 'map' ? 'Map to existing' : 'Request new'}</button>
+                            ))}
+                          </div>
+                        </div>
+                        {(r.action || 'map') === 'map' ? (
+                          <select className="select" value={r.channelId || ''} onChange={e => set({ channelId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
+                            <option value="">Select channel…</option>
+                            {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                          </select>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <input className="input" placeholder="New channel name" value={r.name ?? cl.variants[0].raw} onChange={e => set({ name: e.target.value })} />
+                            <select className="select" value={r.medium || 'TV'} onChange={e => set({ medium: e.target.value })}>
+                              {['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'].map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <input className="input" placeholder="Notes (optional)" value={r.notes || ''} onChange={e => set({ notes: e.target.value })} style={{ gridColumn: '1 / -1' }} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setUploadRecon(null); setUploadReconChoice({}); }} disabled={uploadReconBusy}>Cancel</button>
+                    <button className="btn btn-primary btn-sm" onClick={applyUploadRecon} disabled={!allUploadReconciled || uploadReconBusy} title={allUploadReconciled ? '' : 'Resolve every channel first'}>
+                      {uploadReconBusy ? 'Working…' : 'Apply matches'}
+                    </button>
+                  </div>
+                </div>
+              ) : uploadUnmatchedChannels().length > 0 && (
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: '#FCF4E2', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 12.5, color: '#9A5B00', flex: 1, minWidth: 200 }}>
+                    <Icon name="alert" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    {uploadUnmatchedChannels().length} unmatched channel name{uploadUnmatchedChannels().length === 1 ? '' : 's'}. Auto-match suggests the closest channel and lets you request new ones.
+                  </div>
+                  <button className="btn btn-primary btn-sm" onClick={runUploadRecon} disabled={uploadReconBusy}>
+                    {uploadReconBusy ? 'Matching…' : 'Auto-match channels'}
+                  </button>
+                </div>
+              )}
+              {uploadHeld > 0 && (
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: '#EDF3FD', fontSize: 12.5, color: '#1F5BB5' }}>
+                  <Icon name="clock" size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                  {uploadHeld} row{uploadHeld === 1 ? '' : 's'} held pending approval of the new channel request(s) — they'll import automatically once an admin approves (Admin → Channel Requests).
+                </div>
+              )}
+
               <table className="tbl spreadsheet-tbl" style={{ margin: 0, fontSize: 12.5 }}>
                 <thead>
                   <tr>
@@ -1112,9 +1396,9 @@ export default function DatabasePage() {
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost" onClick={() => setShowUpload(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={confirmUpload}>
-                  Import {uploadPreview.length} rows to grid
+                <button className="btn btn-ghost" onClick={closeUpload}>Cancel</button>
+                <button className="btn btn-primary" onClick={confirmUpload} disabled={uploadPreview.length === 0}>
+                  {uploadPreview.length === 0 ? 'Nothing to import' : `Import ${uploadPreview.length} rows to grid`}
                 </button>
               </div>
             </div>
@@ -1134,7 +1418,98 @@ export default function DatabasePage() {
               <button className="act-btn" onClick={() => !importing && setShowImport(false)}><Icon name="x" size={18} /></button>
             </div>
             <div className="modal-body">
-              {(!importResult && !importCheck) ? (
+              {recon ? (
+                <>
+                  <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 10, padding: '11px 14px', fontSize: 12.5, color: '#9A5B00', marginBottom: 16, lineHeight: 1.5 }}>
+                    <Icon name="alert" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
+                    Some names in this file don't exactly match the system. Map each to an existing record, or request it as new. <b>Import unlocks once every item is resolved.</b> A mapping is remembered as an alias so it auto-matches next time.
+                  </div>
+
+                  {recon.clients.filter(c => c.status !== 'matched').length > 0 && (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Clients to resolve ({recon.clients.filter(c => c.status !== 'matched').length})</div>
+                      {recon.clients.filter(c => c.status !== 'matched').map(c => {
+                        const r = reconClient[c.raw] || {};
+                        const set = (patch) => setReconClient(p => ({ ...p, [c.raw]: { ...p[c.raw], ...patch } }));
+                        const list = c.status === 'ambiguous' ? c.options
+                          : [...(c.suggestion ? [c.suggestion] : []), ...importAllClients.filter(x => x.id !== c.suggestion?.id).map(x => ({ id: x.id, name: x.name, agencyName: x.agencyName })).sort((a, b) => a.name.localeCompare(b.name))];
+                        return (
+                          <div key={c.raw} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                              <div style={{ fontSize: 13 }}><b>"{c.raw}"</b> <span style={{ color: 'var(--muted)' }}>· {c.count} row{c.count === 1 ? '' : 's'} · {c.status === 'ambiguous' ? 'exists under multiple agencies' : 'no match'}</span></div>
+                              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                                {['map', 'new'].map(a => (
+                                  <button key={a} type="button" onClick={() => set({ action: a })}
+                                    style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', border: 'none', cursor: 'pointer', background: (r.action || 'map') === a ? '#1F5BB5' : 'transparent', color: (r.action || 'map') === a ? '#fff' : 'var(--muted)' }}>
+                                    {a === 'map' ? 'Map to existing' : 'Request new'}</button>
+                                ))}
+                              </div>
+                            </div>
+                            {(r.action || 'map') === 'map' ? (
+                              <select className="select" value={r.clientId || ''} onChange={e => set({ clientId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
+                                <option value="">Select client…</option>
+                                {list.map(o => <option key={o.id} value={o.id}>{o.name}{o.agencyName ? ` — ${o.agencyName}` : ''}{o.score != null && o.id === c.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                              </select>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                <input className="input" placeholder="New client name" value={r.name ?? c.raw} onChange={e => set({ name: e.target.value })} />
+                                <select className="select" value={r.agencyId || ''} onChange={e => set({ agencyId: e.target.value })}>
+                                  <option value="">Agency…</option>
+                                  {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
+                                <input className="input" placeholder="Notes (optional)" value={r.notes || ''} onChange={e => set({ notes: e.target.value })} style={{ gridColumn: '1 / -1' }} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(recon.channelClusters || []).length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Channels to resolve ({recon.channelClusters.length} group{recon.channelClusters.length === 1 ? '' : 's'})</div>
+                      {recon.channelClusters.map((cl, i) => {
+                        const r = reconChannel[i] || {};
+                        const set = (patch) => setReconChannel(p => ({ ...p, [i]: { ...p[i], ...patch } }));
+                        const chList = [...(cl.suggestion ? [cl.suggestion] : []), ...channelMasters.filter(x => x.isActive !== false && x.id !== cl.suggestion?.id).map(x => ({ id: x.id, name: x.name, medium: x.medium })).sort((a, b) => a.name.localeCompare(b.name))];
+                        return (
+                          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                              <div style={{ fontSize: 12.5, flex: 1, minWidth: 200 }}>
+                                <span style={{ color: 'var(--muted)' }}>Variants: </span>
+                                {cl.variants.map(v => <span key={v.raw} style={{ display: 'inline-block', background: '#EEF0F3', borderRadius: 5, padding: '1px 7px', margin: '0 4px 4px 0', fontSize: 11.5 }}>{v.raw} ×{v.count}</span>)}
+                                {cl.suggestion && <div style={{ color: '#15814B', fontSize: 11.5, marginTop: 2 }}>Did you mean <b>{cl.suggestion.name}</b>? ({Math.round(cl.suggestion.score * 100)}% match)</div>}
+                              </div>
+                              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+                                {['map', 'new'].map(a => (
+                                  <button key={a} type="button" onClick={() => set({ action: a })}
+                                    style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', border: 'none', cursor: 'pointer', background: (r.action || 'map') === a ? '#1F5BB5' : 'transparent', color: (r.action || 'map') === a ? '#fff' : 'var(--muted)' }}>
+                                    {a === 'map' ? 'Map to existing' : 'Request new'}</button>
+                                ))}
+                              </div>
+                            </div>
+                            {(r.action || 'map') === 'map' ? (
+                              <select className="select" value={r.channelId || ''} onChange={e => set({ channelId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
+                                <option value="">Select channel…</option>
+                                {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                              </select>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                <input className="input" placeholder="New channel name" value={r.name ?? cl.variants[0].raw} onChange={e => set({ name: e.target.value })} />
+                                <select className="select" value={r.medium || 'TV'} onChange={e => set({ medium: e.target.value })}>
+                                  {['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'].map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                                <input className="input" placeholder="Notes (optional)" value={r.notes || ''} onChange={e => set({ notes: e.target.value })} style={{ gridColumn: '1 / -1' }} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (!importResult && !importCheck) ? (
                 <>
                   <div style={{ background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, color: '#3B4A63', marginBottom: 14 }}>
                     Expected columns: <b>Year</b>, <b>RO</b>, <b>Sch: Month</b> (e.g. Jan, Feb…), <b>Agency</b> (optional), <b>Client</b>, <b>Brand</b>, <b>Medium</b>, <b>Media Group</b>, <b>Channel</b>, <b>Schedule Value</b>. Client and channel are matched by name; medium &amp; media group come from the channel; VAT (18%) is computed automatically. Add the <b>Agency</b> column when a client (e.g. Nestle, Godrej) exists under more than one agency, so the right one is used.
@@ -1269,6 +1644,12 @@ export default function DatabasePage() {
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>new clients created</div>
                     </div>
                   </div>
+                  {importResult.held > 0 && (
+                    <div style={{ fontSize: 12.5, color: '#1F5BB5', background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
+                      <Icon name="clock" size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                      {importResult.held} row{importResult.held === 1 ? '' : 's'} are <b>held pending approval</b> of the new client/channel request(s). They'll import automatically once an admin approves (Admin → Client/Channel Requests).
+                    </div>
+                  )}
                   {importResult.duplicates > 0 && (
                     <div style={{ fontSize: 12, color: '#9A5B00', background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
                       {importResult.duplicates} row{importResult.duplicates === 1 ? ' was' : 's were'} already in the database and skipped to avoid duplicates.
@@ -1294,17 +1675,24 @@ export default function DatabasePage() {
             <div className="modal-foot">
               <button className="btn btn-ghost btn-sm" onClick={downloadImportTemplate} style={{ marginRight: 'auto' }}><Icon name="download" size={14} /> Template</button>
               <div style={{ display: 'flex', gap: 8 }}>
-                {importResult ? (
+                {recon ? (
+                  <>
+                    <button className="btn btn-ghost" onClick={() => setRecon(null)} disabled={reconciling}>Back</button>
+                    <button className="btn btn-primary" onClick={confirmReconciliation} disabled={!allReconciled || reconciling} title={allReconciled ? '' : 'Resolve every flagged name first'}>
+                      {reconciling ? 'Working…' : 'Confirm & Import'}
+                    </button>
+                  </>
+                ) : importResult ? (
                   <button className="btn btn-primary" onClick={() => setShowImport(false)}>Done</button>
                 ) : importCheck ? (
                   <>
                     <button className="btn btn-ghost" onClick={() => setImportCheck(null)} disabled={importing}>Back</button>
                     {importCheck.duplicates > 0 && (
-                      <button className="btn btn-ghost" onClick={() => runImport(true)} disabled={importing} title="Insert every row, including duplicates">
+                      <button className="btn btn-ghost" onClick={() => runImport(true, importCheck.__rows || importRows, importCheck.__held || 0)} disabled={importing} title="Insert every row, including duplicates">
                         {importing ? 'Working…' : 'Re-upload everything'}
                       </button>
                     )}
-                    <button className="btn btn-primary" onClick={() => runImport(false)} disabled={importing || importCheck.newRows === 0}>
+                    <button className="btn btn-primary" onClick={() => runImport(false, importCheck.__rows || importRows, importCheck.__held || 0)} disabled={importing || importCheck.newRows === 0}>
                       {importing ? 'Working…' : importCheck.duplicates > 0 ? `Upload ${importCheck.newRows} new only` : `Import ${importCheck.newRows} valid row${importCheck.newRows === 1 ? '' : 's'}`}
                     </button>
                   </>

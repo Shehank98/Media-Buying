@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
+import { releaseHeldImportRows } from './database.controller.js';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -890,10 +891,13 @@ export async function reviewClientRequest(req, res) {
       if (!client) client = await prisma.client.create({ data: { agencyId: aId, name: reqRow.clientName, isActive: true } });
     }
     await prisma.clientRequest.update({ where: { id }, data: { status, reviewedById: req.user.id, reviewedAt: new Date() } });
+    // Release any bulk-import rows that were held waiting on this client.
+    let released = 0;
+    if (status === 'approved') { released = (await releaseHeldImportRows({ clientReqId: id }, req.user.id).catch(() => ({ released: 0 }))).released; }
     await prisma.notification.create({
       data: { userId: reqRow.requestedById, type: 'CLIENT_REQUEST_RESULT', title: `Client request ${status}`, message: `Your request for "${reqRow.clientName}" was ${status}.`, link: '/forecasting' },
     }).catch(() => {});
-    return res.json({ message: `Request ${status}` });
+    return res.json({ message: `Request ${status}`, releasedRows: released });
   } catch (error) {
     console.error('Review client request error:', error);
     return res.status(500).json({ error: 'Failed to review request', detail: error.message });
@@ -931,10 +935,12 @@ export async function reviewChannelRequest(req, res) {
       }
     }
     await prisma.channelRequest.update({ where: { id }, data: { status, reviewedById: req.user.id, reviewedAt: new Date() } });
+    let released = 0;
+    if (status === 'approved') { released = (await releaseHeldImportRows({ channelReqId: id }, req.user.id).catch(() => ({ released: 0 }))).released; }
     await prisma.notification.create({
       data: { userId: reqRow.requestedById, type: 'CHANNEL_REQUEST_RESULT', title: `Channel request ${status}`, message: `Your request for "${reqRow.channelName}" was ${status}.`, link: '/forecasting' },
     }).catch(() => {});
-    return res.json({ message: `Request ${status}` });
+    return res.json({ message: `Request ${status}`, releasedRows: released });
   } catch (error) {
     console.error('Review channel request error:', error);
     return res.status(500).json({ error: 'Failed to review request', detail: error.message });

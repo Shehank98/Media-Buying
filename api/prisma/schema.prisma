@@ -127,6 +127,10 @@ model Client {
   id              Int                @id @default(autoincrement())
   agencyId        Int                @map("agency_id")
   name            String
+  // Alternate spellings/variants learned from bulk-import reconciliation, so a
+  // raw name mapped to this client once auto-matches on future imports (mirrors
+  // ChannelMaster.aliases). Matched case-insensitively.
+  aliases         String[]           @default([])
   isActive        Boolean            @default(true) @map("is_active")
   // Agency remuneration for the Overall Budget tab: type = COMMISSION (value is
   // a %) or AOR (value is a fixed LKR fee). Both null = not set.
@@ -619,6 +623,26 @@ model ChannelRequest {
   createdAt     DateTime    @default(now()) @map("created_at")
 
   @@map("channel_requests")
+}
+
+// A bulk-import row held back because its client and/or channel is a pending
+// "request new" (see import reconciliation). When the referenced ClientRequest /
+// ChannelRequest is approved (which creates the entity), the row's dependency is
+// cleared; once BOTH deps are clear the row is inserted as a ScheduleLog and the
+// held row deleted. `rowData` is the reconciled parsed row (names already mapped
+// for everything except the pending new entity).
+model PendingImportRow {
+  id           Int      @id @default(autoincrement())
+  fileName     String   @map("file_name")
+  rowData      Json     @map("row_data")
+  clientReqId  Int?     @map("client_req_id")   // waiting on this ClientRequest
+  channelReqId Int?     @map("channel_req_id")  // waiting on this ChannelRequest
+  createdById  Int      @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([clientReqId])
+  @@index([channelReqId])
+  @@map("pending_import_rows")
 }
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
