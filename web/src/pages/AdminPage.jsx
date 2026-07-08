@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
 
-const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
+const ROLES = ['SUPER_ADMIN', 'ADMIN_LEVEL_I', 'GROUP_HEAD', 'PLANNER'];
 
 const ROLE_DESC = {
   SUPER_ADMIN: 'Full access; manages agencies, users & assignments',
-  MANAGER: 'Read-only across assigned agencies; can export reports',
+  ADMIN_LEVEL_I: 'Read-only across assigned agencies; can export reports',
   GROUP_HEAD: 'Manages their team & all clients the team handles',
   PLANNER: 'Adds & edits properties on assigned clients only',
 };
@@ -255,7 +255,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     teams.filter(t => t.name.toLowerCase().includes(search.toLowerCase())),
     [teams, search]);
 
-  const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
+  const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'ADMIN_LEVEL_I';
 
   if (loading) {
     return (
