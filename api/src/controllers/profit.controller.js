@@ -22,7 +22,10 @@ function whereFragment({ year, agencyId, clientIds }, { monthStart, monthEnd } =
     Prisma.sql`sl.schedule_month >= ${monthStart || `${year}-01`}`,
     Prisma.sql`sl.schedule_month <= ${monthEnd || `${year}-12`}`,
   ];
-  if (agencyId) parts.push(Prisma.sql`c.agency_id = ${agencyId}`);
+  // Attribute by the per-row agency SNAPSHOT (sl.agency_id), not the client's
+  // current agency — so a client that changed agencies keeps its historical
+  // spend/profit under the agency it belonged to at the time (point-in-time).
+  if (agencyId) parts.push(Prisma.sql`sl.agency_id = ${agencyId}`);
   if (clientIds.length) parts.push(Prisma.sql`sl.client_id IN (${Prisma.join(clientIds)})`);
   return Prisma.join(parts, ' AND ');
 }
@@ -33,7 +36,7 @@ function whereFragment({ year, agencyId, clientIds }, { monthStart, monthEnd } =
 //   AOR        -> the fixed fee, counted ONCE per (client, schedule-month, fee)
 function atomsSql(filter) {
   return Prisma.sql`
-    SELECT sl.client_id, c.agency_id,
+    SELECT sl.client_id, sl.agency_id,
            sl.schedule_month AS ym,
            'COMMISSION'::text AS ctype,
            sl.commission_rate_at_entry AS crate,
@@ -41,27 +44,27 @@ function atomsSql(filter) {
            ROUND(SUM(sl.schedule_value) * sl.commission_rate_at_entry / 100.0, 2) AS profit
       FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id
      WHERE ${filter} AND sl.commission_type_at_entry = 'COMMISSION'
-     GROUP BY sl.client_id, c.agency_id, ym, sl.commission_rate_at_entry
+     GROUP BY sl.client_id, sl.agency_id, ym, sl.commission_rate_at_entry
     UNION ALL
     SELECT a.client_id, a.agency_id, a.ym, 'AOR'::text AS ctype, a.crate, a.revenue, a.crate AS profit
       FROM (
-        SELECT sl.client_id, c.agency_id,
+        SELECT sl.client_id, sl.agency_id,
                sl.schedule_month AS ym,
                sl.commission_rate_at_entry AS crate,
                ROUND(SUM(sl.schedule_value), 2) AS revenue
           FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id
          WHERE ${filter} AND sl.commission_type_at_entry = 'AOR'
-         GROUP BY sl.client_id, c.agency_id, ym, sl.commission_rate_at_entry
+         GROUP BY sl.client_id, sl.agency_id, ym, sl.commission_rate_at_entry
       ) a
     UNION ALL
     -- Confirmed actual spend with NO commission snapshot: revenue counts, profit
     -- is 0 (never fabricated). Keeps "Total Revenue" = total client-side spend.
-    SELECT sl.client_id, c.agency_id, sl.schedule_month AS ym,
+    SELECT sl.client_id, sl.agency_id, sl.schedule_month AS ym,
            NULL::text AS ctype, NULL::numeric AS crate,
            ROUND(SUM(sl.schedule_value), 2) AS revenue, 0::numeric AS profit
       FROM schedule_logs sl JOIN clients c ON c.id = sl.client_id
      WHERE ${filter} AND sl.commission_type_at_entry IS NULL
-     GROUP BY sl.client_id, c.agency_id, ym`;
+     GROUP BY sl.client_id, sl.agency_id, ym`;
 }
 
 const num = (v) => (v == null ? 0 : Number(v));

@@ -27,6 +27,7 @@ import {
   listAdminClients,
   toggleClientActive,
   setClientCommission,
+  moveClientAgency,
   mergeClients,
   listClientRequests,
   reviewClientRequest,
@@ -66,6 +67,7 @@ router.post('/teams/:id/clients', assignTeamClients);
 router.get('/clients', listAdminClients);
 router.put('/clients/:id/toggle', toggleClientActive);
 router.put('/clients/:id/commission', setClientCommission);
+router.post('/clients/:id/move-agency', moveClientAgency);
 router.post('/clients/merge', mergeClients);
 
 // Forecasting requests

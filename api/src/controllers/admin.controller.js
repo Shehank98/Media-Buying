@@ -631,6 +631,72 @@ export async function setClientCommission(req, res) {
   }
 }
 
+// Move a client to another agency, point-in-time. `effectiveMonth` ("YYYY-MM",
+// optional) is the SCHEDULE (flight) month from which the client belongs to the
+// new agency: rows for months >= effectiveMonth are re-stamped to the new agency
+// and earlier rows stay with the old one. A blank effectiveMonth moves ALL
+// history (for fixing a mis-filed client). Repeatable — each call only re-stamps
+// from its own month forward, so a client can switch agencies multiple times.
+// Spend, dashboards and Profit all attribute by the per-row ScheduleLog snapshot,
+// so this splits Revenue, Schedule Value and Profit at the cut-off consistently.
+export async function moveClientAgency(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const newAgencyId = parseInt(req.body.agencyId);
+    const effRaw = req.body.effectiveMonth;
+    const eff = effRaw && /^\d{4}-\d{2}$/.test(String(effRaw)) ? String(effRaw) : null;
+
+    if (!Number.isInteger(id) || !Number.isInteger(newAgencyId)) {
+      return res.status(400).json({ error: 'client id and agencyId are required' });
+    }
+    const [client, agency] = await Promise.all([
+      prisma.client.findUnique({ where: { id }, select: { id: true, name: true, agencyId: true } }),
+      prisma.agency.findUnique({ where: { id: newAgencyId }, select: { id: true, name: true } }),
+    ]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!agency) return res.status(400).json({ error: 'Selected agency was not found' });
+
+    // Month filters. ScheduleLog uses a "YYYY-MM" string; MonthlyForecast /
+    // MonthlyBudget use integer year+month.
+    const logWhere = { clientId: id };
+    let fyMonthWhere = {};
+    if (eff) {
+      logWhere.scheduleMonth = { gte: eff };
+      const [ey, em] = eff.split('-').map(Number);
+      fyMonthWhere = { OR: [{ year: { gt: ey } }, { year: ey, month: { gte: em } }] };
+    }
+
+    const ops = [
+      prisma.client.update({ where: { id }, data: { agencyId: newAgencyId } }),
+      prisma.scheduleLog.updateMany({ where: logWhere, data: { agencyId: newAgencyId } }),
+      prisma.monthlyForecast.updateMany({ where: { clientId: id, ...fyMonthWhere }, data: { agencyId: newAgencyId } }),
+      prisma.monthlyBudget.updateMany({ where: { clientId: id, ...fyMonthWhere }, data: { agencyId: newAgencyId } }),
+    ];
+    const [, logs, forecasts, budgets] = await prisma.$transaction(ops);
+
+    // Upload batches denormalize agency too, but a single batch can span months
+    // on both sides of a cut-off, so only re-point sole-client batches when
+    // moving ALL history (spend attribution itself lives on ScheduleLog).
+    if (!eff) {
+      const batches = await prisma.uploadBatch.findMany({ where: { clientIds: { has: id } }, select: { id: true, clientIds: true } });
+      const soleIds = batches.filter(b => b.clientIds.length === 1 && b.clientIds[0] === id).map(b => b.id);
+      if (soleIds.length) await prisma.uploadBatch.updateMany({ where: { id: { in: soleIds } }, data: { agencyId: newAgencyId } });
+    }
+
+    return res.json({
+      message: eff
+        ? `Moved "${client.name}" to ${agency.name} from ${eff} onward`
+        : `Moved "${client.name}" to ${agency.name} (all history)`,
+      agencyId: newAgencyId,
+      effectiveMonth: eff,
+      restamped: { scheduleLogs: logs.count, forecasts: forecasts.count, budgets: budgets.count },
+    });
+  } catch (error) {
+    console.error('Move client agency error:', error);
+    return res.status(500).json({ error: 'Failed to move client', detail: error.message });
+  }
+}
+
 // Merge one client (source) into another (target): move every related record —
 // schedule logs, channels/properties, brands/campaigns, forecasts, deals, and
 // user/team assignments — onto the target, resolving unique-constraint clashes,

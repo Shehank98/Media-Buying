@@ -619,6 +619,42 @@ export default function AdminPage({ initialTab = 'users' }) {
     setClientMergeError('');
     setShowClientMerge(true);
   };
+
+  /* ---- Move client to another agency (point-in-time) ---- */
+  const [showMove, setShowMove] = useState(false);
+  const [moveClient, setMoveClient] = useState(null);
+  const [moveAgencyId, setMoveAgencyId] = useState('');
+  const [moveMonth, setMoveMonth] = useState(''); // "YYYY-MM", blank = all history
+  const [moveSubmitting, setMoveSubmitting] = useState(false);
+  const [moveError, setMoveError] = useState('');
+  const [moveMsg, setMoveMsg] = useState('');
+  const openMove = c => {
+    setMoveClient(c);
+    setMoveAgencyId('');
+    setMoveMonth('');
+    setMoveError(''); setMoveMsg('');
+    setShowMove(true);
+  };
+  const handleMoveSubmit = async e => {
+    e.preventDefault();
+    setMoveError(''); setMoveMsg('');
+    if (!moveAgencyId) { setMoveError('Please pick the agency to move to.'); return; }
+    if (String(moveAgencyId) === String(moveClient?.agencyId)) { setMoveError('That is already the client’s agency.'); return; }
+    setMoveSubmitting(true);
+    try {
+      const { data } = await api.post(`/admin/clients/${moveClient.id}/move-agency`, {
+        agencyId: parseInt(moveAgencyId),
+        effectiveMonth: moveMonth || null,
+      });
+      setMoveMsg(`${data.message}. Re-stamped ${data.restamped.scheduleLogs} schedule log(s), ${data.restamped.forecasts} forecast(s), ${data.restamped.budgets} budget(s).`);
+      await fetchData();
+      setTimeout(() => setShowMove(false), 1400);
+    } catch (err) {
+      setMoveError(err.response?.data?.error || err.response?.data?.detail || 'Failed to move client.');
+    } finally {
+      setMoveSubmitting(false);
+    }
+  };
   const handleClientMergeSubmit = async e => {
     e.preventDefault();
     setClientMergeError('');
@@ -1219,6 +1255,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                               </button>
                               <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to group heads' : 'Hide from group heads'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
                                 <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
+                              </button>
+                              <button className="act-btn" onClick={() => openMove(c)} title="Move to another agency (point-in-time)">
+                                <Icon name="building" size={15} />
                               </button>
                               <button className="act-btn" onClick={() => openClientMerge(c)} title="Merge into another client">
                                 <Icon name="merge" size={15} />
@@ -2361,6 +2400,54 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => { setShowClientMerge(false); setClientMergeSource(null); }}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={clientMergeSubmitting}>{clientMergeSubmitting ? 'Merging...' : 'Merge Clients'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MOVE CLIENT AGENCY MODAL ============ */}
+      {showMove && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setShowMove(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Move to another agency</h2>
+              <button className="act-btn" onClick={() => setShowMove(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <form onSubmit={handleMoveSubmit}>
+              <div className="modal-body">
+                {moveError && <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{moveError}</div>}
+                {moveMsg && <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15814B', marginBottom: 16 }}>{moveMsg}</div>}
+                <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+                  Use this when a client changes agencies. Spend, revenue and profit from the effective
+                  month onward move to the new agency; everything before it stays with
+                  <strong style={{ color: 'var(--ink)' }}> {moveClient?.agencyName || 'the current agency'}</strong>.
+                </p>
+                <div className="field">
+                  <label className="field-label">Client</label>
+                  <input className="input" type="text" value={moveClient ? `${moveClient.name}${moveClient.agencyName ? ` — ${moveClient.agencyName}` : ''}` : ''} disabled />
+                </div>
+                <div className="field">
+                  <label className="field-label">Move to agency <span className="req">*</span></label>
+                  <select className="select" value={moveAgencyId} onChange={e => setMoveAgencyId(e.target.value)}>
+                    <option value="">Select agency…</option>
+                    {agencies
+                      .filter(a => a.id !== moveClient?.agencyId)
+                      .slice().sort((a, b) => a.name.localeCompare(b.name))
+                      .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">Effective from (schedule month)</label>
+                  <input className="input" type="month" value={moveMonth} onChange={e => setMoveMonth(e.target.value)} />
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    Schedules in this month and after go to the new agency. Leave blank to move the client’s <strong>entire</strong> history.
+                  </span>
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowMove(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={moveSubmitting}>{moveSubmitting ? 'Moving…' : 'Move client'}</button>
               </div>
             </form>
           </div>
