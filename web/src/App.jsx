@@ -49,7 +49,7 @@ export default function App() {
             <Route
               path="/spend-analytics"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
                   <SpendAnalyticsPage />
                 </ProtectedRoute>
               }
@@ -62,7 +62,7 @@ export default function App() {
             <Route
               path="/executive-dashboard"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
                   <ExecutiveDashboardPage />
                 </ProtectedRoute>
               }
@@ -70,7 +70,7 @@ export default function App() {
             <Route
               path="/channel-masters/:channelMasterId"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1', 'GROUP_HEAD']}>
                   <ChannelIntelligencePage />
                 </ProtectedRoute>
               }
@@ -78,7 +78,7 @@ export default function App() {
             <Route
               path="/reports"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
                   <ReportsPage />
                 </ProtectedRoute>
               }
