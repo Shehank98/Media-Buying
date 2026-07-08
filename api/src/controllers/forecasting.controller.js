@@ -226,12 +226,18 @@ export async function listForecastClients(req, res) {
   }
 }
 
-// Categories that list every channel individually; the rest take a single total.
-const FULL_LIST_MEDIA = ['TV', 'RADIO', 'CINEMA', 'OOH', 'DIGITAL'];
-const TOTAL_LABEL = { PRINT: 'Print' };
+// Per-medium "total" bucket channel name (the seeded TOTAL_BUCKETS), and the
+// label shown for the total-only input. Print is total-only (no per-channel
+// split); every other medium offers a per-medium toggle between entering each
+// channel individually and entering one lump-sum total.
+const TOTAL_BUCKET_NAME = { TV: 'TV Total', RADIO: 'Radio Total', PRINT: 'Print', CINEMA: 'Cinema', OOH: 'OOH', DIGITAL: 'Digital' };
+const TOTAL_ONLY_MEDIA = ['PRINT'];
+const totalInputLabel = (m) => `${m === 'TV' ? 'TV' : m === 'OOH' ? 'OOH' : m[0] + m.slice(1).toLowerCase()} total`;
 
-// Channels for the forecast entry table. TV, Radio, Cinema, OOH & Digital list
-// every channel; only Print collapses to a single "<category> total" bucket row.
+// Channels for the forecast entry table. Each category returns its real
+// channels plus a `totalChannel` (the medium's total bucket) so the UI can let
+// a head switch to entering one medium-level total when they lack the split.
+// Print stays total-only.
 export async function listForecastChannels(req, res) {
   try {
     const channels = await prisma.channelMaster.findMany({
@@ -245,13 +251,17 @@ export async function listForecastChannels(req, res) {
     for (const m of MEDIUM_ORDER) {
       const list = groups[m];
       if (!list || !list.length) continue;
-      if (FULL_LIST_MEDIA.includes(m)) {
-        categories.push({ category: m, channels: list.map(c => ({ id: c.id, name: c.name })) });
+      const bucketName = TOTAL_BUCKET_NAME[m];
+      const bucket = bucketName ? list.find(c => c.name.toLowerCase() === bucketName.toLowerCase()) : null;
+      const real = list.filter(c => c.id !== bucket?.id);
+      if (TOTAL_ONLY_MEDIA.includes(m)) {
+        // Total-only (Print): one lump-sum input, no per-channel rows.
+        const b = bucket || list[0];
+        categories.push({ category: m, total: true, channels: [{ id: b.id, name: `${totalInputLabel(m)}` }] });
       } else {
-        // One total bucket for the category (the seeded channel named after it).
-        const label = TOTAL_LABEL[m] || m;
-        const bucket = list.find(c => c.name.toLowerCase() === label.toLowerCase()) || list[0];
-        categories.push({ category: m, total: true, channels: [{ id: bucket.id, name: `${label} total` }] });
+        const cat = { category: m, channels: real.map(c => ({ id: c.id, name: c.name })) };
+        if (bucket) cat.totalChannel = { id: bucket.id, name: totalInputLabel(m) };
+        categories.push(cat);
       }
     }
     return res.json({ categories });

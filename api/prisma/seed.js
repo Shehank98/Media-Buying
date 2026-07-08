@@ -9,6 +9,11 @@ const prisma = new PrismaClient();
 // listForecastChannels (api/src/controllers/forecasting.controller.js) and the
 // zero-usage channel reconcile below, both of which depend on these exact names.
 const TOTAL_BUCKETS = [
+  // Per-medium "total" bucket channels. Every medium has one so the forecast
+  // entry form can offer a "Total only" mode (a single lump-sum input) as an
+  // alternative to per-channel entry — see listForecastChannels.
+  { name: 'TV Total', medium: 'TV', sortOrder: 99 },
+  { name: 'Radio Total', medium: 'RADIO', sortOrder: 199 },
   { name: 'Print', medium: 'PRINT', sortOrder: 201 },
   { name: 'Cinema', medium: 'CINEMA', sortOrder: 301 },
   { name: 'OOH', medium: 'OOH', sortOrder: 401 },
