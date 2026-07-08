@@ -210,7 +210,7 @@ A daily automated backup of the whole database to Google Drive, plus an on-deman
 | Role | Access |
 |---|---|
 | `SUPER_ADMIN` | Full access -- manage agencies, users, teams, all data, master data, upload tracker |
-| `MANAGER` | Read-only across assigned agencies (via UserAgencyAccess); can view reports, analytics, executive dashboard |
+| `MANAGER` | Read-only across assigned agencies (via UserAgencyAccess); can view reports, analytics, executive dashboard. **Displayed in the UI as "Admin Level 1"** — a label-only rename; the role value stays `MANAGER` everywhere (enum, access control, routes), only the badge/label text changed (`ROLE_STYLES` in `Icon.jsx`, `ROLE_LABELS` in `ProfilePage.jsx`, `ROLE_DESC` in `AdminPage.jsx`). Do NOT introduce an `ADMIN_LEVEL_1` role value — that breaks the DB `Role` enum |
 | `GROUP_HEAD` | Manages team; access to clients assigned to their team (via TeamMember + TeamClient) |
 | `PLANNER` | Add/edit properties and schedule logs on directly assigned clients (via UserClientAccess) |
 
@@ -484,7 +484,7 @@ A standalone reference also lives in `docs/DASHBOARDS_AND_CHARTS.md`.
 ## Data Ingestion / Bulk Import
 
 - **Per-client paste/upload** (DatabasePage): SheetJS parse, column auto-map, preview into the grid, save via `POST /api/database/bulk` (pre-resolved client/channel IDs).
-- **Bulk import — all clients** (SUPER_ADMIN): one file for every client via `POST /api/database/import-all`. Columns (matched by name, order-independent): **Year, RO, Sch: Month, Client, Brand, Medium, Media Group, Channel, Schedule Value** (no Agency column needed). Resolves client by name across agencies; resolves channel by name/alias; combines the separate **Year** column with a month *name* ("Jan") into `YYYY-MM`; derives medium/mediaGroup from the channel master; computes VAT (18%); optionally creates missing clients; inserts in chunks of 1000 (≤60k rows). Express JSON body limit raised to 50mb. Per-row errors are reported, not fatal. The whole import is one `UploadBatch` (deletable in one go).
+- **Bulk import — all clients** (SUPER_ADMIN): one file for every client via `POST /api/database/import-all`. Columns (matched by name, order-independent): **Year, RO, Sch: Month, Client, Brand, Medium, Media Group, Channel, Schedule Value** (no Agency column needed). Resolves client by name across agencies; resolves channel by name/alias; combines the separate **Year** column with a month *name* ("Jan") into `YYYY-MM`; derives medium/mediaGroup from the channel master; computes VAT (18%); optionally creates missing clients; inserts in chunks of 1000 (≤60k rows). Express JSON body limit raised to 50mb. Per-row errors are reported, not fatal. The whole import is one `UploadBatch` (deletable in one go). **Every OTHER column in the sheet** (Invoice Value, Invoice Value with VAT, CAG Agency/%/Amount, AOR %/Revenue, station & agency invoice numbers, the various dates, Payment Received, Group, etc.) is captured verbatim by the DatabasePage parser into a per-row `extra` object (keyed by original header, skipping the core/derived columns in `CORE_IMPORT_HEADERS`) and stored on `ScheduleLog.importExtra` (`Json?`). These are **retained for the record only** — no aggregation uses them — and are appended as extra columns on the **schedule-logs Excel export** (`report.controller.js`, colliding headers suffixed " (import)"). They are NOT shown in the Database grid.
 
 ## Design System
 

@@ -735,20 +735,39 @@ export async function exportScheduleLogs(req, res) {
       return res.send(buffer);
     }
 
+    // Extra spreadsheet columns retained verbatim on bulk import (importExtra) —
+    // appended after the standard columns so nothing uploaded is lost on export.
+    // A header that collides with a standard column is suffixed " (import)".
+    const STD_KEYS = new Set(['Agency', 'Client', 'Channel', 'Medium', 'Media Group', 'RO Number', 'Schedule Month', 'Invoice Month', 'Schedule Value', 'With VAT', 'Uploaded By']);
+    const renameExtra = (k) => (STD_KEYS.has(k) ? `${k} (import)` : k);
+    const extraKeys = [];
+    for (const log of logs) {
+      if (log.importExtra && typeof log.importExtra === 'object') {
+        for (const k of Object.keys(log.importExtra)) { const rk = renameExtra(k); if (!extraKeys.includes(rk)) extraKeys.push(rk); }
+      }
+    }
+
     // Excel: display-name keys for column headers
-    const rows = logs.map((log) => ({
-      Agency: log.agency.name,
-      Client: log.client.name,
-      Channel: log.channelMaster.name,
-      Medium: log.medium,
-      'Media Group': log.mediaGroup,
-      'RO Number': log.roNumber,
-      'Schedule Month': log.scheduleMonth,
-      'Invoice Month': log.invoiceMonth,
-      'Schedule Value': Number(log.scheduleValue),
-      'With VAT': Number(log.scheduleValueWithVat),
-      'Uploaded By': log.uploader.name,
-    }));
+    const rows = logs.map((log) => {
+      const extra = {};
+      if (log.importExtra && typeof log.importExtra === 'object') {
+        for (const [k, v] of Object.entries(log.importExtra)) extra[renameExtra(k)] = v;
+      }
+      return {
+        Agency: log.agency.name,
+        Client: log.client.name,
+        Channel: log.channelMaster.name,
+        Medium: log.medium,
+        'Media Group': log.mediaGroup,
+        'RO Number': log.roNumber,
+        'Schedule Month': log.scheduleMonth,
+        'Invoice Month': log.invoiceMonth,
+        'Schedule Value': Number(log.scheduleValue),
+        'With VAT': Number(log.scheduleValueWithVat),
+        'Uploaded By': log.uploader.name,
+        ...extra,
+      };
+    });
 
     // ─── Excel export ──────────────────────────────────────────────────
 
@@ -768,6 +787,7 @@ export async function exportScheduleLogs(req, res) {
       { header: 'Schedule Value (LKR)', key: 'Schedule Value', width: 22 },
       { header: 'With VAT (LKR)', key: 'With VAT', width: 22 },
       { header: 'Uploaded By', key: 'Uploaded By', width: 18 },
+      ...extraKeys.map((k) => ({ header: k, key: k, width: 18 })),
     ];
 
     const NAVY_BG = '0A1729';

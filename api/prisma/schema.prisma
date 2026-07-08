@@ -408,6 +408,11 @@ model ScheduleLog {
   commissionTypeAtEntry String?  @map("commission_type_at_entry")
   commissionRateAtEntry Decimal? @map("commission_rate_at_entry") @db.Decimal(14, 2)
   commissionBackfilled  Boolean  @default(false) @map("commission_backfilled")
+  // Extra spreadsheet columns kept verbatim on bulk import (Invoice Value, CAG/
+  // AOR %, station & agency invoice numbers, dates, Payment Received, etc.) that
+  // the system does not compute with — retained for the record and re-exportable.
+  // Keyed by original column header. Not used in any aggregation.
+  importExtra          Json?     @map("import_extra")
   propertyId           Int?      @map("property_id")
   isDeleted            Boolean   @default(false) @map("is_deleted")
   deletedById          Int?      @map("deleted_by_id")

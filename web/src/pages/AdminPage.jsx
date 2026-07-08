@@ -5,13 +5,13 @@ import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
 
-const ROLES = ['SUPER_ADMIN', 'ADMIN_LEVEL_1', 'GROUP_HEAD', 'PLANNER'];
+const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
 const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 
 const ROLE_DESC = {
   SUPER_ADMIN: 'Full access; manages agencies, users & assignments',
-  ADMIN_LEVEL_1: 'Read-only across assigned agencies; can export reports',
+  MANAGER: 'Read-only across assigned agencies; can export reports',
   GROUP_HEAD: 'Manages their team & all clients the team handles',
   PLANNER: 'Adds & edits properties on assigned clients only',
 };
@@ -878,7 +878,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     propertyCategories.filter(c => c.name.toLowerCase().includes(search.toLowerCase())),
     [propertyCategories, search]);
 
-  const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'ADMIN_LEVEL_1';
+  const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   // Export every admin dataset into one workbook, a sheet per entity.
   const exportAll = () => {
@@ -1741,7 +1741,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>Send to roles</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-              {['GROUP_HEAD', 'PLANNER', 'ADMIN_LEVEL_1', 'SUPER_ADMIN'].map((r) => {
+              {['GROUP_HEAD', 'PLANNER', 'MANAGER', 'SUPER_ADMIN'].map((r) => {
                 const on = notifyRoles.includes(r);
                 return (
                   <button key={r} type="button" onClick={() => toggleNotifyRole(r)}

@@ -55,6 +55,15 @@ function normalizeMonth(raw) {
 
 const EDITABLE_FIELDS = ['roNumber', 'scheduleMonth', 'brandName', 'channelMasterId', 'scheduleValue'];
 
+// Normalized headers the bulk import maps to system fields (or derives) — every
+// OTHER column in the sheet is retained verbatim in the row's `extra` JSON.
+const CORE_IMPORT_HEADERS = new Set([
+  'year', 'agency', 'client', 'advertiser', 'channel',
+  'sch month', 'schedule month', 'month',
+  'ro', 'ro number', 'channel estimate', 'estimate', 'channel estimate ro number', 'channel estimate/ ro number',
+  'brand', 'schedule value', 'value', 'amount', 'medium', 'media group',
+]);
+
 const COLUMNS = [
   { key: 'groupHead', label: 'Group', width: 120, readOnly: true },
   { key: 'year', label: 'Year', width: 60, readOnly: true },
@@ -502,6 +511,17 @@ export default function DatabasePage() {
         const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
         const rows = json.map(row => {
           const m = buildHeaderMap(row);
+          // Every remaining column (Invoice Value, CAG/AOR, invoice numbers, dates,
+          // Payment Received, etc.) is kept verbatim in `extra`, keyed by its
+          // original header, so nothing in the sheet is lost — the system only
+          // computes with the core columns below.
+          const extra = {};
+          for (const [k, v] of Object.entries(row)) {
+            const nk = String(k).toLowerCase().replace(/:/g, '').replace(/\s+/g, ' ').trim();
+            if (CORE_IMPORT_HEADERS.has(nk)) continue;
+            if (v === '' || v == null) continue;
+            extra[String(k).trim()] = typeof v === 'string' ? v.trim() : v;
+          }
           return {
             year: firstOf(m, 'year'),
             agency: firstOf(m, 'agency'),
@@ -511,6 +531,7 @@ export default function DatabasePage() {
             roNumber: firstOf(m, 'ro', 'ro number', 'channel estimate', 'estimate'),
             brand: firstOf(m, 'brand'),
             scheduleValue: firstOf(m, 'schedule value', 'value', 'amount').replace(/[^0-9.\-]/g, ''),
+            extra: Object.keys(extra).length ? extra : undefined,
           };
         }).filter(r => r.client || r.channel || r.scheduleValue);
         setImportRows(rows);

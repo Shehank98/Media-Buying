@@ -30,7 +30,7 @@ import ProfitPage from './pages/ProfitPage';
 // Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
 function HomeRedirect() {
   const { user } = useAuth();
-  const target = ['SUPER_ADMIN', 'ADMIN_LEVEL_1'].includes(user?.role) ? '/executive-dashboard' : '/database';
+  const target = ['SUPER_ADMIN', 'MANAGER'].includes(user?.role) ? '/executive-dashboard' : '/database';
   return <Navigate to={target} replace />;
 }
 
@@ -71,7 +71,7 @@ export default function App() {
             <Route
               path="/spend-analytics"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1', 'GROUP_HEAD', 'PLANNER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER']}>
                   <SpendAnalyticsPage />
                 </ProtectedRoute>
               }
@@ -93,7 +93,7 @@ export default function App() {
             <Route
               path="/executive-dashboard"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
                   <ExecutiveDashboardPage />
                 </ProtectedRoute>
               }
@@ -101,7 +101,7 @@ export default function App() {
             <Route
               path="/deep-dashboard"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
                   <DeepDashboardPage />
                 </ProtectedRoute>
               }
@@ -109,7 +109,7 @@ export default function App() {
             <Route
               path="/channel-masters/:channelMasterId"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1', 'GROUP_HEAD', 'PLANNER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER']}>
                   <ChannelIntelligencePage />
                 </ProtectedRoute>
               }
@@ -117,7 +117,7 @@ export default function App() {
             <Route
               path="/reports"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'ADMIN_LEVEL_1']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
                   <ReportsPage />
                 </ProtectedRoute>
               }

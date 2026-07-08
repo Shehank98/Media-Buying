@@ -867,6 +867,7 @@ export async function importAllScheduleLogs(req, res) {
         brandName: brandName ? String(brandName).trim() : null,
         scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+        importExtra: (r.extra && typeof r.extra === 'object' && Object.keys(r.extra).length) ? r.extra : null,
         ...commissionSnapshot(client),
       });
     }
