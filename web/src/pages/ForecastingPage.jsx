@@ -1418,7 +1418,7 @@ export default function ForecastingPage() {
                   {categories.length > 0 && (
                     <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 8, padding: '9px 13px', fontSize: 12.5, color: '#9A5B00', marginBottom: 14, lineHeight: 1.5 }}>
                       <Icon name="clock" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
-                      Enter each channel where you can. If you don’t yet know the split for a medium, put the amount in its <strong>Unspecified</strong> row — it still counts toward that medium’s total. Please finalise the per-channel breakdown <strong>before the 15th</strong>.
+                      Enter each channel where you can. If you don’t yet know the split for a medium, put the amount in its <strong>Unspecified</strong> row. It still counts toward that medium’s total. Please finalise the per-channel breakdown <strong>before the 15th</strong>.
                     </div>
                   )}
                   {categories.length > 0 && (
