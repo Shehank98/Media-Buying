@@ -39,6 +39,8 @@ import {
   setChannelCommitment,
   listMonthlyBilling,
   setMonthlyBilling,
+  uploadChannelRateCardHandler,
+  deleteChannelRateCardHandler,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -90,6 +92,9 @@ router.get('/channel-masters', listChannelMasters);
 router.post('/channel-masters', createChannelMaster);
 router.put('/channel-masters/:id', updateChannelMaster);
 router.delete('/channel-masters/:id', deleteChannelMaster);
+// Channel rate card (PDF in Google Drive; download route lives under /analytics)
+router.post('/channel-masters/:id/rate-card', uploadChannelRateCardHandler);
+router.delete('/channel-masters/:id/rate-card', deleteChannelRateCardHandler);
 
 // Group Revenue Contribution (per group head, per month) → Executive Dashboard right donut
 router.get('/group-revenue', listGroupRevenue);

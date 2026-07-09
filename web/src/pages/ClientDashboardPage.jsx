@@ -201,7 +201,7 @@ export default function ClientDashboardPage() {
               <thead><tr><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Entries</th><th style={{ textAlign: 'right' }}>Spend</th></tr></thead>
               <tbody>
                 {(data.byChannel || []).map(ch => (
-                  <tr key={ch.name} className={ch.id ? 'clickable' : ''} onClick={() => ch.id && navigate(`/channel-masters/${ch.id}`)}>
+                  <tr key={ch.name} className={ch.id ? 'clickable' : ''} onClick={() => ch.id && navigate(`/channel-masters/${ch.id}?clientId=${clientId}`)}>
                     <td className="strong">{ch.name}</td>
                     <td>{ch.medium ? <span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span> : '-'}</td>
                     <td style={{ textAlign: 'right' }}>{ch.count}</td>

@@ -321,10 +321,13 @@ POST   /api/packages/inbox/:recipientId/respond    (AUTH + GROUP_HEAD)    Intere
 
 ### Analytics
 ```
-GET    /api/analytics/channel/:channelMasterId/summary           (AUTH + SUPER_ADMIN|MANAGER|GROUP_HEAD)
-GET    /api/analytics/channel/:channelMasterId/monthly-spend
-GET    /api/analytics/channel/:channelMasterId/clients
-GET    /api/analytics/channel/:channelMasterId/property-history
+GET    /api/analytics/channel/:channelMasterId/summary           (AUTH + SUPER_ADMIN|MANAGER|GROUP_HEAD)   ?clientId scopes every number to one client (+ returns scopedClient, rateCard)
+GET    /api/analytics/channel/:channelMasterId/rate-card                                                    proxies the channel's rate-card PDF from Drive (inline; ?download=1 = attachment)
+GET    /api/analytics/channel/:channelMasterId/monthly-spend      ?clientId
+GET    /api/analytics/channel/:channelMasterId/clients            ?clientId  (each row carries ME contact: meName/meEmail/meMobile)
+GET    /api/analytics/channel/:channelMasterId/property-history   ?clientId
+# All channel endpoints accept ?clientId to scope to a single client (client-context click-through);
+# a scoped user only gets it for a client they can access. SUPER_ADMIN toggles back to overall in the UI.
 
 GET    /api/analytics/dashboard/summary          (AUTH + SUPER_ADMIN|MANAGER)   ?agencyId &year
 GET    /api/analytics/dashboard/agency-comparison                                ?year
@@ -379,6 +382,8 @@ POST   /api/admin/teams/:id/clients
 CRUD   /api/admin/channel-masters
 GET/POST /api/admin/channel-commitments        yearly commitment per channel (?year; POST upserts {channelMasterId,year,yearlyAmount}, blank/0 deletes)
 GET/POST /api/admin/monthly-billing            company-wide actual billing per month (?year; POST upserts {year,month,amount}, blank/0 deletes)
+POST     /api/admin/channel-masters/:id/rate-card   upload a PDF rate card (JSON {fileName, dataBase64}) → Google Drive
+DELETE   /api/admin/channel-masters/:id/rate-card   remove the rate card (Drive file + DB fields)
 ```
 
 ### Master Data (SUPER_ADMIN only)
@@ -485,7 +490,10 @@ A standalone reference also lives in `docs/DASHBOARDS_AND_CHARTS.md`.
 - Excel (SheetJS, sheet per group) + PDF (jsPDF, charts via html2canvas) export.
 
 ### Channel Intelligence (`/channel-masters/:id`)
-- Six endpoints keyed by channel master id: `/summary` (incl. a per-year `byYear[]` breakdown → one spend card per year), `/monthly-spend`, `/month-detail`, `/clients`, `/agency-monthly`, `/property-history`.
+- Endpoints keyed by channel master id: `/summary` (incl. a per-year `byYear[]` breakdown → one spend card per year), `/rate-card`, `/monthly-spend`, `/month-detail`, `/clients`, `/agency-monthly`, `/property-history`.
+- **Client-scoped view** — every channel endpoint accepts `?clientId=`, which narrows all its numbers to that one client (a scoped user only gets it for a client they can access; `singleClientFilter` in `analytics.controller.js`). Clicking a channel from a **client context** — the Spend Analytics "Spend by Channel" list while a client filter is active, or the **Client Dashboard**'s channels table — links to `/channel-masters/:id?clientId=<id>`, so you see that client's spend on the channel, not the whole channel's. The page (`ChannelIntelligencePage.jsx`, reads `?clientId` via `useSearchParams`) shows a "Showing <Client> only" banner + a **SUPER_ADMIN-only toggle** to flip to overall (all-clients) numbers; `getChannelSummary` returns `scopedClient` when scoped. No param = the original cross-client market-intel view.
+- **ME / Contact column** on the **Clients on this Channel** table — each client's rep contact (the "ME" entered on that client's Add-Channel form: `Channel.contactName/contactEmail/contactMobile`), joined per client on this channel master (`getChannelClients` returns `meName/meEmail/meMobile`).
+- **Rate card** — one PDF per channel (`ChannelMaster.rateCard{DriveId,FileName,Size,UploadedAt}`), stored in Google Drive via the same service account as the DB backup (`ratecard.service.js`, folder `GDRIVE_RATECARD_FOLDER_ID` → falls back to `GDRIVE_BACKUP_FOLDER_ID`; `backup.service.js` now exports `loadServiceAccount`/`getDriveAccessToken`). **Admin uploads/replaces/removes** it per row on **Admin → Channels** (a "Rate Card" column: PDF file-picker → base64 JSON `POST /admin/channel-masters/:id/rate-card`, PDF-sniffed + ≤25 MB; the download route proxies the file so it stays access-controlled). The Channel Intelligence header shows **Rate card / Download** buttons (blob-fetched via `GET /analytics/channel/:id/rate-card`, roles SUPER_ADMIN|MANAGER|GROUP_HEAD) or a "No rate card" chip. Uploads return **503 with a clear message when Drive isn't configured** (dev), like the backup feature.
 - Stat cards (compact, page-scoped sizing — NOT the global 33px `.stat-val`); **Monthly Spend Trend** — one Line per year plotted against a fixed Jan-Dec X axis (`/monthly-spend` pivots `scheduleMonth` into `{ years: [...], data: [{ monthNum, label, [year]: value, ... }] }`); clicking a year's dot opens a drill-down modal (`getChannelMonthDetail` / `/month-detail?year=&month=`) listing every `ScheduleLog` behind that point, grouped by client (expand a client row for its individual RO/brand/value rows) so a spend spike can be traced back to exactly which client and schedule made it up; **Spend by Agency Over Time** multi-line (`/agency-monthly`); **Client Spend Concentration** Pareto (ComposedChart: per-client spend bars + cumulative-% line + 80% reference line, built client-side from `/clients`); **Clients on this Channel** table; **Property History Timeline** (vertical timeline of deal terms + the real `PropertyHistory` audit-trail diffs). `getChannelPropertyHistory` also matches free-text client channels by name/alias when `channelMasterId` is null.
 
 ### Database (`/database`)

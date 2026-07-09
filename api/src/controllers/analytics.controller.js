@@ -2,12 +2,23 @@ import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 import { accountManagerByClient } from './forecastInsights.controller.js';
+import { downloadRateCard, isRateCardConfigured } from '../services/ratecard.service.js';
 
 // Client ids the user may see (null = unrestricted, for SUPER_ADMIN).
 // Covers MANAGER (agency clients), GROUP_HEAD (team + direct), PLANNER (direct).
 async function clientScope(user) {
   if (!user || user.role === 'SUPER_ADMIN') return null;
   return getAccessibleClientIds(user.id, user.role);
+}
+
+// If ?clientId= is passed and the user may access it, return that id so a channel
+// view can be scoped to a single client (with a SUPER_ADMIN toggle back to
+// overall on the client). cids = clientScope() result (null = unrestricted).
+function singleClientFilter(req, cids) {
+  const cid = parseInt(req.query.clientId);
+  if (!Number.isFinite(cid)) return null;
+  if (cids && !cids.includes(cid)) return null; // no access → ignore (stays scope-wide)
+  return cid;
 }
 
 BigInt.prototype.toJSON = function () { return Number(this); };
@@ -563,6 +574,8 @@ export async function getChannelSummary(req, res) {
     // Scope to the user's accessible clients (MANAGER/GROUP_HEAD/PLANNER see only theirs).
     const cids = await clientScope(req.user);
     if (cids) base.clientId = { in: cids };
+    const onlyClient = singleClientFilter(req, cids);
+    if (onlyClient) base.clientId = onlyClient;
     // Anchor to the latest year that has data on this channel (not the calendar year).
     const { lys, lycm, cys, cye, year } = await refPeriod(base);
 
@@ -589,8 +602,16 @@ export async function getChannelSummary(req, res) {
       .sort((a, b) => Number(b) - Number(a))
       .map(y => ({ year: Number(y), spend: yearTotals[y] }));
 
+    const scopedClient = onlyClient
+      ? await prisma.client.findUnique({ where: { id: onlyClient }, select: { id: true, name: true } })
+      : null;
+
     return res.json({
       channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
+      rateCard: channel.rateCardFileName
+        ? { fileName: channel.rateCardFileName, size: channel.rateCardSize, uploadedAt: channel.rateCardUploadedAt }
+        : null,
+      scopedClient: scopedClient ? { id: scopedClient.id, name: scopedClient.name } : null,
       latestYear: year,
       previousYear: year - 1,
       ytdSpend: ytd,
@@ -606,12 +627,36 @@ export async function getChannelSummary(req, res) {
   }
 }
 
+// Proxy the channel's rate card PDF from Google Drive (view inline or ?download=1).
+export async function getChannelRateCard(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const master = await prisma.channelMaster.findUnique({
+      where: { id: channelMasterId },
+      select: { rateCardDriveId: true, rateCardFileName: true },
+    });
+    if (!master || !master.rateCardDriveId) return res.status(404).json({ error: 'No rate card for this channel' });
+    if (!isRateCardConfigured()) return res.status(503).json({ error: 'Rate card storage is not configured' });
+    const buffer = await downloadRateCard(master.rateCardDriveId);
+    const disp = req.query.download === '1' ? 'attachment' : 'inline';
+    const safeName = (master.rateCardFileName || 'rate-card.pdf').replace(/["\r\n]/g, '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disp}; filename="${safeName}"`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error('getChannelRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to fetch rate card', detail: error.message });
+  }
+}
+
 export async function getChannelMonthlySpend(req, res) {
   try {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const base = { channelMasterId, isDeleted: false };
     const cids = await clientScope(req.user);
     if (cids) base.clientId = { in: cids };
+    const onlyClient = singleClientFilter(req, cids);
+    if (onlyClient) base.clientId = onlyClient;
 
     const rows = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
@@ -656,6 +701,8 @@ export async function getChannelMonthDetail(req, res) {
     const base = { channelMasterId, scheduleMonth, isDeleted: false };
     const cids = await clientScope(req.user);
     if (cids) base.clientId = { in: cids };
+    const onlyClient = singleClientFilter(req, cids);
+    if (onlyClient) base.clientId = onlyClient;
 
     const logs = await prisma.scheduleLog.findMany({
       where: base,
@@ -711,6 +758,8 @@ export async function getChannelAgencyMonthly(req, res) {
     const base = { channelMasterId, isDeleted: false };
     const cids = await clientScope(req.user);
     if (cids) base.clientId = { in: cids };
+    const onlyClient = singleClientFilter(req, cids);
+    if (onlyClient) base.clientId = onlyClient;
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['agencyId', 'scheduleMonth'],
@@ -751,6 +800,8 @@ export async function getChannelClients(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const cids = await clientScope(req.user);
     const scope = { channelMasterId, isDeleted: false, ...(cids ? { clientId: { in: cids } } : {}) };
+    const onlyClient = singleClientFilter(req, cids);
+    if (onlyClient) scope.clientId = onlyClient;
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['clientId'],
@@ -758,6 +809,17 @@ export async function getChannelClients(req, res) {
       _sum: { scheduleValue: true, scheduleValueWithVat: true },
       _count: true,
     });
+
+    // Each client's "ME" = the rep contact captured on that client's Channel row
+    // (contactName/email/mobile) for this channel master.
+    const clientIds = grouped.map((g) => g.clientId);
+    const contacts = clientIds.length
+      ? await prisma.channel.findMany({
+        where: { channelMasterId, clientId: { in: clientIds } },
+        select: { clientId: true, contactName: true, contactEmail: true, contactMobile: true },
+      })
+      : [];
+    const contactByClient = new Map(contacts.map((c) => [c.clientId, c]));
 
     const result = await Promise.all(grouped.map(async (g) => {
       const client = await prisma.client.findUnique({ where: { id: g.clientId }, include: { agency: { select: { id: true, name: true } } } });
@@ -770,6 +832,7 @@ export async function getChannelClients(req, res) {
         orderBy: { scheduleMonth: 'desc' },
         select: { scheduleMonth: true },
       });
+      const contact = contactByClient.get(g.clientId) || null;
       return {
         clientId: g.clientId,
         clientName: client?.name || 'Unknown',
@@ -780,6 +843,9 @@ export async function getChannelClients(req, res) {
         entryCount: g._count,
         monthsActive: months.length,
         lastActive: lastLog?.scheduleMonth || null,
+        meName: contact?.contactName || null,
+        meEmail: contact?.contactEmail || null,
+        meMobile: contact?.contactMobile || null,
       };
     }));
 
@@ -811,8 +877,10 @@ export async function getChannelPropertyHistory(req, res) {
 
     // Scope to the user's accessible clients (MANAGER/GROUP_HEAD/PLANNER see only theirs).
     const cids = await clientScope(req.user);
-    const propertyWhere = cids
-      ? { channel: { AND: [channelWhere, { clientId: { in: cids } }] } }
+    const onlyClient = singleClientFilter(req, cids);
+    const clientCond = onlyClient ? { clientId: onlyClient } : (cids ? { clientId: { in: cids } } : null);
+    const propertyWhere = clientCond
+      ? { channel: { AND: [channelWhere, clientCond] } }
       : { channel: channelWhere };
 
     const properties = await prisma.property.findMany({

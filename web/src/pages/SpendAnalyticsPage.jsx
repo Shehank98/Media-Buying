@@ -1065,7 +1065,7 @@ export default function SpendAnalyticsPage() {
                         <RankRow key={ch.name} rank={i + 1} name={ch.name} sub={ch.medium} value={ch.value} max={maxCh}
                           color={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]}
                           clickable={!!ch.channelMasterId}
-                          onClick={() => navigate(`/channel-masters/${ch.channelMasterId}`)} />
+                          onClick={() => navigate(`/channel-masters/${ch.channelMasterId}${clientId ? `?clientId=${clientId}` : ''}`)} />
                       ))
                     )}
                   </div>

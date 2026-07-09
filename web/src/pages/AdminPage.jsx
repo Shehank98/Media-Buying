@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
@@ -89,6 +89,11 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [mergeTargetId, setMergeTargetId] = useState('');
   const [mergeSubmitting, setMergeSubmitting] = useState(false);
   const [mergeError, setMergeError] = useState('');
+
+  /* ---- channel rate card upload ---- */
+  const rcInputRef = useRef(null);
+  const [rcTarget, setRcTarget] = useState(null);
+  const [rcBusyId, setRcBusyId] = useState(null);
 
   /* ---- merge client modal ---- */
   const [showClientMerge, setShowClientMerge] = useState(false);
@@ -597,6 +602,54 @@ export default function AdminPage({ initialTab = 'users' }) {
       await fetchData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update channel status.');
+    }
+  };
+
+  // ── Channel rate card (PDF in Google Drive) ──
+  const pickRateCard = ch => { setRcTarget(ch); rcInputRef.current?.click(); };
+  const onRateCardFile = async e => {
+    const file = e.target.files?.[0];
+    const ch = rcTarget;
+    e.target.value = '';
+    if (!file || !ch) return;
+    if (!/\.pdf$/i.test(file.name)) { setError('Rate card must be a PDF.'); return; }
+    setRcBusyId(ch.id);
+    try {
+      const dataBase64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',').pop());
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      await api.post(`/admin/channel-masters/${ch.id}/rate-card`, { fileName: file.name, dataBase64 });
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to upload rate card.');
+    } finally {
+      setRcBusyId(null);
+      setRcTarget(null);
+    }
+  };
+  const removeRateCard = async ch => {
+    if (!window.confirm(`Remove the rate card for ${ch.name}?`)) return;
+    setRcBusyId(ch.id);
+    try {
+      await api.delete(`/admin/channel-masters/${ch.id}/rate-card`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to remove rate card.');
+    } finally {
+      setRcBusyId(null);
+    }
+  };
+  const viewRateCard = async ch => {
+    try {
+      const res = await api.get(`/analytics/channel/${ch.id}/rate-card`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError('Could not open the rate card.');
     }
   };
   const openMergeModal = ch => {
@@ -1447,6 +1500,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* ============ CHANNELS TABLE ============ */}
       {activeTab === 'channels' && (
         <div className="tbl-wrap">
+          <input ref={rcInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={onRateCardFile} />
           <table className="tbl">
             <thead>
               <tr>
@@ -1455,6 +1509,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <th>Media Group</th>
                 <th>Aliases</th>
                 <th>Usage</th>
+                <th>Rate Card</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -1469,6 +1524,23 @@ export default function AdminPage({ initialTab = 'users' }) {
                     {ch.aliases?.length ? ch.aliases.join(', ') : '-'}
                   </td>
                   <td style={{ color: 'var(--muted)' }}>{ch._count?.scheduleLogs ?? 0} logs</td>
+                  <td>
+                    {rcBusyId === ch.id ? (
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Working…</span>
+                    ) : ch.rateCardFileName ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => viewRateCard(ch)} title={ch.rateCardFileName} style={{ gap: 4 }}>
+                          <Icon name="file" size={13} /> View
+                        </button>
+                        <button className="act-btn" onClick={() => pickRateCard(ch)} title="Replace PDF"><Icon name="edit" size={13} /></button>
+                        <button className="act-btn" onClick={() => removeRateCard(ch)} title="Remove rate card" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={13} /></button>
+                      </div>
+                    ) : (
+                      <button className="btn btn-ghost btn-sm" onClick={() => pickRateCard(ch)} style={{ gap: 4 }}>
+                        <Icon name="upload" size={13} /> Upload PDF
+                      </button>
+                    )}
+                  </td>
                   <td>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,

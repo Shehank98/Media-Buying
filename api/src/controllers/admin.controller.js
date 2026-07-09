@@ -2,6 +2,7 @@ import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 import { releaseHeldImportRows } from './database.controller.js';
+import { uploadRateCard, deleteRateCard, isRateCardConfigured } from '../services/ratecard.service.js';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1136,5 +1137,61 @@ export async function setMonthlyBilling(req, res) {
   } catch (error) {
     console.error('setMonthlyBilling error:', error);
     return res.status(500).json({ error: 'Failed to save monthly billing', detail: error.message });
+  }
+}
+
+// ── Channel rate card (1 PDF per channel, stored in Google Drive) ──
+
+export async function uploadChannelRateCardHandler(req, res) {
+  try {
+    if (!isRateCardConfigured()) {
+      return res.status(503).json({ error: 'Rate card storage is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON and GDRIVE_RATECARD_FOLDER_ID (or GDRIVE_BACKUP_FOLDER_ID).' });
+    }
+    const id = parseInt(req.params.id);
+    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, name: true, rateCardDriveId: true } });
+    if (!master) return res.status(404).json({ error: 'Channel not found' });
+
+    const { fileName, dataBase64 } = req.body || {};
+    if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the PDF file) is required' });
+    const name = String(fileName || `${master.name} rate card.pdf`).trim();
+    if (!/\.pdf$/i.test(name)) return res.status(400).json({ error: 'Only PDF rate cards are allowed' });
+
+    const b64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
+    const buffer = Buffer.from(b64, 'base64');
+    if (!buffer.length) return res.status(400).json({ error: 'Empty file' });
+    if (buffer.length > 25 * 1024 * 1024) return res.status(413).json({ error: 'Rate card must be 25 MB or smaller' });
+    // Cheap PDF sniff: files start with "%PDF".
+    if (buffer.slice(0, 4).toString('latin1') !== '%PDF') return res.status(400).json({ error: 'File does not look like a PDF' });
+
+    // Replace any existing card (best-effort delete of the old Drive file).
+    if (master.rateCardDriveId) await deleteRateCard(master.rateCardDriveId).catch(() => {});
+
+    const up = await uploadRateCard(buffer, name);
+    const saved = await prisma.channelMaster.update({
+      where: { id },
+      data: { rateCardDriveId: up.id, rateCardFileName: name, rateCardSize: up.size, rateCardUploadedAt: new Date() },
+      select: { id: true, rateCardFileName: true, rateCardSize: true, rateCardUploadedAt: true },
+    });
+    return res.json({ channelMaster: saved });
+  } catch (error) {
+    console.error('uploadChannelRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to upload rate card', detail: error.message });
+  }
+}
+
+export async function deleteChannelRateCardHandler(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { rateCardDriveId: true } });
+    if (!master) return res.status(404).json({ error: 'Channel not found' });
+    if (master.rateCardDriveId) await deleteRateCard(master.rateCardDriveId).catch(() => {});
+    await prisma.channelMaster.update({
+      where: { id },
+      data: { rateCardDriveId: null, rateCardFileName: null, rateCardSize: null, rateCardUploadedAt: null },
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('deleteChannelRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to remove rate card', detail: error.message });
   }
 }

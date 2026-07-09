@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
@@ -53,6 +53,14 @@ export default function ChannelIntelligencePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const id = parseInt(channelMasterId);
+  const [searchParams] = useSearchParams();
+  const urlClientId = searchParams.get('clientId');
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  // When arriving from a client context (?clientId=), scope every number to that
+  // client. SUPER_ADMIN can toggle back to overall (all-clients) numbers.
+  const [scopeOverall, setScopeOverall] = useState(false);
+  const scopedClientId = (urlClientId && !scopeOverall) ? urlClientId : null;
+  const scopeParams = scopedClientId ? { clientId: scopedClientId } : {};
 
   const [summary, setSummary] = useState(null);
   const [monthly, setMonthly] = useState({ years: [], data: [] });
@@ -81,11 +89,11 @@ export default function ChannelIntelligencePage() {
     const load = async () => {
       try {
         const [sumRes, monthRes, clientRes, propRes, agRes] = await Promise.all([
-          api.get(`/analytics/channel/${id}/summary`),
-          api.get(`/analytics/channel/${id}/monthly-spend`),
-          api.get(`/analytics/channel/${id}/clients`),
-          api.get(`/analytics/channel/${id}/property-history`),
-          api.get(`/analytics/channel/${id}/agency-monthly`),
+          api.get(`/analytics/channel/${id}/summary`, { params: scopeParams }),
+          api.get(`/analytics/channel/${id}/monthly-spend`, { params: scopeParams }),
+          api.get(`/analytics/channel/${id}/clients`, { params: scopeParams }),
+          api.get(`/analytics/channel/${id}/property-history`, { params: scopeParams }),
+          api.get(`/analytics/channel/${id}/agency-monthly`, { params: scopeParams }),
         ]);
         setSummary(sumRes.data);
         setMonthly(monthRes.data && Array.isArray(monthRes.data.data) ? monthRes.data : { years: [], data: [] });
@@ -102,8 +110,9 @@ export default function ChannelIntelligencePage() {
         setLoading(false);
       }
     };
+    setLoading(true);
     load();
-  }, [id]);
+  }, [id, scopedClientId]);
 
   const sortedClients = useMemo(() => {
     return [...clients].sort((a, b) => {
@@ -188,7 +197,7 @@ export default function ChannelIntelligencePage() {
     setExpandedDetailClients({});
     setMonthDetail({ year, month: monthNum, total: 0, clients: [], label: `${MONTH_NAMES[monthNum - 1]} ${year}` });
     try {
-      const res = await api.get(`/analytics/channel/${id}/month-detail`, { params: { year, month: monthNum } });
+      const res = await api.get(`/analytics/channel/${id}/month-detail`, { params: { year, month: monthNum, ...scopeParams } });
       setMonthDetail({ ...res.data, label: `${MONTH_NAMES[monthNum - 1]} ${year}` });
     } catch {
       setMonthDetailError('Failed to load schedule logs for this month.');
@@ -202,6 +211,29 @@ export default function ChannelIntelligencePage() {
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
 
   const ch = summary?.channel || {};
+
+  // Fetch the rate card PDF (auth-protected) as a blob, then view it in a new tab
+  // or download it.
+  const openRateCard = async (download) => {
+    try {
+      const res = await api.get(`/analytics/channel/${id}/rate-card`, {
+        params: download ? { download: 1 } : {},
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = summary?.rateCard?.fileName || 'rate-card.pdf';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        window.open(url, '_blank');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      alert('Could not load the rate card.');
+    }
+  };
   const chartData = monthly.data || [];
   const chartYears = monthly.years || [];
 
@@ -256,9 +288,44 @@ export default function ChannelIntelligencePage() {
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {ch.name} <MediumBadge medium={ch.medium} />
           </h1>
-          <p className="page-sub">Channel Intelligence Report{ch.mediaGroup ? ` · ${ch.mediaGroup}` : ''}</p>
+          <p className="page-sub">
+            Channel Intelligence Report{ch.mediaGroup ? ` · ${ch.mediaGroup}` : ''}
+            {summary?.scopedClient && <> · <b style={{ color: 'var(--ink)' }}>{summary.scopedClient.name}</b> only</>}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Rate card (view / download) */}
+          {summary?.rateCard ? (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(false)} title={summary.rateCard.fileName}>
+                <Icon name="file" size={15} /> Rate card
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(true)}>
+                <Icon name="download" size={15} /> Download
+              </button>
+            </>
+          ) : (
+            <span className="ci-meta" title={isSuperAdmin ? 'Upload it in Admin → Channels' : ''}>No rate card</span>
+          )}
         </div>
       </div>
+
+      {/* Client-scoped view banner + SUPER_ADMIN overall toggle */}
+      {urlClientId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: scopeOverall ? 'var(--bg-sunken)' : '#EDF3FD', border: '1px solid ' + (scopeOverall ? 'var(--border)' : '#d4e2f7'), borderRadius: 10, padding: '9px 14px', marginBottom: 16, fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          <Icon name="alert" size={14} style={{ color: '#1F5BB5' }} />
+          <span style={{ flex: 1, minWidth: 180 }}>
+            {scopeOverall
+              ? <>Showing <b>overall</b> numbers for this channel (all clients).</>
+              : <>Showing <b>{summary?.scopedClient?.name || 'this client'}</b>&rsquo;s spend on this channel only.</>}
+          </span>
+          {isSuperAdmin && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setScopeOverall(v => !v)}>
+              {scopeOverall ? `Show ${summary?.scopedClient?.name || 'client'} only` : 'Show overall (all clients)'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 28 }}>
@@ -460,6 +527,7 @@ export default function ChannelIntelligencePage() {
                 {[
                   { key: 'clientName', label: 'Client' },
                   { key: 'agencyName', label: 'Agency' },
+                  { key: 'meName', label: 'ME / Contact' },
                   { key: 'totalScheduleValue', label: 'Schedule Value' },
                   { key: 'entryCount', label: 'Entries' },
                   { key: 'monthsActive', label: 'Months Active' },
@@ -475,6 +543,16 @@ export default function ChannelIntelligencePage() {
                   <tr key={c.clientId} className="clickable" onClick={() => navigate(`/clients/${c.clientId}/dashboard`)}>
                     <td className="strong">{c.clientName}</td>
                     <td style={{ color: 'var(--muted)' }}>{c.agencyName}</td>
+                    <td>
+                      {c.meName ? (
+                        <div>
+                          <div style={{ fontSize: 12.5 }}>{c.meName}</div>
+                          {(c.meEmail || c.meMobile) && (
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{[c.meEmail, c.meMobile].filter(Boolean).join(' · ')}</div>
+                          )}
+                        </div>
+                      ) : <span style={{ color: 'var(--muted-2, #9aa3b2)' }}>-</span>}
+                    </td>
                     <td className="mono">{fmtLKR(c.totalScheduleValue)}</td>
                     <td style={{ textAlign: 'center' }}>{c.entryCount ?? '-'}</td>
                     <td style={{ textAlign: 'center' }}>{c.monthsActive}</td>

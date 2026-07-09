@@ -37,7 +37,7 @@ const FILE_PREFIX = 'orbit-backup-';
 let lastRun = null;   // { status, at, fileName, fileId, sizeBytes, error, durationMs }
 let running = false;
 
-function loadServiceAccount() {
+export function loadServiceAccount() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) return null;
   let text = raw.trim();
@@ -68,7 +68,7 @@ export function getBackupStatus() {
   };
 }
 
-async function getAccessToken() {
+export async function getDriveAccessToken() {
   const sa = loadServiceAccount();
   if (!sa) throw new Error('Service account not configured');
   const client = new JWT({
@@ -180,7 +180,7 @@ async function pruneOldBackups(token) {
 // List recent backups already in the folder (for the status view).
 export async function listBackups(limit = 15) {
   if (!isBackupConfigured()) return [];
-  const token = await getAccessToken();
+  const token = await getDriveAccessToken();
   const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
   const q = encodeURIComponent(`'${folderId}' in parents and name contains '${FILE_PREFIX}' and trashed = false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=${limit}&fields=files(id,name,size,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
@@ -205,7 +205,7 @@ export async function runBackup({ trigger = 'manual' } = {}) {
   const localPath = path.join(tmpdir(), fileName);
   try {
     const sizeBytes = await dumpDatabase(localPath);
-    const token = await getAccessToken();
+    const token = await getDriveAccessToken();
     const file = await uploadToDrive(localPath, fileName, token);
     let pruned = 0;
     try { pruned = await pruneOldBackups(token); } catch { /* pruning is best-effort */ }
