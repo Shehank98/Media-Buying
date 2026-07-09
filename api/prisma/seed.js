@@ -271,20 +271,32 @@ async function main() {
   const agencyByName = {};
   for (const a of agencies) agencyByName[a.name.toLowerCase()] = a;
 
+  // Prefetch every existing client's name AND aliases into one normalized set.
+  // A seed client is skipped if its name matches any existing client's name OR
+  // alias. Merging a seed-named client into a differently-named target records
+  // the seed name as an alias on that target (see mergeClients), so this stops
+  // the seed from re-creating a merged-away client on every deploy — the bug
+  // where merges "un-merged" after a redeploy. Matching aliases here (not just
+  // names) is what makes a merge survive future deploys.
+  const existingClients = await prisma.client.findMany({ select: { name: true, aliases: true } });
+  const knownClientNames = new Set();
+  for (const ec of existingClients) {
+    knownClientNames.add(ec.name.trim().toLowerCase());
+    for (const al of ec.aliases || []) knownClientNames.add(al.trim().toLowerCase());
+  }
+
   let clientsCreated = 0, clientsSkipped = 0;
   for (const c of CLIENTS) {
     const agency = agencyByName[c.agency.toLowerCase()];
     if (!agency) { console.warn(`  ! Agency not found for client "${c.name}": ${c.agency}`); clientsSkipped++; continue; }
     // Only seed clients that don't exist ANYWHERE yet. A client may have been
-    // intentionally moved to a different agency — recreating it under its
-    // original (seed) agency would produce a duplicate "exists under multiple
-    // agencies" record, so skip if the name already exists under any agency.
-    const existing = await prisma.client.findFirst({
-      where: { name: { equals: c.name, mode: 'insensitive' } },
-      select: { id: true },
-    });
-    if (existing) { clientsSkipped++; continue; }
+    // intentionally moved to a different agency, or merged into a same-purpose
+    // client under a different name — recreating it under its original (seed)
+    // agency would produce a duplicate, so skip if the name already matches an
+    // existing client's name or alias.
+    if (knownClientNames.has(c.name.trim().toLowerCase())) { clientsSkipped++; continue; }
     await prisma.client.create({ data: { agencyId: agency.id, name: c.name } });
+    knownClientNames.add(c.name.trim().toLowerCase());
     clientsCreated++;
   }
   console.log(`Clients created: ${clientsCreated}${clientsSkipped ? `, skipped (already exist): ${clientsSkipped}` : ''}`);

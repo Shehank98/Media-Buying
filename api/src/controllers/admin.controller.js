@@ -759,8 +759,8 @@ export async function mergeClients(req, res) {
     if (sid === tid) return res.status(400).json({ error: 'sourceId and targetId must be different' });
 
     const [source, target] = await Promise.all([
-      prisma.client.findUnique({ where: { id: sid }, select: { id: true, name: true } }),
-      prisma.client.findUnique({ where: { id: tid }, select: { id: true, name: true, agencyId: true } }),
+      prisma.client.findUnique({ where: { id: sid }, select: { id: true, name: true, aliases: true } }),
+      prisma.client.findUnique({ where: { id: tid }, select: { id: true, name: true, agencyId: true, aliases: true } }),
     ]);
     if (!source) return res.status(404).json({ error: 'Source client not found' });
     if (!target) return res.status(404).json({ error: 'Target client not found' });
@@ -887,7 +887,27 @@ export async function mergeClients(req, res) {
         }
       }
 
-      // 8) Source is now empty — delete it.
+      // 8) Remember the source's name (and its own aliases) on the target, so
+      //    the seed and bulk-import recognise the merged-away name as this client
+      //    and never re-create it on a future deploy (which is what made merges
+      //    appear to "un-merge" after redeployment). Merge names case-insensitively
+      //    and never duplicate the target's own name.
+      const targetNorm = target.name.trim().toLowerCase();
+      const knownAliases = new Set((target.aliases || []).map((a) => a.trim().toLowerCase()));
+      const aliasesToAdd = [];
+      for (const cand of [source.name, ...(source.aliases || [])]) {
+        const n = (cand || '').trim();
+        if (!n) continue;
+        const key = n.toLowerCase();
+        if (key === targetNorm || knownAliases.has(key)) continue;
+        knownAliases.add(key);
+        aliasesToAdd.push(n);
+      }
+      if (aliasesToAdd.length) {
+        await tx.client.update({ where: { id: tid }, data: { aliases: { push: aliasesToAdd } } });
+      }
+
+      // 9) Source is now empty — delete it.
       await tx.client.delete({ where: { id: sid } });
     }, {
       // A merge of a data-heavy client touches many rows; the default 5s
