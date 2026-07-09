@@ -24,6 +24,8 @@ import {
   listAnnualTargets,
   upsertAnnualTarget,
   deleteAnnualTarget,
+  listAgencyTargets,
+  setAgencyTarget,
   listAdminClients,
   toggleClientActive,
   setClientCommission,
@@ -86,6 +88,9 @@ router.put('/channel-requests/:id', reviewChannelRequest);
 router.get('/annual-targets', listAnnualTargets);
 router.post('/annual-targets', upsertAnnualTarget);
 router.delete('/annual-targets/:id', deleteAnnualTarget);
+// Per-agency annual targets (Spend Analytics agency-wise achievement)
+router.get('/agency-targets', listAgencyTargets);
+router.post('/agency-targets', setAgencyTarget);
 
 // Channel Masters
 router.get('/channel-masters', listChannelMasters);

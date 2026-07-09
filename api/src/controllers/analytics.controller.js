@@ -1485,6 +1485,110 @@ export async function getRevenueAchievement(req, res) {
   }
 }
 
+// Agency ids the user may see for the agency-wise achievement charts.
+//  SUPER_ADMIN: all agencies. MANAGER: their UserAgencyAccess agencies.
+//  GROUP_HEAD/PLANNER: the agencies of their accessible clients.
+async function accessibleAgencyIds(user) {
+  if (!user) return [];
+  if (user.role === 'SUPER_ADMIN') {
+    const ags = await prisma.agency.findMany({ select: { id: true } });
+    return ags.map(a => a.id);
+  }
+  if (user.role === 'MANAGER') {
+    const acc = await prisma.userAgencyAccess.findMany({ where: { userId: user.id }, select: { agencyId: true } });
+    return acc.map(a => a.agencyId);
+  }
+  const clientIds = await getAccessibleClientIds(user.id, user.role);
+  if (!clientIds || !clientIds.length) return [];
+  const clients = await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { agencyId: true }, distinct: ['agencyId'] });
+  return [...new Set(clients.map(c => c.agencyId))];
+}
+
+// Agency-wise Annual Achievement (same method as the Executive Dashboard's
+// Annual Achievement, but per agency using AgencyAnnualTarget) + this-year
+// monthly spend bars. Scoped to the agencies the user can see; ?agencyId
+// narrows to one (respecting the Spend Analytics agency filter).
+export async function getAgencyAchievement(req, res) {
+  try {
+    const user = req.user;
+    let agencyIds = await accessibleAgencyIds(user);
+    const dataYears = await availableYears({ isDeleted: false });
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const filterAgency = parseInt(req.query.agencyId);
+    if (Number.isFinite(filterAgency)) {
+      agencyIds = agencyIds.includes(filterAgency) ? [filterAgency] : [];
+    }
+    if (!agencyIds.length) return res.json({ year, availableYears: years, agencies: [] });
+
+    const agencies = await prisma.agency.findMany({
+      where: { id: { in: agencyIds } }, select: { id: true, name: true }, orderBy: { name: 'asc' },
+    });
+    const now = new Date();
+
+    const result = [];
+    for (const ag of agencies) {
+      const scope = { isDeleted: false, agencyId: ag.id };
+      const aRows = await prisma.scheduleLog.groupBy({
+        by: ['scheduleMonth'],
+        where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+        _sum: { scheduleValue: true },
+      });
+      const actualByMonth = {};
+      for (const r of aRows) { const m = parseInt(String(r.scheduleMonth).slice(5)); if (m >= 1 && m <= 12) actualByMonth[m] = (safeNum(r._sum.scheduleValue) || 0) / 1e6; }
+      const fRows = await prisma.monthlyForecast.groupBy({ by: ['month'], where: { year, agencyId: ag.id }, _sum: { amountMillions: true } });
+      const forecastByMonth = {};
+      for (const r of fRows) forecastByMonth[r.month] = safeNum(r._sum.amountMillions) || 0;
+
+      const monthValue = (m) => {
+        const a = actualByMonth[m];
+        if (a != null && a > 0) return { v: a, fc: false };
+        const f = forecastByMonth[m] || 0;
+        if (f > 0) return { v: f, fc: true };
+        return { v: a != null ? a : 0, fc: false, empty: a == null && f === 0 };
+      };
+      let positionMonth = 0;
+      for (let m = 1; m <= 12; m++) if (!monthValue(m).empty) positionMonth = m;
+      if (year === now.getFullYear()) positionMonth = Math.min(positionMonth, now.getMonth() + 1);
+
+      const target = await prisma.agencyAnnualTarget.findUnique({ where: { agencyId_year: { agencyId: ag.id, year } } });
+      const targetMillions = target ? Number(target.totalTargetMillions) : 0;
+
+      let actualSum = 0, forecastUsed = 0; const fillMonths = [];
+      for (let m = 1; m <= positionMonth; m++) { const mv = monthValue(m); actualSum += mv.v; if (mv.fc) { forecastUsed += mv.v; fillMonths.push(m); } }
+      let lastActualMonth = 0;
+      for (let m = 1; m <= positionMonth; m++) { const mv = monthValue(m); if (!mv.fc && !mv.empty) lastActualMonth = m; }
+      const uptoTargetMillions = target && positionMonth > 0 ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
+      const actualMillions = Number(actualSum.toFixed(2));
+      const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
+
+      const monthly = MONTH_NAMES.map((label, i) => ({ monthNum: i + 1, label, value: Number(((actualByMonth[i + 1] || 0)).toFixed(2)) }));
+
+      result.push({
+        agencyId: ag.id,
+        agencyName: ag.name,
+        hasTarget: !!target,
+        targetMillions,
+        positionMonth,
+        uptoMonthLabel: positionMonth > 0 ? MONTH_NAMES[positionMonth - 1] : null,
+        uptoTargetMillions,
+        actualMillions,
+        actualOnlyMillions: Number((actualSum - forecastUsed).toFixed(2)),
+        forecastFillMillions: Number(forecastUsed.toFixed(2)),
+        forecastFillLabel: fillMonths.length ? fillMonths.map(m => MONTH_NAMES[m - 1]).join(', ') : null,
+        actualRangeLabel: lastActualMonth > 0 ? (lastActualMonth === 1 ? MONTH_NAMES[0] : `${MONTH_NAMES[0]}–${MONTH_NAMES[lastActualMonth - 1]}`) : null,
+        achievementPct,
+        monthly,
+      });
+    }
+    return res.json({ year, availableYears: years, agencies: result });
+  } catch (error) {
+    console.error('getAgencyAchievement error:', error);
+    return res.status(500).json({ error: 'Failed to build agency achievement', detail: error.message });
+  }
+}
+
 export async function getForecastMonthly(req, res) {
   try {
     const user = req.user;

@@ -108,6 +108,7 @@ model Agency {
   // Phase 3 relations
   scheduleLogs  ScheduleLog[]
   uploadBatches UploadBatch[]
+  annualTargets AgencyAnnualTarget[]
 
   @@map("agencies")
 }
@@ -538,6 +539,25 @@ model AnnualTarget {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   @@map("annual_targets")
+}
+
+// Per-agency annual target (LKR millions), one per agency per year. Drives the
+// agency-wise Annual Achievement chart on Spend Analytics (distinct from the
+// company-wide AnnualTarget that feeds the Executive Dashboard).
+model AgencyAnnualTarget {
+  id                  Int      @id @default(autoincrement())
+  agencyId            Int      @map("agency_id")
+  year                Int
+  totalTargetMillions Decimal  @map("total_target_millions") @db.Decimal(14, 2)
+  createdById         Int?     @map("created_by_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, year])
+  @@index([year])
+  @@map("agency_annual_targets")
 }
 
 model MonthlyForecast {

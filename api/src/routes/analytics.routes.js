@@ -22,6 +22,7 @@ import {
   getAchievement,
   getChannelCommitments,
   getRevenueAchievement,
+  getAgencyAchievement,
   getForecastMonthly,
   getGroupContribution,
   getGroupContributionVariance,
@@ -57,6 +58,7 @@ router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'
 router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
 router.get('/dashboard/channel-commitments', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getChannelCommitments);
 router.get('/dashboard/revenue-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRevenueAchievement);
+router.get('/agency-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getAgencyAchievement);
 router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
 router.get('/dashboard/group-contribution', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContribution);
 router.get('/dashboard/group-contribution-variance', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContributionVariance);

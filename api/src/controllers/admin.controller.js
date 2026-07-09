@@ -528,6 +528,54 @@ export async function deleteAnnualTarget(req, res) {
   }
 }
 
+// ── Per-agency annual targets (Spend Analytics agency-wise achievement) ──
+
+export async function listAgencyTargets(req, res) {
+  try {
+    const yearsRows = await prisma.scheduleLog.findMany({
+      where: { isDeleted: false }, distinct: ['scheduleMonth'], select: { scheduleMonth: true },
+    });
+    const yearSet = new Set(yearsRows.map(r => parseInt(String(r.scheduleMonth).slice(0, 4))).filter(Boolean));
+    yearSet.add(new Date().getFullYear());
+    const availableYears = [...yearSet].sort((a, b) => b - a);
+    const year = parseInt(req.query.year) || availableYears[0] || new Date().getFullYear();
+
+    const agencies = await prisma.agency.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } });
+    const targets = await prisma.agencyAnnualTarget.findMany({ where: { year } });
+    const byAgency = new Map(targets.map(t => [t.agencyId, Number(t.totalTargetMillions)]));
+    return res.json({
+      year,
+      availableYears,
+      agencies: agencies.map(a => ({ agencyId: a.id, agencyName: a.name, totalTargetMillions: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
+    });
+  } catch (error) {
+    console.error('listAgencyTargets error:', error);
+    return res.status(500).json({ error: 'Failed to load agency targets', detail: error.message });
+  }
+}
+
+export async function setAgencyTarget(req, res) {
+  try {
+    const { agencyId, year, totalTargetMillions } = req.body || {};
+    const aId = parseInt(agencyId), y = parseInt(year);
+    if (!aId || !Number.isInteger(y)) return res.status(400).json({ error: 'agencyId and year are required' });
+    const num = totalTargetMillions === '' || totalTargetMillions == null ? null : Number(totalTargetMillions);
+    if (num == null || isNaN(num) || num <= 0) {
+      await prisma.agencyAnnualTarget.deleteMany({ where: { agencyId: aId, year: y } });
+      return res.json({ agencyId: aId, year: y, totalTargetMillions: null });
+    }
+    const saved = await prisma.agencyAnnualTarget.upsert({
+      where: { agencyId_year: { agencyId: aId, year: y } },
+      update: { totalTargetMillions: num, createdById: req.user?.id ?? null },
+      create: { agencyId: aId, year: y, totalTargetMillions: num, createdById: req.user?.id ?? null },
+    });
+    return res.json({ agencyId: aId, year: y, totalTargetMillions: Number(saved.totalTargetMillions) });
+  } catch (error) {
+    console.error('setAgencyTarget error:', error);
+    return res.status(500).json({ error: 'Failed to save agency target', detail: error.message });
+  }
+}
+
 // ── Client active/hide (forecasting visibility) ──────────────────────────────
 
 export async function listAdminClients(req, res) {
