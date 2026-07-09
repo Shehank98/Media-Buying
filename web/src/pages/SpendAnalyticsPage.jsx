@@ -713,7 +713,7 @@ export default function SpendAnalyticsPage() {
               <div key={a.agencyId} className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                   <div>
-                    <h3 className="spa-ctitle">{a.agencyName} — Annual Achievement · {agencyAch.year}</h3>
+                    <h3 className="spa-ctitle">{a.agencyName} · Annual Achievement · {agencyAch.year}</h3>
                     <p className="spa-csub">
                       {a.hasTarget
                         ? `Budget vs pacing vs actual · LKR millions${a.forecastFillLabel ? ` (incl. ${a.forecastFillLabel} forecast)` : ''}`

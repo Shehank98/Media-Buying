@@ -1777,7 +1777,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                               value={ccAmounts[c.channelMasterId] ?? ''}
                               onChange={e => setCcAmounts(a => ({ ...a, [c.channelMasterId]: e.target.value }))}
                               onBlur={() => saveChannelCommitment(c.channelMasterId)}
-                              placeholder="—"
+                              placeholder="-"
                               style={{ maxWidth: 200, textAlign: 'right' }}
                               disabled={ccSavingId === c.channelMasterId}
                             />
@@ -1821,7 +1821,7 @@ export default function AdminPage({ initialTab = 'users' }) {
           {/* Company-wide actual billing for the month → Revenue Achievement chart */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
             <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
-              <label>Actual billing — {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
+              <label>Actual billing · {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
               <input
                 className="input" type="number" min="0" step="1000"
                 value={billingAmount}
@@ -1964,7 +1964,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                               value={agTargetVals[a.agencyId] ?? ''}
                               onChange={e => setAgTargetVals(v => ({ ...v, [a.agencyId]: e.target.value }))}
                               onBlur={() => saveAgencyTarget(a.agencyId)}
-                              placeholder="—"
+                              placeholder="-"
                               style={{ maxWidth: 170, textAlign: 'right' }}
                               disabled={agTargetSavingId === a.agencyId}
                             />
@@ -2168,8 +2168,8 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--ink-soft)', background: '#F7F8FA', borderRadius: 8, padding: '12px 14px', lineHeight: 1.6 }}>
                 To enable, set these environment variables on the server and redeploy:
                 <ul style={{ margin: '8px 0 0 18px' }}>
-                  <li><code>GOOGLE_SERVICE_ACCOUNT_JSON</code> — a Google service-account key (raw JSON or base64)</li>
-                  <li><code>GDRIVE_BACKUP_FOLDER_ID</code> — the Drive folder ID, shared with the service account as Editor</li>
+                  <li><code>GOOGLE_SERVICE_ACCOUNT_JSON</code>: a Google service-account key (raw JSON or base64)</li>
+                  <li><code>GDRIVE_BACKUP_FOLDER_ID</code>: the Drive folder ID, shared with the service account as Editor</li>
                 </ul>
               </div>
             )}
@@ -2752,7 +2752,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 </p>
                 <div className="field">
                   <label className="field-label">Client</label>
-                  <input className="input" type="text" value={moveClient ? `${moveClient.name}${moveClient.agencyName ? ` — ${moveClient.agencyName}` : ''}` : ''} disabled />
+                  <input className="input" type="text" value={moveClient ? `${moveClient.name}${moveClient.agencyName ? ` · ${moveClient.agencyName}` : ''}` : ''} disabled />
                 </div>
                 <div className="field">
                   <label className="field-label">Move to agency <span className="req">*</span></label>
