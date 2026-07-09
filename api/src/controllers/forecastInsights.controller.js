@@ -181,12 +181,12 @@ export async function getInsightsSummary(req, res) {
     });
     const channelMasters = await prisma.channelMaster.findMany({
       where: { id: { in: byChannel.map((g) => g.channelMasterId) } },
-      select: { id: true, medium: true },
+      select: { id: true, name: true, medium: true },
     });
-    const mediumOfChannel = new Map(channelMasters.map((c) => [c.id, c.medium]));
+    const cmById = new Map(channelMasters.map((c) => [c.id, c]));
     const mediumTotals = {};
     for (const g of byChannel) {
-      const medium = mediumOfChannel.get(g.channelMasterId) || 'OTHER';
+      const medium = cmById.get(g.channelMasterId)?.medium || 'OTHER';
       mediumTotals[medium] = (mediumTotals[medium] || 0) + (Number(g._sum.amountMillions) || 0);
     }
     const mediumTotalSum = Object.values(mediumTotals).reduce((s, v) => s + v, 0);
@@ -196,12 +196,31 @@ export async function getInsightsSummary(req, res) {
       pctOfTotal: mediumTotalSum > 0 ? Number(((mediumTotals[m] / mediumTotalSum) * 100).toFixed(1)) : 0,
     }));
 
+    // Per-channel breakdown (each individual ChannelMaster that has a forecast,
+    // including the per-medium "Total"/Unspecified buckets for amounts a head
+    // couldn't split), so the Summary can show a true channel-wise view — not
+    // just the medium roll-up. Sorted by medium order then largest forecast.
+    const channelBreakdownByChannel = byChannel
+      .map((g) => {
+        const cm = cmById.get(g.channelMasterId);
+        const amt = Number(g._sum.amountMillions) || 0;
+        return {
+          channelMasterId: g.channelMasterId,
+          channelName: cm?.name || 'Unlinked',
+          medium: cm?.medium || 'OTHER',
+          forecastMillions: Number(amt.toFixed(2)),
+          pctOfTotal: mediumTotalSum > 0 ? Number(((amt / mediumTotalSum) * 100).toFixed(1)) : 0,
+        };
+      })
+      .sort((a, b) => (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || (b.forecastMillions - a.forecastMillions) || a.channelName.localeCompare(b.channelName));
+
     return res.json({
       year: filters.year,
       month: filters.month,
       clients: clientRows,
       totalForecastMillions: Number(grandTotal.toFixed(2)),
       channelBreakdown,
+      channelBreakdownByChannel,
       channelBreakdownTotalMillions: Number(mediumTotalSum.toFixed(2)),
     });
   } catch (error) {

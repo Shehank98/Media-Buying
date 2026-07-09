@@ -123,6 +123,7 @@ function InsightsTab() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
+  const [cbGroupBy, setCbGroupBy] = useState('medium'); // 'medium' | 'channel' — Channel-wise Forecast card
   const [vGroupBy, setVGroupBy] = useState('client'); // 'client' | 'channel'
   const [vSortKey, setVSortKey] = useState('varianceMillions');
   const [vSortDir, setVSortDir] = useState('desc');
@@ -293,7 +294,12 @@ function InsightsTab() {
       ...(summary?.channelBreakdown || []).map((m) => [m.medium, m.forecastMillions, `${m.pctOfTotal}%`]),
       ['TOTAL', summary?.channelBreakdownTotalMillions ?? 0, '100%'],
     ];
-    return [filterSheet, { name: 'Client Forecast', rows: clientRows }, { name: 'Channel Breakdown', rows: chRows }];
+    const chChannelRows = [
+      ['Channel', 'Medium', 'Forecast (M LKR)', '% of Total'],
+      ...(summary?.channelBreakdownByChannel || []).map((c) => [c.channelName, c.medium, c.forecastMillions, `${c.pctOfTotal}%`]),
+      ['TOTAL', '', summary?.channelBreakdownTotalMillions ?? 0, '100%'],
+    ];
+    return [filterSheet, { name: 'Client Forecast', rows: clientRows }, { name: 'Medium Breakdown', rows: chRows }, { name: 'Channel Breakdown', rows: chChannelRows }];
   };
 
   const varianceSheets = () => {
@@ -515,28 +521,60 @@ function InsightsTab() {
                 )}
               </Card>
 
-              <Card title="Channel-wise Forecast (by medium)">
-                {(summary?.channelBreakdown || []).length === 0 ? <Empty /> : (
-                  <table className="tbl" style={{ fontSize: 12.5 }}>
-                    <thead><tr><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ width: '40%' }}>% of Total</th></tr></thead>
-                    <tbody>
-                      {summary.channelBreakdown.map((m) => (
-                        <tr key={m.medium}>
-                          <td><span className="medium-tag" data-medium={m.medium}>{m.medium}</span></td>
-                          <td className="mono" style={{ textAlign: 'right' }}>{fmtM(m.forecastMillions)}</td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#EEF0F3', overflow: 'hidden' }}>
-                                <div style={{ width: `${m.pctOfTotal}%`, height: '100%', background: MEDIUM_COLORS[m.medium] || '#1e3a5f' }} />
+              <Card title={`Channel-wise Forecast (by ${cbGroupBy})`} right={(
+                <div style={{ display: 'inline-flex', background: '#EEF0F3', border: '1px solid #E5E8ED', borderRadius: 8, padding: 2 }}>
+                  {[['medium', 'By medium'], ['channel', 'By channel']].map(([k, label]) => (
+                    <button key={k} onClick={() => setCbGroupBy(k)} style={{ border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, fontFamily: 'inherit', background: cbGroupBy === k ? '#fff' : 'transparent', color: cbGroupBy === k ? '#16243C' : '#6B7790' }}>{label}</button>
+                  ))}
+                </div>
+              )}>
+                {cbGroupBy === 'medium' ? (
+                  (summary?.channelBreakdown || []).length === 0 ? <Empty /> : (
+                    <table className="tbl" style={{ fontSize: 12.5 }}>
+                      <thead><tr><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ width: '40%' }}>% of Total</th></tr></thead>
+                      <tbody>
+                        {summary.channelBreakdown.map((m) => (
+                          <tr key={m.medium}>
+                            <td><span className="medium-tag" data-medium={m.medium}>{m.medium}</span></td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtM(m.forecastMillions)}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#EEF0F3', overflow: 'hidden' }}>
+                                  <div style={{ width: `${m.pctOfTotal}%`, height: '100%', background: MEDIUM_COLORS[m.medium] || '#1e3a5f' }} />
+                                </div>
+                                <span className="mono" style={{ fontSize: 11.5, width: 44, textAlign: 'right' }}>{m.pctOfTotal}%</span>
                               </div>
-                              <span className="mono" style={{ fontSize: 11.5, width: 44, textAlign: 'right' }}>{m.pctOfTotal}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot><tr style={{ fontWeight: 700 }}><td>Total</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM(summary?.channelBreakdownTotalMillions)}</td><td>100%</td></tr></tfoot>
-                  </table>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr style={{ fontWeight: 700 }}><td>Total</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM(summary?.channelBreakdownTotalMillions)}</td><td>100%</td></tr></tfoot>
+                    </table>
+                  )
+                ) : (
+                  (summary?.channelBreakdownByChannel || []).length === 0 ? <Empty /> : (
+                    <table className="tbl" style={{ fontSize: 12.5 }}>
+                      <thead><tr><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ width: '30%' }}>% of Total</th></tr></thead>
+                      <tbody>
+                        {summary.channelBreakdownByChannel.map((c) => (
+                          <tr key={c.channelMasterId}>
+                            <td className="strong">{c.channelName}</td>
+                            <td><span className="medium-tag" data-medium={c.medium}>{c.medium}</span></td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtM(c.forecastMillions)}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#EEF0F3', overflow: 'hidden' }}>
+                                  <div style={{ width: `${c.pctOfTotal}%`, height: '100%', background: MEDIUM_COLORS[c.medium] || '#1e3a5f' }} />
+                                </div>
+                                <span className="mono" style={{ fontSize: 11.5, width: 44, textAlign: 'right' }}>{c.pctOfTotal}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Total ({summary.channelBreakdownByChannel.length})</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM(summary?.channelBreakdownTotalMillions)}</td><td>100%</td></tr></tfoot>
+                    </table>
+                  )
                 )}
               </Card>
             </div>
