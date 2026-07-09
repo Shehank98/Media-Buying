@@ -664,6 +664,16 @@ export default function DatabasePage() {
     return [...m.entries()].map(([raw, count]) => ({ raw, count }));
   };
 
+  // The single agency the file assigns to a raw client name (via its Agency
+  // column), or null when the sheet has no/mixed agency for it. Used to scope the
+  // reconcile "map to existing" dropdown so an Ogilvy import only offers Ogilvy
+  // clients, not Geometry ones.
+  const fileAgencyForClient = (raw) => {
+    const set = new Set();
+    for (const row of importRows) { if (nrm(row.client) === nrm(raw) && row.agency) set.add(nrm(row.agency)); }
+    return set.size === 1 ? [...set][0] : null;
+  };
+
   // Full client list (with agency) for the reconciliation "map to existing" picker.
   useEffect(() => {
     if (!showImport || !isSuperAdmin || importAllClients.length) return;
@@ -687,8 +697,12 @@ export default function DatabasePage() {
         const rc = {};
         for (const c of data.clients) {
           if (c.status === 'matched') continue;
-          if (c.status === 'ambiguous') rc[c.raw] = { action: 'map', clientId: c.options[0]?.id, name: c.raw, agencyId: '', notes: '' };
-          else rc[c.raw] = { action: 'map', clientId: c.suggestion?.id || '', name: c.raw, agencyId: '', notes: '' };
+          if (c.status === 'ambiguous') { rc[c.raw] = { action: 'map', clientId: c.options[0]?.id, name: c.raw, agencyId: '', notes: '' }; continue; }
+          // Only pre-select the suggestion if it sits under the agency the file
+          // assigns to this client (or the file gives no agency for it).
+          const sa = fileAgencyForClient(c.raw);
+          const sugOk = c.suggestion && (!sa || nrm(c.suggestion.agencyName) === sa);
+          rc[c.raw] = { action: 'map', clientId: sugOk ? c.suggestion.id : '', name: c.raw, agencyId: '', notes: '' };
         }
         const rch = {};
         (data.channelClusters || []).forEach((cl, i) => {
@@ -1431,8 +1445,16 @@ export default function DatabasePage() {
                       {recon.clients.filter(c => c.status !== 'matched').map(c => {
                         const r = reconClient[c.raw] || {};
                         const set = (patch) => setReconClient(p => ({ ...p, [c.raw]: { ...p[c.raw], ...patch } }));
+                        // Scope the picker to the agency the file assigns this client
+                        // (via its Agency column), so an Ogilvy import doesn't list
+                        // Geometry clients. No/mixed agency in the file -> show all.
+                        const scopeAgency = fileAgencyForClient(c.raw);
+                        const suggestionOk = c.suggestion && (!scopeAgency || nrm(c.suggestion.agencyName) === scopeAgency);
                         const list = c.status === 'ambiguous' ? c.options
-                          : [...(c.suggestion ? [c.suggestion] : []), ...importAllClients.filter(x => x.id !== c.suggestion?.id).map(x => ({ id: x.id, name: x.name, agencyName: x.agencyName })).sort((a, b) => a.name.localeCompare(b.name))];
+                          : [...(suggestionOk ? [c.suggestion] : []), ...importAllClients
+                              .filter(x => x.id !== c.suggestion?.id)
+                              .filter(x => !scopeAgency || nrm(x.agencyName) === scopeAgency)
+                              .map(x => ({ id: x.id, name: x.name, agencyName: x.agencyName })).sort((a, b) => a.name.localeCompare(b.name))];
                         return (
                           <div key={c.raw} style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
