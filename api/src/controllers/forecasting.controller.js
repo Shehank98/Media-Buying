@@ -189,9 +189,11 @@ export async function listForecastClients(req, res) {
   try {
     const user = req.user;
     const ids = await accessibleClientIds(user);
-    // Only forecast clients assigned to a group head (see GROUP_HEAD_CLIENT_OR) —
-    // clients linked to no group head are old/inactive and hidden from the roster.
-    const where = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    // Non-admins only forecast clients assigned to a group head (see
+    // GROUP_HEAD_CLIENT_OR); clients linked to no group head are old/inactive and
+    // hidden. SUPER_ADMIN sees every active client so they can forecast for any.
+    const where = { isActive: true };
+    if (user.role !== 'SUPER_ADMIN') where.OR = GROUP_HEAD_CLIENT_OR;
     if (ids) where.id = { in: ids };
     if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
 
@@ -475,7 +477,9 @@ export async function listBudget(req, res) {
   try {
     const user = req.user;
     const ids = await accessibleClientIds(user);
-    const where = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    // SUPER_ADMIN sees every active client; non-admins only their group-head roster.
+    const where = { isActive: true };
+    if (user.role !== 'SUPER_ADMIN') where.OR = GROUP_HEAD_CLIENT_OR;
     if (ids) where.id = { in: ids };
     if (req.query.agencyId) where.agencyId = parseInt(req.query.agencyId);
 
