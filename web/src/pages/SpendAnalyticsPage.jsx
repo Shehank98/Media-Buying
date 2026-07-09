@@ -11,7 +11,7 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart, ComposedChart,
-  ScatterChart, Scatter, ZAxis, ReferenceLine,
+  ScatterChart, Scatter, ZAxis, ReferenceLine, LabelList,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush,
 } from 'recharts';
 
@@ -67,6 +67,20 @@ export default function SpendAnalyticsPage() {
   const [cmpFrom, setCmpFrom] = useState('');
   const [cmpTo, setCmpTo] = useState('');
   const [cmpData, setCmpData] = useState(null);
+
+  // Agency-wise Annual Achievement + this-year monthly spend (respects the agency
+  // filter; scoped server-side by role — SUPER_ADMIN all, MANAGER/GROUP_HEAD theirs).
+  const canSeeAgencyAch = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'].includes(user?.role);
+  const [agencyAch, setAgencyAch] = useState(null);
+  const [agencyAchLoading, setAgencyAchLoading] = useState(false);
+  useEffect(() => {
+    if (!canSeeAgencyAch) { setAgencyAch(null); return; }
+    setAgencyAchLoading(true);
+    api.get('/analytics/agency-achievement', { params: agencyId ? { agencyId } : {} })
+      .then(({ data }) => setAgencyAch(data))
+      .catch(() => setAgencyAch(null))
+      .finally(() => setAgencyAchLoading(false));
+  }, [agencyId, canSeeAgencyAch]);
 
   const chartMonthlyRef = useRef(null);
   const chartMediumRef = useRef(null);
@@ -685,6 +699,68 @@ export default function SpendAnalyticsPage() {
               </div>
             );
           })()}
+
+          {/* Agency-wise Annual Achievement + this-year monthly spend (per accessible agency) */}
+          {canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
+            const fmtM = (v) => `${Number(v || 0).toFixed(1)}M`;
+            const bars = [
+              { name: 'Target', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
+              { name: `Upto ${a.uptoMonthLabel || '-'} Target`, actualPart: a.uptoTargetMillions, forecastPart: 0, total: a.uptoTargetMillions, fill: '#9A5B00' },
+              { name: `Actual upto ${a.uptoMonthLabel || '-'}`, actualPart: a.actualOnlyMillions, forecastPart: a.forecastFillMillions, total: a.actualMillions, fill: '#15814B' },
+            ];
+            const pctColor = a.achievementPct == null ? '#6B7790' : a.achievementPct >= 100 ? '#15814B' : a.achievementPct >= 80 ? '#9A5B00' : '#C5391F';
+            return (
+              <div key={a.agencyId} className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                  <div>
+                    <h3 className="spa-ctitle">{a.agencyName} — Annual Achievement · {agencyAch.year}</h3>
+                    <p className="spa-csub">
+                      {a.hasTarget
+                        ? `Budget vs pacing vs actual · LKR millions${a.forecastFillLabel ? ` (incl. ${a.forecastFillLabel} forecast)` : ''}`
+                        : 'No annual target set for this agency. Add one in Admin → Annual Targets → Agency Targets'}
+                    </p>
+                  </div>
+                  {a.hasTarget && a.achievementPct != null && (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: pctColor, background: pctColor + '18', borderRadius: 8, padding: '5px 11px' }}>
+                      {a.achievementPct}% of {a.uptoMonthLabel} target
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                  {a.hasTarget && (
+                    <div>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={bars} layout="vertical" margin={{ top: 6, right: 60, bottom: 6, left: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                          <XAxis type="number" tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: '#3B4A63' }} axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(v, n) => [`LKR ${Number(v).toFixed(1)}M`, n === 'forecastPart' ? 'Forecast' : 'Actual']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                          <Bar dataKey="actualPart" stackId="a" maxBarSize={30}>
+                            {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                          </Bar>
+                          <Bar dataKey="forecastPart" stackId="a" fill="#F2A93B" radius={[0, 4, 4, 0]} maxBarSize={30}>
+                            <LabelList dataKey="total" position="right" formatter={v => fmtM(v)} style={{ fontSize: 11, fontWeight: 700, fill: '#16243C' }} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div>
+                    <p className="spa-csub" style={{ marginBottom: 6 }}>Spend this year, monthly · LKR millions</p>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={a.monthly} margin={{ top: 16, right: 12, bottom: 4, left: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval={0} />
+                        <YAxis tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={38} />
+                        <Tooltip formatter={v => [`LKR ${Number(v).toFixed(1)}M`, 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                        <Bar dataKey="value" fill="#1F5BB5" radius={[3, 3, 0, 0]} maxBarSize={26} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
 
           {/* Monthly Trend Chart — X axis = Jan–Dec, one line per year */}
           {monthlyByYear.years.length > 0 && (

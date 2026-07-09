@@ -122,6 +122,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [editingTarget, setEditingTarget] = useState(null);
   const [targetForm, setTargetForm] = useState({ year: '', totalTargetMillions: '', remoteMonth: '' });
+
+  /* ---- per-agency annual targets (Spend Analytics agency achievement) ---- */
+  const [agTargetYear, setAgTargetYear] = useState(now.getFullYear());
+  const [agTargetYears, setAgTargetYears] = useState([]);
+  const [agTargets, setAgTargets] = useState([]);       // [{ agencyId, agencyName, totalTargetMillions }]
+  const [agTargetVals, setAgTargetVals] = useState({}); // { agencyId: '2000' }
+  const [agTargetLoading, setAgTargetLoading] = useState(false);
+  const [agTargetSavingId, setAgTargetSavingId] = useState(null);
   const [targetSubmitting, setTargetSubmitting] = useState(false);
   const [targetError, setTargetError] = useState('');
 
@@ -957,6 +965,39 @@ export default function AdminPage({ initialTab = 'users' }) {
       setError(err.response?.data?.error || 'Failed to save commitment.');
     } finally {
       setCcSavingId(null);
+    }
+  };
+
+  /* ---- per-agency annual targets ---- */
+  const fetchAgencyTargets = async () => {
+    setAgTargetLoading(true);
+    try {
+      const { data } = await api.get('/admin/agency-targets', { params: { year: agTargetYear } });
+      setAgTargetYears(data.availableYears || []);
+      setAgTargets(data.agencies || []);
+      const v = {};
+      (data.agencies || []).forEach(a => { v[a.agencyId] = a.totalTargetMillions == null ? '' : String(a.totalTargetMillions); });
+      setAgTargetVals(v);
+    } catch {
+      setAgTargets([]); setAgTargetVals({});
+    } finally {
+      setAgTargetLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'annual-targets') fetchAgencyTargets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, agTargetYear]);
+
+  const saveAgencyTarget = async (agencyId) => {
+    const raw = agTargetVals[agencyId];
+    setAgTargetSavingId(agencyId);
+    try {
+      await api.post('/admin/agency-targets', { agencyId, year: agTargetYear, totalTargetMillions: raw === '' ? null : Number(raw) });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save agency target.');
+    } finally {
+      setAgTargetSavingId(null);
     }
   };
 
@@ -1881,6 +1922,59 @@ export default function AdminPage({ initialTab = 'users' }) {
               <p>No annual targets set. Click "Set Target" to add one.</p>
             </div>
           )}
+
+          {/* Per-agency targets → Spend Analytics agency-wise Annual Achievement */}
+          <div style={{ marginTop: 28 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Agency Targets</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Per-agency annual target (LKR millions). Drives the agency-wise Annual Achievement chart on Spend Analytics. Saved when you leave a field; clear to remove.</p>
+              </div>
+              <div className="field" style={{ margin: 0, marginLeft: 'auto' }}>
+                <label>Year</label>
+                <select className="select" value={agTargetYear} onChange={e => setAgTargetYear(Number(e.target.value))}>
+                  {(agTargetYears.length ? agTargetYears : [agTargetYear]).map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+            {agTargetLoading ? (
+              <div style={{ padding: '24px 0' }}><OrbitLoader label="Loading agencies…" /></div>
+            ) : (
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Agency</th>
+                      <th style={{ textAlign: 'right' }}>Annual Target (LKR M)</th>
+                      <th style={{ textAlign: 'right' }}>Monthly pace (÷12)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agTargets.map(a => {
+                      const val = Number(agTargetVals[a.agencyId] || 0);
+                      return (
+                        <tr key={a.agencyId}>
+                          <td className="strong">{a.agencyName}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              className="input" type="number" min="0" step="1"
+                              value={agTargetVals[a.agencyId] ?? ''}
+                              onChange={e => setAgTargetVals(v => ({ ...v, [a.agencyId]: e.target.value }))}
+                              onBlur={() => saveAgencyTarget(a.agencyId)}
+                              placeholder="—"
+                              style={{ maxWidth: 170, textAlign: 'right' }}
+                              disabled={agTargetSavingId === a.agencyId}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right', color: 'var(--muted)' }} className="mono">{val > 0 ? `${(val / 12).toFixed(1)}M` : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
