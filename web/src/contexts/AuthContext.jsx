@@ -109,6 +109,20 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
+  // Proactively refresh the 15-min access token before it expires, so background
+  // requests (e.g. the 60s notifications poll) don't periodically hit an expired
+  // token and 401. The interceptor still recovers from a real 401, but that logs
+  // a noisy 401 in the console each cycle; refreshing ahead of time avoids it.
+  useEffect(() => {
+    if (!user) return;
+    const id = setInterval(() => {
+      if (localStorage.getItem('refreshToken')) {
+        refreshToken().catch(() => {}); // genuine auth failures fall through to the interceptor
+      }
+    }, 12 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user, refreshToken]);
+
   const value = {
     user,
     token,
