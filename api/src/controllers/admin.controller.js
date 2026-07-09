@@ -1026,3 +1026,115 @@ export async function setGroupRevenue(req, res) {
     return res.status(500).json({ error: 'Failed to save group revenue', detail: error.message });
   }
 }
+
+// ── Channel commitments (yearly commitment per channel, admin-managed) ──
+
+export async function listChannelCommitments(req, res) {
+  try {
+    const years = await prisma.scheduleLog.findMany({
+      where: { isDeleted: false },
+      distinct: ['scheduleMonth'],
+      select: { scheduleMonth: true },
+    });
+    const yearSet = new Set(years.map((r) => parseInt(String(r.scheduleMonth).slice(0, 4))).filter(Boolean));
+    yearSet.add(new Date().getFullYear());
+    const availableYears = [...yearSet].sort((a, b) => b - a);
+
+    const year = parseInt(req.query.year) || availableYears[0] || new Date().getFullYear();
+
+    const channels = await prisma.channelMaster.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, medium: true, sortOrder: true, mediaGroup: { select: { name: true } } },
+      orderBy: [{ medium: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    const commitments = await prisma.channelCommitment.findMany({ where: { year } });
+    const byChannel = new Map(commitments.map((c) => [c.channelMasterId, Number(c.yearlyAmount)]));
+
+    return res.json({
+      year,
+      availableYears,
+      channels: channels.map((c) => ({
+        channelMasterId: c.id,
+        name: c.name,
+        medium: c.medium,
+        mediaGroup: c.mediaGroup?.name || '',
+        yearlyAmount: byChannel.has(c.id) ? byChannel.get(c.id) : null,
+      })),
+    });
+  } catch (error) {
+    console.error('listChannelCommitments error:', error);
+    return res.status(500).json({ error: 'Failed to load channel commitments', detail: error.message });
+  }
+}
+
+export async function setChannelCommitment(req, res) {
+  try {
+    const { channelMasterId, year, yearlyAmount } = req.body || {};
+    const chId = parseInt(channelMasterId), y = parseInt(year);
+    if (!chId || !y) return res.status(400).json({ error: 'channelMasterId and year are required' });
+    const num = yearlyAmount === '' || yearlyAmount == null ? null : Number(yearlyAmount);
+    if (num == null || isNaN(num) || num <= 0) {
+      await prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId, year: y } });
+      return res.json({ channelMasterId: chId, year: y, yearlyAmount: null });
+    }
+    const saved = await prisma.channelCommitment.upsert({
+      where: { channelMasterId_year: { channelMasterId: chId, year: y } },
+      update: { yearlyAmount: num, createdById: req.user?.id ?? null },
+      create: { channelMasterId: chId, year: y, yearlyAmount: num, createdById: req.user?.id ?? null },
+    });
+    return res.json({ channelMasterId: chId, year: y, yearlyAmount: Number(saved.yearlyAmount) });
+  } catch (error) {
+    console.error('setChannelCommitment error:', error);
+    return res.status(500).json({ error: 'Failed to save channel commitment', detail: error.message });
+  }
+}
+
+// ── Monthly actual billing (company-wide, one figure per month) ──
+
+export async function listMonthlyBilling(req, res) {
+  try {
+    const latest = await prisma.scheduleLog.findFirst({
+      where: { isDeleted: false },
+      orderBy: { scheduleMonth: 'desc' },
+      select: { scheduleMonth: true },
+    });
+    let currentMonth = null;
+    if (latest) {
+      const [ly, lm] = String(latest.scheduleMonth).split('-').map(Number);
+      currentMonth = { year: ly, month: lm };
+    }
+    const year = parseInt(req.query.year) || currentMonth?.year || new Date().getFullYear();
+    const rows = await prisma.monthlyBilling.findMany({ where: { year }, orderBy: { month: 'asc' } });
+    const byMonth = new Map(rows.map((r) => [r.month, Number(r.amount)]));
+    return res.json({
+      year,
+      currentMonth,
+      months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, amount: byMonth.has(i + 1) ? byMonth.get(i + 1) : null })),
+    });
+  } catch (error) {
+    console.error('listMonthlyBilling error:', error);
+    return res.status(500).json({ error: 'Failed to load monthly billing', detail: error.message });
+  }
+}
+
+export async function setMonthlyBilling(req, res) {
+  try {
+    const { year, month, amount } = req.body || {};
+    const y = parseInt(year), m = parseInt(month);
+    if (!y || !m || m < 1 || m > 12) return res.status(400).json({ error: 'year and month (1-12) are required' });
+    const num = amount === '' || amount == null ? null : Number(amount);
+    if (num == null || isNaN(num) || num <= 0) {
+      await prisma.monthlyBilling.deleteMany({ where: { year: y, month: m } });
+    } else {
+      await prisma.monthlyBilling.upsert({
+        where: { year_month: { year: y, month: m } },
+        update: { amount: num, createdById: req.user?.id ?? null },
+        create: { year: y, month: m, amount: num, createdById: req.user?.id ?? null },
+      });
+    }
+    return listMonthlyBilling({ query: { year: y } }, res);
+  } catch (error) {
+    console.error('setMonthlyBilling error:', error);
+    return res.status(500).json({ error: 'Failed to save monthly billing', detail: error.message });
+  }
+}

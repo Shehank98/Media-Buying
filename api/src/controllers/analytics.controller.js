@@ -1289,6 +1289,134 @@ export async function getAchievement(req, res) {
   }
 }
 
+// Channel commitment tracker: per channel, cumulative committed (yearlyAmount/12
+// × months elapsed) vs cumulative achieved (ScheduleLog spend Jan→latest month).
+export async function getChannelCommitments(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user); // null = unrestricted
+    const scope = { isDeleted: false };
+    if (ids) scope.agencyId = { in: ids };
+
+    const dataYears = await availableYears(scope);
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const commitments = await prisma.channelCommitment.findMany({
+      where: { year },
+      include: { channelMaster: { select: { id: true, name: true, medium: true } } },
+    });
+    if (!commitments.length) {
+      return res.json({ year, availableYears: years, monthsElapsed: 0, monthLabel: null, channels: [], totals: null });
+    }
+
+    // Latest month with data this year (capped at the current calendar month for
+    // an in-progress year), which sets how many months of commitment have accrued.
+    const aMonths = await prisma.scheduleLog.groupBy({
+      by: ['scheduleMonth'],
+      where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+      _sum: { scheduleValue: true },
+    });
+    let monthsElapsed = 0;
+    for (const r of aMonths) { const m = parseInt(String(r.scheduleMonth).slice(5)); if (m > monthsElapsed) monthsElapsed = m; }
+    const now = new Date();
+    if (year === now.getFullYear()) monthsElapsed = Math.min(monthsElapsed, now.getMonth() + 1);
+    if (monthsElapsed < 1) monthsElapsed = 0;
+
+    // Achieved spend per channel Jan→monthsElapsed.
+    const chIds = commitments.map((c) => c.channelMasterId);
+    const spendRows = monthsElapsed > 0 ? await prisma.scheduleLog.groupBy({
+      by: ['channelMasterId'],
+      where: { ...scope, channelMasterId: { in: chIds }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(monthsElapsed).padStart(2, '0')}` } },
+      _sum: { scheduleValue: true },
+    }) : [];
+    const achievedBy = new Map(spendRows.map((r) => [r.channelMasterId, safeNum(r._sum.scheduleValue) || 0]));
+
+    const channels = commitments.map((c) => {
+      const yearly = Number(c.yearlyAmount);
+      const monthly = yearly / 12;
+      const committedToDate = monthly * monthsElapsed;
+      const achieved = achievedBy.get(c.channelMasterId) || 0;
+      const pct = committedToDate > 0 ? Number(((achieved / committedToDate) * 100).toFixed(1)) : null;
+      return {
+        channelMasterId: c.channelMasterId,
+        name: c.channelMaster.name,
+        medium: c.channelMaster.medium,
+        yearlyCommitment: yearly,
+        monthlyCommitment: monthly,
+        committedToDate: Number(committedToDate.toFixed(2)),
+        achieved: Number(achieved.toFixed(2)),
+        achievementPct: pct,
+      };
+    }).sort((a, b) => b.yearlyCommitment - a.yearlyCommitment);
+
+    const totals = {
+      committedToDate: Number(channels.reduce((s, c) => s + c.committedToDate, 0).toFixed(2)),
+      achieved: Number(channels.reduce((s, c) => s + c.achieved, 0).toFixed(2)),
+    };
+    totals.achievementPct = totals.committedToDate > 0 ? Number(((totals.achieved / totals.committedToDate) * 100).toFixed(1)) : null;
+
+    return res.json({
+      year,
+      availableYears: years,
+      monthsElapsed,
+      monthLabel: monthsElapsed > 0 ? MONTH_NAMES[monthsElapsed - 1] : null,
+      channels,
+      totals,
+    });
+  } catch (error) {
+    console.error('getChannelCommitments error:', error);
+    return res.status(500).json({ error: 'Failed to build channel commitments', detail: error.message });
+  }
+}
+
+// Revenue Achievement: yellow Target bar = AnnualTarget ÷ 12 × months entered;
+// green Achievement bar = admin-entered actual billing (MonthlyBilling) summed
+// Jan→latest entered month. Company-wide (billing has no agency dimension).
+export async function getRevenueAchievement(req, res) {
+  try {
+    const dataYears = await availableYears({ isDeleted: false });
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const target = await prisma.annualTarget.findUnique({ where: { year } });
+    const targetMillions = target ? Number(target.totalTargetMillions) : 0;
+
+    const billingRows = await prisma.monthlyBilling.findMany({ where: { year }, orderBy: { month: 'asc' } });
+    const billingByMonth = {};
+    let positionMonth = 0;
+    for (const r of billingRows) {
+      billingByMonth[r.month] = Number(r.amount) / 1e6;
+      if (r.month > positionMonth) positionMonth = r.month;
+    }
+
+    let achievementMillions = 0;
+    for (let m = 1; m <= positionMonth; m++) achievementMillions += billingByMonth[m] || 0;
+    achievementMillions = Number(achievementMillions.toFixed(2));
+
+    const uptoTargetMillions = target && positionMonth > 0
+      ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
+    const achievementPct = uptoTargetMillions > 0
+      ? Number(((achievementMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
+
+    return res.json({
+      year,
+      availableYears: years,
+      hasTarget: !!target,
+      hasBilling: positionMonth > 0,
+      positionMonth,
+      monthLabel: positionMonth > 0 ? MONTH_NAMES[positionMonth - 1] : null,
+      annualTargetMillions: targetMillions,
+      uptoTargetMillions,
+      achievementMillions,
+      achievementPct,
+    });
+  } catch (error) {
+    console.error('getRevenueAchievement error:', error);
+    return res.status(500).json({ error: 'Failed to build revenue achievement', detail: error.message });
+  }
+}
+
 export async function getForecastMonthly(req, res) {
   try {
     const user = req.user;

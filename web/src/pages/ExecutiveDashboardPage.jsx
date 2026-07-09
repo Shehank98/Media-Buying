@@ -64,10 +64,10 @@ const YEAR_COLORS = ['#B4C1D6', '#7E97BE', '#1F5BB5', '#15814B', '#E85D24', '#0A
 // Group Contribution head colours (blue #1F5BB5 is reserved for the Unassigned slice).
 const GC_HEAD_COLORS = ['#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F', '#1e3a5f', '#EAB308', '#0E7490'];
 
-const ChartEmpty = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)' }}>
+const ChartEmpty = ({ msg }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)', textAlign: 'center', padding: '0 20px' }}>
     <Icon name="bar-chart" size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
-    <div style={{ fontSize: 14 }}>No data for selected period</div>
+    <div style={{ fontSize: 14 }}>{msg || 'No data for selected period'}</div>
   </div>
 );
 
@@ -160,8 +160,20 @@ const AchievementTooltip = ({ active, payload, label }) => {
 function AchievementSection({
   year, setYear, achievement, forecastMonthly, groupContribution, groupContributionLoading, loading,
   monthlyAvgByYear, monthlyAvgByYearLoading, groupVariance, groupVarianceLoading,
+  revenueAch, revenueAchLoading, channelCommit, channelCommitLoading,
   trendData, trendLoading, trendView, setTrendView,
 }) {
+  // Revenue Achievement: yellow Target vs green Achievement (admin billing), YTD.
+  const raBars = revenueAch && revenueAch.hasBilling ? [
+    { name: 'Target', value: revenueAch.uptoTargetMillions || 0, fill: '#F5B914' },
+    { name: 'Achievement', value: revenueAch.achievementMillions || 0, fill: '#6FA84B' },
+  ] : [];
+  // Channel commitments: cumulative committed vs achieved (→ millions for display).
+  const ccRows = (channelCommit?.channels || []).map(c => ({
+    ...c,
+    committedM: (c.committedToDate || 0) / 1e6,
+    achievedM: (c.achieved || 0) / 1e6,
+  }));
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
   const bars = achievement ? [
@@ -238,6 +250,97 @@ function AchievementSection({
 
   return (
     <div className="dash-section">
+      {/* Revenue Achievement — admin billing YTD vs prorated annual target */}
+      <div className="chart-card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">
+              {revenueAch?.hasBilling && revenueAch.achievementPct != null
+                ? `${revenueAch.achievementPct}% Revenue Achievement · ${revenueAch.year} ${revenueAch.monthLabel} YTD`
+                : 'Revenue Achievement'}
+            </div>
+            <div className="chart-card-sub">Revenue based on actual billing · LKR millions</div>
+          </div>
+        </div>
+        {revenueAchLoading ? <Skeleton h={240} /> : !revenueAch?.hasTarget ? (
+          <ChartEmpty msg="No annual target set for this year. Add one in Admin → Annual Targets." />
+        ) : !revenueAch?.hasBilling ? (
+          <ChartEmpty msg="No actual billing entered yet. Add it in Admin → Group Revenue (Actual billing)." />
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={raBars} margin={{ top: 28, right: 20, bottom: 6, left: 6 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E8ED" />
+              <XAxis dataKey="name" tick={{ fontSize: 13, fill: '#3B4A63' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#6B7790' }} tickFormatter={v => `${v}`} />
+              <Tooltip formatter={(v) => [`LKR ${Number(v).toFixed(1)}M`, '']} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={120}>
+                {raBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                <LabelList dataKey="value" position="top" formatter={(v) => `${Number(v).toFixed(1)}M`} style={{ fontSize: 12, fontWeight: 700, fill: '#16243C' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Channel Commitments — cumulative committed vs achieved per channel */}
+      <div className="chart-card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">Channel Commitments</div>
+            <div className="chart-card-sub">
+              {channelCommit?.monthLabel
+                ? `Committed vs achieved, Jan–${channelCommit.monthLabel} ${channelCommit.year} · yearly commitment ÷ 12 × months`
+                : 'Yearly commitment per channel vs cumulative schedule spend'}
+            </div>
+          </div>
+        </div>
+        {channelCommitLoading ? <Skeleton h={200} /> : ccRows.length === 0 ? (
+          <ChartEmpty msg="No channel commitments set for this year. Add them in Admin → Channel Commitments." />
+        ) : (
+          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th style={{ textAlign: 'right' }}>Committed ({channelCommit.monthLabel})</th>
+                  <th style={{ textAlign: 'right' }}>Achieved</th>
+                  <th style={{ minWidth: 180 }}>Progress</th>
+                  <th style={{ textAlign: 'right' }}>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ccRows.map(c => {
+                  const pct = c.achievementPct;
+                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 80 ? '#9A5B00' : '#C5391F';
+                  return (
+                    <tr key={c.channelMasterId}>
+                      <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
+                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
+                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
+                      <td>
+                        <div style={{ background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</td>
+                    </tr>
+                  );
+                })}
+                {channelCommit?.totals && (
+                  <tr style={{ borderTop: '2px solid var(--border)' }}>
+                    <td className="strong">Total</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.committedToDate)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.achieved)}</td>
+                    <td></td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{channelCommit.totals.achievementPct == null ? '-' : `${channelCommit.totals.achievementPct}%`}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="chart-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
@@ -516,6 +619,10 @@ export default function ExecutiveDashboardPage() {
   const [monthlyAvgByYearLoading, setMonthlyAvgByYearLoading] = useState(true);
   const [groupVariance, setGroupVariance] = useState(null);
   const [groupVarianceLoading, setGroupVarianceLoading] = useState(true);
+  const [revenueAch, setRevenueAch] = useState(null);
+  const [revenueAchLoading, setRevenueAchLoading] = useState(true);
+  const [channelCommit, setChannelCommit] = useState(null);
+  const [channelCommitLoading, setChannelCommitLoading] = useState(true);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -589,6 +696,24 @@ export default function ExecutiveDashboardPage() {
       if (a.status === 'fulfilled') setAchievement(a.value.data); else setAchievement(null);
       if (f.status === 'fulfilled') setForecastMonthly(f.value.data); else setForecastMonthly(null);
     }).finally(() => setAchLoading(false));
+  }, [year]);
+
+  // Revenue Achievement (admin-entered actual billing YTD vs prorated annual target)
+  useEffect(() => {
+    setRevenueAchLoading(true);
+    api.get('/analytics/dashboard/revenue-achievement', { params: year ? { year } : {} })
+      .then(r => setRevenueAch(r.data))
+      .catch(() => setRevenueAch(null))
+      .finally(() => setRevenueAchLoading(false));
+  }, [year]);
+
+  // Channel commitments (yearly commitment per channel vs cumulative schedule spend)
+  useEffect(() => {
+    setChannelCommitLoading(true);
+    api.get('/analytics/dashboard/channel-commitments', { params: year ? { year } : {} })
+      .then(r => setChannelCommit(r.data))
+      .catch(() => setChannelCommit(null))
+      .finally(() => setChannelCommitLoading(false));
   }, [year]);
 
   // Group contribution (last two months with data, by team head's client portfolio)
@@ -1023,6 +1148,8 @@ export default function ExecutiveDashboardPage() {
         groupContribution={groupContribution} groupContributionLoading={groupContributionLoading}
         monthlyAvgByYear={monthlyAvgByYear} monthlyAvgByYearLoading={monthlyAvgByYearLoading}
         groupVariance={groupVariance} groupVarianceLoading={groupVarianceLoading}
+        revenueAch={revenueAch} revenueAchLoading={revenueAchLoading}
+        channelCommit={channelCommit} channelCommitLoading={channelCommitLoading}
         trendData={trendData} trendLoading={trendLoading} trendView={trendView} setTrendView={setTrendView}
       />
 

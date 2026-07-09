@@ -233,6 +233,7 @@ model ChannelMaster {
   forecasts       MonthlyForecast[]
   agencyDeals     ChannelAgencyDeal[]
   clientDeals     ChannelClientDeal[]
+  commitments     ChannelCommitment[]
   mediaGroup      MediaGroup       @relation(fields: [mediaGroupId], references: [id])
   creator         User             @relation("ChannelMasterCreator", fields: [createdById], references: [id])
 
@@ -595,6 +596,44 @@ model GroupRevenue {
   @@unique([year, month, headUserId])
   @@index([year, month])
   @@map("group_revenues")
+}
+
+// Yearly commitment per channel (full LKR). The monthly pace = yearlyAmount / 12;
+// cumulative target to month M = pace × M. Achievement is derived live from
+// ScheduleLog spend on the channel (Jan→latest data month). Admin-managed,
+// company-wide (one per channel per year). Drives the Executive Dashboard's
+// "Channel Commitments" tracker.
+model ChannelCommitment {
+  id              Int      @id @default(autoincrement())
+  channelMasterId Int      @map("channel_master_id")
+  year            Int
+  yearlyAmount    Decimal  @map("yearly_amount") @db.Decimal(16, 2)
+  createdById     Int?     @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
+
+  @@unique([channelMasterId, year])
+  @@index([year])
+  @@map("channel_commitments")
+}
+
+// Admin-entered company-wide actual billing (full LKR), one figure per month.
+// Summed Jan→latest entered month = the green "Achievement" bar of the Executive
+// Dashboard's Revenue Achievement chart (target = AnnualTarget ÷ 12 × months).
+model MonthlyBilling {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month])
+  @@index([year])
+  @@map("monthly_billings")
 }
 
 model ClientRequest {

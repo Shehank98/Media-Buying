@@ -35,6 +35,10 @@ import {
   reviewChannelRequest,
   listGroupRevenue,
   setGroupRevenue,
+  listChannelCommitments,
+  setChannelCommitment,
+  listMonthlyBilling,
+  setMonthlyBilling,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -90,5 +94,13 @@ router.delete('/channel-masters/:id', deleteChannelMaster);
 // Group Revenue Contribution (per group head, per month) → Executive Dashboard right donut
 router.get('/group-revenue', listGroupRevenue);
 router.post('/group-revenue', setGroupRevenue);
+
+// Channel commitments (yearly target per channel) → Executive Dashboard tracker
+router.get('/channel-commitments', listChannelCommitments);
+router.post('/channel-commitments', setChannelCommitment);
+
+// Monthly actual billing (company-wide) → Executive Dashboard Revenue Achievement chart
+router.get('/monthly-billing', listMonthlyBilling);
+router.post('/monthly-billing', setMonthlyBilling);
 
 export default router;

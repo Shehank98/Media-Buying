@@ -135,6 +135,20 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grSavedAt, setGrSavedAt] = useState(null);
   const [grInit, setGrInit] = useState(false); // pinned form to the dashboard's revenue month yet?
 
+  /* ---- monthly actual billing (company-wide, one figure per month) ---- */
+  const [billingAmount, setBillingAmount] = useState('');   // for grYear/grMonth
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [billingSavedAt, setBillingSavedAt] = useState(null);
+
+  /* ---- channel commitments (yearly target per channel) ---- */
+  const [ccYear, setCcYear] = useState(now.getFullYear());
+  const [ccYears, setCcYears] = useState([]);
+  const [ccChannels, setCcChannels] = useState([]);   // [{ channelMasterId, name, medium, mediaGroup, yearlyAmount }]
+  const [ccAmounts, setCcAmounts] = useState({});     // { channelMasterId: '120000000' }
+  const [ccLoading, setCcLoading] = useState(false);
+  const [ccSavingId, setCcSavingId] = useState(null);
+  const [ccSearch, setCcSearch] = useState('');
+
   /* ---- database backup (Google Drive) ---- */
   const [backup, setBackup] = useState(null);
   const [backupLoading, setBackupLoading] = useState(false);
@@ -834,6 +848,65 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- monthly actual billing (loaded with the Group Revenue tab) ---- */
+  const fetchMonthlyBilling = async () => {
+    try {
+      const { data } = await api.get('/admin/monthly-billing', { params: { year: grYear } });
+      const m = (data.months || []).find(x => x.month === grMonth);
+      setBillingAmount(m && m.amount != null ? String(m.amount) : '');
+    } catch { setBillingAmount(''); }
+  };
+  useEffect(() => {
+    if (activeTab === 'group-revenue') fetchMonthlyBilling();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, grYear, grMonth]);
+
+  const saveMonthlyBilling = async () => {
+    setBillingSaving(true);
+    try {
+      await api.post('/admin/monthly-billing', { year: grYear, month: grMonth, amount: billingAmount === '' ? null : Number(billingAmount) });
+      setBillingSavedAt(Date.now());
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save billing.');
+    } finally {
+      setBillingSaving(false);
+    }
+  };
+
+  /* ---- channel commitments ---- */
+  const fetchChannelCommitments = async () => {
+    setCcLoading(true);
+    try {
+      const { data } = await api.get('/admin/channel-commitments', { params: { year: ccYear } });
+      setCcYears(data.availableYears || []);
+      const chans = data.channels || [];
+      setCcChannels(chans);
+      const amts = {};
+      chans.forEach(c => { amts[c.channelMasterId] = c.yearlyAmount == null ? '' : String(c.yearlyAmount); });
+      setCcAmounts(amts);
+    } catch {
+      setCcChannels([]); setCcAmounts({});
+    } finally {
+      setCcLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'channel-commitments') fetchChannelCommitments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, ccYear]);
+
+  const saveChannelCommitment = async (channelMasterId) => {
+    const raw = ccAmounts[channelMasterId];
+    setCcSavingId(channelMasterId);
+    try {
+      await api.post('/admin/channel-commitments', { channelMasterId, year: ccYear, yearlyAmount: raw === '' ? null : Number(raw) });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save commitment.');
+    } finally {
+      setCcSavingId(null);
+    }
+  };
+
   /* ---- helpers ---- */
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const grTotal = Object.values(grAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -953,6 +1026,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
     { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
     { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
+    { key: 'channel-commitments', label: 'Channel Commitments' },
     { key: 'group-revenue', label: 'Group Revenue' },
     { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
     { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
@@ -1011,7 +1085,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'backup', 'notify'].includes(activeTab) && (
+        {!['group-revenue', 'channel-commitments', 'backup', 'notify'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -1541,6 +1615,68 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
+      {/* ============ CHANNEL COMMITMENTS ============ */}
+      {activeTab === 'channel-commitments' && (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Year</label>
+              <select className="select" value={ccYear} onChange={e => setCcYear(Number(e.target.value))}>
+                {(ccYears.length ? ccYears : [ccYear]).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220, position: 'relative' }}>
+              <label>Search channel</label>
+              <input className="input" type="text" value={ccSearch} onChange={e => setCcSearch(e.target.value)} placeholder="Filter channels…" />
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
+            Set each channel's <b style={{ color: 'var(--ink)' }}>yearly commitment</b> (full LKR) for {ccYear}. The monthly pace = yearly ÷ 12; the Executive Dashboard tracks cumulative achievement (schedule spend Jan→latest month) against it. Clear a value to remove the commitment. Saved automatically when you leave a field.
+          </div>
+          {ccLoading ? (
+            <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading channels…" /></div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Channel</th>
+                    <th>Medium</th>
+                    <th style={{ textAlign: 'right' }}>Yearly Commitment (LKR)</th>
+                    <th style={{ textAlign: 'right' }}>Monthly (÷12)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ccChannels
+                    .filter(c => !ccSearch || c.name.toLowerCase().includes(ccSearch.toLowerCase()) || (c.mediaGroup || '').toLowerCase().includes(ccSearch.toLowerCase()))
+                    .map(c => {
+                      const val = Number(ccAmounts[c.channelMasterId] || 0);
+                      return (
+                        <tr key={c.channelMasterId}>
+                          <td className="strong">{c.name}{c.mediaGroup ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {c.mediaGroup}</span> : null}</td>
+                          <td><span className="medium-tag">{c.medium}</span></td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              className="input" type="number" min="0" step="1000"
+                              value={ccAmounts[c.channelMasterId] ?? ''}
+                              onChange={e => setCcAmounts(a => ({ ...a, [c.channelMasterId]: e.target.value }))}
+                              onBlur={() => saveChannelCommitment(c.channelMasterId)}
+                              placeholder="—"
+                              style={{ maxWidth: 200, textAlign: 'right' }}
+                              disabled={ccSavingId === c.channelMasterId}
+                            />
+                          </td>
+                          <td style={{ textAlign: 'right', color: 'var(--muted)' }} className="mono">{val > 0 ? (val / 12).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ============ ANNUAL TARGETS TABLE ============ */}
       {activeTab === 'group-revenue' && (
         <div>
@@ -1565,6 +1701,28 @@ export default function AdminPage({ initialTab = 'users' }) {
               {grSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
+
+          {/* Company-wide actual billing for the month → Revenue Achievement chart */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
+            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
+              <label>Actual billing — {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
+              <input
+                className="input" type="number" min="0" step="1000"
+                value={billingAmount}
+                onChange={e => { setBillingSavedAt(null); setBillingAmount(e.target.value); }}
+                placeholder="e.g. 30000000"
+                style={{ maxWidth: 260 }}
+              />
+            </div>
+            <button className="btn btn-subtle" onClick={saveMonthlyBilling} disabled={billingSaving}>
+              {billingSaving ? 'Saving…' : 'Save billing'}
+            </button>
+            <div style={{ fontSize: 12, color: 'var(--muted)', flexBasis: '100%', lineHeight: 1.5 }}>
+              One company-wide billing figure per month. The <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart on the Executive Dashboard sums Jan→latest entered month and compares it to the annual target prorated to that month.
+              {billingSavedAt && <span style={{ color: '#15814B', fontWeight: 700, marginLeft: 8 }}>Saved.</span>}
+            </div>
+          </div>
+
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
             Enter each group head's revenue for <b style={{ color: 'var(--ink)' }}>{MONTHS[grMonth - 1]} {grYear}</b> (full LKR). This feeds the Revenue Contribution donut on the Executive Dashboard, which pairs it with the previous month's schedule-log budget. Leave a head blank to omit them.
             {grSavedAt && <span style={{ color: '#15814B', fontWeight: 700, marginLeft: 8 }}>Saved.</span>}
