@@ -105,6 +105,35 @@ export async function getDriveAccessToken() {
   return token;
 }
 
+// Find-or-create a subfolder by `name` under `parentId` (or My Drive root when
+// null). With the drive.file scope the app only sees folders it created — which
+// is exactly what we want: it reuses its own folder tree across runs. Returns
+// the folder id. Shared by backups (date folders) and rate cards (medium/channel).
+export async function ensureFolder(name, parentId, token) {
+  const safe = String(name).replace(/['\\]/g, ' ').trim() || 'Untitled';
+  const clause = parentId ? `'${parentId}' in parents and ` : '';
+  const q = encodeURIComponent(`${clause}mimeType = 'application/vnd.google-apps.folder' and name = '${safe}' and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  const findResp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (findResp.ok) {
+    const { files = [] } = await findResp.json();
+    if (files[0]?.id) return files[0].id;
+  }
+  const metadata = { name: safe, mimeType: 'application/vnd.google-apps.folder', ...(parentId ? { parents: [parentId] } : {}) };
+  const createResp = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadata),
+  });
+  if (!createResp.ok) throw new Error(`Failed to create Drive folder "${safe}" (${createResp.status})`);
+  return (await createResp.json()).id;
+}
+
+// The top backup folder: the configured id, else an app-owned "Orbit Backups".
+async function backupTopFolder(token) {
+  return process.env.GDRIVE_BACKUP_FOLDER_ID || ensureFolder('Orbit Backups', null, token);
+}
+
 // Run pg_dump | gzip → destPath. Resolves with the byte size written.
 function dumpDatabase(destPath) {
   return new Promise((resolve, reject) => {
@@ -142,10 +171,9 @@ function dumpDatabase(destPath) {
 }
 
 // Multipart upload of a local file to the Drive folder. Returns the file resource.
-async function uploadToDrive(localPath, fileName, token) {
-  const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  // With OAuth and no folder id, upload to the user's My Drive root.
-  const metadata = folderId ? { name: fileName, parents: [folderId] } : { name: fileName };
+async function uploadToDrive(localPath, fileName, token, parentId) {
+  // Upload into the given folder (a date subfolder); root if none resolved.
+  const metadata = parentId ? { name: fileName, parents: [parentId] } : { name: fileName };
   const boundary = 'orbit_' + Date.now().toString(36);
   const body = await fsp.readFile(localPath);
 
@@ -183,8 +211,9 @@ async function uploadToDrive(localPath, fileName, token) {
 async function pruneOldBackups(token) {
   const retention = parseInt(process.env.BACKUP_RETENTION || '30', 10);
   if (!(retention > 0)) return 0;
-  const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  const q = encodeURIComponent(`${folderId ? `'${folderId}' in parents and ` : ''}name contains '${FILE_PREFIX}' and trashed = false`);
+  // Backups now live in date subfolders, so match by the unique name prefix
+  // (drive.file scope only surfaces the app's own files anyway).
+  const q = encodeURIComponent(`name contains '${FILE_PREFIX}' and trashed = false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=1000&fields=files(id,name,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) return 0;
@@ -205,8 +234,7 @@ async function pruneOldBackups(token) {
 export async function listBackups(limit = 15) {
   if (!isBackupConfigured()) return [];
   const token = await getDriveAccessToken();
-  const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  const q = encodeURIComponent(`${folderId ? `'${folderId}' in parents and ` : ''}name contains '${FILE_PREFIX}' and trashed = false`);
+  const q = encodeURIComponent(`name contains '${FILE_PREFIX}' and trashed = false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=${limit}&fields=files(id,name,size,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) throw new Error(`Failed to list backups (${resp.status})`);
@@ -230,7 +258,10 @@ export async function runBackup({ trigger = 'manual' } = {}) {
   try {
     const sizeBytes = await dumpDatabase(localPath);
     const token = await getDriveAccessToken();
-    const file = await uploadToDrive(localPath, fileName, token);
+    // Organize as <backup folder>/<YYYY-MM-DD>/orbit-backup-….sql.gz
+    const top = await backupTopFolder(token);
+    const dateFolder = await ensureFolder(new Date().toISOString().slice(0, 10), top, token);
+    const file = await uploadToDrive(localPath, fileName, token, dateFolder);
     let pruned = 0;
     try { pruned = await pruneOldBackups(token); } catch { /* pruning is best-effort */ }
     lastRun = {

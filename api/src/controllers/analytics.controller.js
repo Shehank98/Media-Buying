@@ -609,7 +609,12 @@ export async function getChannelSummary(req, res) {
     return res.json({
       channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
       rateCard: channel.rateCardFileName
-        ? { fileName: channel.rateCardFileName, size: channel.rateCardSize, uploadedAt: channel.rateCardUploadedAt }
+        ? {
+          fileName: channel.rateCardFileName, size: channel.rateCardSize, uploadedAt: channel.rateCardUploadedAt,
+          // Newest first; latest = the one in rateCard* above.
+          versions: (Array.isArray(channel.rateCardVersions) ? channel.rateCardVersions : []).slice().reverse()
+            .map(v => ({ version: v.version, driveId: v.driveId, fileName: v.fileName, uploadedAt: v.uploadedAt })),
+        }
         : null,
       scopedClient: scopedClient ? { id: scopedClient.id, name: scopedClient.name } : null,
       latestYear: year,
@@ -633,13 +638,24 @@ export async function getChannelRateCard(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const master = await prisma.channelMaster.findUnique({
       where: { id: channelMasterId },
-      select: { rateCardDriveId: true, rateCardFileName: true },
+      select: { rateCardDriveId: true, rateCardFileName: true, rateCardVersions: true },
     });
     if (!master || !master.rateCardDriveId) return res.status(404).json({ error: 'No rate card for this channel' });
     if (!isRateCardConfigured()) return res.status(503).json({ error: 'Rate card storage is not configured' });
-    const buffer = await downloadRateCard(master.rateCardDriveId);
+    // Default to the latest; ?driveId= downloads a specific version (must belong
+    // to this channel, so an arbitrary Drive file can't be fetched).
+    const versions = Array.isArray(master.rateCardVersions) ? master.rateCardVersions : [];
+    let driveId = master.rateCardDriveId;
+    let fileName = master.rateCardFileName;
+    if (req.query.driveId) {
+      const v = versions.find(x => x.driveId === req.query.driveId);
+      if (!v && req.query.driveId !== master.rateCardDriveId) return res.status(404).json({ error: 'Version not found' });
+      driveId = req.query.driveId;
+      if (v) fileName = `${(v.fileName || 'rate-card').replace(/\.pdf$/i, '')} (v${v.version}).pdf`;
+    }
+    const buffer = await downloadRateCard(driveId);
     const disp = req.query.download === '1' ? 'attachment' : 'inline';
-    const safeName = (master.rateCardFileName || 'rate-card.pdf').replace(/["\r\n]/g, '');
+    const safeName = (fileName || 'rate-card.pdf').replace(/["\r\n]/g, '');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `${disp}; filename="${safeName}"`);
     return res.send(buffer);

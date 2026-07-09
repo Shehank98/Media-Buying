@@ -224,12 +224,15 @@ model ChannelMaster {
   aliases         String[]         @default([])
   isActive        Boolean          @default(true) @map("is_active")
   sortOrder       Int?             @map("sort_order")
-  // Channel rate card (1 per channel) — a PDF stored in Google Drive via the
-  // service account. Only the Drive file reference + metadata live here.
+  // Channel rate card — a PDF in Google Drive (RateCards/<medium>/<channel>/).
+  // rateCard* = the LATEST version (for quick display/download); every upload is
+  // kept as a new version in rateCardVersions (newest last) rather than replacing
+  // the old file — [{ version, driveId, fileName, size, uploadedAt }].
   rateCardDriveId    String?       @map("rate_card_drive_id")
   rateCardFileName   String?       @map("rate_card_file_name")
   rateCardSize       Int?          @map("rate_card_size")
   rateCardUploadedAt DateTime?     @map("rate_card_uploaded_at")
+  rateCardVersions   Json?         @map("rate_card_versions")
   mediaGroupId    Int              @map("media_group_id")
   createdById     Int              @map("created_by_id")
   createdAt       DateTime         @default(now()) @map("created_at")

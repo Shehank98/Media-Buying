@@ -10,25 +10,31 @@
 //                                (defaults to My Drive root).
 //   (reuses the Drive auth: GOOGLE_OAUTH_* or GOOGLE_SERVICE_ACCOUNT_JSON)
 
-import { hasDriveAuth, oauthConfigured, getDriveAccessToken } from './backup.service.js';
-
-function rateCardFolderId() {
-  return process.env.GDRIVE_RATECARD_FOLDER_ID || process.env.GDRIVE_BACKUP_FOLDER_ID || null;
-}
+import { hasDriveAuth, oauthConfigured, getDriveAccessToken, ensureFolder } from './backup.service.js';
 
 export function isRateCardConfigured() {
-  // OAuth → folder optional (My Drive root). Service account → a folder id required.
+  // OAuth → folder optional (auto-creates "Orbit Rate Cards"). Service account →
+  // a rate-card or backup folder id is required.
   if (oauthConfigured()) return true;
-  return !!(hasDriveAuth() && rateCardFolderId());
+  return !!(hasDriveAuth() && (process.env.GDRIVE_RATECARD_FOLDER_ID || process.env.GDRIVE_BACKUP_FOLDER_ID));
 }
 
-// Upload a PDF Buffer as a new Drive file. Returns { id, size, name }.
-export async function uploadRateCard(buffer, fileName) {
-  if (!isRateCardConfigured()) throw new Error('Rate card storage is not configured');
-  const folderId = rateCardFolderId();
-  const token = await getDriveAccessToken();
+// The top rate-card folder: the configured id, else an app-owned "Orbit Rate Cards".
+async function ratecardTopFolder(token) {
+  return process.env.GDRIVE_RATECARD_FOLDER_ID || ensureFolder('Orbit Rate Cards', null, token);
+}
 
-  const metadata = folderId ? { name: fileName, parents: [folderId] } : { name: fileName };
+// Upload a PDF Buffer into RateCards/<medium>/<channel>/. Returns { id, size,
+// name }. Callers keep every upload as a new version (no delete) so history is
+// preserved in Drive.
+export async function uploadRateCard(buffer, fileName, { medium, channel } = {}) {
+  if (!isRateCardConfigured()) throw new Error('Rate card storage is not configured');
+  const token = await getDriveAccessToken();
+  let parent = await ratecardTopFolder(token);
+  if (medium) parent = await ensureFolder(String(medium), parent, token);
+  if (channel) parent = await ensureFolder(String(channel).slice(0, 120), parent, token);
+
+  const metadata = { name: fileName, parents: [parent] };
   const boundary = 'orbitrc_' + Date.now().toString(36);
   const pre = Buffer.from(
     `--${boundary}\r\n` +

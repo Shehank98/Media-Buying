@@ -1196,7 +1196,7 @@ export async function uploadChannelRateCardHandler(req, res) {
       return res.status(503).json({ error: 'Rate card storage is not configured. Set the Google Drive OAuth env vars (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN), or a service account + GDRIVE_RATECARD_FOLDER_ID.' });
     }
     const id = parseInt(req.params.id);
-    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, name: true, rateCardDriveId: true } });
+    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, name: true, medium: true, rateCardVersions: true } });
     if (!master) return res.status(404).json({ error: 'Channel not found' });
 
     const { fileName, dataBase64 } = req.body || {};
@@ -1211,14 +1211,22 @@ export async function uploadChannelRateCardHandler(req, res) {
     // Cheap PDF sniff: files start with "%PDF".
     if (buffer.slice(0, 4).toString('latin1') !== '%PDF') return res.status(400).json({ error: 'File does not look like a PDF' });
 
-    // Replace any existing card (best-effort delete of the old Drive file).
-    if (master.rateCardDriveId) await deleteRateCard(master.rateCardDriveId).catch(() => {});
+    // Keep every upload as a NEW version (don't delete the old Drive file), in
+    // RateCards/<medium>/<channel>/. rateCard* points at the newest version.
+    const prior = Array.isArray(master.rateCardVersions) ? master.rateCardVersions : [];
+    const version = prior.length + 1;
+    const driveName = `${name.replace(/\.pdf$/i, '')} (v${version}).pdf`;
+    const up = await uploadRateCard(buffer, driveName, { medium: master.medium, channel: master.name });
+    const entry = { version, driveId: up.id, fileName: name, size: up.size, uploadedAt: new Date().toISOString() };
+    const versions = [...prior, entry];
 
-    const up = await uploadRateCard(buffer, name);
     const saved = await prisma.channelMaster.update({
       where: { id },
-      data: { rateCardDriveId: up.id, rateCardFileName: name, rateCardSize: up.size, rateCardUploadedAt: new Date() },
-      select: { id: true, rateCardFileName: true, rateCardSize: true, rateCardUploadedAt: true },
+      data: {
+        rateCardDriveId: up.id, rateCardFileName: name, rateCardSize: up.size, rateCardUploadedAt: new Date(),
+        rateCardVersions: versions,
+      },
+      select: { id: true, rateCardFileName: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true },
     });
     return res.json({ channelMaster: saved });
   } catch (error) {
@@ -1230,12 +1238,14 @@ export async function uploadChannelRateCardHandler(req, res) {
 export async function deleteChannelRateCardHandler(req, res) {
   try {
     const id = parseInt(req.params.id);
-    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { rateCardDriveId: true } });
+    const master = await prisma.channelMaster.findUnique({ where: { id }, select: { rateCardDriveId: true, rateCardVersions: true } });
     if (!master) return res.status(404).json({ error: 'Channel not found' });
-    if (master.rateCardDriveId) await deleteRateCard(master.rateCardDriveId).catch(() => {});
+    // Remove every version's Drive file (best-effort), then clear all fields.
+    const ids = new Set([master.rateCardDriveId, ...(Array.isArray(master.rateCardVersions) ? master.rateCardVersions.map(v => v.driveId) : [])].filter(Boolean));
+    for (const did of ids) await deleteRateCard(did).catch(() => {});
     await prisma.channelMaster.update({
       where: { id },
-      data: { rateCardDriveId: null, rateCardFileName: null, rateCardSize: null, rateCardUploadedAt: null },
+      data: { rateCardDriveId: null, rateCardFileName: null, rateCardSize: null, rateCardUploadedAt: null, rateCardVersions: null },
     });
     return res.json({ ok: true });
   } catch (error) {
