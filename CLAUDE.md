@@ -122,7 +122,7 @@ Railway auto-injects `DATABASE_URL` from the PostgreSQL plugin. The `railway.tom
 Build pipeline: `cd web && npm install && npm run build && cd ../api && npm install && npm run build`
 Start pipeline: `cd api && npx prisma db push && node prisma/seed.js && node src/index.js`
 
-`nixpacks.toml` adds `postgresql-client` (`aptPkgs`) to the runtime image so `pg_dump` is available for the Google Drive backup below.
+`nixpacks.toml` installs **`postgresql-client-18`** from the official PostgreSQL APT (PGDG) repo (a custom `pgclient` build phase) so `pg_dump` matches the Railway **PostgreSQL 18** server — Ubuntu's default `postgresql-client` is v16, and pg_dump refuses to dump a newer server ("server version mismatch"). If Railway's Postgres major changes, bump the version in `nixpacks.toml` (and optionally set `PGDUMP_PATH`).
 
 ## Database Backup (Google Drive)
 

@@ -1,5 +1,18 @@
-# Ensure the PostgreSQL client tools (pg_dump) are available in the runtime
-# image so the daily Google Drive backup can dump the database. aptPkgs is
-# appended to the auto-detected setup phase, so Node detection is unaffected.
+# The daily Google Drive backup runs pg_dump against the Railway database, which
+# is PostgreSQL 18. Ubuntu's default `postgresql-client` is v16, and pg_dump
+# refuses to dump a NEWER server ("server version mismatch"). So we add the
+# official PostgreSQL APT (PGDG) repository and install postgresql-client-18,
+# which provides a pg_dump that can dump an 18.x server. The `pg_dump` wrapper on
+# PATH then resolves to v18 (the only/newest installed client).
 [phases.setup]
-aptPkgs = ["postgresql-client"]
+aptPkgs = ["curl", "ca-certificates"]
+
+[phases.pgclient]
+dependsOn = ["setup"]
+cmds = [
+  "install -d /usr/share/postgresql-common/pgdg",
+  "curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc",
+  "sh -c 'echo \"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main\" > /etc/apt/sources.list.d/pgdg.list'",
+  "apt-get update",
+  "apt-get install -y --no-install-recommends postgresql-client-18"
+]
