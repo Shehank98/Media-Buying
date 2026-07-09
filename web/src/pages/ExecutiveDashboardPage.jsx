@@ -250,97 +250,6 @@ function AchievementSection({
 
   return (
     <div className="dash-section">
-      {/* Revenue Achievement — admin billing YTD vs prorated annual target */}
-      <div className="chart-card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <div className="chart-card-title">
-              {revenueAch?.hasBilling && revenueAch.achievementPct != null
-                ? `${revenueAch.achievementPct}% Revenue Achievement · ${revenueAch.year} ${revenueAch.monthLabel} YTD`
-                : 'Revenue Achievement'}
-            </div>
-            <div className="chart-card-sub">Revenue based on actual billing · LKR millions</div>
-          </div>
-        </div>
-        {revenueAchLoading ? <Skeleton h={240} /> : !revenueAch?.hasTarget ? (
-          <ChartEmpty msg="No annual target set for this year. Add one in Admin → Annual Targets." />
-        ) : !revenueAch?.hasBilling ? (
-          <ChartEmpty msg="No actual billing entered yet. Add it in Admin → Group Revenue (Actual billing)." />
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={raBars} margin={{ top: 28, right: 20, bottom: 6, left: 6 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E8ED" />
-              <XAxis dataKey="name" tick={{ fontSize: 13, fill: '#3B4A63' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#6B7790' }} tickFormatter={v => `${v}`} />
-              <Tooltip formatter={(v) => [`LKR ${Number(v).toFixed(1)}M`, '']} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={120}>
-                {raBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
-                <LabelList dataKey="value" position="top" formatter={(v) => `${Number(v).toFixed(1)}M`} style={{ fontSize: 12, fontWeight: 700, fill: '#16243C' }} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* Channel Commitments — cumulative committed vs achieved per channel */}
-      <div className="chart-card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <div className="chart-card-title">Channel Commitments</div>
-            <div className="chart-card-sub">
-              {channelCommit?.monthLabel
-                ? `Committed vs achieved, Jan–${channelCommit.monthLabel} ${channelCommit.year} · yearly commitment ÷ 12 × months`
-                : 'Yearly commitment per channel vs cumulative schedule spend'}
-            </div>
-          </div>
-        </div>
-        {channelCommitLoading ? <Skeleton h={200} /> : ccRows.length === 0 ? (
-          <ChartEmpty msg="No channel commitments set for this year. Add them in Admin → Channel Commitments." />
-        ) : (
-          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th style={{ textAlign: 'right' }}>Committed ({channelCommit.monthLabel})</th>
-                  <th style={{ textAlign: 'right' }}>Achieved</th>
-                  <th style={{ minWidth: 180 }}>Progress</th>
-                  <th style={{ textAlign: 'right' }}>%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ccRows.map(c => {
-                  const pct = c.achievementPct;
-                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 80 ? '#9A5B00' : '#C5391F';
-                  return (
-                    <tr key={c.channelMasterId}>
-                      <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
-                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
-                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
-                      <td>
-                        <div style={{ background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
-                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</td>
-                    </tr>
-                  );
-                })}
-                {channelCommit?.totals && (
-                  <tr style={{ borderTop: '2px solid var(--border)' }}>
-                    <td className="strong">Total</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.committedToDate)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.achieved)}</td>
-                    <td></td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{channelCommit.totals.achievementPct == null ? '-' : `${channelCommit.totals.achievementPct}%`}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       <div className="chart-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
@@ -575,6 +484,97 @@ function AchievementSection({
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Revenue Achievement — admin billing YTD vs prorated annual target */}
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">
+              {revenueAch?.hasBilling && revenueAch.achievementPct != null
+                ? `${revenueAch.achievementPct}% Revenue Achievement · ${revenueAch.year} ${revenueAch.monthLabel} YTD`
+                : 'Revenue Achievement'}
+            </div>
+            <div className="chart-card-sub">Revenue based on actual billing · LKR millions</div>
+          </div>
+        </div>
+        {revenueAchLoading ? <Skeleton h={240} /> : !revenueAch?.hasTarget ? (
+          <ChartEmpty msg="No annual target set for this year. Add one in Admin → Annual Targets." />
+        ) : !revenueAch?.hasBilling ? (
+          <ChartEmpty msg="No actual billing entered yet. Add it in Admin → Group Revenue (Actual billing)." />
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={raBars} margin={{ top: 28, right: 20, bottom: 6, left: 6 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E8ED" />
+              <XAxis dataKey="name" tick={{ fontSize: 13, fill: '#3B4A63' }} />
+              <YAxis tick={{ fontSize: 11, fill: '#6B7790' }} tickFormatter={v => `${v}`} />
+              <Tooltip formatter={(v) => [`LKR ${Number(v).toFixed(1)}M`, '']} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={120}>
+                {raBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                <LabelList dataKey="value" position="top" formatter={(v) => `${Number(v).toFixed(1)}M`} style={{ fontSize: 12, fontWeight: 700, fill: '#16243C' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Channel Commitments — cumulative committed vs achieved per channel */}
+      <div className="chart-card" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div className="chart-card-title">Channel Commitments</div>
+            <div className="chart-card-sub">
+              {channelCommit?.monthLabel
+                ? `Committed vs achieved, Jan–${channelCommit.monthLabel} ${channelCommit.year} · yearly commitment ÷ 12 × months`
+                : 'Yearly commitment per channel vs cumulative schedule spend'}
+            </div>
+          </div>
+        </div>
+        {channelCommitLoading ? <Skeleton h={200} /> : ccRows.length === 0 ? (
+          <ChartEmpty msg="No channel commitments set for this year. Add them in Admin → Channel Commitments." />
+        ) : (
+          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th style={{ textAlign: 'right' }}>Committed ({channelCommit.monthLabel})</th>
+                  <th style={{ textAlign: 'right' }}>Achieved</th>
+                  <th style={{ minWidth: 180 }}>Progress</th>
+                  <th style={{ textAlign: 'right' }}>%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ccRows.map(c => {
+                  const pct = c.achievementPct;
+                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 80 ? '#9A5B00' : '#C5391F';
+                  return (
+                    <tr key={c.channelMasterId}>
+                      <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
+                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
+                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
+                      <td>
+                        <div style={{ background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</td>
+                    </tr>
+                  );
+                })}
+                {channelCommit?.totals && (
+                  <tr style={{ borderTop: '2px solid var(--border)' }}>
+                    <td className="strong">Total</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.committedToDate)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.achieved)}</td>
+                    <td></td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{channelCommit.totals.achievementPct == null ? '-' : `${channelCommit.totals.achievementPct}%`}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
