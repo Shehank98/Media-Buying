@@ -1305,7 +1305,7 @@ export default function DatabasePage() {
                         {(r.action || 'map') === 'map' ? (
                           <select className="select" value={r.channelId || ''} onChange={e => set({ channelId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
                             <option value="">Select channel…</option>
-                            {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                            {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  (suggested)' : ''}</option>)}
                           </select>
                         ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1340,7 +1340,7 @@ export default function DatabasePage() {
               {uploadHeld > 0 && (
                 <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: '#EDF3FD', fontSize: 12.5, color: '#1F5BB5' }}>
                   <Icon name="clock" size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                  {uploadHeld} row{uploadHeld === 1 ? '' : 's'} held pending approval of the new channel request(s) — they'll import automatically once an admin approves (Admin → Channel Requests).
+                  {uploadHeld} row{uploadHeld === 1 ? '' : 's'} held pending approval of the new channel request(s). They'll import automatically once an admin approves (Admin → Channel Requests).
                 </div>
               )}
 
@@ -1448,7 +1448,7 @@ export default function DatabasePage() {
                             {(r.action || 'map') === 'map' ? (
                               <select className="select" value={r.clientId || ''} onChange={e => set({ clientId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
                                 <option value="">Select client…</option>
-                                {list.map(o => <option key={o.id} value={o.id}>{o.name}{o.agencyName ? ` — ${o.agencyName}` : ''}{o.score != null && o.id === c.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                                {list.map(o => <option key={o.id} value={o.id}>{o.name}{o.agencyName ? ` (${o.agencyName})` : ''}{o.score != null && o.id === c.suggestion?.id ? '  (suggested)' : ''}</option>)}
                               </select>
                             ) : (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1492,7 +1492,7 @@ export default function DatabasePage() {
                             {(r.action || 'map') === 'map' ? (
                               <select className="select" value={r.channelId || ''} onChange={e => set({ channelId: parseInt(e.target.value) || '' })} style={{ width: '100%' }}>
                                 <option value="">Select channel…</option>
-                                {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  ⭐ suggested' : ''}</option>)}
+                                {chList.map(o => <option key={o.id} value={o.id}>{o.name} ({o.medium}){o.id === cl.suggestion?.id ? '  (suggested)' : ''}</option>)}
                               </select>
                             ) : (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
