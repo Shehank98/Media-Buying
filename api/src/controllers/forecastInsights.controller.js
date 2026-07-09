@@ -1,5 +1,4 @@
 import prisma from '../utils/prisma.js';
-import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
@@ -140,8 +139,10 @@ export async function getInsightsSummary(req, res) {
     });
     const forecastByClient = new Map(byClient.map((g) => [g.clientId, Number(g._sum.amountMillions) || 0]));
 
-    // Only clients assigned to a group head (see GROUP_HEAD_CLIENT_OR) — others are old/inactive.
-    const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    // Insights is SUPER_ADMIN-only, and admins enter/track forecasts for every
+    // active client (not just the group-head roster), so list ALL active clients
+    // here — matching what the forecast entry grid now shows for SUPER_ADMIN.
+    const clientWhere = { isActive: true };
     if (filters.clientIds) clientWhere.id = { in: filters.clientIds };
     if (filters.agencyId) clientWhere.agencyId = filters.agencyId;
     const clients = await prisma.client.findMany({
@@ -169,10 +170,9 @@ export async function getInsightsSummary(req, res) {
     const grandTotal = clientRows.reduce((s, r) => s + r.totalForecastMillions, 0);
 
     // Medium-level breakdown (TV/Radio/Print/Digital/Cinema/OOH totals + % of
-    // total) — restricted to the SAME group-head roster as the client table
-    // above, so this card reflects exactly that month's tracked forecasts and
-    // its total matches the client-wise total (not inflated by forecasts from
-    // off-roster / old / inactive clients that the client table already excludes).
+    // total) — scoped to the SAME client set as the client table above (all
+    // active clients under the applied filters), so its total matches the
+    // client-wise total.
     const rosterIds = clients.map((c) => c.id);
     const byChannel = await prisma.monthlyForecast.groupBy({
       by: ['channelMasterId'],
@@ -222,7 +222,7 @@ export async function getInsightsBudget(req, res) {
     const filters = await resolveInsightFilters(req);
     const { year, month } = filters;
 
-    const clientWhere = { isActive: true, OR: GROUP_HEAD_CLIENT_OR };
+    const clientWhere = { isActive: true };
     if (filters.clientIds) clientWhere.id = { in: filters.clientIds };
     if (filters.agencyId) clientWhere.agencyId = filters.agencyId;
     const clients = await prisma.client.findMany({ where: clientWhere, select: { id: true, name: true } });
