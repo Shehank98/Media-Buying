@@ -1193,7 +1193,7 @@ export async function setMonthlyBilling(req, res) {
 export async function uploadChannelRateCardHandler(req, res) {
   try {
     if (!isRateCardConfigured()) {
-      return res.status(503).json({ error: 'Rate card storage is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON and GDRIVE_RATECARD_FOLDER_ID (or GDRIVE_BACKUP_FOLDER_ID).' });
+      return res.status(503).json({ error: 'Rate card storage is not configured. Set the Google Drive OAuth env vars (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN), or a service account + GDRIVE_RATECARD_FOLDER_ID.' });
     }
     const id = parseInt(req.params.id);
     const master = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, name: true, rateCardDriveId: true } });

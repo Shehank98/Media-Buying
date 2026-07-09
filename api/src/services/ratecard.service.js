@@ -1,31 +1,34 @@
 // ─── Channel rate cards on Google Drive ──────────────────────────────────────
-// A channel's rate card (one PDF per channel) is uploaded to a dedicated Google
-// Drive folder using the same service account as the database backup. Only the
-// Drive file id + metadata are stored in the DB (ChannelMaster.rateCard*).
+// A channel's rate card (one PDF per channel) is uploaded to Google Drive using
+// the same auth as the database backup — OAuth user creds (the signed-in user's
+// own Drive) or a service account. Only the Drive file id + metadata are stored
+// in the DB (ChannelMaster.rateCard*).
 //
 // Env:
 //   GDRIVE_RATECARD_FOLDER_ID    Drive folder for rate cards. Falls back to
-//                                GDRIVE_BACKUP_FOLDER_ID when unset. Share it with
-//                                the service-account client_email as Editor.
-//   (reuses GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_IMPERSONATE_SUBJECT)
+//                                GDRIVE_BACKUP_FOLDER_ID; optional with OAuth
+//                                (defaults to My Drive root).
+//   (reuses the Drive auth: GOOGLE_OAUTH_* or GOOGLE_SERVICE_ACCOUNT_JSON)
 
-import { loadServiceAccount, getDriveAccessToken } from './backup.service.js';
+import { hasDriveAuth, oauthConfigured, getDriveAccessToken } from './backup.service.js';
 
 function rateCardFolderId() {
   return process.env.GDRIVE_RATECARD_FOLDER_ID || process.env.GDRIVE_BACKUP_FOLDER_ID || null;
 }
 
 export function isRateCardConfigured() {
-  return !!(loadServiceAccount() && rateCardFolderId());
+  // OAuth → folder optional (My Drive root). Service account → a folder id required.
+  if (oauthConfigured()) return true;
+  return !!(hasDriveAuth() && rateCardFolderId());
 }
 
 // Upload a PDF Buffer as a new Drive file. Returns { id, size, name }.
 export async function uploadRateCard(buffer, fileName) {
+  if (!isRateCardConfigured()) throw new Error('Rate card storage is not configured');
   const folderId = rateCardFolderId();
-  if (!folderId) throw new Error('Rate card storage is not configured');
   const token = await getDriveAccessToken();
 
-  const metadata = { name: fileName, parents: [folderId] };
+  const metadata = folderId ? { name: fileName, parents: [folderId] } : { name: fileName };
   const boundary = 'orbitrc_' + Date.now().toString(36);
   const pre = Buffer.from(
     `--${boundary}\r\n` +

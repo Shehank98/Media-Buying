@@ -28,7 +28,7 @@ import { createWriteStream, createReadStream, promises as fsp } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import cron from 'node-cron';
-import { JWT } from 'google-auth-library';
+import { JWT, OAuth2Client } from 'google-auth-library';
 
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive'];
 const FILE_PREFIX = 'orbit-backup-';
@@ -54,7 +54,22 @@ export function loadServiceAccount() {
   }
 }
 
+// OAuth (user) credentials — lets the app upload to the signed-in user's own
+// Google Drive (their free 15 GB), which a service account cannot do. Set all
+// three to use OAuth; it takes precedence over the service account.
+export function oauthConfigured() {
+  return !!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET && process.env.GOOGLE_OAUTH_REFRESH_TOKEN);
+}
+
+// Any Drive auth available (OAuth user creds or a service account)?
+export function hasDriveAuth() {
+  return oauthConfigured() || !!loadServiceAccount();
+}
+
 export function isBackupConfigured() {
+  // OAuth → files go to the user's Drive (folder optional, defaults to My Drive
+  // root). Service account → a Shared-Drive folder id is required.
+  if (oauthConfigured()) return true;
   return !!(loadServiceAccount() && process.env.GDRIVE_BACKUP_FOLDER_ID);
 }
 
@@ -69,8 +84,16 @@ export function getBackupStatus() {
 }
 
 export async function getDriveAccessToken() {
+  // Prefer OAuth user creds (upload to the user's own Drive); else service account.
+  if (oauthConfigured()) {
+    const client = new OAuth2Client(process.env.GOOGLE_OAUTH_CLIENT_ID, process.env.GOOGLE_OAUTH_CLIENT_SECRET);
+    client.setCredentials({ refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN });
+    const { token } = await client.getAccessToken();
+    if (!token) throw new Error('Failed to obtain Google access token (OAuth). Re-run the refresh-token setup.');
+    return token;
+  }
   const sa = loadServiceAccount();
-  if (!sa) throw new Error('Service account not configured');
+  if (!sa) throw new Error('No Google Drive auth configured (set OAuth creds or a service account)');
   const client = new JWT({
     email: sa.client_email,
     key: sa.private_key,
@@ -121,7 +144,8 @@ function dumpDatabase(destPath) {
 // Multipart upload of a local file to the Drive folder. Returns the file resource.
 async function uploadToDrive(localPath, fileName, token) {
   const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  const metadata = { name: fileName, parents: [folderId] };
+  // With OAuth and no folder id, upload to the user's My Drive root.
+  const metadata = folderId ? { name: fileName, parents: [folderId] } : { name: fileName };
   const boundary = 'orbit_' + Date.now().toString(36);
   const body = await fsp.readFile(localPath);
 
@@ -160,7 +184,7 @@ async function pruneOldBackups(token) {
   const retention = parseInt(process.env.BACKUP_RETENTION || '30', 10);
   if (!(retention > 0)) return 0;
   const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  const q = encodeURIComponent(`'${folderId}' in parents and name contains '${FILE_PREFIX}' and trashed = false`);
+  const q = encodeURIComponent(`${folderId ? `'${folderId}' in parents and ` : ''}name contains '${FILE_PREFIX}' and trashed = false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=1000&fields=files(id,name,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) return 0;
@@ -182,7 +206,7 @@ export async function listBackups(limit = 15) {
   if (!isBackupConfigured()) return [];
   const token = await getDriveAccessToken();
   const folderId = process.env.GDRIVE_BACKUP_FOLDER_ID;
-  const q = encodeURIComponent(`'${folderId}' in parents and name contains '${FILE_PREFIX}' and trashed = false`);
+  const q = encodeURIComponent(`${folderId ? `'${folderId}' in parents and ` : ''}name contains '${FILE_PREFIX}' and trashed = false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=${limit}&fields=files(id,name,size,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) throw new Error(`Failed to list backups (${resp.status})`);
@@ -229,7 +253,7 @@ export async function runBackup({ trigger = 'manual' } = {}) {
 export function startBackupScheduler() {
   const expr = process.env.BACKUP_CRON || '0 2 * * *';
   if (!isBackupConfigured()) {
-    console.log('[backup] disabled — set GOOGLE_SERVICE_ACCOUNT_JSON + GDRIVE_BACKUP_FOLDER_ID to enable daily Google Drive backups');
+    console.log('[backup] disabled — set OAuth creds (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) or a service account (GOOGLE_SERVICE_ACCOUNT_JSON + GDRIVE_BACKUP_FOLDER_ID) to enable daily Google Drive backups');
     return;
   }
   if (!cron.validate(expr)) {
