@@ -1573,8 +1573,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <button className="btn btn-ghost btn-sm" onClick={() => viewRateCard(ch)} title={ch.rateCardFileName} style={{ gap: 4 }}>
                           <Icon name="file" size={13} /> View
                         </button>
-                        <button className="act-btn" onClick={() => pickRateCard(ch)} title="Replace PDF"><Icon name="edit" size={13} /></button>
-                        <button className="act-btn" onClick={() => removeRateCard(ch)} title="Remove rate card" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={13} /></button>
+                        {Array.isArray(ch.rateCardVersions) && ch.rateCardVersions.length > 1 && (
+                          <span className="badge" title={`${ch.rateCardVersions.length} versions kept`} style={{ fontSize: 10.5 }}>v{ch.rateCardVersions.length}</span>
+                        )}
+                        <button className="act-btn" onClick={() => pickRateCard(ch)} title="Upload a new version (keeps the old ones)"><Icon name="upload" size={13} /></button>
+                        <button className="act-btn" onClick={() => removeRateCard(ch)} title="Remove rate card (all versions)" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={13} /></button>
                       </div>
                     ) : (
                       <button className="btn btn-ghost btn-sm" onClick={() => pickRateCard(ch)} style={{ gap: 4 }}>

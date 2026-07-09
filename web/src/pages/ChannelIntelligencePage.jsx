@@ -59,6 +59,7 @@ export default function ChannelIntelligencePage() {
   // When arriving from a client context (?clientId=), scope every number to that
   // client. SUPER_ADMIN can toggle back to overall (all-clients) numbers.
   const [scopeOverall, setScopeOverall] = useState(false);
+  const [showRcVersions, setShowRcVersions] = useState(false);
   const scopedClientId = (urlClientId && !scopeOverall) ? urlClientId : null;
   const scopeParams = scopedClientId ? { clientId: scopedClientId } : {};
 
@@ -214,10 +215,13 @@ export default function ChannelIntelligencePage() {
 
   // Fetch the rate card PDF (auth-protected) as a blob, then view it in a new tab
   // or download it.
-  const openRateCard = async (download) => {
+  const openRateCard = async (download, driveId) => {
     try {
+      const params = {};
+      if (download) params.download = 1;
+      if (driveId) params.driveId = driveId;
       const res = await api.get(`/analytics/channel/${id}/rate-card`, {
-        params: download ? { download: 1 } : {},
+        params,
         responseType: 'blob',
       });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
@@ -294,21 +298,45 @@ export default function ChannelIntelligencePage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Rate card (view / download) */}
+          {/* Rate card (latest) — view / download, + version history */}
           {summary?.rateCard ? (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(false)} title={summary.rateCard.fileName}>
-                <Icon name="file" size={15} /> Rate card
+                <Icon name="file" size={15} /> Rate card{summary.rateCard.versions?.length > 1 ? ` (v${summary.rateCard.versions[0].version})` : ''}
               </button>
               <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(true)}>
                 <Icon name="download" size={15} /> Download
               </button>
+              {summary.rateCard.versions?.length > 1 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowRcVersions(v => !v)}>
+                  <Icon name="clock" size={14} /> {summary.rateCard.versions.length} versions
+                </button>
+              )}
             </>
           ) : (
             <span className="ci-meta" title={isSuperAdmin ? 'Upload it in Admin → Channels' : ''}>No rate card</span>
           )}
         </div>
       </div>
+
+      {/* Rate card version history (newest first; the first is the current one) */}
+      {showRcVersions && summary?.rateCard?.versions?.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, background: 'var(--card)' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>Rate card versions</div>
+          {summary.rateCard.versions.map((v, i) => (
+            <div key={v.driveId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: i ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: i === 0 ? '#15814B' : 'var(--muted)', minWidth: 62 }}>
+                v{v.version}{i === 0 ? ' · latest' : ''}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--muted)', flex: 1, minWidth: 120 }}>
+                {v.fileName}{v.uploadedAt ? ` · ${new Date(v.uploadedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(false, v.driveId)}><Icon name="file" size={13} /> View</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(true, v.driveId)}><Icon name="download" size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Client-scoped view banner + SUPER_ADMIN overall toggle */}
       {urlClientId && (
