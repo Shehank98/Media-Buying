@@ -274,6 +274,7 @@ export default function DatabasePage() {
         scheduleMonth: r.scheduleMonth,
         scheduleValue: parseFloat(r.scheduleValue),
         brandName: r.brandName || null,
+        extra: r._extra || undefined,
       }));
 
       const { data } = await api.post('/database/bulk', { rows: payload, fileName: uploadFileName || null });
@@ -421,9 +422,14 @@ export default function DatabasePage() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-        // Map columns - try to match by header name
+        // Map columns - try to match by header name. Every column that isn't one
+        // of the core/derived fields is kept verbatim in `_extra` (keyed by its
+        // original header) so nothing in the sheet — CAG, AOR, invoice numbers,
+        // dates, etc. — is lost; it rides through to ScheduleLog.importExtra and
+        // the schedule-logs export.
         const mapped = jsonData.map(row => {
           const r = createEmptyRow();
+          const extra = {};
           for (const [key, val] of Object.entries(row)) {
             const k = key.toLowerCase().trim();
             if (k.includes('estimate') || k.includes('channel est') || (k.includes('ro') && !k.includes('group') && !k.includes('media'))) {
@@ -438,7 +444,10 @@ export default function DatabasePage() {
             } else if (k.includes('value') || k.includes('schedule val') || k.includes('amount')) {
               r.scheduleValue = String(val).replace(/[^0-9.]/g, '');
             }
+            const nk = String(key).toLowerCase().replace(/:/g, '').replace(/\s+/g, ' ').trim();
+            if (!CORE_IMPORT_HEADERS.has(nk) && val !== '' && val != null) extra[String(key).trim()] = typeof val === 'string' ? val.trim() : val;
           }
+          if (Object.keys(extra).length) r._extra = extra;
           return r;
         }).filter(r => r.roNumber || r.scheduleValue || r.channelMasterId);
 
@@ -532,7 +541,7 @@ export default function DatabasePage() {
       const agencyNm = agencies.find(a => String(a.id) === String(selectedAgencyId))?.name || '';
       const heldRowsData = uploadPreview
         .filter(row => !row.channelMasterId && row._channelRaw && pendingRaws.has(nrm(row._channelRaw)))
-        .map(row => ({ client: clientName, agency: agencyNm, channel: row._channelRaw, roNumber: row.roNumber, scheduleMonth: row.scheduleMonth, scheduleValue: row.scheduleValue, brand: row.brandName }));
+        .map(row => ({ client: clientName, agency: agencyNm, channel: row._channelRaw, roNumber: row.roNumber, scheduleMonth: row.scheduleMonth, scheduleValue: row.scheduleValue, brand: row.brandName, extra: row._extra }));
 
       const { data } = await api.post('/database/import-apply', {
         fileName: uploadFileName, rows: heldRowsData,

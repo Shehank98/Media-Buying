@@ -642,7 +642,7 @@ export async function bulkCreateScheduleLogs(req, res) {
     // Validate every row and build the insert payload.
     const candidates = [];
     for (let i = 0; i < rows.length; i++) {
-      const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName } = rows[i];
+      const { clientId, channelMasterId, roNumber, scheduleMonth, scheduleValue, brandName, extra } = rows[i];
 
       if (!clientId || !channelMasterId || !roNumber || !scheduleMonth || scheduleValue === undefined) {
         errors.push({ row: i, error: 'Missing required fields' });
@@ -669,6 +669,7 @@ export async function bulkCreateScheduleLogs(req, res) {
         brandName: brandName || null,
         scheduleValue: Math.round(value * 100) / 100,
         scheduleValueWithVat: parseFloat((value * 1.18).toFixed(2)),
+        importExtra: (extra && typeof extra === 'object' && Object.keys(extra).length) ? extra : null,
         commissionTypeAtEntry: ci.commission.commissionTypeAtEntry,
         commissionRateAtEntry: ci.commission.commissionRateAtEntry,
       });
