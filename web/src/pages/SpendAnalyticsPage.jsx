@@ -704,7 +704,7 @@ export default function SpendAnalyticsPage() {
           {canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
             const fmtM = (v) => `${Number(v || 0).toFixed(1)}M`;
             const bars = [
-              { name: 'Target', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
+              { name: 'Budget Forecast', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
               { name: `Upto ${a.uptoMonthLabel || '-'} Target`, actualPart: a.uptoTargetMillions, forecastPart: 0, total: a.uptoTargetMillions, fill: '#9A5B00' },
               { name: `Actual upto ${a.uptoMonthLabel || '-'}`, actualPart: a.actualOnlyMillions, forecastPart: a.forecastFillMillions, total: a.actualMillions, fill: '#15814B' },
             ];

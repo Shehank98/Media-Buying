@@ -124,7 +124,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [targetForm, setTargetForm] = useState({ year: '', totalTargetMillions: '', remoteMonth: '' });
 
   /* ---- per-agency annual targets (Spend Analytics agency achievement) ---- */
-  const [agTargetYear, setAgTargetYear] = useState(now.getFullYear());
+  const [agTargetYear, setAgTargetYear] = useState(new Date().getFullYear());
   const [agTargetYears, setAgTargetYears] = useState([]);
   const [agTargets, setAgTargets] = useState([]);       // [{ agencyId, agencyName, totalTargetMillions }]
   const [agTargetVals, setAgTargetVals] = useState({}); // { agencyId: '2000' }
