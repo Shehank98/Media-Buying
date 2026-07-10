@@ -41,7 +41,9 @@ export default function RateCardsPage() {
   useEffect(() => { fetchCards(); }, []);
   useEffect(() => {
     if (!isAdmin) return;
-    api.get('/masterdata/channel-masters').then(r => setAllChannels(r.data || [])).catch(() => {});
+    api.get('/masterdata/channel-masters')
+      .then(r => setAllChannels(Array.isArray(r.data) ? r.data : (r.data?.channelMasters || [])))
+      .catch(() => {});
   }, [isAdmin]);
 
   const filtered = useMemo(() => {
