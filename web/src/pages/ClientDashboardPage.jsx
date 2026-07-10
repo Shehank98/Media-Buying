@@ -122,6 +122,12 @@ export default function ClientDashboardPage() {
   const topChannels = (data.byChannel || []).slice(0, 12);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
   const avgMonth = data.monthsActive ? data.totalValue / data.monthsActive : 0;
+  // Period-aligned YoY (current year Jan→latest month vs same window last year).
+  const yoy = data.yoy || null;
+  const yoyUp = yoy && yoy.yoyPct != null && yoy.yoyPct >= 0;
+  const yoySub = yoy?.throughMonth
+    ? `Jan–${MONTHS[parseInt(yoy.throughMonth.slice(5, 7), 10) - 1]} ${yoy.throughMonth.slice(0, 4)} vs ${yoy.previousYear}`
+    : 'vs last year, same period';
 
   return (
     <div className="content-narrow fade-in">
@@ -147,6 +153,16 @@ export default function ClientDashboardPage() {
         <Stat label="Channels Used" value={data.channelCount ?? 0} tone={['#E8DEF8', '#6B3FB5']} icon="tv" />
         <Stat label="Brands" value={data.brandCount ?? 0} tone={['#FCF4E2', '#9A5B00']} icon="folder" />
         <Stat label="Avg / Month" value={fmtLKR(avgMonth)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
+        {yoy && yoy.yoyPct != null && (
+          <Stat
+            label="YoY Growth"
+            value={`${yoyUp ? '+' : ''}${yoy.yoyPct}%`}
+            sub={yoySub}
+            tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
+            icon={yoyUp ? 'trending-up' : 'trending-down'}
+            accent={yoyUp ? '#15814B' : '#C5391F'}
+          />
+        )}
       </div>
 
       {/* Monthly spend trend — one line per year so peak months are comparable */}

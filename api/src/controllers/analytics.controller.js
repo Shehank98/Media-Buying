@@ -577,18 +577,25 @@ export async function getChannelSummary(req, res) {
     const onlyClient = singleClientFilter(req, cids);
     if (onlyClient) base.clientId = onlyClient;
     // Anchor to the latest year that has data on this channel (not the calendar year).
-    const { lys, lycm, cys, cye, year } = await refPeriod(base);
+    const { lys, lycm, cys, cye, year, ym } = await refPeriod(base);
+    // Period-aligned YoY: compare the current year Jan→latest-data-month against
+    // the SAME Jan→same-month window last year (e.g. data through Jul 2026 →
+    // 2026 Jan–Jul vs 2025 Jan–Jul), not full-year-vs-full-year.
+    const alignMonth = ym.slice(5, 7);
+    const lyAlignedEnd = `${year - 1}-${alignMonth}`;
 
-    const [curYearAgg, lyAgg, activeClients, totalEntries, monthAgg] = await Promise.all([
-      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: cye } }, _sum: { scheduleValue: true } }),
+    const [curYearAgg, lyAgg, lyAlignedAgg, activeClients, totalEntries, monthAgg] = await Promise.all([
+      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: ym } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lyAlignedEnd } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.findMany({ where: base, select: { clientId: true }, distinct: ['clientId'] }),
       prisma.scheduleLog.count({ where: base }),
       prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where: base, _sum: { scheduleValue: true } }),
     ]);
 
-    const ytd = safeNum(curYearAgg._sum.scheduleValue) || 0;
-    const ly = safeNum(lyAgg._sum.scheduleValue) || 0;
+    const ytd = safeNum(curYearAgg._sum.scheduleValue) || 0;   // current year, Jan→latest month (aligned)
+    const ly = safeNum(lyAgg._sum.scheduleValue) || 0;          // previous FULL year (for the year spend card)
+    const lyAligned = safeNum(lyAlignedAgg._sum.scheduleValue) || 0; // previous year, same Jan→month window
 
     // Per-year spend, one entry per year that has data (auto-expands as new
     // years are uploaded). Newest year first.
@@ -621,7 +628,9 @@ export async function getChannelSummary(req, res) {
       previousYear: year - 1,
       ytdSpend: ytd,
       lastYearSpend: ly,
-      yoyGrowthPct: ly > 0 ? Number(((ytd - ly) / ly * 100).toFixed(2)) : null,
+      // Period-aligned: current Jan→latest-month vs previous year's same window.
+      yoyGrowthPct: lyAligned > 0 ? Number(((ytd - lyAligned) / lyAligned * 100).toFixed(2)) : null,
+      yoyComparisonThroughMonth: ym,
       activeClientsCount: activeClients.length,
       totalEntries,
       byYear,
@@ -1007,13 +1016,17 @@ export async function getClientOverview(req, res) {
     let total = 0, totalVat = 0;
     const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
     const months = new Set();
+    const trend = {}; // year -> [12] monthly totals, for period-aligned YoY
     for (const l of logs) {
       const v = safeNum(l.scheduleValue) || 0;
       total += v; totalVat += safeNum(l.scheduleValueWithVat) || 0;
       const m = l.scheduleMonth;
-      if (/^\d{4}-\d{2}$/.test(m)) {
+      const mm = /^(\d{4})-(\d{2})$/.exec(m);
+      if (mm) {
         months.add(m);
         (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++;
+        const y = Number(mm[1]), mi = Number(mm[2]) - 1;
+        (trend[y] ||= Array(12).fill(0))[mi] += v;
       }
       const ch = l.channelMaster?.name || 'Unknown';
       (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
@@ -1024,9 +1037,26 @@ export async function getClientOverview(req, res) {
     }
     const sortedMonths = [...months].sort();
 
+    // Period-aligned YoY: current year (through its latest month with data) vs the
+    // SAME Jan→month window last year. currentYearSpend already stops at the latest
+    // month; only the previous year is truncated to align.
+    const trendYearsY = Object.keys(trend).map(Number).sort((a, b) => a - b);
+    const latestYear = trendYearsY.length ? trendYearsY[trendYearsY.length - 1] : null;
+    const previousYear = latestYear != null ? latestYear - 1 : null;
+    const curArr = latestYear != null ? (trend[latestYear] || []) : [];
+    let alignIdx = -1;
+    for (let i = 0; i < 12; i++) if ((curArr[i] || 0) > 0) alignIdx = i;
+    const currentYearSpend = curArr.reduce((s, v) => s + (v || 0), 0);
+    const prevArr = previousYear != null ? (trend[previousYear] || []) : [];
+    const previousYearSpendAligned = alignIdx >= 0 ? prevArr.slice(0, alignIdx + 1).reduce((s, v) => s + (v || 0), 0) : 0;
+    const yoyValue = currentYearSpend - previousYearSpendAligned;
+    const yoyPct = previousYearSpendAligned > 0 ? Math.round((yoyValue / previousYearSpendAligned) * 1000) / 10 : null;
+    const yoyThroughMonth = latestYear != null && alignIdx >= 0 ? `${latestYear}-${String(alignIdx + 1).padStart(2, '0')}` : null;
+
     return res.json({
       client: { id: client.id, name: client.name, agencyId: client.agency?.id, agencyName: client.agency?.name },
       totalValue: Math.round(total),
+      yoy: { latestYear, previousYear, currentYearSpend: Math.round(currentYearSpend), previousYearSpendAligned: Math.round(previousYearSpendAligned), yoyValue: Math.round(yoyValue), yoyPct, throughMonth: yoyThroughMonth },
       totalWithVat: Math.round(totalVat),
       totalEntries: logs.length,
       firstMonth: sortedMonths[0] || null,
@@ -1104,8 +1134,18 @@ export async function getDeepDashboard(req, res) {
     const previousYear = latestYear - 1;
     const currentYearSpend = yearTotals[latestYear] || 0;
     const previousYearSpend = yearTotals[previousYear] || 0;
-    const yoyValue = currentYearSpend - previousYearSpend;
-    const yoyPct = previousYearSpend > 0 ? round1((yoyValue / previousYearSpend) * 100) : null;
+    // Period-aligned YoY: compare the current year through its latest month with
+    // data against the SAME Jan→month window last year (not full year vs full
+    // year). currentYearSpend already stops at the latest month (no later data),
+    // so only the previous year is truncated to the same month.
+    const curArr = trend[latestYear] || [];
+    let alignIdx = -1;
+    for (let i = 0; i < 12; i++) if ((curArr[i] || 0) > 0) alignIdx = i;
+    const prevArr = trend[previousYear] || [];
+    const previousYearSpendAligned = alignIdx >= 0 ? prevArr.slice(0, alignIdx + 1).reduce((s, v) => s + (v || 0), 0) : 0;
+    const yoyValue = currentYearSpend - previousYearSpendAligned;
+    const yoyPct = previousYearSpendAligned > 0 ? round1((yoyValue / previousYearSpendAligned) * 100) : null;
+    const yoyThroughMonth = alignIdx >= 0 ? `${latestYear}-${String(alignIdx + 1).padStart(2, '0')}` : null;
     const totalSpend = Object.values(yearTotals).reduce((s, v) => s + v, 0);
 
     const trendYears = logYears;
@@ -1159,7 +1199,7 @@ export async function getDeepDashboard(req, res) {
     const propTimes = props.map((p) => new Date(p.createdAt).getTime());
 
     return res.json({
-      kpis: { totalSpend, currentYearSpend, previousYearSpend, yoyValue, yoyPct, latestYear, previousYear },
+      kpis: { totalSpend, currentYearSpend, previousYearSpend, previousYearSpendAligned, yoyValue, yoyPct, yoyThroughMonth, latestYear, previousYear },
       monthlyTrend,
       trendYears,
       clientDistribution,
