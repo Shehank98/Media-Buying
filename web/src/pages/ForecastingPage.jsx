@@ -36,6 +36,27 @@ const monthName = (m) => MONTHS[m - 1] || m;
 
 // Full LKR amount with thousands separators + 2 decimals (Overall Budget worksheet).
 const fmtAmt = (v) => (v == null || v === '' ? '-' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+// Comma-group a raw numeric string for a currency INPUT while typing, preserving
+// a typed decimal part (up to 2 places). The stored draft stays comma-free.
+const fmtMoneyInput = (raw) => {
+  if (raw == null || raw === '') return '';
+  const s = String(raw).replace(/,/g, '');
+  if (!/^\d*\.?\d*$/.test(s)) return String(raw);
+  const dot = s.indexOf('.');
+  const intPart = dot === -1 ? s : s.slice(0, dot);
+  const decPart = dot === -1 ? '' : s.slice(dot);
+  const intFmt = intPart === '' ? '' : Number(intPart).toLocaleString('en-US');
+  return intFmt + decPart;
+};
+// Strip commas + clamp to <=2 decimals for the stored draft; null = reject keystroke.
+const cleanMoney = (raw) => {
+  let s = String(raw).replace(/,/g, '');
+  if (s !== '' && !/^\d*\.?\d*$/.test(s)) return null;
+  if (s.includes('.')) { const [i, d = ''] = s.split('.'); s = i + '.' + d.slice(0, 2); }
+  return s;
+};
+// Normalize a raw numeric string to a fixed 2-decimal string (shown on blur → "5,600,000.00").
+const money2 = (raw) => { const n = parseFloat(String(raw).replace(/,/g, '')); return Number.isNaN(n) ? '' : n.toFixed(2); };
 // A client's commission cell: "4%" for a percentage or "LKR 50,000.00" for an AOR fee.
 const commissionLabel = (row) => {
   if (!row || !row.commissionType || row.commissionValue == null) return '';
@@ -901,7 +922,7 @@ function BudgetTab({ isAdmin }) {
       .then(r => {
         setData(r.data);
         const d = {};
-        (r.data.rows || []).forEach(row => { d[row.clientId] = { best: row.bestAmount ?? '', billing: row.billingLastMonth ?? '' }; });
+        (r.data.rows || []).forEach(row => { d[row.clientId] = { best: row.bestAmount != null ? money2(row.bestAmount) : '', billing: row.billingLastMonth != null ? money2(row.billingLastMonth) : '' }; });
         setDrafts(d);
       })
       .catch(() => setError('Failed to load budget.'))
@@ -947,6 +968,18 @@ function BudgetTab({ isAdmin }) {
     } finally { setSavingId(null); }
   };
 
+  // On blur: normalize the typed amounts to "…,….00" for display, then save.
+  const blurMoney = (row) => {
+    setDrafts(p => {
+      const d = p[row.clientId] || {};
+      const nd = { ...d };
+      if (nd.best != null && nd.best !== '') nd.best = money2(nd.best);
+      if (nd.billing != null && nd.billing !== '') nd.billing = money2(nd.billing);
+      return { ...p, [row.clientId]: nd };
+    });
+    commit(row);
+  };
+
   const exportXlsx = () => {
     if (!data) return;
     const label = `${MONTHS[data.month - 1]} ${data.year}`;
@@ -961,7 +994,7 @@ function BudgetTab({ isAdmin }) {
     downloadXLSX([{ name: 'Overall Budget', rows: [[`Overall Budget - ${label}`], [], ...body] }], `overall-budget-${data.year}-${String(data.month).padStart(2, '0')}`);
   };
 
-  const inputStyle = { textAlign: 'right', width: 140, height: 30, fontSize: 12.5 };
+  const inputStyle = { textAlign: 'right', width: 160, height: 30, fontSize: 12.5 };
 
   return (
     <div>
@@ -1024,15 +1057,15 @@ function BudgetTab({ isAdmin }) {
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: r.actualAmount ? '#16243C' : '#93A0B5' }}>{r.actualAmount ? fmtAmt(r.actualAmount) : '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" value={d.best ?? ''} placeholder="0.00"
-                          onChange={e => setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], best: e.target.value } }))}
-                          onBlur={() => commit(r)} style={inputStyle} />
+                        <input className="input mono" inputMode="decimal" value={fmtMoneyInput(d.best)} placeholder="0.00"
+                          onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], best: c } })); }}
+                          onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
                       <td style={{ textAlign: 'center', color: cl ? '#16243C' : '#C7D0DD', fontWeight: 600 }}>{cl || '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" value={d.billing ?? ''} placeholder="0.00"
-                          onChange={e => setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], billing: e.target.value } }))}
-                          onBlur={() => commit(r)} style={inputStyle} />
+                        <input className="input mono" inputMode="decimal" value={fmtMoneyInput(d.billing)} placeholder="0.00"
+                          onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], billing: c } })); }}
+                          onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
                     </tr>
                   );
