@@ -1856,7 +1856,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               {grAgencies.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '8px 0' }}>No agencies found.</div>}
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-              Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut for {MONTHS[grMonth - 1]}. The total is used as this month's company billing, so the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart (Jan→latest month vs prorated target) stays in sync — no separate billing entry needed.
+              Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut for {MONTHS[grMonth - 1]}. The total is used as this month's company billing, so the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart (Jan→latest month vs prorated target) stays in sync - no separate billing entry needed.
             </div>
           </div>
 
@@ -2319,7 +2319,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </div>
                 )}
 
-                {/* Permissions (not for Super Admin — they always have full access) */}
+                {/* Permissions (not for Super Admin - they always have full access) */}
                 {userForm.role !== 'SUPER_ADMIN' && (
                   <div className="field" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                     <label className="field-label">Page access</label>

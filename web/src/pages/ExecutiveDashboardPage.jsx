@@ -89,7 +89,7 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
 // Format a value already expressed in LKR millions for chart labels.
 const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
 
-// Distinct color for the forecast-fill segment of the "Actual upto X" bar —
+// Distinct color for the forecast-fill segment of the "Actual upto X" bar -
 // deliberately not the green "actual" color or any other bar's color, so the
 // blend is visually obvious.
 const FORECAST_FILL_COLOR = '#F2A93B';
@@ -212,7 +212,7 @@ function AchievementSection({
   const donutBudget = gcDonut(gcBudget?.groups);
   const donutRevenue = gcDonut(gcRevenue?.groups);
 
-  // Business Units (agency-wise) donuts — the primary view. Budget = auto by
+  // Business Units (agency-wise) donuts - the primary view. Budget = auto by
   // agency; Revenue = admin-entered per agency. Group-head donuts (above) move
   // into an expandable detail.
   const buBudget = groupContribution?.budgetByAgency || null;
@@ -548,7 +548,7 @@ function AchievementSection({
         )}
       </div>
 
-      {/* Revenue Achievement — admin billing YTD vs prorated annual target */}
+      {/* Revenue Achievement - admin billing YTD vs prorated annual target */}
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
@@ -580,7 +580,7 @@ function AchievementSection({
         )}
       </div>
 
-      {/* Channel Commitments — cumulative committed vs achieved per channel */}
+      {/* Channel Commitments - cumulative committed vs achieved per channel */}
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>

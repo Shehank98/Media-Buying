@@ -13,7 +13,7 @@
 // Optional:
 //   GOOGLE_IMPERSONATE_SUBJECT   A Workspace user to impersonate (domain-wide
 //                                delegation). Needed if the target folder lives
-//                                in a normal "My Drive" — service accounts have
+//                                in a normal "My Drive" - service accounts have
 //                                no storage quota of their own, so without this
 //                                the folder must be on a Shared Drive.
 //   BACKUP_CRON                  Cron expression (default "0 2 * * *" = 02:00 daily).
@@ -54,7 +54,7 @@ export function loadServiceAccount() {
   }
 }
 
-// OAuth (user) credentials — lets the app upload to the signed-in user's own
+// OAuth (user) credentials - lets the app upload to the signed-in user's own
 // Google Drive (their free 15 GB), which a service account cannot do. Set all
 // three to use OAuth; it takes precedence over the service account.
 export function oauthConfigured() {
@@ -106,7 +106,7 @@ export async function getDriveAccessToken() {
 }
 
 // Find-or-create a subfolder by `name` under `parentId` (or My Drive root when
-// null). With the drive.file scope the app only sees folders it created — which
+// null). With the drive.file scope the app only sees folders it created - which
 // is exactly what we want: it reuses its own folder tree across runs. Returns
 // the folder id. Shared by backups (date folders) and rate cards (medium/channel).
 export async function ensureFolder(name, parentId, token) {
@@ -284,7 +284,7 @@ export async function runBackup({ trigger = 'manual' } = {}) {
 export function startBackupScheduler() {
   const expr = process.env.BACKUP_CRON || '0 2 * * *';
   if (!isBackupConfigured()) {
-    console.log('[backup] disabled — set OAuth creds (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) or a service account (GOOGLE_SERVICE_ACCOUNT_JSON + GDRIVE_BACKUP_FOLDER_ID) to enable daily Google Drive backups');
+    console.log('[backup] disabled - set OAuth creds (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN) or a service account (GOOGLE_SERVICE_ACCOUNT_JSON + GDRIVE_BACKUP_FOLDER_ID) to enable daily Google Drive backups');
     return;
   }
   if (!cron.validate(expr)) {

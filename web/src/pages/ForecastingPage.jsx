@@ -123,7 +123,7 @@ function InsightsTab() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const [cbGroupBy, setCbGroupBy] = useState('medium'); // 'medium' | 'channel' — Channel-wise Forecast card
+  const [cbGroupBy, setCbGroupBy] = useState('medium'); // 'medium' | 'channel' - Channel-wise Forecast card
   const [vGroupBy, setVGroupBy] = useState('client'); // 'client' | 'channel'
   const [vSortKey, setVSortKey] = useState('varianceMillions');
   const [vSortDir, setVSortDir] = useState('desc');
@@ -1091,7 +1091,7 @@ export default function ForecastingPage() {
   // view toggle (admins only): client entry grid vs the Insights analytics suite
   const [view, setView] = useState('clients'); // 'clients' | 'insights'
 
-  // Export entered forecasts (client-wise) for a chosen month — the upcoming
+  // Export entered forecasts (client-wise) for a chosen month - the upcoming
   // month or any of the prior 12; read-only so it's not tied to the entry lock.
   const [exportPeriod, setExportPeriod] = useState(clientNextMonth());
   const [exporting, setExporting] = useState(false);
@@ -1213,7 +1213,7 @@ export default function ForecastingPage() {
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
 
   // The rows shown for a medium: its real channels plus one "Unspecified" catch-all
-  // (the medium's total bucket) at the end. The Unspecified amount is ADDITIVE —
+  // (the medium's total bucket) at the end. The Unspecified amount is ADDITIVE -
   // it just counts toward the medium's total for the part the head can't split by
   // channel yet.
   const entryRows = (cat) => (cat.totalChannel ? [...cat.channels, { ...cat.totalChannel, name: 'Unspecified', unspecified: true }] : cat.channels);
@@ -1240,7 +1240,7 @@ export default function ForecastingPage() {
   };
 
   // A medium double-counts when it has BOTH per-channel amounts and a non-zero
-  // Unspecified (they're additive) — usually a leftover from when the client was
+  // Unspecified (they're additive) - usually a leftover from when the client was
   // first entered as one medium total. Flag it so the head can clear the leftover.
   const unspecifiedOverlap = (cat) => {
     if (!cat.totalChannel) return 0;
@@ -1262,7 +1262,7 @@ export default function ForecastingPage() {
       if (!data.found) { setEntryError('No previous forecast to copy yet.'); return; }
       // Default the copy to By channel so copying never re-buckets a month. For
       // media that HAVE per-channel rows, we don't carry a medium-total lump into
-      // its (now hidden) bucket — that would be lost on save. We surface those
+      // its (now hidden) bucket - that would be lost on save. We surface those
       // totals in the message instead so the head can split them per channel.
       // Total-only media (e.g. Print) keep their bucket amount as before.
       const toggleableBucketIds = new Set(
@@ -1295,7 +1295,7 @@ export default function ForecastingPage() {
     }
   };
 
-  // Per-medium subtotals (TV/Radio/Print/…) for the entry summary — each is the
+  // Per-medium subtotals (TV/Radio/Print/…) for the entry summary - each is the
   // sum of that medium's channels + its Unspecified row (additive).
   const categoryTotals = useMemo(() =>
     categories.map(cat => ({ category: cat.category, total: catTotal(cat) })).filter(ct => ct.total > 0)
@@ -1309,7 +1309,7 @@ export default function ForecastingPage() {
     try {
       // Group heads type the full rupee amount; store it in millions. Every row
       // (each channel + the Unspecified catch-all) is sent, including cleared ones
-      // as 0 so the server removes any existing entry — otherwise clearing a
+      // as 0 so the server removes any existing entry - otherwise clearing a
       // channel would silently leave the old value. Channels and Unspecified are
       // additive: the medium's forecast = its channels + its Unspecified amount.
       const toM = (v) => { const raw = parseFloat(v?.amount); return Number.isNaN(raw) ? 0 : raw / 1e6; };
@@ -1527,7 +1527,7 @@ export default function ForecastingPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6, padding: '8px 11px', background: '#FEF6E7', border: '1px solid #F3D28B', borderRadius: 8, fontSize: 12, color: '#8A5A00' }}>
                           <Icon name="alert" size={14} style={{ color: '#B8860B', flexShrink: 0 }} />
                           <span style={{ flex: 1, minWidth: 180 }}>
-                            <strong>Unspecified still holds LKR {unspecifiedOverlap(cat).toLocaleString('en-US')}</strong> on top of your per-channel amounts — the two add up, so {cat.category} is double-counting. Clear it if the channels replace it.
+                            <strong>Unspecified still holds LKR {unspecifiedOverlap(cat).toLocaleString('en-US')}</strong> on top of your per-channel amounts - the two add up, so {cat.category} is double-counting. Clear it if the channels replace it.
                           </span>
                           <button type="button" className="btn-subtle btn-sm" onClick={() => clearUnspecified(cat)} style={{ flexShrink: 0 }}>Clear Unspecified</button>
                         </div>

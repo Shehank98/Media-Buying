@@ -125,7 +125,7 @@ export async function checkClientAccess(req, res, next) {
 }
 
 // Used by the per-channel Add Deal feature (ChannelClientDeal id-scoped routes
-// have no clientId in the URL) — resolve the deal's clientId, then delegate to
+// have no clientId in the URL) - resolve the deal's clientId, then delegate to
 // the normal client-access check.
 export async function checkChannelClientDealAccess(req, res, next) {
   try {

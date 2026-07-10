@@ -14,8 +14,8 @@ function nextMonth() {
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
 
-// A client counts as "assigned to a group head" — and so is shown in the
-// forecasting roster — when it is linked to a group head through ANY of the
+// A client counts as "assigned to a group head" - and so is shown in the
+// forecasting roster - when it is linked to a group head through ANY of the
 // admin assignment paths: on a team that has a head set (Team.headUserId) or a
 // GROUP_HEAD member (Teams tab / "Assign Accounts to Heads"), OR directly
 // assigned to a GROUP_HEAD user (Users tab → UserClientAccess). Clients linked
@@ -298,7 +298,7 @@ export async function getForecastEntry(req, res) {
   }
 }
 
-// The most recent forecast a client has BEFORE the upcoming month — used to
+// The most recent forecast a client has BEFORE the upcoming month - used to
 // pre-fill ("copy last month") so heads don't re-enter everything.
 export async function getPreviousForecast(req, res) {
   try {

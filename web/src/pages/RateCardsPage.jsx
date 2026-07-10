@@ -119,7 +119,7 @@ export default function RateCardsPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: '#16243C' }}>Rate Cards</h1>
-          <div style={{ fontSize: 13, color: '#6B7790', marginTop: 4 }}>General channel rate cards — search by channel and download. Any format (PDF, image, Excel). Client-specific rate cards live on each client's channel page.</div>
+          <div style={{ fontSize: 13, color: '#6B7790', marginTop: 4 }}>General channel rate cards - search by channel and download. Any format (PDF, image, Excel). Client-specific rate cards live on each client's channel page.</div>
         </div>
         {isAdmin && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

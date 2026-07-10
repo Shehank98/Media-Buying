@@ -91,7 +91,7 @@ export default function ClientDetailPage() {
   }, [clientId, refreshKey]);
 
   // Load channel masters (needed by the Add Channel form on TV/Radio/Print tabs
-  // AND the schedule-log form) — load regardless of which tab is active.
+  // AND the schedule-log form) - load regardless of which tab is active.
   useEffect(() => {
     const load = async () => {
       try {

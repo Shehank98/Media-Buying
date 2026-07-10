@@ -12,7 +12,7 @@ function fmtPct(v) {
   return `${Number(v).toFixed(1)}%`;
 }
 
-// Indian/Sri Lankan lakh-style grouping for Excel export cells — e.g. 500000 -> "5,00,000.00"
+// Indian/Sri Lankan lakh-style grouping for Excel export cells - e.g. 500000 -> "5,00,000.00"
 // (last 3 digits, then groups of 2), distinct from the abbreviated on-screen fmtLKR().
 function fmtLKRFull(v) {
   const n = Number(v) || 0;
@@ -85,7 +85,7 @@ function YearChips({ years, onToggle, options }) {
   );
 }
 
-// Searchable combobox for picking a channel — text input filters a grouped
+// Searchable combobox for picking a channel - text input filters a grouped
 // (by medium) dropdown list instead of relying on native <select> filtering.
 function ChannelCombobox({ channels, value, onChange, placeholder = 'Select a channel…' }) {
   const [open, setOpen] = useState(false);

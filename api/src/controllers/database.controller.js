@@ -404,7 +404,7 @@ export async function getAnalytics(req, res) {
   }
 }
 
-// Negotiated deals (Property rows) for the clients the viewer can access — the
+// Negotiated deals (Property rows) for the clients the viewer can access - the
 // Spend Analytics "Deals & Properties" section. Same access model as getAnalytics
 // (SUPER_ADMIN all, MANAGER their agencies, GROUP_HEAD/PLANNER their clients).
 // Each row links to its client channel page (/channels/:channelId).
@@ -565,7 +565,7 @@ function dedupeKey(o) {
 
 // Split validated candidate rows into the ones to insert vs. a count of
 // duplicates. A row is a duplicate only if it matches a row ALREADY IN THE
-// DATABASE (month+client+channel+value) — repeats within the same file are NOT
+// DATABASE (month+client+channel+value) - repeats within the same file are NOT
 // treated as duplicates and are all kept.
 async function splitDuplicates(candidates) {
   if (candidates.length === 0) return { unique: [], duplicates: 0, duplicateRows: [] };
@@ -755,7 +755,7 @@ function combineYearMonth(year, month) {
 // ── Bulk-import reconciliation ────────────────────────────────────────────────
 // Given the distinct client & channel names in an uploaded file, tell the client
 // which resolve exactly (name or alias), which are ambiguous, and which don't
-// match — with a fuzzy suggestion for each. Unmatched CHANNEL names are clustered
+// match - with a fuzzy suggestion for each. Unmatched CHANNEL names are clustered
 // (likely variants of the same channel grouped together) for one-tap review.
 export async function reconcileImport(req, res) {
   try {
@@ -1092,7 +1092,7 @@ export async function importAllScheduleLogs(req, res) {
           }
         }
       } else {
-        // No agency column — resolve client by name across all agencies.
+        // No agency column - resolve client by name across all agencies.
         const matches = clientsByName.get(norm(clientName)) || [];
         if (matches.length === 1) {
           client = matches[0];
@@ -1131,7 +1131,7 @@ export async function importAllScheduleLogs(req, res) {
     // derive the batch's agency/client lists from what actually gets inserted.
     const { unique, duplicates, duplicateRows } = await splitDuplicates(candidates);
 
-    // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop —
+    // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop -
     // nothing is written, so the UI can ask how to proceed.
     if (dryRun) {
       // A readable sample of the rows it considers new, for transparency.

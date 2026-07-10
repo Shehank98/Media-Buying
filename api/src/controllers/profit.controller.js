@@ -3,8 +3,8 @@ import prisma from '../utils/prisma.js';
 import { blendedPct, round2 } from '../services/profit.service.js';
 
 // ── Filters ──────────────────────────────────────────────────────────────────
-// Buckets/ranges are by the SCHEDULE (flight) month — the month the spend ran in
-// (schedule_logs.schedule_month, "YYYY-MM") — filtered to a single calendar year
+// Buckets/ranges are by the SCHEDULE (flight) month - the month the spend ran in
+// (schedule_logs.schedule_month, "YYYY-MM") - filtered to a single calendar year
 // (Jan–Dec). A month with no uploaded ScheduleLog rows shows 0 (never fabricated).
 function parseFilters(req) {
   const now = new Date();
@@ -23,14 +23,14 @@ function whereFragment({ year, agencyId, clientIds }, { monthStart, monthEnd } =
     Prisma.sql`sl.schedule_month <= ${monthEnd || `${year}-12`}`,
   ];
   // Attribute by the per-row agency SNAPSHOT (sl.agency_id), not the client's
-  // current agency — so a client that changed agencies keeps its historical
+  // current agency - so a client that changed agencies keeps its historical
   // spend/profit under the agency it belonged to at the time (point-in-time).
   if (agencyId) parts.push(Prisma.sql`sl.agency_id = ${agencyId}`);
   if (clientIds.length) parts.push(Prisma.sql`sl.client_id IN (${Prisma.join(clientIds)})`);
   return Prisma.join(parts, ' AND ');
 }
 
-// Atomic rows — the single source every aggregate sums from, so the numbers
+// Atomic rows - the single source every aggregate sums from, so the numbers
 // reconcile by construction. Revenue = SUM(schedule_value) (ex-VAT). Profit:
 //   COMMISSION -> ROUND(revenue x rate%, 2)
 //   AOR        -> the fixed fee, counted ONCE per (client, schedule-month, fee)
@@ -81,14 +81,14 @@ async function availableYears() {
   return [...set].sort((a, b) => b - a);
 }
 
-// GET /api/profit/summary — headline cards + the year list for the filter.
+// GET /api/profit/summary - headline cards + the year list for the filter.
 // Includes previous-year totals (same scope) for YoY deltas, plus the count of
 // distinct clients that contributed revenue.
 export async function getProfitSummary(req, res) {
   try {
     const f = parseFilters(req);
     // Current-year totals + the latest schedule month that has data (so the
-    // prior-year comparison covers the SAME months — an in-progress year is
+    // prior-year comparison covers the SAME months - an in-progress year is
     // compared Jan..latest vs last year's Jan..same-month, not vs a full year).
     const rows = await prisma.$queryRaw`
       WITH atoms AS (${atomsSql(whereFragment(f))})
@@ -124,7 +124,7 @@ export async function getProfitSummary(req, res) {
   }
 }
 
-// GET /api/profit/by-commission-type — revenue/profit/client split across the
+// GET /api/profit/by-commission-type - revenue/profit/client split across the
 // three commission buckets (COMMISSION, AOR, NONE) for the commission-mix chart.
 export async function getProfitByCommissionType(req, res) {
   try {
@@ -144,7 +144,7 @@ export async function getProfitByCommissionType(req, res) {
   }
 }
 
-// GET /api/profit/monthly — profit per schedule (flight) month.
+// GET /api/profit/monthly - profit per schedule (flight) month.
 export async function getProfitMonthly(req, res) {
   try {
     const f = parseFilters(req);
@@ -191,7 +191,7 @@ export async function getProfitByClient(req, res) {
   }
 }
 
-// GET /api/profit/client-breakdown — the Detailed Breakdown: one row per client
+// GET /api/profit/client-breakdown - the Detailed Breakdown: one row per client
 // (year totals + commission) with a nested month-by-month revenue/profit list.
 export async function getProfitClientBreakdown(req, res) {
   try {
@@ -250,7 +250,7 @@ export async function getProfitClientBreakdown(req, res) {
   }
 }
 
-// GET /api/profit/details — paginated ground-truth rows (one per atom).
+// GET /api/profit/details - paginated ground-truth rows (one per atom).
 const SORT_COLS = { client: 'client', agency: 'agency', revenue: 'revenue', commission: 'crate', profit: 'profit', month: 'ym' };
 export async function getProfitDetails(req, res) {
   try {

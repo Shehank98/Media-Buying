@@ -332,7 +332,7 @@ export async function exportProperties(req, res) {
     }
     if (clientId) channelWhere.clientId = parseInt(clientId);
     if (channelType) channelWhere.type = channelType;
-    // Filter by canonical channel (master) — spans clients & agencies.
+    // Filter by canonical channel (master) - spans clients & agencies.
     if (channelMasterId) channelWhere.channelMasterId = parseInt(channelMasterId);
     else if (channelName) channelWhere.channelMaster = { name: channelName };
 
@@ -735,7 +735,7 @@ export async function exportScheduleLogs(req, res) {
       return res.send(buffer);
     }
 
-    // Extra spreadsheet columns retained verbatim on bulk import (importExtra) —
+    // Extra spreadsheet columns retained verbatim on bulk import (importExtra) -
     // appended after the standard columns so nothing uploaded is lost on export.
     // A header that collides with a standard column is suffixed " (import)".
     const STD_KEYS = new Set(['Agency', 'Client', 'Channel', 'Medium', 'Media Group', 'RO Number', 'Schedule Month', 'Invoice Month', 'Schedule Value', 'With VAT', 'Uploaded By']);

@@ -181,7 +181,7 @@ export async function deletePackage(req, res) {
     if (!existing) return res.status(404).json({ error: 'Package not found' });
 
     // A sent package is guarded by default (keeps response history); `?force=true`
-    // permanently deletes it — cascade removes its recipients + line items.
+    // permanently deletes it - cascade removes its recipients + line items.
     const force = String(req.query.force) === 'true';
     if (!force) {
       const recipientCount = await prisma.packageRecipient.count({ where: { packageId: id } });
@@ -268,7 +268,7 @@ export async function sendPackage(req, res) {
         },
       }).catch(() => {});
 
-      // Email points to the in-app inbox (login required) — no public token link.
+      // Email points to the in-app inbox (login required) - no public token link.
       if (u.email) {
         sendEmail({
           type: 'package',
@@ -352,7 +352,7 @@ export async function updateFollowUp(req, res) {
 
 // ── Team head (GROUP_HEAD): in-app inbox ─────────────────────────────────────
 
-// Packages shared with the signed-in team head — opened in their own interface.
+// Packages shared with the signed-in team head - opened in their own interface.
 export async function listMyPackages(req, res) {
   try {
     await deactivateExpiredPackages();
@@ -369,7 +369,7 @@ export async function listMyPackages(req, res) {
       },
     });
 
-    // The team head's own clients — for the "interested clients" multi-select.
+    // The team head's own clients - for the "interested clients" multi-select.
     const myClientIds = await getAccessibleClientIds(req.user.id, 'GROUP_HEAD');
     const myClients = myClientIds.length
       ? await prisma.client.findMany({ where: { id: { in: myClientIds } }, select: { id: true, name: true }, orderBy: { name: 'asc' } })

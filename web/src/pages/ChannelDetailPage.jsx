@@ -464,7 +464,7 @@ export default function ChannelDetailPage() {
                   {deals.length > 1 && <div style={{ fontSize: 11.5, color: 'var(--muted)', alignSelf: 'flex-end' }}>+{deals.length - 1} more year{deals.length - 1 === 1 ? '' : 's'} below</div>}
                 </div>
               ) : (
-                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No discount / bonus recorded yet{canModify(user?.role) ? ' — use “Add deal”.' : '.'}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No discount / bonus recorded yet{canModify(user?.role) ? ' - use “Add deal”.' : '.'}</div>
               )}
             </div>
 

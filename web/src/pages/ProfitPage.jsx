@@ -181,7 +181,7 @@ export default function ProfitPage() {
     [commissionMix],
   );
 
-  // Profit contribution donut — top 8 clients by profit, the rest folded to "Other".
+  // Profit contribution donut - top 8 clients by profit, the rest folded to "Other".
   const clientDonut = useMemo(() => {
     const sorted = byClient.filter((c) => c.profit > 0).slice().sort((a, b) => b.profit - a.profit);
     const top = sorted.slice(0, 8).map((c, i) => ({ name: c.client, profit: c.profit, color: CAT[i % CAT.length] }));
@@ -289,7 +289,7 @@ export default function ProfitPage() {
 
       {loading && !summary ? <OrbitLoader label="Loading profit…" /> : (
         <>
-          {/* KPI cards — Revenue & Profit (in millions; full value on hover / in export) */}
+          {/* KPI cards - Revenue & Profit (in millions; full value on hover / in export) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14, marginBottom: 16 }}>
             <Card label="Total Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
             <Card label="Total Profit" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
@@ -427,7 +427,7 @@ export default function ProfitPage() {
               )}
             </Panel>
 
-            {/* Profit by Client — every client, ranked by profit */}
+            {/* Profit by Client - every client, ranked by profit */}
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '16px 20px 10px' }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Profit by Client</span>
@@ -461,7 +461,7 @@ export default function ProfitPage() {
             </div>
           </div>
 
-          {/* Detailed Breakdown — per client (year totals), expand for months */}
+          {/* Detailed Breakdown - per client (year totals), expand for months */}
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>Detailed Breakdown</span>

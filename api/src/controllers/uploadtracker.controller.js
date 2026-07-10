@@ -228,7 +228,7 @@ export async function markNotificationRead(req, res) {
   }
 }
 
-// POST /api/notifications/broadcast — SUPER_ADMIN sends an announcement to any
+// POST /api/notifications/broadcast - SUPER_ADMIN sends an announcement to any
 // mix of roles and/or specific users. Creates one in-app Notification per
 // recipient (which the frontend also surfaces as a desktop notification).
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];

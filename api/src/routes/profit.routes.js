@@ -12,7 +12,7 @@ import {
 
 const router = Router();
 
-// Financial reporting — SUPER_ADMIN only, enforced server-side (not just hidden
+// Financial reporting - SUPER_ADMIN only, enforced server-side (not just hidden
 // in the UI). Every route returns 403 for any other role.
 router.use(authenticate, requireRole('SUPER_ADMIN'));
 

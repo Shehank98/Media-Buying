@@ -20,7 +20,7 @@ const router = Router();
 router.get('/client/:clientId', authenticate, checkClientAccess, listBrands);
 router.post('/client/:clientId', authenticate, requireRole(...WRITE_ROLES), checkClientAccess, createBrand);
 
-// Brand CRUD (by brand id) — controllers verify client access for the brand
+// Brand CRUD (by brand id) - controllers verify client access for the brand
 router.put('/:id', authenticate, requireRole(...WRITE_ROLES), updateBrand);
 router.delete('/:id', authenticate, requireRole(...WRITE_ROLES), deleteBrand);
 
@@ -28,7 +28,7 @@ router.delete('/:id', authenticate, requireRole(...WRITE_ROLES), deleteBrand);
 router.get('/:brandId/campaigns', authenticate, listCampaigns);
 router.post('/:brandId/campaigns', authenticate, requireRole(...WRITE_ROLES), createCampaign);
 
-// Campaign CRUD (by campaign id) — note: mounted at /brands so use /campaigns prefix
+// Campaign CRUD (by campaign id) - note: mounted at /brands so use /campaigns prefix
 // These need separate mounting; handled via the campaigns sub-path pattern
 // The router at /api/brands handles /:brandId/campaigns
 // Campaign-level PUT/DELETE need their own prefix when mounted at /api/campaigns

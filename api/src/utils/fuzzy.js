@@ -1,4 +1,4 @@
-// Lightweight fuzzy string matching for bulk-import reconciliation — no external
+// Lightweight fuzzy string matching for bulk-import reconciliation - no external
 // dependency. Used to suggest the most likely existing client/channel for a raw
 // name from an uploaded file, and to cluster likely variants of the same channel
 // ("Sirasa TV", "SirasaTV", "Sirasa-TV") together for review.

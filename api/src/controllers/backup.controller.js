@@ -1,6 +1,6 @@
 import { runBackup, getBackupStatus, listBackups, isBackupConfigured } from '../services/backup.service.js';
 
-// GET /api/admin/backup/status — configuration + last run + recent backups.
+// GET /api/admin/backup/status - configuration + last run + recent backups.
 export async function backupStatus(req, res) {
   try {
     const status = getBackupStatus();
@@ -15,7 +15,7 @@ export async function backupStatus(req, res) {
   }
 }
 
-// POST /api/admin/backup/run — trigger an immediate backup.
+// POST /api/admin/backup/run - trigger an immediate backup.
 export async function triggerBackup(req, res) {
   if (!isBackupConfigured()) {
     return res.status(400).json({

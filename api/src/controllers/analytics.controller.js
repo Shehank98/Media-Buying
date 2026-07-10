@@ -232,7 +232,7 @@ export async function getAgencyComparison(req, res) {
       const base = { isDeleted: false, agencyId: agency.id };
       const [ytdAgg, activeClients, activeChannels, curYearAgg, lastYearAgg, uploads, monthlyData] = await Promise.all([
         // YTD Billings reflects the selected year (or current year in "All" mode),
-        // Jan to the latest month with data — matching the chart's window — not
+        // Jan to the latest month with data - matching the chart's window - not
         // an all-time total.
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: monthlyStart, lte: ym } }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, select: { clientId: true }, distinct: ['clientId'] }),
@@ -713,7 +713,7 @@ export async function getChannelMonthlySpend(req, res) {
   }
 }
 
-// Drill-down for a single (year, month) point on the Monthly Spend Trend chart —
+// Drill-down for a single (year, month) point on the Monthly Spend Trend chart -
 // every schedule log that makes up that month's total, grouped by client.
 export async function getChannelMonthDetail(req, res) {
   try {
@@ -1163,7 +1163,7 @@ export async function getDeepDashboard(req, res) {
       .map(([id, d]) => ({ channelMasterId: Number(id), channel: d.name, value: d.value }))
       .sort((a, b) => b.value - a.value);
 
-    // ── Properties (sponsorship analysis only — NOT spend) ──
+    // ── Properties (sponsorship analysis only - NOT spend) ──
     const clientWhere = {};
     if (clientId) clientWhere.id = parseInt(clientId);
     if (agencyId) clientWhere.agencyId = parseInt(agencyId);
@@ -1239,7 +1239,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 // Pick the year to report on: explicit ?year wins; otherwise prefer the latest
 // year that has a TARGET (this is an achievement-vs-target view, and budgets are
-// set forward — often before that year has actuals), then the latest data year,
+// set forward - often before that year has actuals), then the latest data year,
 // then the current calendar year.
 async function resolveYear(reqYear, dataYears) {
   if (reqYear && /^\d{4}$/.test(String(reqYear))) return parseInt(reqYear);
@@ -1307,7 +1307,7 @@ export async function getAchievement(req, res) {
     for (const r of fRows) forecastByMonth[r.month] = safeNum(r._sum.amountMillions) || 0;
 
     // Each month contributes its real actual if it has one, otherwise the
-    // submitted forecast — so filled forecasts flow straight into the chart.
+    // submitted forecast - so filled forecasts flow straight into the chart.
     const monthValue = (m) => {
       const a = actualByMonth[m];
       if (a != null && a > 0) return { v: a, fc: false };
@@ -1328,7 +1328,7 @@ export async function getAchievement(req, res) {
       // Never pace past the current calendar month for an in-progress year, so
       // the "Actual upto [month]" bar (and its forecast-fill) stops at this
       // month even when a forecast for a future month has already been
-      // submitted — the bar covers only up to the current month (spec).
+      // submitted - the bar covers only up to the current month (spec).
       const now = new Date();
       if (year === now.getFullYear()) positionMonth = Math.min(positionMonth, now.getMonth() + 1);
     }
@@ -1340,7 +1340,7 @@ export async function getAchievement(req, res) {
       actualSum += mv.v;
       if (mv.fc) { forecastUsed += mv.v; forecastFillMonths.push(m); }
     }
-    // The real-actual segment stops at the last month with real data — any
+    // The real-actual segment stops at the last month with real data - any
     // earlier forecast-filled month (a mid-year gap) is still forecast, not actual.
     let lastActualMonth = 0;
     for (let m = 1; m <= positionMonth; m++) if (!monthValue(m).fc && !monthValue(m).empty) lastActualMonth = m;
@@ -1360,7 +1360,7 @@ export async function getAchievement(req, res) {
 
     // Completeness. The forecast-fill total sums EVERY forecast in scope for the
     // gap month(s), so the "submitted" count is the distinct clients behind that
-    // total (never contradicting the money — e.g. no "11M but 0 submitted"). The
+    // total (never contradicting the money - e.g. no "11M but 0 submitted"). The
     // "expected" denominator is that set of forecasters UNIONed with the tracked
     // roster (active clients assigned to a group head), so roster clients that
     // haven't forecasted yet still surface via the warning.
@@ -1761,7 +1761,7 @@ export async function getGroupContribution(req, res) {
       .filter(g => g.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // ── Agency-wise ("Business Units") donuts — the primary view ──
+    // ── Agency-wise ("Business Units") donuts - the primary view ──
     // Budget by agency = schedule-log spend for the budget month, grouped by
     // agency (auto). Revenue by agency = admin-entered AgencyRevenue for the
     // revenue month. Both respect the same agency scope as everything above.
@@ -1803,7 +1803,7 @@ export async function getGroupContribution(req, res) {
 }
 
 // Variance view: each team's average spend across every completed month so far
-// in the latest data year, vs. the latest month itself — with a % difference.
+// in the latest data year, vs. the latest month itself - with a % difference.
 // "Completed months" = every month before the latest one within that same year
 // (so a January data point with no prior months in its year has nothing to
 // average against and is omitted).
@@ -1920,7 +1920,7 @@ export async function getGroupContributionVariance(req, res) {
 }
 
 // Company-wide average monthly spend per calendar year (total spend that year
-// ÷ number of distinct months with data that year) — a quick "is our monthly
+// ÷ number of distinct months with data that year) - a quick "is our monthly
 // run-rate trending up or down year over year" read, independent of how many
 // months a given year happens to have data for so far.
 export async function getMonthlyAvgByYear(req, res) {

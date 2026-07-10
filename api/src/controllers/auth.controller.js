@@ -128,7 +128,7 @@ export async function logout(req, res) {
         if (decoded?.id) {
           await prisma.user.update({ where: { id: decoded.id }, data: { tokenVersion: { increment: 1 } } });
         }
-      } catch { /* invalid token — nothing to revoke */ }
+      } catch { /* invalid token - nothing to revoke */ }
     }
 
     res.clearCookie('refreshToken', {

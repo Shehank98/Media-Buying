@@ -1,4 +1,4 @@
-// Branded "Ogilvy Orbit" loading animation — a coral planet orbiting a navy core.
+// Branded "Ogilvy Orbit" loading animation - a coral planet orbiting a navy core.
 export default function OrbitLoader({ size = 56, label, fullHeight = false }) {
   const s = size;
   const dot = Math.max(6, Math.round(s * 0.16));

@@ -69,7 +69,7 @@ export default function SpendAnalyticsPage() {
   const [cmpData, setCmpData] = useState(null);
 
   // Agency-wise Annual Achievement + this-year monthly spend (respects the agency
-  // filter; scoped server-side by role — SUPER_ADMIN all, MANAGER/GROUP_HEAD theirs).
+  // filter; scoped server-side by role - SUPER_ADMIN all, MANAGER/GROUP_HEAD theirs).
   const canSeeAgencyAch = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'].includes(user?.role);
   const [agencyAch, setAgencyAch] = useState(null);
   const [agencyAchLoading, setAgencyAchLoading] = useState(false);
@@ -762,7 +762,7 @@ export default function SpendAnalyticsPage() {
             );
           })}
 
-          {/* Monthly Trend Chart — X axis = Jan–Dec, one line per year */}
+          {/* Monthly Trend Chart - X axis = Jan–Dec, one line per year */}
           {monthlyByYear.years.length > 0 && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
@@ -824,7 +824,7 @@ export default function SpendAnalyticsPage() {
             )}
           </div>
 
-          {/* Pareto (80/20) — vital few partners driving spend */}
+          {/* Pareto (80/20) - vital few partners driving spend */}
           {paretoData.length > 0 && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -855,7 +855,7 @@ export default function SpendAnalyticsPage() {
             </div>
           )}
 
-          {/* Seasonality heatmap — year × month spend intensity */}
+          {/* Seasonality heatmap - year × month spend intensity */}
           {seasonality && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
               <h3 className="spa-ctitle">Seasonality Heatmap</h3>
@@ -887,7 +887,7 @@ export default function SpendAnalyticsPage() {
 
           {/* Medium Mix Shift + Brand Trend */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            {/* 100% stacked area — medium share month by month */}
+            {/* 100% stacked area - medium share month by month */}
             <div className="spa-card" style={{ padding: '20px' }}>
               <h3 className="spa-ctitle">Medium Mix Shift</h3>
               <p className="spa-csub" style={{ marginBottom: 12 }}>TV / Radio / Print share of spend, month by month</p>
@@ -982,7 +982,7 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
-          {/* Flighting calendar — which clients were active each month */}
+          {/* Flighting calendar - which clients were active each month */}
           {(data.clientFlighting?.length > 0 && data.flightingMonths?.length > 0) && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20, overflow: 'hidden' }}>
               <h3 className="spa-ctitle">Flighting Calendar</h3>

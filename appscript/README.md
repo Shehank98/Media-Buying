@@ -1,4 +1,4 @@
-# Email Webhook — Google Apps Script Setup
+# Email Webhook - Google Apps Script Setup
 
 The system sends transactional email (welcome, password reset, upload reminders)
 through a Google Apps Script Web App that runs under your Gmail/Workspace
@@ -46,11 +46,11 @@ All three render full branded HTML (navy + coral theme) with a plain-text fallba
 2. **Select type** (gear icon) → **Web app**.
 3. Configure:
    - **Description:** `Ogilvy Orbit email webhook`
-   - **Execute as:** **Me** (your account — required to send mail)
+   - **Execute as:** **Me** (your account - required to send mail)
    - **Who has access:** **Anyone**
      *(This only exposes the email-sending endpoint; it does not expose your
      inbox. The endpoint ignores anything but the expected JSON payloads.)*
-4. Click **Deploy**, then **copy the Web app URL** — it looks like:
+4. Click **Deploy**, then **copy the Web app URL** - it looks like:
    ```
    https://script.google.com/macros/s/AKfy....../exec
    ```
@@ -69,13 +69,13 @@ API uses the **first** entry for email links.
 Redeploy / restart the API so it picks up the variable.
 
 > If `GOOGLE_SCRIPT_URL` is **not** set, the API logs a warning and silently
-> skips sending — the app keeps working, just without email.
+> skips sending - the app keeps working, just without email.
 
 ---
 
 ## Testing
 
-**Health check** — open the `/exec` URL in a browser. You should see:
+**Health check** - open the `/exec` URL in a browser. You should see:
 ```json
 { "status": "ok", "service": "Ogilvy Orbit Email Service" }
 ```

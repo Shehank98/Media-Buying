@@ -121,7 +121,7 @@ export default function Layout() {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   // Ask for desktop-notification permission once (best-effort; browsers may
-  // require a gesture — the bell click below also requests it as a fallback).
+  // require a gesture - the bell click below also requests it as a fallback).
   useEffect(() => {
     if (user && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});

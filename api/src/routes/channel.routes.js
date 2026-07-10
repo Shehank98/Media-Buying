@@ -9,7 +9,7 @@ import {
 
 const router = Router();
 
-// General rate cards directory (all channels' general cards) — search + download.
+// General rate cards directory (all channels' general cards) - search + download.
 // Open to every authenticated role. Precedes '/:channelId' so it isn't captured as an id.
 router.get('/rate-cards/general', authenticate, listGeneralRateCards);
 

@@ -163,7 +163,7 @@ export async function updateChannelMaster(req, res) {
       });
 
       // Schedule logs store medium/mediaGroup as denormalized strings (for fast
-      // spend-breakdown aggregation) — refresh existing rows so reassigning a
+      // spend-breakdown aggregation) - refresh existing rows so reassigning a
       // channel's medium or media group is reflected in historical spend too.
       if (medium !== undefined || mediaGroupId !== undefined) {
         await tx.scheduleLog.updateMany({
@@ -229,7 +229,7 @@ export async function mergeChannelMasters(req, res) {
 
     // Merge: re-point all schedule_logs from source → target, then deactivate source
     await prisma.$transaction(async (tx) => {
-      // Update schedule logs — also refresh the denormalized medium/mediaGroup
+      // Update schedule logs - also refresh the denormalized medium/mediaGroup
       // strings so spend breakdowns reflect the target channel immediately
       await tx.scheduleLog.updateMany({
         where: { channelMasterId: sid },

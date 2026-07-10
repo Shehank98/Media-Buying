@@ -17,11 +17,11 @@ import {
 
 const router = Router();
 
-// Team head (GROUP_HEAD) in-app inbox — literal segments before '/:id'.
+// Team head (GROUP_HEAD) in-app inbox - literal segments before '/:id'.
 router.get('/inbox', authenticate, requireRole('GROUP_HEAD'), listMyPackages);
 router.post('/inbox/:recipientId/respond', authenticate, requireRole('GROUP_HEAD'), respondToMyPackage);
 
-// Admin (SUPER_ADMIN) — literal segments before '/:id'.
+// Admin (SUPER_ADMIN) - literal segments before '/:id'.
 router.get('/recipients/group-heads', authenticate, requireRole('SUPER_ADMIN'), listGroupHeads);
 router.patch('/recipients/:recipientId/follow-up', authenticate, requireRole('SUPER_ADMIN'), updateFollowUp);
 

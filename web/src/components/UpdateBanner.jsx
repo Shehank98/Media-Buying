@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 
-// Lightweight "a new version is available" prompt — no service worker.
+// Lightweight "a new version is available" prompt - no service worker.
 // On load we note the hashed entry bundle the page is running; periodically (and
 // whenever the tab regains focus) we re-fetch index.html and compare its entry
 // hash. If a deploy changed it, we surface a one-click Refresh so a long-lived
@@ -28,7 +28,7 @@ export default function UpdateBanner() {
       const html = await res.text();
       const m = html.match(ENTRY_RE);
       if (m && m[0] !== baseline) setOutdated(true);
-    } catch { /* offline / mid-deploy — ignore */ }
+    } catch { /* offline / mid-deploy - ignore */ }
   }, [baseline, outdated]);
 
   useEffect(() => {

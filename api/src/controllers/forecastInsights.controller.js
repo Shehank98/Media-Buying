@@ -141,7 +141,7 @@ export async function getInsightsSummary(req, res) {
 
     // Insights is SUPER_ADMIN-only, and admins enter/track forecasts for every
     // active client (not just the group-head roster), so list ALL active clients
-    // here — matching what the forecast entry grid now shows for SUPER_ADMIN.
+    // here - matching what the forecast entry grid now shows for SUPER_ADMIN.
     const clientWhere = { isActive: true };
     if (filters.clientIds) clientWhere.id = { in: filters.clientIds };
     if (filters.agencyId) clientWhere.agencyId = filters.agencyId;
@@ -170,7 +170,7 @@ export async function getInsightsSummary(req, res) {
     const grandTotal = clientRows.reduce((s, r) => s + r.totalForecastMillions, 0);
 
     // Medium-level breakdown (TV/Radio/Print/Digital/Cinema/OOH totals + % of
-    // total) — scoped to the SAME client set as the client table above (all
+    // total) - scoped to the SAME client set as the client table above (all
     // active clients under the applied filters), so its total matches the
     // client-wise total.
     const rosterIds = clients.map((c) => c.id);
@@ -198,7 +198,7 @@ export async function getInsightsSummary(req, res) {
 
     // Per-channel breakdown (each individual ChannelMaster that has a forecast,
     // including the per-medium "Total"/Unspecified buckets for amounts a head
-    // couldn't split), so the Summary can show a true channel-wise view — not
+    // couldn't split), so the Summary can show a true channel-wise view - not
     // just the medium roll-up. Sorted by medium order then largest forecast.
     const channelBreakdownByChannel = byChannel
       .map((g) => {

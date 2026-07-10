@@ -90,7 +90,7 @@ export async function generatePdf(data, title) {
     doc.moveTo(startX, y).lineTo(startX + pageWidth, y).stroke();
     y += 5;
 
-    // Draw data rows — advance by the TALLEST cell so wrapped text never
+    // Draw data rows - advance by the TALLEST cell so wrapped text never
     // overlaps the next row.
     doc.font('Helvetica').fontSize(8);
     for (const row of data) {

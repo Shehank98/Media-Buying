@@ -1,4 +1,4 @@
-// Pure profit aggregation — mirrors the SQL in profit.controller.js and is the
+// Pure profit aggregation - mirrors the SQL in profit.controller.js and is the
 // unit-testable ground truth for the reconciliation invariant.
 //
 // An "atom" is the smallest unit every total is summed from: one

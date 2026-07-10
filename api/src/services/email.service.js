@@ -7,7 +7,7 @@
 export async function sendEmail(payload) {
   const url = process.env.GOOGLE_SCRIPT_URL;
   if (!url) {
-    console.warn('GOOGLE_SCRIPT_URL not set — skipping email send');
+    console.warn('GOOGLE_SCRIPT_URL not set - skipping email send');
     return;
   }
 

@@ -55,10 +55,10 @@ function normalizeMonth(raw) {
 
 const EDITABLE_FIELDS = ['roNumber', 'scheduleMonth', 'brandName', 'channelMasterId', 'scheduleValue'];
 
-// trim+lower — the same normalization the importer uses to key names.
+// trim+lower - the same normalization the importer uses to key names.
 const nrm = (s) => String(s ?? '').trim().toLowerCase();
 
-// Normalized headers the bulk import maps to system fields (or derives) — every
+// Normalized headers the bulk import maps to system fields (or derives) - every
 // OTHER column in the sheet is retained verbatim in the row's `extra` JSON.
 const CORE_IMPORT_HEADERS = new Set([
   'year', 'agency', 'client', 'advertiser', 'channel',
@@ -424,8 +424,8 @@ export default function DatabasePage() {
 
         // Map columns - try to match by header name. Every column that isn't one
         // of the core/derived fields is kept verbatim in `_extra` (keyed by its
-        // original header) so nothing in the sheet — CAG, AOR, invoice numbers,
-        // dates, etc. — is lost; it rides through to ScheduleLog.importExtra and
+        // original header) so nothing in the sheet - CAG, AOR, invoice numbers,
+        // dates, etc. - is lost; it rides through to ScheduleLog.importExtra and
         // the schedule-logs export.
         const mapped = jsonData.map(row => {
           const r = createEmptyRow();
@@ -526,7 +526,7 @@ export default function DatabasePage() {
 
   // Apply the choices: learn aliases for mapped channels (+ rewrite the preview
   // rows onto them), file requests for new channels and HOLD their rows until an
-  // admin approves — dropping those rows from the grid preview.
+  // admin approves - dropping those rows from the grid preview.
   const applyUploadRecon = async () => {
     if (!allUploadReconciled || uploadReconBusy) return;
     setUploadReconBusy(true);
@@ -579,7 +579,7 @@ export default function DatabasePage() {
   };
 
   // Export a subset of the just-uploaded rows (by 1-based row number) back to
-  // Excel — the original columns, optionally with a Reason column — so the user
+  // Excel - the original columns, optionally with a Reason column - so the user
   // can fix the failed/duplicate rows and re-upload just those.
   const downloadImportSubset = (indices, filename, errMap) => {
     if (!indices?.length) return;
@@ -630,7 +630,7 @@ export default function DatabasePage() {
           const m = buildHeaderMap(row);
           // Every remaining column (Invoice Value, CAG/AOR, invoice numbers, dates,
           // Payment Received, etc.) is kept verbatim in `extra`, keyed by its
-          // original header, so nothing in the sheet is lost — the system only
+          // original header, so nothing in the sheet is lost - the system only
           // computes with the core columns below.
           const extra = {};
           for (const [k, v] of Object.entries(row)) {
@@ -664,7 +664,7 @@ export default function DatabasePage() {
     e.target.value = '';
   };
 
-  // Step 1: dry-run check — how many rows are new vs already in the database.
+  // Step 1: dry-run check - how many rows are new vs already in the database.
   // Nothing is written. If there are no duplicates we import straight away;
   // otherwise we ask the user how to proceed.
   const distinctNames = (rows, key) => {

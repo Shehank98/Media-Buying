@@ -1,6 +1,6 @@
 // Per-user page-access + export + read-only helpers.
 // SUPER_ADMIN always has full access. An empty pageAccess means "no restriction"
-// (backward compatible — existing users keep full role-based access).
+// (backward compatible - existing users keep full role-based access).
 
 // Top-level pages an admin can toggle for a user.
 export const TOGGLEABLE_PAGES = [

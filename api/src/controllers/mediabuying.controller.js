@@ -14,7 +14,7 @@ function trend(curr, prev) {
   return 'flat';
 }
 
-// Channel view is all-time now (no year filter) — each client shows lifetime
+// Channel view is all-time now (no year filter) - each client shows lifetime
 // spend on this channel plus the terms from their most recently recorded deal
 // year (which may differ from the year they last actually bought).
 export async function getChannelIntelligence(req, res) {
@@ -88,7 +88,7 @@ export async function getChannelIntelligence(req, res) {
   }
 }
 
-// Per-client, per-year spend + that year's recorded discount/bonus — used by
+// Per-client, per-year spend + that year's recorded discount/bonus - used by
 // the expandable row in the Client Breakdown table (replaces the old
 // month-by-month view now that the page has no year filter).
 export async function getClientChannelYearly(req, res) {
@@ -207,7 +207,7 @@ export async function deleteClientDeal(req, res) {
   }
 }
 
-// No year input — looks at every year a client has spend on this channel and
+// No year input - looks at every year a client has spend on this channel and
 // averages discount/bonus across those years (missing-deal years count as 0%),
 // so the suggested range reflects the full negotiating history, not one year.
 export async function getNegotiationPlanner(req, res) {

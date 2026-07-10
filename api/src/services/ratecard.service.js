@@ -1,6 +1,6 @@
 // ─── Channel rate cards on Google Drive ──────────────────────────────────────
 // A channel's rate card (one PDF per channel) is uploaded to Google Drive using
-// the same auth as the database backup — OAuth user creds (the signed-in user's
+// the same auth as the database backup - OAuth user creds (the signed-in user's
 // own Drive) or a service account. Only the Drive file id + metadata are stored
 // in the DB (ChannelMaster.rateCard*).
 //
@@ -56,7 +56,7 @@ export function rateCardName(channel, medium, ext, date = new Date()) {
   return `${base}.${ext || 'pdf'}`;
 }
 
-// Upload a rate-card Buffer (any format — PDF/JPG/PNG/Excel/…) into a nested
+// Upload a rate-card Buffer (any format - PDF/JPG/PNG/Excel/…) into a nested
 // folder chain under the top rate-card folder, e.g.
 //   General Rate Cards/<channel>/           (general, per channel master)
 //   Client Rate Cards/<client>/<channel>/   (client-specific)

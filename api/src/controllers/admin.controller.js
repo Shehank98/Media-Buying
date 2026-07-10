@@ -643,7 +643,7 @@ export async function setClientCommission(req, res) {
     // How the new commission applies to this client's EXISTING ScheduleLog rows,
     // which drive the Profit tab:
     //   scope 'all'     -> rewrite every row for the client (snapshotted ones too)
-    //                      — use when correcting a mistyped rate on past records.
+    //                      - use when correcting a mistyped rate on past records.
     //   scope 'forward' -> touch nothing; only rows uploaded from now on snapshot
     //                      the new rate (past profit stays exactly as it was).
     //   (default)       -> fill only un-snapshotted / previously-backfilled rows,
@@ -685,7 +685,7 @@ export async function setClientCommission(req, res) {
 // optional) is the SCHEDULE (flight) month from which the client belongs to the
 // new agency: rows for months >= effectiveMonth are re-stamped to the new agency
 // and earlier rows stay with the old one. A blank effectiveMonth moves ALL
-// history (for fixing a mis-filed client). Repeatable — each call only re-stamps
+// history (for fixing a mis-filed client). Repeatable - each call only re-stamps
 // from its own month forward, so a client can switch agencies multiple times.
 // Spend, dashboards and Profit all attribute by the per-row ScheduleLog snapshot,
 // so this splits Revenue, Schedule Value and Profit at the cut-off consistently.
@@ -747,9 +747,9 @@ export async function moveClientAgency(req, res) {
   }
 }
 
-// Merge one client (source) into another (target): move every related record —
+// Merge one client (source) into another (target): move every related record -
 // schedule logs, channels/properties, brands/campaigns, forecasts, deals, and
-// user/team assignments — onto the target, resolving unique-constraint clashes,
+// user/team assignments - onto the target, resolving unique-constraint clashes,
 // then delete the now-empty source. Used to consolidate same-name duplicates.
 export async function mergeClients(req, res) {
   try {
@@ -766,10 +766,10 @@ export async function mergeClients(req, res) {
     if (!target) return res.status(404).json({ error: 'Target client not found' });
 
     await prisma.$transaction(async (tx) => {
-      // 1) Schedule logs — bulk re-point (also align agency to the target's).
+      // 1) Schedule logs - bulk re-point (also align agency to the target's).
       await tx.scheduleLog.updateMany({ where: { clientId: sid }, data: { clientId: tid, agencyId: target.agencyId } });
 
-      // 2) Client channels — unique [clientId, name]. Same-name → move its
+      // 2) Client channels - unique [clientId, name]. Same-name → move its
       //    properties onto the target's channel and drop the duplicate.
       const [srcChannels, tgtChannels] = await Promise.all([
         tx.channel.findMany({ where: { clientId: sid }, select: { id: true, name: true } }),
@@ -786,7 +786,7 @@ export async function mergeClients(req, res) {
         }
       }
 
-      // 3) Brands — unique [clientId, name]. Same-name → fold campaigns +
+      // 3) Brands - unique [clientId, name]. Same-name → fold campaigns +
       //    schedule logs into the target's brand, then drop the duplicate.
       const [srcBrands, tgtBrands] = await Promise.all([
         tx.brand.findMany({ where: { clientId: sid }, select: { id: true, name: true } }),
@@ -818,10 +818,10 @@ export async function mergeClients(req, res) {
         }
       }
 
-      // 4) Monthly forecasts — unique [year,month,clientId,channelMasterId].
+      // 4) Monthly forecasts - unique [year,month,clientId,channelMasterId].
       //    Clash → add the source amount into the target row, then drop source.
       //    Target rows are prefetched into a map so this is O(1) per source row
-      //    (no findUnique per row — keeps the transaction well under its timeout).
+      //    (no findUnique per row - keeps the transaction well under its timeout).
       const [srcForecasts, tgtForecasts] = await Promise.all([
         tx.monthlyForecast.findMany({ where: { clientId: sid } }),
         tx.monthlyForecast.findMany({ where: { clientId: tid }, select: { id: true, year: true, month: true, channelMasterId: true, amountMillions: true } }),
@@ -838,7 +838,7 @@ export async function mergeClients(req, res) {
         }
       }
 
-      // 5) Channel-client deals — unique [channelMasterId, clientId, year]. Keep target's on clash.
+      // 5) Channel-client deals - unique [channelMasterId, clientId, year]. Keep target's on clash.
       const [srcDeals, tgtDeals] = await Promise.all([
         tx.channelClientDeal.findMany({ where: { clientId: sid }, select: { id: true, channelMasterId: true, year: true } }),
         tx.channelClientDeal.findMany({ where: { clientId: tid }, select: { channelMasterId: true, year: true } }),
@@ -849,7 +849,7 @@ export async function mergeClients(req, res) {
         else await tx.channelClientDeal.update({ where: { id: d.id }, data: { clientId: tid } });
       }
 
-      // 5b) Monthly budgets — unique [year, month, clientId]. Keep the target's on
+      // 5b) Monthly budgets - unique [year, month, clientId]. Keep the target's on
       //     clash, otherwise re-point (and realign agency). Must run BEFORE the
       //     source delete, else the source's budget rows are cascade-lost.
       const [srcBudgets, tgtBudgets] = await Promise.all([
@@ -862,7 +862,7 @@ export async function mergeClients(req, res) {
         else await tx.monthlyBudget.update({ where: { id: b.id }, data: { clientId: tid, agencyId: target.agencyId } });
       }
 
-      // 6) User access — unique [userId, clientId]. Dedupe.
+      // 6) User access - unique [userId, clientId]. Dedupe.
       const [srcUA, tgtUA] = await Promise.all([
         tx.userClientAccess.findMany({ where: { clientId: sid }, select: { id: true, userId: true } }),
         tx.userClientAccess.findMany({ where: { clientId: tid }, select: { userId: true } }),
@@ -873,7 +873,7 @@ export async function mergeClients(req, res) {
         else await tx.userClientAccess.update({ where: { id: u.id }, data: { clientId: tid } });
       }
 
-      // 7) Team assignments — one team per client: if the target already sits on a
+      // 7) Team assignments - one team per client: if the target already sits on a
       //    team, drop the source's; otherwise move the source's single assignment.
       const tgtTC = await tx.teamClient.findFirst({ where: { clientId: tid }, select: { id: true } });
       if (tgtTC) {
@@ -907,7 +907,7 @@ export async function mergeClients(req, res) {
         await tx.client.update({ where: { id: tid }, data: { aliases: { push: aliasesToAdd } } });
       }
 
-      // 9) Source is now empty — delete it.
+      // 9) Source is now empty - delete it.
       await tx.client.delete({ where: { id: sid } });
     }, {
       // A merge of a data-heavy client touches many rows; the default 5s
@@ -1055,7 +1055,7 @@ export async function listGroupRevenue(req, res) {
       month,
       currentRevenueMonth,
       heads: heads.map((h) => ({ headUserId: h.id, headName: h.name, amount: byHead.has(h.id) ? byHead.get(h.id) : null })),
-      // Agency-wise actual billing/revenue for the month — the total is mirrored
+      // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
     });

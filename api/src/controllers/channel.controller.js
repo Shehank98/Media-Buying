@@ -310,7 +310,7 @@ export async function deleteClientRateCard(req, res) {
   }
 }
 
-// List every channel master that has a GENERAL rate card — feeds the Rate Cards
+// List every channel master that has a GENERAL rate card - feeds the Rate Cards
 // page (search by channel name + download). Open to all authenticated roles.
 export async function listGeneralRateCards(req, res) {
   try {

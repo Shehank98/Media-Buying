@@ -161,7 +161,7 @@ export default function ChannelIntelligencePage() {
     return [...s].filter(Boolean).sort();
   }, [propGroups]);
 
-  // Derived monthly insights — one line per year, so totals/peak are computed
+  // Derived monthly insights - one line per year, so totals/peak are computed
   // across every (year, month) cell rather than a single flat series.
   const monthlyInsights = useMemo(() => {
     const years = monthly.years || [];
@@ -298,7 +298,7 @@ export default function ChannelIntelligencePage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Rate card (latest) — view / download, + version history */}
+          {/* Rate card (latest) - view / download, + version history */}
           {summary?.rateCard ? (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(false)} title={summary.rateCard.fileName}>

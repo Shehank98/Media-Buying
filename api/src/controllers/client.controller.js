@@ -52,7 +52,7 @@ export async function updateClient(req, res) {
     const moving = newAgencyId !== null && newAgencyId !== existing.agencyId;
 
     // ScheduleLog/UploadBatch denormalize agencyId at insert time, so when a
-    // client moves agencies its spend must be re-pointed too — otherwise
+    // client moves agencies its spend must be re-pointed too - otherwise
     // agency-level totals stay attributed to the old agency.
     const ops = [
       prisma.client.update({
