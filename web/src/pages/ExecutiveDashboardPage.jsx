@@ -89,6 +89,20 @@ const CustomTooltipLKR = ({ active, payload, label }) => {
 // Format a value already expressed in LKR millions for chart labels.
 const fmtM = (v) => (v == null ? '-' : `${Math.round(Number(v)).toLocaleString('en-US')}M`);
 
+// Total value at the right end of each Annual Achievement bar. A custom content
+// renderer (not position="right") so it renders even when the outer stacked
+// segment is zero-width (Budget/Target bars, or Actual with no forecast-fill),
+// and an explicit hex fill so html2canvas captures it in the PPT export (CSS
+// vars like var(--ink) don't always resolve during capture).
+const AchievementTotalLabel = ({ x, y, width, height, value }) => {
+  if (value == null || x == null) return null;
+  return (
+    <text x={x + width + 8} y={y + height / 2} dominantBaseline="central" textAnchor="start" fontSize={12} fontWeight={700} fill="#16243C">
+      {fmtM(value)}
+    </text>
+  );
+};
+
 // Distinct color for the forecast-fill segment of the "Actual upto X" bar -
 // deliberately not the green "actual" color or any other bar's color, so the
 // blend is visually obvious.
@@ -293,7 +307,7 @@ function AchievementSection({
               <Tooltip content={<AchievementTooltip />} />
               <Bar dataKey="actualPart" stackId="a" barSize={34} shape={<ActualBarShape />} />
               <Bar dataKey="forecastPart" stackId="a" barSize={34} shape={<ForecastBarShape />}>
-                <LabelList dataKey="total" position="right" formatter={fmtM} style={{ fontSize: 12, fontWeight: 700, fill: 'var(--ink)' }} />
+                <LabelList dataKey="total" content={AchievementTotalLabel} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -366,16 +380,25 @@ function AchievementSection({
               });
               years.sort((a, b) => a - b);
               if (!years.length) return <ChartEmpty />;
+              // "This year" = the current calendar year if present, else the latest
+              // year in the data. Its dots get value labels (also shown in the PPT).
+              const thisYear = years.includes(new Date().getFullYear()) ? new Date().getFullYear() : years[years.length - 1];
               return (
                 <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={rows} margin={{ top: 10, right: 20, bottom: 6, left: 6 }}>
+                  <LineChart data={rows} margin={{ top: 22, right: 20, bottom: 6, left: 6 }}>
                     <CartesianGrid stroke="var(--border)" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
                     <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
                     <Tooltip content={<CustomTooltipLKR />} />
                     <Legend />
                     {years.map((y, i) => (
-                      <Line key={y} type="monotone" dataKey={String(y)} name={String(y)} stroke={YEAR_COLORS[i % YEAR_COLORS.length]} strokeWidth={2.5} connectNulls dot={{ r: 3, strokeWidth: 1 }} activeDot={{ r: 5 }} />
+                      <Line key={y} type="monotone" dataKey={String(y)} name={String(y)} stroke={YEAR_COLORS[i % YEAR_COLORS.length]} strokeWidth={2.5} connectNulls dot={{ r: 3, strokeWidth: 1 }} activeDot={{ r: 5 }}>
+                        {y === thisYear && (
+                          <LabelList dataKey={String(y)} position="top" offset={10}
+                            formatter={(v) => (v == null || v === 0 ? '' : fmtShort(v))}
+                            style={{ fontSize: 10, fontWeight: 700, fill: '#16243C' }} />
+                        )}
+                      </Line>
                     ))}
                   </LineChart>
                 </ResponsiveContainer>
