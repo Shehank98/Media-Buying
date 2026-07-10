@@ -166,38 +166,16 @@ async function main() {
     }
     console.log(`Forecasting channel order set: ${FORECAST_TV.length} TV, ${FORECAST_RADIO.length} radio, ${TOTAL_BUCKETS.length} category totals`);
 
-    // ── Backfill mis-bucketed forecasts ──────────────────────────────────────
-    // Before the zero-usage reconcile (below) was taught to exempt these bucket
-    // channels by name, they could be deactivated and the forecast entry form
-    // (listForecastChannels) would silently fall back to whatever other active
-    // channel happened to be first in that medium — e.g. a "Digital Total"
-    // entry got saved against "ADA Derana - Digital" instead of the "Digital"
-    // bucket. Repoint any such stray MonthlyForecast rows onto the real bucket
-    // channel for their medium (merging amounts if both already exist for the
-    // same client/month, since the unique constraint is on
-    // [year, month, clientId, channelMasterId]).
-    let backfilled = 0;
-    for (const bucket of bucketRows) {
-      const stray = await prisma.monthlyForecast.findMany({
-        where: { channelMasterId: { not: bucket.id }, channelMaster: { medium: bucket.medium } },
-      });
-      for (const row of stray) {
-        const existing = await prisma.monthlyForecast.findUnique({
-          where: { year_month_clientId_channelMasterId: { year: row.year, month: row.month, clientId: row.clientId, channelMasterId: bucket.id } },
-        });
-        if (existing) {
-          await prisma.monthlyForecast.update({
-            where: { id: existing.id },
-            data: { amountMillions: Number(existing.amountMillions) + Number(row.amountMillions) },
-          });
-          await prisma.monthlyForecast.delete({ where: { id: row.id } });
-        } else {
-          await prisma.monthlyForecast.update({ where: { id: row.id }, data: { channelMasterId: bucket.id } });
-        }
-        backfilled++;
-      }
-    }
-    if (backfilled) console.log(`Forecast bucket backfill: ${backfilled} stray row(s) repointed to category totals`);
+    // NOTE: A "backfill mis-bucketed forecasts" step used to live here. It
+    // repointed every MonthlyForecast whose channel was in a bucket's medium
+    // onto that medium's total bucket. That was destructive once per-channel
+    // entry became the normal flow — on every deploy it collapsed legitimate
+    // channel-wise forecasts into "Unspecified". The narrow bug it addressed
+    // (bucket channel getting deactivated → entry falling back to a real
+    // channel) is already prevented by exempting the TOTAL_BUCKETS from the
+    // zero-usage reconcile below, so the backfill has been removed. Deploys
+    // must never mutate a group head's entered forecasts.
+    void bucketRows; // kept only to ensure the bucket channels exist (upserted above)
   }
 
   // ── One-time replace: remove the old default master data ─────────────────────
@@ -392,6 +370,10 @@ async function main() {
         isActive: true,
         name: { notIn: exemptNames },
         scheduleLogs: { none: {} },
+        // Never deactivate a channel a group head has forecast against — it's in
+        // active use for forecasting even before any actual spend is logged.
+        // Deactivating it would hide it from the isActive-filtered entry grid.
+        forecasts: { none: {} },
       },
       data: { isActive: false },
     });
