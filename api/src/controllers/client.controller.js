@@ -102,15 +102,46 @@ export async function deleteClient(req, res) {
 
 export async function getChannels(req, res) {
   try {
-    const { clientId } = req.params;
+    const cid = parseInt(req.params.clientId);
 
     const channels = await prisma.channel.findMany({
-      where: { clientId: parseInt(clientId) },
-      include: { _count: { select: { properties: true } } },
+      where: { clientId: cid },
+      include: {
+        _count: { select: { properties: true } },
+        // General (channel-master) rate card presence, for the client-dashboard
+        // fallback download when no client-specific card exists.
+        channelMaster: { select: { id: true, medium: true, rateCardDriveId: true, rateCardFileName: true } },
+      },
       orderBy: { name: 'asc' },
     });
 
-    return res.json(channels);
+    // Latest negotiated deal (discount %/bonus %) per channel master for this
+    // client, so the client dashboard can show it inline.
+    const masterIds = [...new Set(channels.map((c) => c.channelMasterId).filter(Boolean))];
+    let latestDealByMaster = new Map();
+    if (masterIds.length) {
+      const deals = await prisma.channelClientDeal.findMany({
+        where: { clientId: cid, channelMasterId: { in: masterIds } },
+        orderBy: { year: 'desc' },
+        select: { channelMasterId: true, year: true, discountPct: true, bonusPct: true },
+      });
+      for (const d of deals) {
+        // findMany is year-desc, so the first seen per master is the latest.
+        if (!latestDealByMaster.has(d.channelMasterId)) {
+          latestDealByMaster.set(d.channelMasterId, { year: d.year, discountPct: Number(d.discountPct), bonusPct: Number(d.bonusPct) });
+        }
+      }
+    }
+
+    const out = channels.map((c) => ({
+      ...c,
+      latestDeal: c.channelMasterId ? (latestDealByMaster.get(c.channelMasterId) || null) : null,
+      hasClientRateCard: !!c.rateCardDriveId,
+      hasGeneralRateCard: !!c.channelMaster?.rateCardDriveId,
+      generalRateCardName: c.channelMaster?.rateCardFileName || null,
+    }));
+
+    return res.json(out);
   } catch (error) {
     console.error('Get channels error:', error);
     return res.status(500).json({ error: 'Failed to get channels' });

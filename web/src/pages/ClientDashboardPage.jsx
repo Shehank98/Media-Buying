@@ -56,6 +56,7 @@ export default function ClientDashboardPage() {
   const { clientId } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -65,7 +66,35 @@ export default function ClientDashboardPage() {
       .then(({ data }) => setData(data))
       .catch(() => setError('Failed to load client dashboard.'))
       .finally(() => setLoading(false));
+    // Channels for the contacts / deals / rate-cards directory (independent load).
+    api.get(`/clients/${clientId}/channels`)
+      .then((r) => setChannels(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setChannels([]));
   }, [clientId]);
+
+  // Download a rate card: client-specific if the channel has one, else the
+  // channel's general rate card (channel master). Opens in a new tab / downloads.
+  const openRateCard = async (ch, download) => {
+    try {
+      const useClient = ch.hasClientRateCard;
+      const path = useClient
+        ? `/channels/${ch.id}/rate-card`
+        : `/analytics/channel/${ch.channelMasterId}/rate-card`;
+      const res = await api.get(path, { params: download ? { download: 1 } : {}, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (useClient ? ch.rateCardFileName : ch.generalRateCardName) || 'rate-card';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        window.open(url, '_blank');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError('Could not open the rate card.');
+    }
+  };
 
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading client dashboard…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
@@ -231,6 +260,70 @@ export default function ClientDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Channel directory: rep contact (ME), latest deal, and rate card download */}
+      {channels.length > 0 && (
+        <div style={{ ...CARD, overflow: 'hidden', marginTop: 24 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span>Channel Directory ({channels.length})</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>Rep contact · latest deal · rate card</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tbl" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th>Medium</th>
+                  <th>Contact (ME)</th>
+                  <th>Latest deal</th>
+                  <th style={{ textAlign: 'right' }}>Rate card</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channels.map(ch => {
+                  const medium = ch.channelMaster?.medium || ch.type;
+                  const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
+                  const d = ch.latestDeal;
+                  const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
+                  return (
+                    <tr key={ch.id}>
+                      <td className="strong">{ch.name}</td>
+                      <td>{medium ? <span className="medium-tag" data-medium={medium}>{medium}</span> : '-'}</td>
+                      <td style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                        {hasContact ? (
+                          <div>
+                            {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{ch.contactName}</div>}
+                            {ch.contactMobile && <div style={{ color: 'var(--muted)' }}><Icon name="phone" size={11} /> {ch.contactMobile}</div>}
+                            {ch.contactEmail && <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</div>}
+                          </div>
+                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
+                      </td>
+                      <td style={{ fontSize: 12.5 }}>
+                        {d ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span className="badge" style={{ fontSize: 10.5 }}>{d.year}</span>
+                            <span className="mono" style={{ fontWeight: 700, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}% off</span>
+                            <span className="mono" style={{ fontWeight: 700, color: '#15814B' }}>{d.bonusPct.toFixed(1)}% bonus</span>
+                          </div>
+                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {cardKind ? (
+                          <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span className="badge" style={{ fontSize: 10, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>{cardKind}</span>
+                            <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View"><Icon name="file" size={13} /></button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download"><Icon name="download" size={13} /></button>
+                          </div>
+                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
