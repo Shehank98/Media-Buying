@@ -204,24 +204,34 @@ export async function listForecastClients(req, res) {
     });
 
     const { year, month } = resolveTargetMonth(req);
-    const submitted = await prisma.monthlyForecast.findMany({
+    // Latest submission time per client for this month, so the roster can show
+    // the most-recently-submitted clients first.
+    const submittedAgg = await prisma.monthlyForecast.groupBy({
+      by: ['clientId'],
       where: { year, month, clientId: { in: clients.map(c => c.id) } },
-      select: { clientId: true },
-      distinct: ['clientId'],
+      _max: { submittedAt: true },
     });
-    const submittedSet = new Set(submitted.map(s => s.clientId));
+    const submittedAtByClient = new Map(submittedAgg.map(s => [s.clientId, s._max.submittedAt]));
 
-    return res.json({
-      year,
-      month,
-      clients: clients.map(c => ({
-        id: c.id,
-        name: c.name,
-        agencyId: c.agency?.id,
-        agencyName: c.agency?.name || '',
-        status: submittedSet.has(c.id) ? 'submitted' : 'pending',
-      })),
+    const rows = clients.map(c => ({
+      id: c.id,
+      name: c.name,
+      agencyId: c.agency?.id,
+      agencyName: c.agency?.name || '',
+      status: submittedAtByClient.has(c.id) ? 'submitted' : 'pending',
+      submittedAt: submittedAtByClient.get(c.id) || null,
+    }));
+    // Latest-submitted client first; then not-yet-submitted clients A→Z.
+    rows.sort((a, b) => {
+      const at = a.submittedAt ? new Date(a.submittedAt).getTime() : null;
+      const bt = b.submittedAt ? new Date(b.submittedAt).getTime() : null;
+      if (at && bt) return bt - at;
+      if (at) return -1;
+      if (bt) return 1;
+      return a.name.localeCompare(b.name);
     });
+
+    return res.json({ year, month, clients: rows });
   } catch (error) {
     console.error('listForecastClients error:', error);
     return res.status(500).json({ error: 'Failed to load forecasting clients', detail: error.message });
