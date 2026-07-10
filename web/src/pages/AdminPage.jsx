@@ -143,6 +143,8 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grMonth, setGrMonth] = useState(now.getMonth() + 1); // 1-12
   const [grHeads, setGrHeads] = useState([]);          // [{ headUserId, headName, amount }]
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
+  const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
+  const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
   const [grLoading, setGrLoading] = useState(false);
   const [grSaving, setGrSaving] = useState(false);
   const [grSavedAt, setGrSavedAt] = useState(null);
@@ -879,8 +881,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       const amts = {};
       heads.forEach(h => { amts[h.headUserId] = h.amount == null ? '' : String(h.amount); });
       setGrAmounts(amts);
+      const ags = data.agencies || [];
+      setGrAgencies(ags);
+      const aamts = {};
+      ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
+      setGrAgencyAmounts(aamts);
     } catch {
-      setGrHeads([]); setGrAmounts({});
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({});
     } finally {
       setGrLoading(false);
     }
@@ -895,12 +902,19 @@ export default function AdminPage({ initialTab = 'users' }) {
     try {
       const amounts = {};
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts });
+      const agencyAmounts = {};
+      Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
       heads.forEach(h => { amts[h.headUserId] = h.amount == null ? '' : String(h.amount); });
       setGrAmounts(amts);
+      const ags = data.agencies || [];
+      setGrAgencies(ags);
+      const aamts = {};
+      ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
+      setGrAgencyAmounts(aamts);
       setGrSavedAt(Date.now());
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save group revenue.');
@@ -1004,6 +1018,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- helpers ---- */
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const grTotal = Object.values(grAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
+  const grAgencyTotal = Object.values(grAgencyAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -1818,24 +1833,30 @@ export default function AdminPage({ initialTab = 'users' }) {
             </button>
           </div>
 
-          {/* Company-wide actual billing for the month → Revenue Achievement chart */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
-            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
-              <label>Actual billing · {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
-              <input
-                className="input" type="number" min="0" step="1000"
-                value={billingAmount}
-                onChange={e => { setBillingSavedAt(null); setBillingAmount(e.target.value); }}
-                placeholder="e.g. 30000000"
-                style={{ maxWidth: 260 }}
-              />
+          {/* Agency-wise actual billing for the month → Business Units Revenue donut
+              + the month total feeds the Revenue Achievement chart. Saved with the
+              main Save button above (posted alongside the group-head amounts). */}
+          <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Actual billing · {MONTHS[grMonth - 1]} {grYear} (full LKR, by agency)</label>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Total <b className="mono" style={{ color: 'var(--ink)' }}>LKR {grAgencyTotal.toLocaleString('en-US')}</b></div>
             </div>
-            <button className="btn btn-subtle" onClick={saveMonthlyBilling} disabled={billingSaving}>
-              {billingSaving ? 'Saving…' : 'Save billing'}
-            </button>
-            <div style={{ fontSize: 12, color: 'var(--muted)', flexBasis: '100%', lineHeight: 1.5 }}>
-              One company-wide billing figure per month. The <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart on the Executive Dashboard sums Jan→latest entered month and compares it to the annual target prorated to that month.
-              {billingSavedAt && <span style={{ color: '#15814B', fontWeight: 700, marginLeft: 8 }}>Saved.</span>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {grAgencies.map(a => (
+                <div className="field" key={a.agencyId} style={{ margin: 0, flex: '1 1 180px', minWidth: 160 }}>
+                  <label style={{ fontSize: 12 }}>{a.agencyName}</label>
+                  <input
+                    className="input" type="number" min="0" step="1000"
+                    value={grAgencyAmounts[a.agencyId] ?? ''}
+                    onChange={e => { setGrSavedAt(null); setGrAgencyAmounts(m => ({ ...m, [a.agencyId]: e.target.value })); }}
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+              {grAgencies.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '8px 0' }}>No agencies found.</div>}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
+              Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut for {MONTHS[grMonth - 1]}. The total is used as this month's company billing, so the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart (Jan→latest month vs prorated target) stays in sync — no separate billing entry needed.
             </div>
           </div>
 

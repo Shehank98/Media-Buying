@@ -212,6 +212,23 @@ function AchievementSection({
   const donutBudget = gcDonut(gcBudget?.groups);
   const donutRevenue = gcDonut(gcRevenue?.groups);
 
+  // Business Units (agency-wise) donuts — the primary view. Budget = auto by
+  // agency; Revenue = admin-entered per agency. Group-head donuts (above) move
+  // into an expandable detail.
+  const buBudget = groupContribution?.budgetByAgency || null;
+  const buRevenue = groupContribution?.revenueByAgency || null;
+  const buNames = [...new Set([...(buBudget?.groups || []), ...(buRevenue?.groups || [])].map(g => g.name).filter(Boolean))].sort();
+  const buColor = (name) => GC_HEAD_COLORS[Math.max(0, buNames.indexOf(name)) % GC_HEAD_COLORS.length];
+  const buDonut = (groups) => {
+    const total = (groups || []).reduce((s, g) => s + (g.value || 0), 0);
+    return (groups || [])
+      .filter(g => (g.value || 0) > 0)
+      .map(g => ({ name: g.name, value: g.value, pct: total > 0 ? (g.value / total) * 100 : 0, fill: buColor(g.name) }));
+  };
+  const donutBuBudget = buDonut(buBudget?.groups);
+  const donutBuRevenue = buDonut(buRevenue?.groups);
+  const [showGroupHeads, setShowGroupHeads] = useState(false);
+
   const mabyYears = monthlyAvgByYear?.years || [];
   // X-axis tick for Monthly Avg: year on top, and for a partial year (e.g. the
   // in-progress current year) the month range the average is taken over below it.
@@ -399,17 +416,17 @@ function AchievementSection({
       </div>
 
       <div className="chart-card" style={{ marginTop: 16 }}>
-        <div className="chart-card-title">Group Contribution</div>
+        <div className="chart-card-title">Business Units Contribution</div>
         <div className="chart-card-sub">
-          {gcBudget && gcRevenue
-            ? `${gcBudget.label} budget vs ${gcRevenue.label} revenue share by group head`
-            : 'Budget vs revenue share by group head'}
+          {buBudget && buRevenue
+            ? `${buBudget.label} budget vs ${buRevenue.label} revenue share by agency`
+            : 'Budget vs revenue share by agency'}
         </div>
-        {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : (!gcBudget && !gcRevenue) ? <ChartEmpty /> : (
+        {groupContributionLoading ? <div style={{ marginTop: 12 }}><Skeleton h={260} /></div> : (!buBudget && !buRevenue) ? <ChartEmpty /> : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             {[
-              { title: `${gcBudget?.label || ''} Budget Contribution`.trim(), donut: donutBudget, empty: 'No schedule data for the budget month' },
-              { title: `${gcRevenue?.label || ''} Revenue Contribution`.trim(), donut: donutRevenue, empty: `No revenue entered${gcRevenue ? ` for ${gcRevenue.label}` : ''}. Add it in Admin, Group Revenue.` },
+              { title: `${buBudget?.label || ''} Budget Contribution`.trim(), donut: donutBuBudget, empty: 'No schedule data for the budget month' },
+              { title: `${buRevenue?.label || ''} Revenue Contribution`.trim(), donut: donutBuRevenue, empty: `No revenue entered${buRevenue ? ` for ${buRevenue.label}` : ''}. Add it in Admin, Group Revenue.` },
             ].map((d, idx) => (
               <div key={idx} style={{ flex: '1 1 260px', minWidth: 240 }}>
                 <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>
@@ -438,6 +455,50 @@ function AchievementSection({
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Expandable detail: the same budget vs revenue split by group head. */}
+        {(gcBudget || gcRevenue) && (
+          <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <button
+              type="button"
+              onClick={() => setShowGroupHeads(v => !v)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--coral-700, #C44A18)', padding: 2 }}
+            >
+              <Icon name={showGroupHeads ? 'chevDown' : 'chevR'} size={14} />
+              {showGroupHeads ? 'Hide group-head breakdown' : 'Group Contribution (by group head)'}
+            </button>
+            {showGroupHeads && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12 }}>
+                {[
+                  { title: `${gcBudget?.label || ''} Budget Contribution`.trim(), donut: donutBudget, empty: 'No schedule data for the budget month' },
+                  { title: `${gcRevenue?.label || ''} Revenue Contribution`.trim(), donut: donutRevenue, empty: `No revenue entered${gcRevenue ? ` for ${gcRevenue.label}` : ''}. Add it in Admin, Group Revenue.` },
+                ].map((d, idx) => (
+                  <div key={idx} style={{ flex: '1 1 260px', minWidth: 240 }}>
+                    <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{d.title}</div>
+                    {d.donut.length === 0 ? (
+                      <div style={{ padding: '54px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.4 }}>{d.empty}</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <PieChart>
+                          <Pie
+                            data={d.donut} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                            innerRadius={55} outerRadius={90} paddingAngle={1.5}
+                            label={({ pct }) => `${pct.toFixed(0)}%`} labelLine={false}
+                          >
+                            {d.donut.map((g, i) => <Cell key={i} fill={g.fill} />)}
+                          </Pie>
+                          <Tooltip formatter={(v, n, p) => [`${fmtM(v)} (${p.payload.pct.toFixed(1)}%)`, n]} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} layout="vertical" align="right" verticalAlign="middle"
+                            formatter={(value, entry) => `${value}${entry?.payload?.pct != null ? '  ' + entry.payload.pct.toFixed(0) + '%' : ''}`} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

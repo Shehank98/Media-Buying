@@ -1720,9 +1720,40 @@ export async function getGroupContribution(req, res) {
       .filter(g => g.value > 0)
       .sort((a, b) => b.value - a.value);
 
+    // ── Agency-wise ("Business Units") donuts — the primary view ──
+    // Budget by agency = schedule-log spend for the budget month, grouped by
+    // agency (auto). Revenue by agency = admin-entered AgencyRevenue for the
+    // revenue month. Both respect the same agency scope as everything above.
+    const agencies = await prisma.agency.findMany({
+      where: ids ? { id: { in: ids } } : undefined,
+      select: { id: true, name: true },
+    });
+    const agencyName = new Map(agencies.map(a => [a.id, a.name]));
+
+    const budgetAgencyRows = await prisma.scheduleLog.groupBy({
+      by: ['agencyId'],
+      where: { ...scope, scheduleMonth: budgetMonth },
+      _sum: { scheduleValue: true },
+    });
+    const budgetByAgency = budgetAgencyRows
+      .filter(r => agencyName.has(r.agencyId))
+      .map(r => ({ key: `agency-${r.agencyId}`, name: agencyName.get(r.agencyId), value: Number(((safeNum(r._sum.scheduleValue) || 0) / 1e6).toFixed(2)) }))
+      .filter(g => g.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    const revAgencyRows = await prisma.agencyRevenue.findMany({
+      where: { year: ly, month: lm, ...(ids ? { agencyId: { in: ids } } : {}) },
+    });
+    const revenueByAgency = revAgencyRows
+      .map(r => ({ key: `agency-${r.agencyId}`, name: agencyName.get(r.agencyId) || 'Unknown', value: Number((Number(r.amount) / 1e6).toFixed(2)) }))
+      .filter(g => g.value > 0)
+      .sort((a, b) => b.value - a.value);
+
     return res.json({
       budget: { month: budgetMonth, label: MONTH_NAMES[bm - 1], year: by, groups: budgetList },
       revenue: { month: revenueMonth, label: MONTH_NAMES[lm - 1], year: ly, groups: revenueList },
+      budgetByAgency: { month: budgetMonth, label: MONTH_NAMES[bm - 1], year: by, groups: budgetByAgency },
+      revenueByAgency: { month: revenueMonth, label: MONTH_NAMES[lm - 1], year: ly, groups: revenueByAgency },
     });
   } catch (error) {
     console.error('getGroupContribution error:', error);

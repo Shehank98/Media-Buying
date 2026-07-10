@@ -1042,18 +1042,22 @@ export async function listGroupRevenue(req, res) {
       year = currentRevenueMonth?.year ?? d.getFullYear();
       month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
     }
-    const heads = await prisma.user.findMany({
-      where: { role: 'GROUP_HEAD' },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    const rows = await prisma.groupRevenue.findMany({ where: { year, month } });
+    const [heads, agencies, rows, agencyRows] = await Promise.all([
+      prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      prisma.groupRevenue.findMany({ where: { year, month } }),
+      prisma.agencyRevenue.findMany({ where: { year, month } }),
+    ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
+    const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
     return res.json({
       year,
       month,
       currentRevenueMonth,
       heads: heads.map((h) => ({ headUserId: h.id, headName: h.name, amount: byHead.has(h.id) ? byHead.get(h.id) : null })),
+      // Agency-wise actual billing/revenue for the month — the total is mirrored
+      // into MonthlyBilling on save, and the split drives the agency Revenue donut.
+      agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
     });
   } catch (error) {
     console.error('listGroupRevenue error:', error);
@@ -1063,17 +1067,19 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts } = req.body || {};
+    const { year, month, amounts, agencyAmounts } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
-    if (!y || !m || m < 1 || m > 12 || typeof amounts !== 'object' || amounts === null) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } are required' });
+    const hasHeads = amounts && typeof amounts === 'object';
+    const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
+    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies)) {
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
     const headIds = new Set(heads.map((h) => h.id));
 
     const ops = [];
-    for (const [k, v] of Object.entries(amounts)) {
+    if (hasHeads) for (const [k, v] of Object.entries(amounts)) {
       const headUserId = parseInt(k);
       if (!headIds.has(headUserId)) continue;
       const num = v === '' || v == null ? null : Number(v);
@@ -1088,7 +1094,44 @@ export async function setGroupRevenue(req, res) {
         }));
       }
     }
+
+    // Agency-wise actual billing: upsert per agency, and mirror the month TOTAL
+    // into MonthlyBilling so the Revenue Achievement chart reads the same figure.
+    if (hasAgencies) {
+      const agencies = await prisma.agency.findMany({ select: { id: true } });
+      const agencyIds = new Set(agencies.map((a) => a.id));
+      for (const [k, v] of Object.entries(agencyAmounts)) {
+        const agencyId = parseInt(k);
+        if (!agencyIds.has(agencyId)) continue;
+        const num = v === '' || v == null ? null : Number(v);
+        if (num == null || isNaN(num) || num <= 0) {
+          ops.push(prisma.agencyRevenue.deleteMany({ where: { year: y, month: m, agencyId } }));
+        } else {
+          ops.push(prisma.agencyRevenue.upsert({
+            where: { year_month_agencyId: { year: y, month: m, agencyId } },
+            update: { amount: num, createdById: req.user?.id ?? null },
+            create: { year: y, month: m, agencyId, amount: num, createdById: req.user?.id ?? null },
+          }));
+        }
+      }
+    }
     await prisma.$transaction(ops);
+
+    // Recompute MonthlyBilling for the month from the agency total (post-write),
+    // so a cleared/blank set removes the billing row too.
+    if (hasAgencies) {
+      const agg = await prisma.agencyRevenue.aggregate({ where: { year: y, month: m }, _sum: { amount: true } });
+      const total = Number(agg._sum.amount) || 0;
+      if (total > 0) {
+        await prisma.monthlyBilling.upsert({
+          where: { year_month: { year: y, month: m } },
+          update: { amount: total, createdById: req.user?.id ?? null },
+          create: { year: y, month: m, amount: total, createdById: req.user?.id ?? null },
+        });
+      } else {
+        await prisma.monthlyBilling.deleteMany({ where: { year: y, month: m } });
+      }
+    }
     return listGroupRevenue({ query: { year: y, month: m } }, res);
   } catch (error) {
     console.error('setGroupRevenue error:', error);

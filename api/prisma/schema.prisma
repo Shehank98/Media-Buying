@@ -109,6 +109,7 @@ model Agency {
   scheduleLogs  ScheduleLog[]
   uploadBatches UploadBatch[]
   annualTargets AgencyAnnualTarget[]
+  revenues      AgencyRevenue[]
 
   @@map("agencies")
 }
@@ -625,6 +626,27 @@ model GroupRevenue {
   @@unique([year, month, headUserId])
   @@index([year, month])
   @@map("group_revenues")
+}
+
+// Admin-entered actual billing/revenue per AGENCY per month (full LKR). Drives
+// the agency-wise "Business Units Contribution" Revenue donut on the Executive
+// Dashboard, and its per-month TOTAL is mirrored into MonthlyBilling so the
+// Revenue Achievement chart uses the same figure ("use total as that month").
+model AgencyRevenue {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  agencyId    Int      @map("agency_id")
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([year, month, agencyId])
+  @@index([year, month])
+  @@map("agency_revenues")
 }
 
 // Yearly commitment per channel (full LKR). The monthly pace = yearlyAmount / 12;
