@@ -2,7 +2,7 @@ import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 import { releaseHeldImportRows } from './database.controller.js';
-import { uploadRateCard, deleteRateCard, isRateCardConfigured, mimeForFile, isAllowedRateCard, extOf } from '../services/ratecard.service.js';
+import { uploadRateCard, deleteRateCard, isRateCardConfigured, mimeForFile, isAllowedRateCard, extOf, rateCardName } from '../services/ratecard.service.js';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1264,10 +1264,12 @@ export async function uploadChannelRateCardHandler(req, res) {
 
     const { fileName, dataBase64 } = req.body || {};
     if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the file) is required' });
-    const name = String(fileName || `${master.name} rate card.pdf`).trim();
-    if (!isAllowedRateCard(name)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
-    const ext = extOf(name);
-    const mimeType = mimeForFile(name);
+    const uploaded = String(fileName || 'rate-card.pdf').trim();
+    if (!isAllowedRateCard(uploaded)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
+    const ext = extOf(uploaded);
+    const mimeType = mimeForFile(uploaded);
+    // Auto-rename to <Channel>_<Medium>_<UploadDate>.<ext> (ignore original name).
+    const name = rateCardName(master.name, master.medium, ext);
 
     const b64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
     const buffer = Buffer.from(b64, 'base64');

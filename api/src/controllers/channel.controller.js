@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma.js';
 import {
   uploadRateCard, downloadRateCard, deleteRateCard, isRateCardConfigured,
-  mimeForFile, isAllowedRateCard, extOf,
+  mimeForFile, isAllowedRateCard, extOf, rateCardName,
 } from '../services/ratecard.service.js';
 
 export async function getChannel(req, res) {
@@ -213,16 +213,18 @@ export async function uploadClientRateCard(req, res) {
     const id = parseInt(req.params.channelId);
     const channel = await prisma.channel.findUnique({
       where: { id },
-      select: { id: true, name: true, rateCardVersions: true, client: { select: { name: true } } },
+      select: { id: true, name: true, type: true, rateCardVersions: true, client: { select: { name: true } }, channelMaster: { select: { medium: true } } },
     });
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
     const { fileName, dataBase64 } = req.body || {};
     if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the file) is required' });
-    const name = String(fileName || `${channel.name} rate card.pdf`).trim();
-    if (!isAllowedRateCard(name)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
-    const ext = extOf(name);
-    const mimeType = mimeForFile(name);
+    const uploaded = String(fileName || 'rate-card.pdf').trim();
+    if (!isAllowedRateCard(uploaded)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
+    const ext = extOf(uploaded);
+    const mimeType = mimeForFile(uploaded);
+    // Auto-rename to <Channel>_<Medium>_<UploadDate>.<ext> (ignore original name).
+    const name = rateCardName(channel.name, channel.channelMaster?.medium || channel.type, ext);
 
     const b64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
     const buffer = Buffer.from(b64, 'base64');

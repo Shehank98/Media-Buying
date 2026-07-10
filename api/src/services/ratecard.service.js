@@ -46,6 +46,16 @@ export function isAllowedRateCard(fileName) {
   return Object.prototype.hasOwnProperty.call(RATE_CARD_MIME, extOf(fileName));
 }
 
+// Auto-generated rate-card file name: "<Channel>_<Medium>_<YYYY-MM-DD>.<ext>".
+// Uploads are renamed to this regardless of the original file name (drops any
+// path-illegal characters; keeps the real extension so any format still opens).
+export function rateCardName(channel, medium, ext, date = new Date()) {
+  const clean = (s) => String(s || '').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim();
+  const day = (date instanceof Date ? date : new Date(date)).toISOString().slice(0, 10);
+  const base = [clean(channel), clean(medium), day].filter(Boolean).join('_');
+  return `${base}.${ext || 'pdf'}`;
+}
+
 // Upload a rate-card Buffer (any format — PDF/JPG/PNG/Excel/…) into a nested
 // folder chain under the top rate-card folder, e.g.
 //   General Rate Cards/<channel>/           (general, per channel master)
