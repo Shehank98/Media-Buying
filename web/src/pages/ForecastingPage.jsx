@@ -1239,6 +1239,18 @@ export default function ForecastingPage() {
     if (cleaned === '' || /^\d*\.?\d*$/.test(cleaned)) setCell(chId, 'amount', cleaned);
   };
 
+  // A medium double-counts when it has BOTH per-channel amounts and a non-zero
+  // Unspecified (they're additive) — usually a leftover from when the client was
+  // first entered as one medium total. Flag it so the head can clear the leftover.
+  const unspecifiedOverlap = (cat) => {
+    if (!cat.totalChannel) return 0;
+    const unspec = parseFloat(amounts[cat.totalChannel.id]?.amount) || 0;
+    if (unspec <= 0) return 0;
+    const hasChannel = cat.channels.some(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0);
+    return hasChannel ? unspec : 0;
+  };
+  const clearUnspecified = (cat) => { if (cat.totalChannel) setCell(cat.totalChannel.id, 'amount', ''); };
+
   // Copy the client's most recent prior forecast into the inputs to edit.
   const [copying, setCopying] = useState(false);
   const copyLast = async () => {
@@ -1511,6 +1523,15 @@ export default function ForecastingPage() {
                           ))}
                         </tbody>
                       </table>
+                      {unspecifiedOverlap(cat) > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6, padding: '8px 11px', background: '#FEF6E7', border: '1px solid #F3D28B', borderRadius: 8, fontSize: 12, color: '#8A5A00' }}>
+                          <Icon name="alert" size={14} style={{ color: '#B8860B', flexShrink: 0 }} />
+                          <span style={{ flex: 1, minWidth: 180 }}>
+                            <strong>Unspecified still holds LKR {unspecifiedOverlap(cat).toLocaleString('en-US')}</strong> on top of your per-channel amounts — the two add up, so {cat.category} is double-counting. Clear it if the channels replace it.
+                          </span>
+                          <button type="button" className="btn-subtle btn-sm" onClick={() => clearUnspecified(cat)} style={{ flexShrink: 0 }}>Clear Unspecified</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {categories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No active channels configured.</div>}
