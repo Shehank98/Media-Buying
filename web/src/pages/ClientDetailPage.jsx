@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
 import api from '../lib/api';
@@ -144,6 +144,56 @@ export default function ClientDetailPage() {
   };
 
   const canManageChannels = ['SUPER_ADMIN', 'GROUP_HEAD'].includes(user?.role);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  // ── Per-channel rate card (upload/download straight from the channel card) ──
+  const rcInputRef = useRef(null);
+  const rcTargetRef = useRef(null);
+  const [rcBusyId, setRcBusyId] = useState(null);
+  const [rcError, setRcError] = useState('');
+
+  const openChannelRateCard = async (ch, download, e) => {
+    e?.stopPropagation();
+    try {
+      const useClient = ch.hasClientRateCard;
+      const path = useClient ? `/channels/${ch.id}/rate-card` : `/analytics/channel/${ch.channelMasterId}/rate-card`;
+      const res = await api.get(path, { params: download ? { download: 1 } : {}, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url; a.download = (useClient ? ch.rateCardFileName : ch.generalRateCardName) || 'rate-card';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else { window.open(url, '_blank'); }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { setRcError('Could not open the rate card.'); }
+  };
+  const pickChannelRateCard = (ch, e) => { e?.stopPropagation(); rcTargetRef.current = ch; rcInputRef.current?.click(); };
+  const onChannelRateCardFile = async (e) => {
+    const file = e.target.files?.[0];
+    const ch = rcTargetRef.current;
+    e.target.value = '';
+    rcTargetRef.current = null;
+    if (!file || !ch) return;
+    if (!/\.(pdf|jpg|jpeg|png|gif|webp|xls|xlsx|csv|doc|docx)$/i.test(file.name)) {
+      setRcError('Rate card must be a PDF, image (JPG/PNG), Excel, CSV or Word file.'); return;
+    }
+    setRcBusyId(ch.id); setRcError('');
+    try {
+      const dataBase64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',').pop());
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      await api.post(`/channels/${ch.id}/rate-card`, { fileName: file.name, dataBase64 });
+      setRefreshKey(k => k + 1);
+    } catch (err) {
+      setRcError(err.response?.data?.error || 'Failed to upload rate card.');
+    } finally {
+      setRcBusyId(null);
+    }
+  };
+
   const handleDeleteChannel = async (ch, e) => {
     e.stopPropagation();
     if (!confirm(`Delete "${ch.name}" from this client? This also removes its properties and history.`)) return;
@@ -271,6 +321,11 @@ export default function ClientDetailPage() {
               <div style={{ fontSize: 13 }}>Add a {activeTab.toLowerCase()} channel to get started.</div>
             </div>
           ) : (
+            <>
+            <input ref={rcInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.csv,.doc,.docx" style={{ display: 'none' }} onChange={onChannelRateCardFile} />
+            {rcError && (
+              <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: 'var(--red-700,#b91c1c)', marginBottom: 12 }}>{rcError}</div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14 }}>
               {filteredChannels.map(ch => {
                 const tc = TAB_COLORS[activeTab] || TAB_COLORS.TV;
@@ -305,6 +360,30 @@ export default function ClientDetailPage() {
                         {ch.contactMobile && <div title={ch.contactMobile}><Icon name="phone" size={11} /> {ch.contactMobile}</div>}
                       </div>
                     )}
+                    {(() => {
+                      const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
+                      if (!cardKind && !isSuperAdmin) return null;
+                      return (
+                        <div onClick={e => e.stopPropagation()} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {cardKind ? (
+                            <>
+                              <span className="badge" style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 3, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>
+                                <Icon name="file" size={10} /> {cardKind} card
+                              </span>
+                              <button className="act-btn" title="View rate card" onClick={e => openChannelRateCard(ch, false, e)}><Icon name="eye" size={13} /></button>
+                              <button className="act-btn" title="Download rate card" onClick={e => openChannelRateCard(ch, true, e)}><Icon name="download" size={13} /></button>
+                              {isSuperAdmin && (
+                                <button className="act-btn" title={ch.hasClientRateCard ? 'Replace client rate card' : 'Upload client rate card'} disabled={rcBusyId === ch.id} onClick={e => pickChannelRateCard(ch, e)}><Icon name="upload" size={13} /></button>
+                              )}
+                            </>
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" disabled={rcBusyId === ch.id} onClick={e => pickChannelRateCard(ch, e)} style={{ fontSize: 11.5 }}>
+                              <Icon name="upload" size={13} /> {rcBusyId === ch.id ? 'Uploading…' : 'Upload rate card'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: '#3B4A63' }}>{props} propert{props === 1 ? 'y' : 'ies'}</span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: tc.fg }}>Open <Icon name="chevR" size={13} /></span>
@@ -313,6 +392,7 @@ export default function ClientDetailPage() {
                 );
               })}
             </div>
+            </>
           )}
         </>
       )}

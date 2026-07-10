@@ -263,64 +263,90 @@ export default function ClientDashboardPage() {
 
       {/* Channel directory: rep contact (ME), latest deal, and rate card download */}
       {channels.length > 0 && (
-        <div style={{ ...CARD, overflow: 'hidden', marginTop: 24 }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-            <span>Channel Directory ({channels.length})</span>
-            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>Rep contact · latest deal · rate card</span>
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>Channel Directory</h3>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card, for each of this client's {channels.length} channels</div>
+            </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="tbl" style={{ margin: 0 }}>
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th>Medium</th>
-                  <th>Contact (ME)</th>
-                  <th>Latest deal</th>
-                  <th style={{ textAlign: 'right' }}>Rate card</th>
-                </tr>
-              </thead>
-              <tbody>
-                {channels.map(ch => {
-                  const medium = ch.channelMaster?.medium || ch.type;
-                  const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
-                  const d = ch.latestDeal;
-                  const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
-                  return (
-                    <tr key={ch.id}>
-                      <td className="strong">{ch.name}</td>
-                      <td>{medium ? <span className="medium-tag" data-medium={medium}>{medium}</span> : '-'}</td>
-                      <td style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                        {hasContact ? (
-                          <div>
-                            {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)' }}>{ch.contactName}</div>}
-                            {ch.contactMobile && <div style={{ color: 'var(--muted)' }}><Icon name="phone" size={11} /> {ch.contactMobile}</div>}
-                            {ch.contactEmail && <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+            {channels.map(ch => {
+              const medium = ch.channelMaster?.medium || ch.type;
+              const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
+              const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
+              const d = ch.latestDeal;
+              const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
+              return (
+                <div key={ch.id} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${mc}, ${mc}22 75%, transparent)` }} />
+                  {/* Header: icon + name + medium */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 11, background: `${mc}18`, color: mc, display: 'grid', placeItems: 'center', flex: 'none' }}>
+                      <Icon name={(medium || 'tv').toLowerCase()} size={18} />
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.name}>{ch.name}</div>
+                      {medium && <span className="medium-tag" data-medium={medium} style={{ marginTop: 2 }}>{medium}</span>}
+                    </div>
+                  </div>
+
+                  {/* Contact (ME) */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Contact · ME</div>
+                    {hasContact ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#EEF1F6', color: '#3B4A63', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12, flex: 'none' }}>
+                          {(ch.contactName || '?').trim()[0]?.toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
+                          {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactName}>{ch.contactName}</div>}
+                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: 'var(--muted)' }}>
+                            {ch.contactMobile && <span title={ch.contactMobile}><Icon name="phone" size={11} /> {ch.contactMobile}</span>}
+                            {ch.contactEmail && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170, whiteSpace: 'nowrap' }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</span>}
                           </div>
-                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
-                      </td>
-                      <td style={{ fontSize: 12.5 }}>
-                        {d ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span className="badge" style={{ fontSize: 10.5 }}>{d.year}</span>
-                            <span className="mono" style={{ fontWeight: 700, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}% off</span>
-                            <span className="mono" style={{ fontWeight: 700, color: '#15814B' }}>{d.bonusPct.toFixed(1)}% bonus</span>
-                          </div>
-                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {cardKind ? (
-                          <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
-                            <span className="badge" style={{ fontSize: 10, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>{cardKind}</span>
-                            <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View"><Icon name="file" size={13} /></button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download"><Icon name="download" size={13} /></button>
-                          </div>
-                        ) : <span style={{ color: 'var(--muted)' }}>-</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </div>
+                      </div>
+                    ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No contact recorded</div>}
+                  </div>
+
+                  {/* Latest deal */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Latest deal</div>
+                    {d ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span className="badge" style={{ fontSize: 10.5 }}>{d.year}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#F2F5FA' }}>
+                          <b className="mono" style={{ fontSize: 14, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}%</b>
+                          <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>off</span>
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#EAF7EF' }}>
+                          <b className="mono" style={{ fontSize: 14, color: '#15814B' }}>{d.bonusPct.toFixed(1)}%</b>
+                          <span style={{ fontSize: 10.5, color: '#15814B' }}>bonus</span>
+                        </span>
+                      </div>
+                    ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No deal recorded</div>}
+                  </div>
+
+                  {/* Rate card */}
+                  <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #EEF0F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    {cardKind ? (
+                      <>
+                        <span className="badge" style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 4, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>
+                          <Icon name="file" size={10} /> {cardKind} rate card
+                        </span>
+                        <div style={{ display: 'inline-flex', gap: 6 }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View"><Icon name="eye" size={13} /> View</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download"><Icon name="download" size={13} /></button>
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="file" size={12} /> No rate card</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
