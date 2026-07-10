@@ -1248,10 +1248,34 @@ export default function ForecastingPage() {
       if (isAdmin && selectedPeriod) { prevParams.year = selectedPeriod.year; prevParams.month = selectedPeriod.month; }
       const { data } = await api.get('/forecasting/previous', { params: prevParams });
       if (!data.found) { setEntryError('No previous forecast to copy yet.'); return; }
+      // Default the copy to By channel so copying never re-buckets a month. For
+      // media that HAVE per-channel rows, we don't carry a medium-total lump into
+      // its (now hidden) bucket — that would be lost on save. We surface those
+      // totals in the message instead so the head can split them per channel.
+      // Total-only media (e.g. Print) keep their bucket amount as before.
+      const toggleableBucketIds = new Set(
+        categories.filter(c => c.totalChannel && c.channels.length > 0).map(c => c.totalChannel.id)
+      );
+      const catOfBucket = new Map(
+        categories.filter(c => c.totalChannel).map(c => [c.totalChannel.id, c.category])
+      );
       const seed = {};
-      data.items.forEach(it => { seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' }; });
+      const carried = []; // medium totals we couldn't auto-split
+      data.items.forEach(it => {
+        if (toggleableBucketIds.has(it.channelMasterId)) {
+          if (it.amountMillions > 0) carried.push({ medium: catOfBucket.get(it.channelMasterId) || '?', amount: Math.round(it.amountMillions * 1e6) });
+          return; // drop the un-splittable lump rather than hide it in the bucket
+        }
+        seed[it.channelMasterId] = { amount: String(Math.round(it.amountMillions * 1e6)), notes: it.notes || '' };
+      });
       setAmounts(seed);
-      setSavedMsg(`Copied ${MONTHS[data.month - 1]} ${data.year} - edit the amounts and submit.`);
+      // Every medium with channels opens in By channel; total-only media stay total.
+      const modes = {};
+      for (const cat of categories) if (cat.totalChannel) modes[cat.category] = cat.channels.length === 0 ? 'total' : 'channel';
+      setCatMode(modes);
+      let msg = `Copied ${MONTHS[data.month - 1]} ${data.year} - edit the amounts and submit.`;
+      if (carried.length) msg += ` Previous ${carried.map(t => `${t.medium} total LKR ${t.amount.toLocaleString('en-US')}`).join(', ')} was a single medium total - enter it per channel below.`;
+      setSavedMsg(msg);
     } catch (err) {
       setEntryError(err.response?.data?.error || 'Failed to copy previous forecast.');
     } finally {
