@@ -638,7 +638,7 @@ export async function getChannelRateCard(req, res) {
     const channelMasterId = parseInt(req.params.channelMasterId);
     const master = await prisma.channelMaster.findUnique({
       where: { id: channelMasterId },
-      select: { rateCardDriveId: true, rateCardFileName: true, rateCardVersions: true },
+      select: { rateCardDriveId: true, rateCardFileName: true, rateCardMimeType: true, rateCardVersions: true },
     });
     if (!master || !master.rateCardDriveId) return res.status(404).json({ error: 'No rate card for this channel' });
     if (!isRateCardConfigured()) return res.status(503).json({ error: 'Rate card storage is not configured' });
@@ -647,16 +647,17 @@ export async function getChannelRateCard(req, res) {
     const versions = Array.isArray(master.rateCardVersions) ? master.rateCardVersions : [];
     let driveId = master.rateCardDriveId;
     let fileName = master.rateCardFileName;
+    let mimeType = master.rateCardMimeType || 'application/pdf';
     if (req.query.driveId) {
       const v = versions.find(x => x.driveId === req.query.driveId);
       if (!v && req.query.driveId !== master.rateCardDriveId) return res.status(404).json({ error: 'Version not found' });
       driveId = req.query.driveId;
-      if (v) fileName = `${(v.fileName || 'rate-card').replace(/\.pdf$/i, '')} (v${v.version}).pdf`;
+      if (v) { fileName = v.fileName || fileName; mimeType = v.mimeType || mimeType; }
     }
     const buffer = await downloadRateCard(driveId);
     const disp = req.query.download === '1' ? 'attachment' : 'inline';
-    const safeName = (fileName || 'rate-card.pdf').replace(/["\r\n]/g, '');
-    res.setHeader('Content-Type', 'application/pdf');
+    const safeName = (fileName || 'rate-card').replace(/["\r\n]/g, '');
+    res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `${disp}; filename="${safeName}"`);
     return res.send(buffer);
   } catch (error) {

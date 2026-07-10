@@ -24,15 +24,42 @@ async function ratecardTopFolder(token) {
   return process.env.GDRIVE_RATECARD_FOLDER_ID || ensureFolder('Orbit Rate Cards', null, token);
 }
 
-// Upload a PDF Buffer into RateCards/<medium>/<channel>/. Returns { id, size,
-// name }. Callers keep every upload as a new version (no delete) so history is
-// preserved in Drive.
-export async function uploadRateCard(buffer, fileName, { medium, channel } = {}) {
+// Accepted rate-card formats → MIME type. Rate cards may be PDF, image, or Excel
+// (and common office variants). Keyed by lowercase extension (no dot).
+export const RATE_CARD_MIME = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  csv: 'text/csv',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+export function extOf(fileName) {
+  const m = /\.([a-z0-9]+)$/i.exec(String(fileName || '').trim());
+  return m ? m[1].toLowerCase() : '';
+}
+export function mimeForFile(fileName) {
+  return RATE_CARD_MIME[extOf(fileName)] || 'application/octet-stream';
+}
+export function isAllowedRateCard(fileName) {
+  return Object.prototype.hasOwnProperty.call(RATE_CARD_MIME, extOf(fileName));
+}
+
+// Upload a rate-card Buffer (any format — PDF/JPG/PNG/Excel/…) into a nested
+// folder chain under the top rate-card folder, e.g.
+//   General Rate Cards/<channel>/           (general, per channel master)
+//   Client Rate Cards/<client>/<channel>/   (client-specific)
+// Returns { id, size, name }. Callers keep every upload as a new version (no
+// delete) so history is preserved in Drive.
+export async function uploadRateCard(buffer, fileName, { folders = [], mimeType = 'application/octet-stream' } = {}) {
   if (!isRateCardConfigured()) throw new Error('Rate card storage is not configured');
   const token = await getDriveAccessToken();
   let parent = await ratecardTopFolder(token);
-  if (medium) parent = await ensureFolder(String(medium), parent, token);
-  if (channel) parent = await ensureFolder(String(channel).slice(0, 120), parent, token);
+  for (const f of folders) {
+    if (f == null || f === '') continue;
+    parent = await ensureFolder(String(f).slice(0, 120), parent, token);
+  }
 
   const metadata = { name: fileName, parents: [parent] };
   const boundary = 'orbitrc_' + Date.now().toString(36);
@@ -41,7 +68,7 @@ export async function uploadRateCard(buffer, fileName, { medium, channel } = {})
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
     JSON.stringify(metadata) + '\r\n' +
     `--${boundary}\r\n` +
-    'Content-Type: application/pdf\r\n\r\n',
+    `Content-Type: ${mimeType}\r\n\r\n`,
     'utf8',
   );
   const post = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');

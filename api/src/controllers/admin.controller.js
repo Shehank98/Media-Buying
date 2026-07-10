@@ -2,7 +2,7 @@ import prisma from '../utils/prisma.js';
 import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 import { releaseHeldImportRows } from './database.controller.js';
-import { uploadRateCard, deleteRateCard, isRateCardConfigured } from '../services/ratecard.service.js';
+import { uploadRateCard, deleteRateCard, isRateCardConfigured, mimeForFile, isAllowedRateCard, extOf } from '../services/ratecard.service.js';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1263,33 +1263,34 @@ export async function uploadChannelRateCardHandler(req, res) {
     if (!master) return res.status(404).json({ error: 'Channel not found' });
 
     const { fileName, dataBase64 } = req.body || {};
-    if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the PDF file) is required' });
+    if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the file) is required' });
     const name = String(fileName || `${master.name} rate card.pdf`).trim();
-    if (!/\.pdf$/i.test(name)) return res.status(400).json({ error: 'Only PDF rate cards are allowed' });
+    if (!isAllowedRateCard(name)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
+    const ext = extOf(name);
+    const mimeType = mimeForFile(name);
 
     const b64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
     const buffer = Buffer.from(b64, 'base64');
     if (!buffer.length) return res.status(400).json({ error: 'Empty file' });
     if (buffer.length > 25 * 1024 * 1024) return res.status(413).json({ error: 'Rate card must be 25 MB or smaller' });
-    // Cheap PDF sniff: files start with "%PDF".
-    if (buffer.slice(0, 4).toString('latin1') !== '%PDF') return res.status(400).json({ error: 'File does not look like a PDF' });
 
     // Keep every upload as a NEW version (don't delete the old Drive file), in
-    // RateCards/<medium>/<channel>/. rateCard* points at the newest version.
+    // General Rate Cards/<channel>/. rateCard* points at the newest version.
     const prior = Array.isArray(master.rateCardVersions) ? master.rateCardVersions : [];
     const version = prior.length + 1;
-    const driveName = `${name.replace(/\.pdf$/i, '')} (v${version}).pdf`;
-    const up = await uploadRateCard(buffer, driveName, { medium: master.medium, channel: master.name });
-    const entry = { version, driveId: up.id, fileName: name, size: up.size, uploadedAt: new Date().toISOString() };
+    const bareName = name.replace(new RegExp(`\\.${ext}$`, 'i'), '');
+    const driveName = `${bareName} (v${version}).${ext}`;
+    const up = await uploadRateCard(buffer, driveName, { folders: ['General Rate Cards', master.name], mimeType });
+    const entry = { version, driveId: up.id, fileName: name, mimeType, size: up.size, uploadedAt: new Date().toISOString() };
     const versions = [...prior, entry];
 
     const saved = await prisma.channelMaster.update({
       where: { id },
       data: {
-        rateCardDriveId: up.id, rateCardFileName: name, rateCardSize: up.size, rateCardUploadedAt: new Date(),
+        rateCardDriveId: up.id, rateCardFileName: name, rateCardMimeType: mimeType, rateCardSize: up.size, rateCardUploadedAt: new Date(),
         rateCardVersions: versions,
       },
-      select: { id: true, rateCardFileName: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true },
+      select: { id: true, rateCardFileName: true, rateCardMimeType: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true },
     });
     return res.json({ channelMaster: saved });
   } catch (error) {
@@ -1308,7 +1309,7 @@ export async function deleteChannelRateCardHandler(req, res) {
     for (const did of ids) await deleteRateCard(did).catch(() => {});
     await prisma.channelMaster.update({
       where: { id },
-      data: { rateCardDriveId: null, rateCardFileName: null, rateCardSize: null, rateCardUploadedAt: null, rateCardVersions: null },
+      data: { rateCardDriveId: null, rateCardFileName: null, rateCardMimeType: null, rateCardSize: null, rateCardUploadedAt: null, rateCardVersions: null },
     });
     return res.json({ ok: true });
   } catch (error) {

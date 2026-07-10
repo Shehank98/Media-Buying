@@ -224,11 +224,11 @@ export default function ChannelIntelligencePage() {
         params,
         responseType: 'blob',
       });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const url = URL.createObjectURL(res.data); // blob carries the right MIME
       if (download) {
         const a = document.createElement('a');
         a.href = url;
-        a.download = summary?.rateCard?.fileName || 'rate-card.pdf';
+        a.download = summary?.rateCard?.fileName || 'rate-card';
         document.body.appendChild(a); a.click(); a.remove();
       } else {
         window.open(url, '_blank');

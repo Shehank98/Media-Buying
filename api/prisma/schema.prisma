@@ -225,12 +225,14 @@ model ChannelMaster {
   aliases         String[]         @default([])
   isActive        Boolean          @default(true) @map("is_active")
   sortOrder       Int?             @map("sort_order")
-  // Channel rate card — a PDF in Google Drive (RateCards/<medium>/<channel>/).
+  // GENERAL channel rate card in Google Drive (General Rate Cards/<channel>/).
+  // Any format (PDF/JPG/PNG/Excel/…); rateCardMimeType is used on download.
   // rateCard* = the LATEST version (for quick display/download); every upload is
   // kept as a new version in rateCardVersions (newest last) rather than replacing
-  // the old file — [{ version, driveId, fileName, size, uploadedAt }].
+  // the old file — [{ version, driveId, fileName, mimeType, size, uploadedAt }].
   rateCardDriveId    String?       @map("rate_card_drive_id")
   rateCardFileName   String?       @map("rate_card_file_name")
+  rateCardMimeType   String?       @map("rate_card_mime_type")
   rateCardSize       Int?          @map("rate_card_size")
   rateCardUploadedAt DateTime?     @map("rate_card_uploaded_at")
   rateCardVersions   Json?         @map("rate_card_versions")
@@ -303,6 +305,16 @@ model Channel {
   contactName     String?        @map("contact_name")
   contactEmail    String?        @map("contact_email")
   contactMobile   String?        @map("contact_mobile")
+  // Client-specific rate card on Google Drive (Client Rate Cards/<client>/<channel>/).
+  // Mirrors ChannelMaster.rateCard* (which is the GENERAL, per-channel card):
+  // rateCard* = the latest version; every upload is appended to rateCardVersions.
+  // Any format (PDF/JPG/PNG/Excel/…) — rateCardMimeType is used on download.
+  rateCardDriveId    String?     @map("rate_card_drive_id")
+  rateCardFileName   String?     @map("rate_card_file_name")
+  rateCardMimeType   String?     @map("rate_card_mime_type")
+  rateCardSize       Int?        @map("rate_card_size")
+  rateCardUploadedAt DateTime?   @map("rate_card_uploaded_at")
+  rateCardVersions   Json?       @map("rate_card_versions")
   createdAt       DateTime       @default(now()) @map("created_at")
   client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
   channelMaster   ChannelMaster? @relation(fields: [channelMasterId], references: [id])

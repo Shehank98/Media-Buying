@@ -1,4 +1,8 @@
 import prisma from '../utils/prisma.js';
+import {
+  uploadRateCard, downloadRateCard, deleteRateCard, isRateCardConfigured,
+  mimeForFile, isAllowedRateCard, extOf,
+} from '../services/ratecard.service.js';
 
 export async function getChannel(req, res) {
   try {
@@ -193,5 +197,145 @@ export async function deleteChannelDeal(req, res) {
   } catch (error) {
     console.error('Delete channel deal error:', error);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ─── Client-specific rate card (SUPER_ADMIN upload/delete; any access downloads) ──
+// Stored in Google Drive under Client Rate Cards/<client>/<channel>/, versioned
+// like the general (ChannelMaster) rate card. Distinct from the general card:
+// this is what the channel offers THIS client.
+
+export async function uploadClientRateCard(req, res) {
+  try {
+    if (!isRateCardConfigured()) {
+      return res.status(503).json({ error: 'Rate card storage is not configured. Set the Google Drive OAuth env vars, or a service account + GDRIVE_RATECARD_FOLDER_ID.' });
+    }
+    const id = parseInt(req.params.channelId);
+    const channel = await prisma.channel.findUnique({
+      where: { id },
+      select: { id: true, name: true, rateCardVersions: true, client: { select: { name: true } } },
+    });
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+    const { fileName, dataBase64 } = req.body || {};
+    if (!dataBase64 || typeof dataBase64 !== 'string') return res.status(400).json({ error: 'dataBase64 (the file) is required' });
+    const name = String(fileName || `${channel.name} rate card.pdf`).trim();
+    if (!isAllowedRateCard(name)) return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, JPG, PNG, Excel (xls/xlsx), CSV, Word' });
+    const ext = extOf(name);
+    const mimeType = mimeForFile(name);
+
+    const b64 = dataBase64.includes(',') ? dataBase64.split(',').pop() : dataBase64;
+    const buffer = Buffer.from(b64, 'base64');
+    if (!buffer.length) return res.status(400).json({ error: 'Empty file' });
+    if (buffer.length > 25 * 1024 * 1024) return res.status(413).json({ error: 'Rate card must be 25 MB or smaller' });
+
+    const prior = Array.isArray(channel.rateCardVersions) ? channel.rateCardVersions : [];
+    const version = prior.length + 1;
+    const bareName = name.replace(new RegExp(`\\.${ext}$`, 'i'), '');
+    const driveName = `${bareName} (v${version}).${ext}`;
+    const up = await uploadRateCard(buffer, driveName, {
+      folders: ['Client Rate Cards', channel.client?.name || `Client ${id}`, channel.name],
+      mimeType,
+    });
+    const entry = { version, driveId: up.id, fileName: name, mimeType, size: up.size, uploadedAt: new Date().toISOString() };
+    const versions = [...prior, entry];
+
+    const saved = await prisma.channel.update({
+      where: { id },
+      data: {
+        rateCardDriveId: up.id, rateCardFileName: name, rateCardMimeType: mimeType,
+        rateCardSize: up.size, rateCardUploadedAt: new Date(), rateCardVersions: versions,
+      },
+      select: { id: true, rateCardFileName: true, rateCardMimeType: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true },
+    });
+    return res.json({ channel: saved });
+  } catch (error) {
+    console.error('uploadClientRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to upload rate card', detail: error.message });
+  }
+}
+
+export async function getClientRateCard(req, res) {
+  try {
+    const id = parseInt(req.params.channelId);
+    const channel = await prisma.channel.findUnique({
+      where: { id },
+      select: { rateCardDriveId: true, rateCardFileName: true, rateCardMimeType: true, rateCardVersions: true },
+    });
+    if (!channel || !channel.rateCardDriveId) return res.status(404).json({ error: 'No rate card for this channel' });
+    if (!isRateCardConfigured()) return res.status(503).json({ error: 'Rate card storage is not configured' });
+
+    const versions = Array.isArray(channel.rateCardVersions) ? channel.rateCardVersions : [];
+    let driveId = channel.rateCardDriveId;
+    let fileName = channel.rateCardFileName;
+    let mimeType = channel.rateCardMimeType || 'application/pdf';
+    if (req.query.driveId) {
+      const v = versions.find(x => x.driveId === req.query.driveId);
+      if (!v && req.query.driveId !== channel.rateCardDriveId) return res.status(404).json({ error: 'Version not found' });
+      driveId = req.query.driveId;
+      if (v) { fileName = v.fileName || fileName; mimeType = v.mimeType || mimeType; }
+    }
+    const buffer = await downloadRateCard(driveId);
+    const disp = req.query.download === '1' ? 'attachment' : 'inline';
+    const safeName = (fileName || 'rate-card').replace(/["\r\n]/g, '');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `${disp}; filename="${safeName}"`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error('getClientRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to fetch rate card', detail: error.message });
+  }
+}
+
+export async function deleteClientRateCard(req, res) {
+  try {
+    const id = parseInt(req.params.channelId);
+    const channel = await prisma.channel.findUnique({
+      where: { id },
+      select: { rateCardDriveId: true, rateCardVersions: true },
+    });
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const ids = new Set([channel.rateCardDriveId, ...(Array.isArray(channel.rateCardVersions) ? channel.rateCardVersions.map(v => v.driveId) : [])].filter(Boolean));
+    for (const did of ids) await deleteRateCard(did).catch(() => {});
+    await prisma.channel.update({
+      where: { id },
+      data: { rateCardDriveId: null, rateCardFileName: null, rateCardMimeType: null, rateCardSize: null, rateCardUploadedAt: null, rateCardVersions: null },
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('deleteClientRateCard error:', error);
+    return res.status(500).json({ error: 'Failed to remove rate card', detail: error.message });
+  }
+}
+
+// List every channel master that has a GENERAL rate card — feeds the Rate Cards
+// page (search by channel name + download). Open to all authenticated roles.
+export async function listGeneralRateCards(req, res) {
+  try {
+    const rows = await prisma.channelMaster.findMany({
+      where: { rateCardDriveId: { not: null } },
+      select: {
+        id: true, name: true, medium: true,
+        rateCardFileName: true, rateCardMimeType: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true,
+        mediaGroup: { select: { name: true } },
+      },
+      orderBy: [{ medium: 'asc' }, { name: 'asc' }],
+    });
+    const cards = rows.map(r => ({
+      channelMasterId: r.id,
+      name: r.name,
+      medium: r.medium,
+      mediaGroup: r.mediaGroup?.name || '',
+      fileName: r.rateCardFileName,
+      mimeType: r.rateCardMimeType,
+      size: r.rateCardSize,
+      uploadedAt: r.rateCardUploadedAt,
+      versionCount: Array.isArray(r.rateCardVersions) ? r.rateCardVersions.length : 0,
+      versions: Array.isArray(r.rateCardVersions) ? r.rateCardVersions : [],
+    }));
+    return res.json({ cards });
+  } catch (error) {
+    console.error('listGeneralRateCards error:', error);
+    return res.status(500).json({ error: 'Failed to list rate cards', detail: error.message });
   }
 }

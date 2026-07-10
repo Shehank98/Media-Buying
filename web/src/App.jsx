@@ -26,6 +26,7 @@ import SpendAnalyticsPage from './pages/SpendAnalyticsPage';
 import ForecastingPage from './pages/ForecastingPage';
 import MediaBuyingPage from './pages/MediaBuyingPage';
 import ProfitPage from './pages/ProfitPage';
+import RateCardsPage from './pages/RateCardsPage';
 
 // Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
 function HomeRedirect() {
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/clients/:clientId/dashboard" element={<ClientDashboardPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
+            <Route path="/rate-cards" element={<RateCardsPage />} />
             <Route
               path="/executive-dashboard"
               element={

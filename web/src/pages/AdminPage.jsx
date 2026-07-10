@@ -622,7 +622,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     const ch = rcTarget;
     e.target.value = '';
     if (!file || !ch) return;
-    if (!/\.pdf$/i.test(file.name)) { setError('Rate card must be a PDF.'); return; }
+    if (!/\.(pdf|jpg|jpeg|png|gif|webp|xls|xlsx|csv|doc|docx)$/i.test(file.name)) { setError('Rate card must be a PDF, image (JPG/PNG), Excel, CSV or Word file.'); return; }
     setRcBusyId(ch.id);
     try {
       const dataBase64 = await new Promise((resolve, reject) => {
@@ -655,7 +655,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const viewRateCard = async ch => {
     try {
       const res = await api.get(`/analytics/channel/${ch.id}/rate-card`, { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const url = URL.createObjectURL(res.data);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
@@ -1556,7 +1556,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* ============ CHANNELS TABLE ============ */}
       {activeTab === 'channels' && (
         <div className="tbl-wrap">
-          <input ref={rcInputRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={onRateCardFile} />
+          <input ref={rcInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.csv,.doc,.docx" style={{ display: 'none' }} onChange={onRateCardFile} />
           <table className="tbl">
             <thead>
               <tr>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, TypeBadge, fmtLKR } from '../components/Icon';
@@ -85,6 +85,67 @@ export default function ChannelDetailPage() {
   const [showDealDeleteModal, setShowDealDeleteModal] = useState(false);
   const [deletingDeal, setDeletingDeal] = useState(null);
   const [dealDeleting, setDealDeleting] = useState(false);
+
+  // Client-specific rate card (this channel's rate card FOR this client).
+  const rcInputRef = useRef(null);
+  const [rcBusy, setRcBusy] = useState(false);
+  const [showRcVersions, setShowRcVersions] = useState(false);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const openClientRateCard = async (download, driveId) => {
+    try {
+      const params = {};
+      if (download) params.download = 1;
+      if (driveId) params.driveId = driveId;
+      const res = await api.get(`/channels/${channelId}/rate-card`, { params, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url; a.download = channel?.rateCardFileName || 'rate-card';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        window.open(url, '_blank');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError('Could not open the rate card.');
+    }
+  };
+  const onClientRateCardFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/\.(pdf|jpg|jpeg|png|gif|webp|xls|xlsx|csv|doc|docx)$/i.test(file.name)) {
+      setError('Rate card must be a PDF, image (JPG/PNG), Excel, CSV or Word file.'); return;
+    }
+    setRcBusy(true); setError('');
+    try {
+      const dataBase64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',').pop());
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      await api.post(`/channels/${channelId}/rate-card`, { fileName: file.name, dataBase64 });
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to upload rate card.');
+    } finally {
+      setRcBusy(false);
+    }
+  };
+  const removeClientRateCard = async () => {
+    if (!window.confirm('Remove this client rate card? All versions are deleted.')) return;
+    setRcBusy(true); setError('');
+    try {
+      await api.delete(`/channels/${channelId}/rate-card`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to remove rate card.');
+    } finally {
+      setRcBusy(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -377,6 +438,84 @@ export default function ChannelDetailPage() {
           </div>
         )}
       </div>
+
+      <input ref={rcInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.csv,.doc,.docx" style={{ display: 'none' }} onChange={onClientRateCardFile} />
+
+      {/* Summary strip: latest negotiated deal terms + this client's rate card */}
+      {(() => {
+        const latestDeal = deals.length ? deals.reduce((a, b) => (Number(b.year) >= Number(a.year) ? b : a)) : null;
+        const rc = channel?.rateCardDriveId ? channel : null;
+        const rcVersionCount = Array.isArray(channel?.rateCardVersions) ? channel.rateCardVersions.length : 0;
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'stretch', marginBottom: 18 }}>
+            {/* Deal terms summary (surfaced prominently) */}
+            <div style={{ flex: '1 1 300px', minWidth: 260, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 8 }}>Negotiated deal {latestDeal ? `· ${latestDeal.year}` : ''}</div>
+              {latestDeal ? (
+                <div style={{ display: 'flex', gap: 22, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Discount / rate off</div>
+                    <div className="mono" style={{ fontSize: 22, fontWeight: 720, color: 'var(--ink)' }}>{Number(latestDeal.discountPct).toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Bonus</div>
+                    <div className="mono" style={{ fontSize: 22, fontWeight: 720, color: '#15814B' }}>{Number(latestDeal.bonusPct).toFixed(1)}%</div>
+                  </div>
+                  {deals.length > 1 && <div style={{ fontSize: 11.5, color: 'var(--muted)', alignSelf: 'flex-end' }}>+{deals.length - 1} more year{deals.length - 1 === 1 ? '' : 's'} below</div>}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No discount / bonus recorded yet{canModify(user?.role) ? ' — use “Add deal”.' : '.'}</div>
+              )}
+            </div>
+
+            {/* Client rate card */}
+            <div style={{ flex: '1 1 300px', minWidth: 260, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: '#93A0B5' }}>Client rate card</div>
+                {rcVersionCount > 1 && (
+                  <button className="badge" onClick={() => setShowRcVersions(v => !v)} style={{ cursor: 'pointer', fontSize: 10.5 }} title={`${rcVersionCount} versions`}>v{rcVersionCount}</button>
+                )}
+              </div>
+              {rc ? (
+                <>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => openClientRateCard(false)} title={rc.rateCardFileName}>
+                      <Icon name="file" size={15} /> View
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => openClientRateCard(true)}><Icon name="download" size={15} /></button>
+                    {isSuperAdmin && (
+                      <>
+                        <button className="btn btn-ghost btn-sm" disabled={rcBusy} onClick={() => rcInputRef.current?.click()}><Icon name="upload" size={14} /> {rcBusy ? '…' : 'Replace'}</button>
+                        <button className="btn btn-ghost btn-sm" disabled={rcBusy} onClick={removeClientRateCard}><Icon name="trash" size={14} /></button>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rc.rateCardFileName}>{rc.rateCardFileName}</div>
+                  {showRcVersions && rcVersionCount > 0 && (
+                    <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                      {[...channel.rateCardVersions].reverse().map((v, i) => (
+                        <div key={v.driveId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
+                          <span className="badge" style={{ fontSize: 10.5 }}>v{v.version}</span>
+                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.fileName}>{v.fileName}</span>
+                          <button className="btn btn-ghost btn-sm" onClick={() => openClientRateCard(false, v.driveId)}><Icon name="file" size={12} /></button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => openClientRateCard(true, v.driveId)}><Icon name="download" size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No client rate card uploaded.</div>
+                  {isSuperAdmin && (
+                    <button className="btn btn-ghost btn-sm" disabled={rcBusy} onClick={() => rcInputRef.current?.click()}><Icon name="upload" size={14} /> {rcBusy ? 'Uploading…' : 'Upload'}</button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Properties cards */}
       {properties.length === 0 ? (
