@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, BarChart, Bar,
@@ -242,6 +242,7 @@ function AchievementSection({
   const donutBuBudget = buDonut(buBudget?.groups);
   const donutBuRevenue = buDonut(buRevenue?.groups);
   const [showGroupHeads, setShowGroupHeads] = useState(false);
+  const [expandedCommit, setExpandedCommit] = useState(null); // channelMasterId whose yearly detail is open
 
   const mabyYears = monthlyAvgByYear?.years || [];
   // X-axis tick for Monthly Avg: year on top, and for a partial year (e.g. the
@@ -636,9 +637,21 @@ function AchievementSection({
                   const gap = (c.committedToDate || 0) - (c.achieved || 0);
                   const behind = gap > 0.5;
                   const ahead = gap < -0.5;
+                  const isOpen = expandedCommit === c.channelMasterId;
+                  // Yearly picture
+                  const yearly = c.yearlyCommitment || 0;
+                  const remainYear = yearly - (c.achieved || 0);
+                  const yearPct = yearly > 0 ? Number((((c.achieved || 0) / yearly) * 100).toFixed(1)) : null;
                   return (
-                    <tr key={c.channelMasterId}>
-                      <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
+                    <Fragment key={c.channelMasterId}>
+                    <tr>
+                      <td className="strong">
+                        <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide yearly detail' : 'Show yearly detail'}
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, marginRight: 8, color: 'var(--ink-soft,#3B4A63)', verticalAlign: 'middle' }}>
+                          <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
+                        </button>
+                        {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
+                      </td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
                       <td style={{ textAlign: 'right' }}>
@@ -657,6 +670,39 @@ function AchievementSection({
                         </div>
                       </td>
                     </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={5} style={{ background: '#F7F8FA', padding: '12px 16px 14px 38px' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 10 }}>Full-year commitment</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-end' }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Yearly target</div>
+                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: '#16243C' }}>{fmtLKR(yearly)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Monthly commitment</div>
+                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-soft,#3B4A63)' }}>{fmtLKR(c.monthlyCommitment)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Achieved (YTD)</div>
+                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#16243C' }}>{fmtLKR(c.achieved)}{yearPct != null && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 5 }}>({yearPct}% of year)</span>}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{remainYear > 0 ? 'Behind yearly target' : 'Yearly target met, over by'}</div>
+                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: remainYear > 0 ? '#C5391F' : '#15814B' }}>{fmtLKR(Math.abs(remainYear))}</div>
+                            </div>
+                          </div>
+                          {/* Yearly progress bar */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, maxWidth: 520 }}>
+                            <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 9, overflow: 'hidden' }}>
+                              <div style={{ width: `${Math.min(100, yearPct || 0)}%`, height: '100%', background: (yearPct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 5 }} />
+                            </div>
+                            <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (yearPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{yearPct == null ? '-' : `${yearPct}%`}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
                 {channelCommit?.totals && (() => {
