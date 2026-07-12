@@ -3,6 +3,8 @@ import { hashPassword } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
 import { releaseHeldImportRows } from './database.controller.js';
 import { uploadRateCard, deleteRateCard, isRateCardConfigured, mimeForFile, isAllowedRateCard, extOf, rateCardName } from '../services/ratecard.service.js';
+import { isDriveArchiveConfigured, uploadScheduleArchive } from '../services/scheduleArchive.service.js';
+import ExcelJS from 'exceljs';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1317,5 +1319,108 @@ export async function deleteChannelRateCardHandler(req, res) {
   } catch (error) {
     console.error('deleteChannelRateCard error:', error);
     return res.status(500).json({ error: 'Failed to remove rate card', detail: error.message });
+  }
+}
+
+// ─── Schedule-log yearly archive to Google Drive (backup; rows stay in DB) ────
+
+// Info for the Archive UI: whether Drive is configured + the years that have
+// schedule data with their row counts.
+export async function getScheduleArchiveInfo(req, res) {
+  try {
+    const grouped = await prisma.$queryRaw`
+      SELECT substring(schedule_month from 1 for 4) AS yr, COUNT(*)::int AS n
+      FROM schedule_logs
+      WHERE is_deleted = false AND schedule_month ~ '^[0-9]{4}-[0-9]{2}$'
+      GROUP BY 1 ORDER BY 1 DESC`;
+    return res.json({
+      configured: isDriveArchiveConfigured(),
+      years: grouped.map((g) => ({ year: parseInt(g.yr), rows: Number(g.n) })),
+    });
+  } catch (error) {
+    console.error('getScheduleArchiveInfo error:', error);
+    return res.status(500).json({ error: 'Failed to load archive info', detail: error.message });
+  }
+}
+
+// Export one year's schedule logs (all columns) to an Excel file in Google
+// Drive under Orbit Schedule Logs/<year>/. The rows are NOT deleted.
+export async function archiveScheduleLogsToDrive(req, res) {
+  try {
+    if (!isDriveArchiveConfigured()) {
+      return res.status(503).json({ error: 'Google Drive is not configured. Set the Google Drive OAuth env vars (GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN), or a service account + a Drive folder id.' });
+    }
+    const year = parseInt(req.body?.year ?? req.query?.year);
+    if (!(year >= 2000 && year <= 2100)) return res.status(400).json({ error: 'A valid year is required' });
+
+    const rows = await prisma.scheduleLog.findMany({
+      where: { isDeleted: false, scheduleMonth: { startsWith: `${year}-` } },
+      include: {
+        agency: { select: { name: true } },
+        client: { select: { name: true } },
+        brand: { select: { name: true } },
+        campaign: { select: { name: true } },
+        channelMaster: { select: { name: true } },
+        uploader: { select: { name: true, email: true } },
+      },
+      orderBy: [{ scheduleMonth: 'asc' }, { id: 'asc' }],
+    });
+    if (rows.length === 0) return res.status(404).json({ error: `No schedule logs found for ${year}` });
+
+    // Union of all importExtra keys (the extra spreadsheet columns kept verbatim
+    // at import) so the export truly carries ALL columns.
+    const extraKeys = [];
+    const seen = new Set();
+    for (const r of rows) {
+      if (r.importExtra && typeof r.importExtra === 'object') {
+        for (const k of Object.keys(r.importExtra)) if (!seen.has(k)) { seen.add(k); extraKeys.push(k); }
+      }
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(`Schedule Logs ${year}`);
+    const baseCols = [
+      ['Year', 'year'], ['Schedule Month', 'scheduleMonth'], ['Invoice Month', 'invoiceMonth'],
+      ['RO Number', 'roNumber'], ['Agency', 'agency'], ['Client', 'client'], ['Brand', 'brand'],
+      ['Campaign', 'campaign'], ['Channel', 'channel'], ['Medium', 'medium'], ['Media Group', 'mediaGroup'],
+      ['Schedule Value', 'scheduleValue'], ['Schedule Value (incl VAT)', 'scheduleValueWithVat'],
+      ['Commission Type', 'commissionType'], ['Commission Rate', 'commissionRate'],
+      ['Property Id', 'propertyId'], ['Uploaded By', 'uploadedBy'], ['Created At', 'createdAt'],
+    ];
+    ws.columns = [
+      ...baseCols.map(([header, key]) => ({ header, key, width: Math.min(28, Math.max(12, header.length + 2)) })),
+      ...extraKeys.map((k) => ({ header: k, key: `x_${k}`, width: 16 })),
+    ];
+    ws.getRow(1).font = { bold: true };
+
+    for (const r of rows) {
+      const row = {
+        year, scheduleMonth: r.scheduleMonth, invoiceMonth: r.invoiceMonth, roNumber: r.roNumber,
+        agency: r.agency?.name || '', client: r.client?.name || '', brand: r.brand?.name || r.brandName || '',
+        campaign: r.campaign?.name || '', channel: r.channelMaster?.name || '', medium: r.medium, mediaGroup: r.mediaGroup,
+        scheduleValue: Number(r.scheduleValue) || 0, scheduleValueWithVat: Number(r.scheduleValueWithVat) || 0,
+        commissionType: r.commissionTypeAtEntry || '', commissionRate: r.commissionRateAtEntry != null ? Number(r.commissionRateAtEntry) : '',
+        propertyId: r.propertyId ?? '', uploadedBy: r.uploader?.name || r.uploader?.email || '',
+        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : '',
+      };
+      if (r.importExtra && typeof r.importExtra === 'object') {
+        for (const k of extraKeys) { const v = r.importExtra[k]; if (v != null) row[`x_${k}`] = typeof v === 'object' ? JSON.stringify(v) : v; }
+      }
+      ws.addRow(row);
+    }
+
+    const arrayBuffer = await wb.xlsx.writeBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fileName = `Schedule_Logs_${year}_${stamp}.xlsx`;
+    const up = await uploadScheduleArchive(buffer, fileName, year);
+
+    return res.json({
+      ok: true, year, rows: rows.length, fileName: up.name, size: up.size, driveId: up.id,
+      folder: `Orbit Schedule Logs / ${year}`, columns: baseCols.length + extraKeys.length,
+    });
+  } catch (error) {
+    console.error('archiveScheduleLogsToDrive error:', error);
+    return res.status(500).json({ error: 'Failed to archive schedule logs', detail: error.message });
   }
 }

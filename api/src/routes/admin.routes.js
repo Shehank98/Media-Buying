@@ -41,6 +41,8 @@ import {
   setChannelCommitment,
   listMonthlyBilling,
   setMonthlyBilling,
+  getScheduleArchiveInfo,
+  archiveScheduleLogsToDrive,
   uploadChannelRateCardHandler,
   deleteChannelRateCardHandler,
 } from '../controllers/admin.controller.js';
@@ -112,5 +114,9 @@ router.post('/channel-commitments', setChannelCommitment);
 // Monthly actual billing (company-wide) → Executive Dashboard Revenue Achievement chart
 router.get('/monthly-billing', listMonthlyBilling);
 router.post('/monthly-billing', setMonthlyBilling);
+
+// Schedule-log yearly archive to Google Drive (backup; rows stay in the DB)
+router.get('/schedule-logs/archive', getScheduleArchiveInfo);
+router.post('/schedule-logs/archive', archiveScheduleLogsToDrive);
 
 export default router;

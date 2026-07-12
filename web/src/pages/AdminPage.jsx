@@ -170,6 +170,28 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMsg, setBackupMsg] = useState('');
+  // Schedule-log yearly archive to Drive
+  const [slArchive, setSlArchive] = useState(null); // { configured, years: [{year, rows}] }
+  const [slYear, setSlYear] = useState('');
+  const [slArchiving, setSlArchiving] = useState(false);
+  const [slMsg, setSlMsg] = useState('');
+  const fetchScheduleArchive = async () => {
+    try {
+      const { data } = await api.get('/admin/schedule-logs/archive');
+      setSlArchive(data);
+      if (data.years?.length && !slYear) setSlYear(String(data.years[0].year));
+    } catch { setSlArchive(null); }
+  };
+  const archiveScheduleYear = async () => {
+    if (!slYear) return;
+    setSlArchiving(true); setSlMsg('');
+    try {
+      const { data } = await api.post('/admin/schedule-logs/archive', { year: Number(slYear) });
+      setSlMsg(`Exported ${data.rows.toLocaleString('en-US')} rows (${data.columns} columns) to Drive: ${data.folder} / ${data.fileName}`);
+    } catch (err) {
+      setSlMsg(err.response?.data?.error || 'Failed to export schedule logs.');
+    } finally { setSlArchiving(false); }
+  };
   const fetchBackup = async () => {
     setBackupLoading(true);
     try {
@@ -179,7 +201,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     finally { setBackupLoading(false); }
   };
   useEffect(() => {
-    if (activeTab === 'backup') fetchBackup();
+    if (activeTab === 'backup') { fetchBackup(); fetchScheduleArchive(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
   const runBackupNow = async () => {
@@ -2180,6 +2202,44 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* ============ BACKUP ============ */}
       {activeTab === 'backup' && (
         <div style={{ maxWidth: 760 }}>
+          {/* Schedule-log yearly archive to Drive (keeps DB rows) */}
+          <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Schedule logs archive to Google Drive</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 520 }}>
+                  Export a full year of schedule logs (all columns) to an Excel file in Drive, in a per-year folder (Orbit Schedule Logs / year). The rows stay in the database.
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {slArchive && (
+                  <span className="badge" style={{ background: slArchive.configured ? '#ECF8F1' : '#FBE0DA', color: slArchive.configured ? '#15814B' : '#C5391F', fontWeight: 700 }}>
+                    {slArchive.configured ? 'Drive ready' : 'Not configured'}
+                  </span>
+                )}
+                <select className="select" value={slYear} onChange={e => { setSlMsg(''); setSlYear(e.target.value); }} style={{ minWidth: 130 }}>
+                  {(slArchive?.years || []).length === 0 && <option value="">No data</option>}
+                  {(slArchive?.years || []).map(y => (
+                    <option key={y.year} value={y.year}>{y.year} ({y.rows.toLocaleString('en-US')} rows)</option>
+                  ))}
+                </select>
+                <button className="btn btn-primary" disabled={slArchiving || !slYear || !slArchive?.configured} onClick={archiveScheduleYear}>
+                  {slArchiving ? 'Exporting…' : 'Export to Drive'}
+                </button>
+              </div>
+            </div>
+            {slMsg && (
+              <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 600, color: /fail|error|not configured|no schedule/i.test(slMsg) ? 'var(--red-600)' : 'var(--green-600)' }}>
+                {slMsg}
+              </div>
+            )}
+            {slArchive && !slArchive.configured && (
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+                Uses the same Google Drive connection as the database backup below. Configure that first (OAuth env vars, or a service account + folder id).
+              </div>
+            )}
+          </div>
+
           <div className="card" style={{ padding: 20, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
               <div>
