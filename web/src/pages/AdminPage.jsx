@@ -1876,26 +1876,36 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* ============ ANNUAL TARGETS TABLE ============ */}
       {activeTab === 'group-revenue' && (
         <div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Month</label>
-              <select className="select" value={grMonth} onChange={e => { setGrSavedAt(null); setGrMonth(Number(e.target.value)); }}>
-                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 18px', marginBottom: 16 }}>
+            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #15814B, #15814B1A 70%, transparent)' }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginRight: 6 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="money" size={17} /></div>
+                <div>
+                  <div style={{ fontSize: 14.5, fontWeight: 720, color: 'var(--ink)', lineHeight: 1.1 }}>Group Revenue</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear}</div>
+                </div>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Month</label>
+                <select className="select" value={grMonth} onChange={e => { setGrSavedAt(null); setGrMonth(Number(e.target.value)); }}>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Year</label>
+                <select className="select" value={grYear} onChange={e => { setGrSavedAt(null); setGrYear(Number(e.target.value)); }}>
+                  {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total entered (heads)</div>
+                <div className="mono" style={{ fontSize: 20, fontWeight: 750, color: 'var(--ink)' }}>LKR {grTotal.toLocaleString('en-US')}</div>
+              </div>
+              <button className="btn btn-primary" onClick={saveGroupRevenue} disabled={grSaving || grLoading}>
+                {grSaving ? 'Saving…' : 'Save'}
+              </button>
             </div>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Year</label>
-              <select className="select" value={grYear} onChange={e => { setGrSavedAt(null); setGrYear(Number(e.target.value)); }}>
-                {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Total entered</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>LKR {grTotal.toLocaleString('en-US')}</div>
-            </div>
-            <button className="btn btn-primary" onClick={saveGroupRevenue} disabled={grSaving || grLoading}>
-              {grSaving ? 'Saving…' : 'Save'}
-            </button>
           </div>
 
           {/* Agency-wise actual billing for the month → Business Units Revenue donut
@@ -1973,42 +1983,44 @@ export default function AdminPage({ initialTab = 'users' }) {
       )}
 
       {activeTab === 'annual-targets' && (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Year</th>
-                <th>Annual Target (LKR M)</th>
-                <th>Pacing Month</th>
-                <th>Upto-Month Target (LKR M)</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {annualTargets.map(t => (
-                <tr key={t.id}>
-                  <td className="strong">{t.year}</td>
-                  <td className="mono">{Number(t.totalTargetMillions).toLocaleString('en-US')}M</td>
-                  <td>{t.remoteMonth ? MONTHS[t.remoteMonth - 1] : <span style={{ color: 'var(--muted)' }}>Auto</span>}</td>
-                  <td className="mono">{t.remoteMonth ? `${Math.round((Number(t.totalTargetMillions) / 12) * t.remoteMonth).toLocaleString('en-US')}M` : <span style={{ color: 'var(--muted)' }}>Auto</span>}</td>
-                  <td>
-                    <div className="row-actions">
-                      <button className="act-btn" onClick={() => openEditTarget(t)} title="Edit target">
-                        <Icon name="edit" size={15} />
-                      </button>
-                      <button className="act-btn" onClick={() => confirmDelete({ ...t, name: `${t.year} target` }, 'annual-targets')} title="Delete target" style={{ color: 'var(--red-600,#dc2626)' }}>
-                        <Icon name="x" size={15} />
-                      </button>
+        <div>
+          {annualTargets.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--muted)', background: '#fff', border: '1px solid var(--border)', borderRadius: 14 }}>
+              <Icon name="bar-chart" size={30} style={{ opacity: 0.4, marginBottom: 8 }} />
+              <p style={{ margin: 0 }}>No annual targets set. Click "Set Target" to add one.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+              {annualTargets.slice().sort((a, b) => b.year - a.year).map(t => {
+                const upto = t.remoteMonth ? Math.round((Number(t.totalTargetMillions) / 12) * t.remoteMonth) : null;
+                return (
+                  <div key={t.id} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: 18 }}>
+                    <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #1F5BB5, #1F5BB51A 70%, transparent)' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 10, background: '#EDF3FD', color: '#1F5BB5', display: 'grid', placeItems: 'center' }}><Icon name="bar-chart" size={16} /></div>
+                        <span style={{ fontSize: 18, fontWeight: 750, color: '#16243C' }}>{t.year}</span>
+                      </div>
+                      <div className="row-actions">
+                        <button className="act-btn" onClick={() => openEditTarget(t)} title="Edit target"><Icon name="edit" size={15} /></button>
+                        <button className="act-btn" onClick={() => confirmDelete({ ...t, name: `${t.year} target` }, 'annual-targets')} title="Delete target" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="x" size={15} /></button>
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {annualTargets.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
-              <Icon name="bar-chart" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
-              <p>No annual targets set. Click "Set Target" to add one.</p>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5' }}>Annual Target</div>
+                    <div className="mono" style={{ fontSize: 26, fontWeight: 750, color: '#16243C', lineHeight: 1.1, marginTop: 2 }}>{Number(t.totalTargetMillions).toLocaleString('en-US')}<span style={{ fontSize: 14, color: 'var(--muted)', marginLeft: 3 }}>M</span></div>
+                    <div style={{ display: 'flex', gap: 18, marginTop: 14, paddingTop: 12, borderTop: '1px solid #EEF0F3' }}>
+                      <div>
+                        <div style={{ fontSize: 10.5, color: '#93A0B5', marginBottom: 2 }}>Pacing month</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: t.remoteMonth ? '#16243C' : 'var(--muted)' }}>{t.remoteMonth ? MONTHS[t.remoteMonth - 1] : 'Auto'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10.5, color: '#93A0B5', marginBottom: 2 }}>Upto-month target</div>
+                        <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: upto != null ? '#16243C' : 'var(--muted)' }}>{upto != null ? `${upto.toLocaleString('en-US')}M` : 'Auto'}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
