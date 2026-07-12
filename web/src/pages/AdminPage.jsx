@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
 import api from '../lib/api';
@@ -33,6 +33,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [allClients, setAllClients] = useState([]);
   const [mediaGroups, setMediaGroups] = useState([]);
   const [channelMasters, setChannelMasters] = useState([]);
+  const [expandedGroup, setExpandedGroup] = useState(null); // media-group id whose channels are shown
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -1654,10 +1655,31 @@ export default function AdminPage({ initialTab = 'users' }) {
               </tr>
             </thead>
             <tbody>
-              {filteredGroups.map(g => (
-                <tr key={g.id} style={{ opacity: g.active === false ? 0.55 : 1 }}>
-                  <td className="strong">{g.name}</td>
-                  <td style={{ color: 'var(--muted)' }}>{g._count?.channelMasters ?? 0} channels</td>
+              {filteredGroups.map(g => {
+                const groupChannels = channelMasters.filter(ch => (ch.mediaGroup?.id ?? ch.mediaGroupId) === g.id);
+                const isOpen = expandedGroup === g.id;
+                return (
+                <Fragment key={g.id}>
+                <tr style={{ opacity: g.active === false ? 0.55 : 1 }}>
+                  <td className="strong">
+                    <button
+                      onClick={() => setExpandedGroup(isOpen ? null : g.id)}
+                      title={isOpen ? 'Hide channels' : 'Show channels'}
+                      disabled={groupChannels.length === 0}
+                      style={{ border: 'none', background: 'transparent', cursor: groupChannels.length ? 'pointer' : 'default', padding: 0, marginRight: 8, color: groupChannels.length ? 'var(--ink-soft,#3B4A63)' : 'var(--muted)', verticalAlign: 'middle' }}
+                    >
+                      <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
+                    </button>
+                    {g.name}
+                  </td>
+                  <td style={{ color: 'var(--muted)' }}>
+                    <button
+                      onClick={() => groupChannels.length && setExpandedGroup(isOpen ? null : g.id)}
+                      style={{ border: 'none', background: 'transparent', cursor: groupChannels.length ? 'pointer' : 'default', padding: 0, color: 'inherit', fontSize: 'inherit' }}
+                    >
+                      {g._count?.channelMasters ?? groupChannels.length} channels
+                    </button>
+                  </td>
                   <td>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
@@ -1684,7 +1706,28 @@ export default function AdminPage({ initialTab = 'users' }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr>
+                    <td colSpan={4} style={{ background: '#F7F8FA', padding: '10px 16px 12px 38px' }}>
+                      {groupChannels.length === 0 ? (
+                        <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>No channels in this media group.</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {groupChannels.slice().sort((a, b) => a.name.localeCompare(b.name)).map(ch => (
+                            <span key={ch.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #E5E8ED', borderRadius: 999, padding: '4px 11px', fontSize: 12.5, opacity: ch.isActive === false ? 0.55 : 1 }}>
+                              <span className="medium-tag" data-medium={ch.medium} style={{ fontSize: 9.5 }}>{ch.medium}</span>
+                              <span style={{ fontWeight: 600, color: '#16243C' }}>{ch.name}</span>
+                              {ch.isActive === false && <span style={{ fontSize: 10, color: 'var(--muted)' }}>(inactive)</span>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
           {filteredGroups.length === 0 && (
