@@ -625,37 +625,68 @@ function AchievementSection({
                   <th>Channel</th>
                   <th style={{ textAlign: 'right' }}>Committed ({channelCommit.monthLabel})</th>
                   <th style={{ textAlign: 'right' }}>Achieved</th>
-                  <th style={{ minWidth: 180 }}>Progress</th>
-                  <th style={{ textAlign: 'right' }}>%</th>
+                  <th style={{ textAlign: 'right' }}>Behind / Ahead</th>
+                  <th style={{ minWidth: 200 }}>Progress</th>
                 </tr>
               </thead>
               <tbody>
                 {ccRows.map(c => {
                   const pct = c.achievementPct;
-                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 80 ? '#9A5B00' : '#C5391F';
+                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
+                  const gap = (c.committedToDate || 0) - (c.achieved || 0);
+                  const behind = gap > 0.5;
+                  const ahead = gap < -0.5;
                   return (
                     <tr key={c.channelMasterId}>
                       <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12.5, color: behind ? '#C5391F' : ahead ? '#15814B' : '#6B7790' }}>
+                          {behind ? '▼' : ahead ? '▲' : '●'}
+                          <span className="mono">{behind || ahead ? fmtLKR(Math.abs(gap)) : 'On target'}</span>
+                          {(behind || ahead) && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{behind ? 'behind' : 'ahead'}</span>}
+                        </span>
+                      </td>
                       <td>
-                        <div style={{ background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
-                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                          </div>
+                          <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</td>
                     </tr>
                   );
                 })}
-                {channelCommit?.totals && (
+                {channelCommit?.totals && (() => {
+                  const tGap = (channelCommit.totals.committedToDate || 0) - (channelCommit.totals.achieved || 0);
+                  const tBehind = tGap > 0.5, tAhead = tGap < -0.5;
+                  const tPct = channelCommit.totals.achievementPct;
+                  const tCol = tPct == null ? '#6B7790' : tPct >= 100 ? '#15814B' : tPct >= 85 ? '#9A5B00' : '#C5391F';
+                  return (
                   <tr style={{ borderTop: '2px solid var(--border)' }}>
                     <td className="strong">Total</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.committedToDate)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.achieved)}</td>
-                    <td></td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{channelCommit.totals.achievementPct == null ? '-' : `${channelCommit.totals.achievementPct}%`}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12.5, color: tBehind ? '#C5391F' : tAhead ? '#15814B' : '#6B7790' }}>
+                        {tBehind ? '▼' : tAhead ? '▲' : '●'}
+                        <span className="mono">{tBehind || tAhead ? fmtLKR(Math.abs(tGap)) : 'On target'}</span>
+                        {(tBehind || tAhead) && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{tBehind ? 'behind' : 'ahead'}</span>}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, tPct || 0)}%`, height: '100%', background: tCol, borderRadius: 5 }} />
+                        </div>
+                        <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: tCol }}>{tPct == null ? '-' : `${tPct}%`}</span>
+                      </div>
+                    </td>
                   </tr>
-                )}
+                  );
+                })()}
               </tbody>
             </table>
           </div>
