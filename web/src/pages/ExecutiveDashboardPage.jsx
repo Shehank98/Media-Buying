@@ -680,8 +680,8 @@ function AchievementSection({
                 : 'Revenue Achievement'}
             </div>
             <div className="chart-card-sub">
-              {revenueAch?.targetSource === 'yearMonthly'
-                ? `Monthly target ${fmtLKR((revenueAch.yearMonthlyTargetMillions || 0) * 1e6)} × ${revenueAch.positionMonth || 0} month${(revenueAch.positionMonth || 0) === 1 ? '' : 's'} vs actual billing · LKR millions`
+              {revenueAch?.targetSource === 'yearAnnual'
+                ? `Annual target ${fmtLKR((revenueAch.annualRevTargetMillions || 0) * 1e6)} ÷ 12 × ${revenueAch.positionMonth || 0} month${(revenueAch.positionMonth || 0) === 1 ? '' : 's'} vs actual billing · LKR millions`
                 : revenueAch?.targetSource === 'monthly'
                   ? 'Cumulative monthly revenue target vs actual billing · LKR millions'
                   : 'Prorated annual target vs actual billing · LKR millions'}

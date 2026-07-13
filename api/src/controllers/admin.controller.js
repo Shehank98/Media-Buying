@@ -1084,9 +1084,10 @@ export async function listGroupRevenue(req, res) {
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
-      // Single monthly revenue target for the whole year (applies to every month).
-      // The Revenue Achievement Target bar = this × months elapsed.
-      yearMonthlyTarget: yearTargetRow ? Number(yearTargetRow.monthlyAmount) : null,
+      // Single ANNUAL revenue target for the whole year (admin enters the yearly
+      // figure). The Revenue Achievement Target bar = this ÷ 12 × months elapsed.
+      // Stored in the `monthlyAmount` column, which now holds the annual amount.
+      annualRevenueTarget: yearTargetRow ? Number(yearTargetRow.monthlyAmount) : null,
     });
   } catch (error) {
     console.error('listGroupRevenue error:', error);
@@ -1096,13 +1097,13 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts, yearMonthlyTarget } = req.body || {};
+    const { year, month, amounts, agencyAmounts, annualRevenueTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
-    const hasTarget = yearMonthlyTarget !== undefined;
+    const hasTarget = annualRevenueTarget !== undefined;
     if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasTarget)) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or yearMonthlyTarget are required' });
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or annualRevenueTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
@@ -1145,9 +1146,10 @@ export async function setGroupRevenue(req, res) {
         }
       }
     }
-    // Single monthly revenue target for the WHOLE year (blank/0 clears it).
+    // Single ANNUAL revenue target for the WHOLE year (blank/0 clears it).
+    // Stored as-is in `monthlyAmount`, which now represents the annual amount.
     if (hasTarget) {
-      const num = yearMonthlyTarget === '' || yearMonthlyTarget == null ? null : Number(yearMonthlyTarget);
+      const num = annualRevenueTarget === '' || annualRevenueTarget == null ? null : Number(annualRevenueTarget);
       if (num == null || isNaN(num) || num <= 0) {
         ops.push(prisma.yearRevenueTarget.deleteMany({ where: { year: y } }));
       } else {

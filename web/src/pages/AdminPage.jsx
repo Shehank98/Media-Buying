@@ -147,7 +147,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
   const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
-  const [grRevenueTarget, setGrRevenueTarget] = useState(''); // monthly revenue target (full LKR)
+  const [grRevenueTarget, setGrRevenueTarget] = useState(''); // annual revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
   const [grSaving, setGrSaving] = useState(false);
   const [grSavedAt, setGrSavedAt] = useState(null);
@@ -934,7 +934,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
-      setGrRevenueTarget(data.yearMonthlyTarget == null ? '' : String(data.yearMonthlyTarget));
+      setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
     } catch {
       setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrRevenueTarget('');
     } finally {
@@ -953,7 +953,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, yearMonthlyTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -964,7 +964,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
-      setGrRevenueTarget(data.yearMonthlyTarget == null ? '' : String(data.yearMonthlyTarget));
+      setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
       setGrSavedAt(Date.now());
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save group revenue.');
@@ -2171,41 +2171,43 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
             </div>
 
-            {/* Monthly revenue target */}
+            {/* Annual revenue target */}
             <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
               <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: '#FBF1DC', color: '#9A5B00', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={15} /></div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Monthly revenue target</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{grYear} · applies to every month</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Annual revenue target</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{grYear} · split evenly across 12 months</div>
                 </div>
               </div>
               <div style={{ padding: '14px 16px' }}>
                 <div className="field" style={{ margin: 0 }}>
-                  <label style={{ fontSize: 12 }}>Amount per month (full LKR)</label>
+                  <label style={{ fontSize: 12 }}>Amount per year (full LKR)</label>
                   <input
                     className="input" type="number" min="0" step="1000"
                     value={grRevenueTarget}
                     onChange={e => { setGrSavedAt(null); setGrRevenueTarget(e.target.value); }}
-                    placeholder="e.g. 50000000"
+                    placeholder="e.g. 600000000"
                     style={{ textAlign: 'right' }}
                   />
                 </div>
                 {grRevenueTarget !== '' && Number(grRevenueTarget) > 0 && (
                   <div style={{ marginTop: 12, padding: '10px 12px', background: '#FCF7EC', border: '1px solid #F0E2C4', borderRadius: 10 }}>
-                    <div style={{ fontSize: 10.5, color: '#9A5B00', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 6 }}>Cumulative target = monthly × month</div>
+                    <div style={{ fontSize: 10.5, color: '#9A5B00', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 6 }}>
+                      Monthly = {fmtLKR(Number(grRevenueTarget) / 12)} · cumulative = monthly × month
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {[3, 6, 9, 12].map(mn => (
                         <div key={mn} style={{ flex: '1 1 70px', textAlign: 'center', background: '#fff', border: '1px solid #F0E2C4', borderRadius: 8, padding: '6px 4px' }}>
                           <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>Up to {MONTHS[mn - 1]}</div>
-                          <div className="mono" style={{ fontSize: 12.5, fontWeight: 750, color: 'var(--ink)' }}>{fmtLKR(Number(grRevenueTarget) * mn)}</div>
+                          <div className="mono" style={{ fontSize: 12.5, fontWeight: 750, color: 'var(--ink)' }}>{fmtLKR((Number(grRevenueTarget) / 12) * mn)}</div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
-                  The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the Revenue Achievement chart = this × months elapsed (e.g. 10 → 60 at June). Leave blank to fall back to the prorated Annual Target.
+                  The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the Revenue Achievement chart = this ÷ 12 × months elapsed (e.g. an annual 120 → 60 at June). Leave blank to fall back to the prorated Annual Target.
                 </div>
               </div>
             </div>
