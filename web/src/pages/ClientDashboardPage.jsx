@@ -63,7 +63,7 @@ export default function ClientDashboardPage() {
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/analytics/client/${clientId}/overview`, { params: year ? { year } : {} })
+    api.get(`/analytics/client/${clientId}/overview`, { params: /^\d{4}$/.test(year) ? { year } : {} })
       .then(({ data }) => { setData(data); if (!year && data?.yearBlock?.year) setYear(String(data.yearBlock.year)); })
       .catch(() => setError('Failed to load client dashboard.'))
       .finally(() => setLoading(false));
@@ -130,7 +130,10 @@ export default function ClientDashboardPage() {
   const yoy = data.yoy || null;
   const yoyUp = yoy && yoy.yoyPct != null && yoy.yoyPct >= 0;
   const yoySub = yoy?.throughMonth
-    ? `Jan–${MONTHS[parseInt(yoy.throughMonth.slice(5, 7), 10) - 1]} ${yoy.throughMonth.slice(0, 4)} vs ${yoy.previousYear}`
+    ? (() => {
+        const mLabel = MONTHS[parseInt(yoy.throughMonth.slice(5, 7), 10) - 1];
+        return `Jan–${mLabel} ${yoy.throughMonth.slice(0, 4)} vs Jan–${mLabel} ${yoy.previousYear}`;
+      })()
     : 'vs last year, same period';
 
   return (
@@ -148,6 +151,7 @@ export default function ClientDashboardPage() {
           <div className="field" style={{ margin: 0 }}>
             <label style={{ fontSize: 11 }}>Year</label>
             <select className="select" value={year} onChange={e => setYear(e.target.value)}>
+              <option value="all">All time</option>
               {(data.availableYears || [data.yearBlock?.year]).filter(Boolean).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -157,14 +161,21 @@ export default function ClientDashboardPage() {
         </div>
       </div>
 
-      {/* Stat cards (year-scoped) */}
+      {/* Stat cards (year-scoped, or all-time when Year = All) */}
       {(() => {
+        const allTime = year === 'all';
         const yb = data.yearBlock || {};
+        const spend = allTime ? data.totalValue : (yb.spend || 0);
+        const entries = allTime ? data.totalEntries : (yb.entries || 0);
+        const avg = allTime ? (data.monthsActive ? data.totalValue / data.monthsActive : 0) : (yb.avgMonth || 0);
+        const spendLabel = allTime ? 'Total Spend' : `Spend ${yb.year || ''}`;
         return (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 20 }}>
-            <Stat label={`Spend ${yb.year || ''}`} value={fmtLKR(yb.spend || 0)} sub={`${yb.entries || 0} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
-            <Stat label={`Target ${yb.year || ''}`} value={yb.target != null ? fmtLKR(yb.target) : 'Not set'} sub={yb.target != null && yb.pct != null ? `${yb.pct}% achieved` : 'Set in Admin → Client Targets'} tone={['#EDF3FD', '#1F5BB5']} icon="trending-up" accent="#1F5BB5" />
-            <Stat label="Avg / Month" value={fmtLKR(yb.avgMonth || 0)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
+            <Stat label={spendLabel} value={fmtLKR(spend)} sub={`${entries} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
+            {!allTime && (
+              <Stat label={`Target ${yb.year || ''}`} value={yb.target != null ? fmtLKR(yb.target) : 'Not set'} sub={yb.target != null && yb.pct != null ? `${yb.pct}% achieved` : 'Set in Admin → Client Targets'} tone={['#EDF3FD', '#1F5BB5']} icon="trending-up" accent="#1F5BB5" />
+            )}
+            <Stat label={allTime ? 'Avg / Month (all-time)' : 'Avg / Month'} value={fmtLKR(avg)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
             {yoy && yoy.yoyPct != null && (
               <Stat
                 label="YoY Growth"
@@ -179,8 +190,8 @@ export default function ClientDashboardPage() {
         );
       })()}
 
-      {/* Client target progress for the selected year */}
-      {data.yearBlock && data.yearBlock.target != null && (
+      {/* Client target progress for the selected year (not shown for All time) */}
+      {year !== 'all' && data.yearBlock && data.yearBlock.target != null && (
         <div style={{ ...CARD, padding: 20, marginBottom: 28 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
             <div>
