@@ -39,6 +39,8 @@ import {
   setGroupRevenue,
   listChannelCommitments,
   setChannelCommitment,
+  listClientTargets,
+  setClientTarget,
   listMonthlyBilling,
   setMonthlyBilling,
   getScheduleArchiveInfo,
@@ -110,6 +112,8 @@ router.post('/group-revenue', setGroupRevenue);
 // Channel commitments (yearly target per channel) → Executive Dashboard tracker
 router.get('/channel-commitments', listChannelCommitments);
 router.post('/channel-commitments', setChannelCommitment);
+router.get('/client-targets', listClientTargets);
+router.post('/client-targets', setClientTarget);
 
 // Monthly actual billing (company-wide) → Executive Dashboard Revenue Achievement chart
 router.get('/monthly-billing', listMonthlyBilling);

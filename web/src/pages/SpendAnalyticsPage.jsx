@@ -50,6 +50,8 @@ export default function SpendAnalyticsPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [properties, setProperties] = useState([]);
+  const [clientTargets, setClientTargets] = useState(null); // { year, availableYears, rows, totals }
+  const [ctYear, setCtYear] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -133,6 +135,13 @@ export default function SpendAnalyticsPage() {
       .then(({ data }) => setProperties(data.properties || []))
       .catch(() => setProperties([]));
   }, [agencyId, clientId]);
+
+  // Client yearly targets vs achieved (own scope), for the target section.
+  useEffect(() => {
+    api.get('/database/client-targets', { params: ctYear ? { year: ctYear } : {} })
+      .then(({ data }) => { setClientTargets(data); if (!ctYear && data?.year) setCtYear(String(data.year)); })
+      .catch(() => setClientTargets(null));
+  }, [ctYear]);
 
   // Comparison period (Period B)
   useEffect(() => {
@@ -1373,6 +1382,72 @@ export default function SpendAnalyticsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Client yearly targets vs achieved (actual schedule spend) ── */}
+      {clientTargets && (clientTargets.rows || []).length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginTop: 24 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FDF1EB', color: '#D9521C', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={16} /></div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 720, color: 'var(--ink)' }}>Client Targets</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly target vs achieved (actual spend) · {clientTargets.year}</div>
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label style={{ fontSize: 11 }}>Year</label>
+              <select className="select" value={ctYear} onChange={e => setCtYear(e.target.value)}>
+                {(clientTargets.availableYears || [clientTargets.year]).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Agency</th>
+                  <th style={{ textAlign: 'right' }}>Target</th>
+                  <th style={{ textAlign: 'right' }}>Achieved</th>
+                  <th style={{ textAlign: 'right' }}>Still needed</th>
+                  <th style={{ minWidth: 200 }}>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientTargets.rows.map(r => {
+                  const pct = r.pct;
+                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 70 ? '#9A5B00' : '#C5391F';
+                  return (
+                    <tr key={r.clientId}>
+                      <td className="strong">{r.name}</td>
+                      <td style={{ color: 'var(--muted)' }}>{r.agencyName || '-'}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.target)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.achieved)}</td>
+                      <td className="mono" style={{ textAlign: 'right', color: r.remaining > 0 ? '#C5391F' : '#15814B', fontWeight: 700 }}>{r.remaining > 0 ? fmtLKR(r.remaining) : 'Reached'}</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                          </div>
+                          <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {clientTargets.totals && (
+                  <tr style={{ borderTop: '2px solid var(--border)' }}>
+                    <td className="strong">Total</td>
+                    <td />
+                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.target)}</td>
+                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.achieved)}</td>
+                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750, color: clientTargets.totals.remaining > 0 ? '#C5391F' : '#15814B' }}>{clientTargets.totals.remaining > 0 ? fmtLKR(clientTargets.totals.remaining) : 'Reached'}</td>
+                    <td className="mono" style={{ fontWeight: 750, color: 'var(--ink)' }}>{clientTargets.totals.pct == null ? '-' : `${clientTargets.totals.pct}%`}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {!loading && data && data.totalEntries === 0 && (

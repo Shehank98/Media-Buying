@@ -1241,6 +1241,68 @@ export async function setChannelCommitment(req, res) {
   }
 }
 
+// ── Client yearly targets (full LKR spend target per client per year) ──
+export async function listClientTargets(req, res) {
+  try {
+    const now = new Date().getFullYear();
+    // Years with schedule data + client targets + current year, newest first.
+    const [dataMonths, targetYears] = await Promise.all([
+      prisma.scheduleLog.findMany({ where: { isDeleted: false }, distinct: ['scheduleMonth'], select: { scheduleMonth: true } }),
+      prisma.clientTarget.findMany({ distinct: ['year'], select: { year: true } }),
+    ]);
+    const yset = new Set([now]);
+    for (const r of dataMonths) { const y = parseInt(String(r.scheduleMonth).slice(0, 4)); if (y) yset.add(y); }
+    for (const t of targetYears) yset.add(t.year);
+    const availableYears = [...yset].sort((a, b) => b - a);
+
+    const year = parseInt(req.query.year) || availableYears[0] || now;
+
+    const clients = await prisma.client.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, agency: { select: { name: true } } },
+      orderBy: [{ agency: { name: 'asc' } }, { name: 'asc' }],
+    });
+    const targets = await prisma.clientTarget.findMany({ where: { year } });
+    const byClient = new Map(targets.map((t) => [t.clientId, Number(t.amount)]));
+
+    return res.json({
+      year,
+      availableYears,
+      clients: clients.map((c) => ({
+        clientId: c.id,
+        name: c.name,
+        agencyName: c.agency?.name || '',
+        amount: byClient.has(c.id) ? byClient.get(c.id) : null,
+      })),
+    });
+  } catch (error) {
+    console.error('listClientTargets error:', error);
+    return res.status(500).json({ error: 'Failed to load client targets', detail: error.message });
+  }
+}
+
+export async function setClientTarget(req, res) {
+  try {
+    const { clientId, year, amount } = req.body || {};
+    const cid = parseInt(clientId), y = parseInt(year);
+    if (!cid || !y) return res.status(400).json({ error: 'clientId and year are required' });
+    const num = amount === '' || amount == null ? null : Number(amount);
+    if (num == null || isNaN(num) || num <= 0) {
+      await prisma.clientTarget.deleteMany({ where: { clientId: cid, year: y } });
+      return res.json({ clientId: cid, year: y, amount: null });
+    }
+    const saved = await prisma.clientTarget.upsert({
+      where: { clientId_year: { clientId: cid, year: y } },
+      update: { amount: num, createdById: req.user?.id ?? null },
+      create: { clientId: cid, year: y, amount: num, createdById: req.user?.id ?? null },
+    });
+    return res.json({ clientId: cid, year: y, amount: Number(saved.amount) });
+  } catch (error) {
+    console.error('setClientTarget error:', error);
+    return res.status(500).json({ error: 'Failed to save client target', detail: error.message });
+  }
+}
+
 // ── Monthly actual billing (company-wide, one figure per month) ──
 
 export async function listMonthlyBilling(req, res) {

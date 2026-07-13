@@ -165,6 +165,15 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [ccSavingId, setCcSavingId] = useState(null);
   const [ccSearch, setCcSearch] = useState('');
 
+  /* ---- client yearly targets ---- */
+  const [ctYear, setCtYear] = useState(new Date().getFullYear());
+  const [ctYears, setCtYears] = useState([]);
+  const [ctClients, setCtClients] = useState([]);   // [{ clientId, name, agencyName, amount }]
+  const [ctAmounts, setCtAmounts] = useState({});   // { clientId: '120000000' }
+  const [ctLoading, setCtLoading] = useState(false);
+  const [ctSavingId, setCtSavingId] = useState(null);
+  const [ctSearch, setCtSearch] = useState('');
+
   /* ---- database backup (Google Drive) ---- */
   const [backup, setBackup] = useState(null);
   const [backupLoading, setBackupLoading] = useState(false);
@@ -1026,6 +1035,39 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  const fetchClientTargets = async () => {
+    setCtLoading(true);
+    try {
+      const { data } = await api.get('/admin/client-targets', { params: { year: ctYear } });
+      setCtYears(data.availableYears || []);
+      const cls = data.clients || [];
+      setCtClients(cls);
+      const amts = {};
+      cls.forEach(c => { amts[c.clientId] = c.amount == null ? '' : String(c.amount); });
+      setCtAmounts(amts);
+    } catch {
+      setCtClients([]); setCtAmounts({});
+    } finally {
+      setCtLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'client-targets') fetchClientTargets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, ctYear]);
+
+  const saveClientTarget = async (clientId) => {
+    const raw = ctAmounts[clientId];
+    setCtSavingId(clientId);
+    try {
+      await api.post('/admin/client-targets', { clientId, year: ctYear, amount: raw === '' ? null : Number(raw) });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save client target.');
+    } finally {
+      setCtSavingId(null);
+    }
+  };
+
   /* ---- per-agency annual targets ---- */
   const fetchAgencyTargets = async () => {
     setAgTargetLoading(true);
@@ -1180,6 +1222,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
     { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
     { key: 'channel-commitments', label: 'Channel Commitments' },
+    { key: 'client-targets', label: 'Client Targets' },
     { key: 'group-revenue', label: 'Group Revenue' },
     { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
     { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
@@ -1238,7 +1281,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'channel-commitments', 'backup', 'notify'].includes(activeTab) && (
+        {!['group-revenue', 'channel-commitments', 'client-targets', 'backup', 'notify'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -1917,6 +1960,62 @@ export default function AdminPage({ initialTab = 'users' }) {
                         </tr>
                       );
                     })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'client-targets' && (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Year</label>
+              <select className="select" value={ctYear} onChange={e => setCtYear(Number(e.target.value))}>
+                {(ctYears.length ? ctYears : [ctYear]).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
+              <label>Search client</label>
+              <input className="input" type="text" value={ctSearch} onChange={e => setCtSearch(e.target.value)} placeholder="Filter clients…" />
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
+            Set each client's <b style={{ color: 'var(--ink)' }}>yearly spend target</b> (full LKR) for {ctYear}. Achievement is the client's actual schedule spend for the year, shown on Spend Analytics and the Client Dashboard. Clear a value to remove the target. Saved automatically when you leave a field.
+          </div>
+          {ctLoading ? (
+            <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading clients…" /></div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Agency</th>
+                    <th style={{ textAlign: 'right' }}>Yearly Target (LKR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ctClients
+                    .filter(c => !ctSearch || c.name.toLowerCase().includes(ctSearch.toLowerCase()) || (c.agencyName || '').toLowerCase().includes(ctSearch.toLowerCase()))
+                    .map(c => (
+                      <tr key={c.clientId}>
+                        <td className="strong">{c.name}</td>
+                        <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            className="input" type="number" min="0" step="1000"
+                            value={ctAmounts[c.clientId] ?? ''}
+                            onChange={e => setCtAmounts(a => ({ ...a, [c.clientId]: e.target.value }))}
+                            onBlur={() => saveClientTarget(c.clientId)}
+                            placeholder="-"
+                            style={{ maxWidth: 200, textAlign: 'right' }}
+                            disabled={ctSavingId === c.clientId}
+                          />
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

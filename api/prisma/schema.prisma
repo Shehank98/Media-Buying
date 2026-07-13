@@ -149,6 +149,7 @@ model Client {
   forecasts       MonthlyForecast[]
   budgets         MonthlyBudget[]
   channelDeals    ChannelClientDeal[]
+  targets         ClientTarget[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -759,6 +760,26 @@ model YearRevenueTarget {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("year_revenue_targets")
+}
+
+// Admin-entered yearly spend target per client (full LKR). "Achieved" is the
+// client's actual ScheduleLog spend for that year. Drives the Spend Analytics
+// client-target section and the Client Dashboard target progress. One per
+// client per year.
+model ClientTarget {
+  id          Int      @id @default(autoincrement())
+  clientId    Int      @map("client_id")
+  year        Int
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, year])
+  @@index([year])
+  @@map("client_targets")
 }
 
 model ClientRequest {

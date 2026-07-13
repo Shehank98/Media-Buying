@@ -4,6 +4,7 @@ import {
   getScheduleLogs,
   getMetadata,
   getAnalytics,
+  getClientTargets,
   getScopedProperties,
   createScheduleLog,
   bulkCreateScheduleLogs,
@@ -23,6 +24,7 @@ const router = Router();
 router.get('/', authenticate, getScheduleLogs);
 router.get('/metadata', authenticate, getMetadata);
 router.get('/analytics', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getAnalytics);
+router.get('/client-targets', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getClientTargets);
 router.get('/properties', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getScopedProperties);
 router.get('/batches', authenticate, getUploadBatches);
 router.get('/recent-batches', authenticate, getRecentBatches);

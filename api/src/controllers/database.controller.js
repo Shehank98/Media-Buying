@@ -408,6 +408,84 @@ export async function getAnalytics(req, res) {
 // Spend Analytics "Deals & Properties" section. Same access model as getAnalytics
 // (SUPER_ADMIN all, MANAGER their agencies, GROUP_HEAD/PLANNER their clients).
 // Each row links to its client channel page (/channels/:channelId).
+// Client yearly targets vs achieved (actual schedule spend) for the Spend
+// Analytics client-target section. Role-scoped like getAnalytics: MANAGER →
+// their agencies' clients, GROUP_HEAD/PLANNER → their accessible clients,
+// SUPER_ADMIN → all. Lists only clients that have a target set for the year.
+export async function getClientTargets(req, res) {
+  try {
+    const user = req.user;
+    const now = new Date().getFullYear();
+
+    const clientWhere = { isActive: true };
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({ where: { userId: user.id }, select: { agencyId: true } });
+      clientWhere.agencyId = { in: access.map((a) => a.agencyId) };
+    } else if (user.role === 'GROUP_HEAD' || user.role === 'PLANNER') {
+      const ids = await getAccessibleClientIds(user.id, user.role);
+      clientWhere.id = { in: ids.length ? ids : [-1] };
+    }
+
+    const clients = await prisma.client.findMany({
+      where: clientWhere,
+      select: { id: true, name: true, agency: { select: { name: true } } },
+      orderBy: [{ name: 'asc' }],
+    });
+    const clientIds = clients.map((c) => c.id);
+
+    // Years offered: those with a client target + current year, newest first.
+    const targetYears = await prisma.clientTarget.findMany({
+      where: clientIds.length ? { clientId: { in: clientIds } } : {},
+      distinct: ['year'], select: { year: true },
+    });
+    const yset = new Set([now]);
+    for (const t of targetYears) yset.add(t.year);
+    const availableYears = [...yset].sort((a, b) => b - a);
+    const year = parseInt(req.query.year) || now;
+
+    const [targets, spendRows] = await Promise.all([
+      prisma.clientTarget.findMany({ where: { year, clientId: { in: clientIds.length ? clientIds : [-1] } } }),
+      prisma.scheduleLog.groupBy({
+        by: ['clientId'],
+        where: { isDeleted: false, clientId: { in: clientIds.length ? clientIds : [-1] }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+        _sum: { scheduleValue: true },
+      }),
+    ]);
+    const targetBy = new Map(targets.map((t) => [t.clientId, Number(t.amount)]));
+    const spendBy = new Map(spendRows.map((r) => [r.clientId, Number(r._sum.scheduleValue) || 0]));
+
+    const rows = clients
+      .filter((c) => targetBy.has(c.id))
+      .map((c) => {
+        const target = targetBy.get(c.id);
+        const achieved = spendBy.get(c.id) || 0;
+        const remaining = target - achieved;
+        return {
+          clientId: c.id,
+          name: c.name,
+          agencyName: c.agency?.name || '',
+          target: Number(target.toFixed(2)),
+          achieved: Number(achieved.toFixed(2)),
+          remaining: Number(remaining.toFixed(2)),
+          pct: target > 0 ? Number(((achieved / target) * 100).toFixed(1)) : null,
+        };
+      })
+      .sort((a, b) => b.target - a.target);
+
+    const totals = {
+      target: Number(rows.reduce((s, r) => s + r.target, 0).toFixed(2)),
+      achieved: Number(rows.reduce((s, r) => s + r.achieved, 0).toFixed(2)),
+    };
+    totals.remaining = Number((totals.target - totals.achieved).toFixed(2));
+    totals.pct = totals.target > 0 ? Number(((totals.achieved / totals.target) * 100).toFixed(1)) : null;
+
+    return res.json({ year, availableYears, rows, totals });
+  } catch (error) {
+    console.error('getClientTargets error:', error);
+    return res.status(500).json({ error: 'Failed to load client targets', detail: error.message });
+  }
+}
+
 export async function getScopedProperties(req, res) {
   try {
     const { agencyId, clientId } = req.query;
