@@ -742,6 +742,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [moveClient, setMoveClient] = useState(null);
   const [moveAgencyId, setMoveAgencyId] = useState('');
   const [moveMonth, setMoveMonth] = useState(''); // "YYYY-MM", blank = all history
+  const [moveBeforeAgencyId, setMoveBeforeAgencyId] = useState(''); // agency for months before eff (optional correction)
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState('');
   const [moveMsg, setMoveMsg] = useState('');
@@ -749,6 +750,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     setMoveClient(c);
     setMoveAgencyId('');
     setMoveMonth('');
+    setMoveBeforeAgencyId('');
     setMoveError(''); setMoveMsg('');
     setShowMove(true);
   };
@@ -756,14 +758,20 @@ export default function AdminPage({ initialTab = 'users' }) {
     e.preventDefault();
     setMoveError(''); setMoveMsg('');
     if (!moveAgencyId) { setMoveError('Please pick the agency to move to.'); return; }
-    if (String(moveAgencyId) === String(moveClient?.agencyId)) { setMoveError('That is already the client’s agency.'); return; }
+    // Allow re-running even when the target equals the current agency IF a
+    // "before" agency is set (that's a history correction, not a plain move).
+    if (String(moveAgencyId) === String(moveClient?.agencyId) && !moveBeforeAgencyId) {
+      setMoveError('That is already the client’s agency. To fix past months, also set the "before" agency.'); return;
+    }
+    if (moveBeforeAgencyId && !moveMonth) { setMoveError('Set the effective month before choosing a "before" agency.'); return; }
     setMoveSubmitting(true);
     try {
       const { data } = await api.post(`/admin/clients/${moveClient.id}/move-agency`, {
         agencyId: parseInt(moveAgencyId),
         effectiveMonth: moveMonth || null,
+        beforeAgencyId: moveBeforeAgencyId ? parseInt(moveBeforeAgencyId) : null,
       });
-      setMoveMsg(`${data.message}. Re-stamped ${data.restamped.scheduleLogs} schedule log(s), ${data.restamped.forecasts} forecast(s), ${data.restamped.budgets} budget(s).`);
+      setMoveMsg(`${data.message}. Re-stamped ${data.restamped.scheduleLogs} schedule log(s)${data.restamped.beforeScheduleLogs ? ` (+${data.restamped.beforeScheduleLogs} before)` : ''}, ${data.restamped.forecasts} forecast(s), ${data.restamped.budgets} budget(s).`);
       await fetchData();
       setTimeout(() => setShowMove(false), 1400);
     } catch (err) {
@@ -3198,9 +3206,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <select className="select" value={moveAgencyId} onChange={e => setMoveAgencyId(e.target.value)}>
                     <option value="">Select agency…</option>
                     {agencies
-                      .filter(a => a.id !== moveClient?.agencyId)
                       .slice().sort((a, b) => a.name.localeCompare(b.name))
-                      .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      .map(a => <option key={a.id} value={a.id}>{a.name}{a.id === moveClient?.agencyId ? ' (current)' : ''}</option>)}
                   </select>
                 </div>
                 <div className="field">
@@ -3210,6 +3217,18 @@ export default function AdminPage({ initialTab = 'users' }) {
                     Schedules in this month and after go to the new agency. Leave blank to move the client’s <strong>entire</strong> history.
                   </span>
                 </div>
+                {moveMonth && (
+                  <div className="field">
+                    <label className="field-label">Before {moveMonth}, agency was <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+                    <select className="select" value={moveBeforeAgencyId} onChange={e => setMoveBeforeAgencyId(e.target.value)}>
+                      <option value="">Leave the earlier months as they are</option>
+                      {agencies.slice().sort((a, b) => a.name.localeCompare(b.name)).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <span style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                      Set this to <strong>correct past months</strong> that were mis-attributed (e.g. put everything before {moveMonth} back under its old agency).
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="modal-foot">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowMove(false)}>Cancel</button>

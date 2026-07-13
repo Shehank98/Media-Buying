@@ -311,20 +311,21 @@ async function main() {
     console.warn('Duplicate-client cleanup skipped:', e.message);
   }
 
-  // ── Reconcile denormalized agency IDs ────────────────────────────────────────
-  // ScheduleLog/UploadBatch store agency_id at insert time. If a client was moved
-  // between agencies, realign its spend so agency-level totals are correct. Cheap
-  // and idempotent (only touches mismatched rows).
+  // ── Reconcile denormalized agency IDs (ONLY fill NULLs) ──────────────────────
+  // schedule_logs.agency_id is the agency the client was under AT THAT SCHEDULE
+  // MONTH (point-in-time). A client can legitimately have rows under different
+  // agencies across time (e.g. Ogilvy before May 2026, RedWorks after) via the
+  // "Move to another agency" tool. We must NOT re-flip those rows to the client's
+  // CURRENT agency - that destroyed historical attribution and doubled/mis-showed
+  // agency totals. So this reconcile now only backfills rows whose agency_id is
+  // NULL (should never happen, kept as a safety net); it never overrides a set
+  // value. Full/point-in-time moves are handled by moveClientAgency directly.
   try {
     const fixedLogs = await prisma.$executeRaw`
       UPDATE schedule_logs sl SET agency_id = c.agency_id
       FROM clients c
-      WHERE sl.client_id = c.id AND sl.agency_id <> c.agency_id`;
-    const fixedBatches = await prisma.$executeRaw`
-      UPDATE upload_batches ub SET agency_id = c.agency_id
-      FROM clients c
-      WHERE array_length(ub.client_ids, 1) = 1 AND ub.client_ids[1] = c.id AND ub.agency_id <> c.agency_id`;
-    console.log(`Agency reconcile: ${fixedLogs} schedule log(s), ${fixedBatches} upload batch(es) realigned`);
+      WHERE sl.client_id = c.id AND sl.agency_id IS NULL`;
+    console.log(`Agency reconcile (null-fill only): ${fixedLogs} schedule log(s) filled`);
   } catch (e) {
     console.warn('Agency reconcile skipped:', e.message);
   }

@@ -697,25 +697,36 @@ export async function moveClientAgency(req, res) {
     const newAgencyId = parseInt(req.body.agencyId);
     const effRaw = req.body.effectiveMonth;
     const eff = effRaw && /^\d{4}-\d{2}$/.test(String(effRaw)) ? String(effRaw) : null;
+    // Optional: the agency the client belonged to BEFORE the effective month.
+    // Set it to correct history that was mis-attributed (e.g. past months wrongly
+    // flipped to the current agency). Only meaningful together with an eff month.
+    const beforeAgencyId = req.body.beforeAgencyId ? parseInt(req.body.beforeAgencyId) : null;
 
     if (!Number.isInteger(id) || !Number.isInteger(newAgencyId)) {
       return res.status(400).json({ error: 'client id and agencyId are required' });
     }
-    const [client, agency] = await Promise.all([
+    const [client, agency, beforeAgency] = await Promise.all([
       prisma.client.findUnique({ where: { id }, select: { id: true, name: true, agencyId: true } }),
       prisma.agency.findUnique({ where: { id: newAgencyId }, select: { id: true, name: true } }),
+      beforeAgencyId ? prisma.agency.findUnique({ where: { id: beforeAgencyId }, select: { id: true, name: true } }) : Promise.resolve(null),
     ]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
     if (!agency) return res.status(400).json({ error: 'Selected agency was not found' });
+    if (beforeAgencyId && !beforeAgency) return res.status(400).json({ error: 'The "before" agency was not found' });
 
     // Month filters. ScheduleLog uses a "YYYY-MM" string; MonthlyForecast /
     // MonthlyBudget use integer year+month.
     const logWhere = { clientId: id };
     let fyMonthWhere = {};
+    let fyBeforeWhere = null;
+    let logBeforeWhere = null;
     if (eff) {
       logWhere.scheduleMonth = { gte: eff };
       const [ey, em] = eff.split('-').map(Number);
       fyMonthWhere = { OR: [{ year: { gt: ey } }, { year: ey, month: { gte: em } }] };
+      // The "before the effective month" side (only re-stamped if beforeAgency given).
+      logBeforeWhere = { clientId: id, scheduleMonth: { lt: eff } };
+      fyBeforeWhere = { OR: [{ year: { lt: ey } }, { year: ey, month: { lt: em } }] };
     }
 
     const ops = [
@@ -724,7 +735,14 @@ export async function moveClientAgency(req, res) {
       prisma.monthlyForecast.updateMany({ where: { clientId: id, ...fyMonthWhere }, data: { agencyId: newAgencyId } }),
       prisma.monthlyBudget.updateMany({ where: { clientId: id, ...fyMonthWhere }, data: { agencyId: newAgencyId } }),
     ];
-    const [, logs, forecasts, budgets] = await prisma.$transaction(ops);
+    // When a "before" agency is given with an eff month, re-stamp the earlier
+    // months onto it (fixes months previously flipped to the wrong agency).
+    if (eff && beforeAgency) {
+      ops.push(prisma.scheduleLog.updateMany({ where: logBeforeWhere, data: { agencyId: beforeAgencyId } }));
+      ops.push(prisma.monthlyForecast.updateMany({ where: { clientId: id, ...fyBeforeWhere }, data: { agencyId: beforeAgencyId } }));
+      ops.push(prisma.monthlyBudget.updateMany({ where: { clientId: id, ...fyBeforeWhere }, data: { agencyId: beforeAgencyId } }));
+    }
+    const [, logs, forecasts, budgets, beforeLogs] = await prisma.$transaction(ops);
 
     // Upload batches denormalize agency too, but a single batch can span months
     // on both sides of a cut-off, so only re-point sole-client batches when
@@ -737,11 +755,11 @@ export async function moveClientAgency(req, res) {
 
     return res.json({
       message: eff
-        ? `Moved "${client.name}" to ${agency.name} from ${eff} onward`
+        ? `Moved "${client.name}" to ${agency.name} from ${eff} onward${beforeAgency ? `; before ${eff} set to ${beforeAgency.name}` : ''}`
         : `Moved "${client.name}" to ${agency.name} (all history)`,
       agencyId: newAgencyId,
       effectiveMonth: eff,
-      restamped: { scheduleLogs: logs.count, forecasts: forecasts.count, budgets: budgets.count },
+      restamped: { scheduleLogs: logs.count, forecasts: forecasts.count, budgets: budgets.count, beforeScheduleLogs: beforeLogs?.count || 0 },
     });
   } catch (error) {
     console.error('Move client agency error:', error);
