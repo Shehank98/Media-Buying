@@ -47,6 +47,7 @@ function fmtDate(d) {
 
 export default function SpendAnalyticsPage() {
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [properties, setProperties] = useState([]);
@@ -797,41 +798,90 @@ export default function SpendAnalyticsPage() {
             </div>
           )}
 
-          {/* Cumulative spend + Spend by Agency */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            {chartMonthly.length > 1 && (
-              <div className="spa-card" style={{ padding: '20px' }}>
-                <h3 className="spa-ctitle">Cumulative Spend</h3>
-                <p className="spa-csub" style={{ marginBottom: 12 }}>Running total of committed media value</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={chartMonthly} margin={{ top: 8, right: 16, bottom: 5, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval="preserveStartEnd" />
-                    <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={48} />
-                    <Tooltip formatter={(v) => [fmtLKR(v), 'Cumulative']} labelFormatter={l => l} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                    <Line type="monotone" dataKey="cumulative" name="Cumulative" stroke="#1F5BB5" strokeWidth={2.6} dot={{ r: 2 }} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+          {/* Client Targets - yearly target vs achieved (actual schedule spend) */}
+          {clientTargets && (clientTargets.rows || []).length > 0 && (
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginBottom: 20 }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FDF1EB', color: '#D9521C', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={16} /></div>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 720, color: 'var(--ink)' }}>Client Targets</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly target vs achieved (actual spend) · {clientTargets.year}</div>
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label style={{ fontSize: 11 }}>Year</label>
+                  <select className="select" value={ctYear} onChange={e => setCtYear(e.target.value)}>
+                    {(clientTargets.availableYears || [clientTargets.year]).map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
               </div>
-            )}
-            {(data.byAgency?.length > 0) && (
-              <div className="spa-card" style={{ padding: '20px' }}>
-                <h3 className="spa-ctitle">Spend by Agency</h3>
-                <p className="spa-csub" style={{ marginBottom: 12 }}>Committed value across agencies</p>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={data.byAgency.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
-                    <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                      {data.byAgency.slice(0, 8).map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Agency</th>
+                      <th style={{ textAlign: 'right' }}>Target</th>
+                      <th style={{ textAlign: 'right' }}>Achieved</th>
+                      <th style={{ textAlign: 'right' }}>Still needed</th>
+                      <th style={{ minWidth: 200 }}>Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientTargets.rows.map(r => {
+                      const pct = r.pct;
+                      const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 70 ? '#9A5B00' : '#C5391F';
+                      return (
+                        <tr key={r.clientId}>
+                          <td className="strong">{r.name}</td>
+                          <td style={{ color: 'var(--muted)' }}>{r.agencyName || '-'}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.target)}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.achieved)}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: r.remaining > 0 ? '#C5391F' : '#15814B', fontWeight: 700 }}>{r.remaining > 0 ? fmtLKR(r.remaining) : 'Reached'}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+                              </div>
+                              <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {clientTargets.totals && (
+                      <tr style={{ borderTop: '2px solid var(--border)' }}>
+                        <td className="strong">Total</td>
+                        <td />
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.target)}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.achieved)}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750, color: clientTargets.totals.remaining > 0 ? '#C5391F' : '#15814B' }}>{clientTargets.totals.remaining > 0 ? fmtLKR(clientTargets.totals.remaining) : 'Reached'}</td>
+                        <td className="mono" style={{ fontWeight: 750, color: 'var(--ink)' }}>{clientTargets.totals.pct == null ? '-' : `${clientTargets.totals.pct}%`}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Spend by Agency (SUPER_ADMIN only) */}
+          {isSuperAdmin && data.byAgency?.length > 0 && (
+            <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+              <h3 className="spa-ctitle">Spend by Agency</h3>
+              <p className="spa-csub" style={{ marginBottom: 12 }}>Committed value across agencies</p>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={data.byAgency.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
+                  <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {data.byAgency.slice(0, 8).map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Pareto (80/20) - vital few partners driving spend */}
           {paretoData.length > 0 && (
@@ -940,8 +990,8 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
-          {/* Client Tenure bubble + Agency Efficiency */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, marginBottom: 20 }}>
+          {/* Client Tenure bubble */}
+          <div style={{ marginBottom: 20 }}>
             <div className="spa-card" style={{ padding: '20px' }}>
               <h3 className="spa-ctitle">Client Tenure &amp; Value</h3>
               <p className="spa-csub" style={{ marginBottom: 12 }}>Months active vs. total spend · bubble size = avg monthly spend</p>
@@ -970,24 +1020,6 @@ export default function SpendAnalyticsPage() {
                   </ScatterChart>
                 </ResponsiveContainer>
               ) : <div style={{ height: 300, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No client data</div>}
-            </div>
-
-            <div className="spa-card" style={{ padding: '20px' }}>
-              <h3 className="spa-ctitle">Agency Efficiency</h3>
-              <p className="spa-csub" style={{ marginBottom: 12 }}>Average spend per schedule entry</p>
-              {(data.byAgency?.length > 0) ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={data.byAgency.map(a => ({ name: a.name, perEntry: a.count ? Math.round(a.value / a.count) : 0 })).sort((a, b) => b.perEntry - a.perEntry)} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
-                    <Tooltip formatter={(v) => [fmtLKR(v), 'Per entry']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                    <Bar dataKey="perEntry" radius={[0, 6, 6, 0]}>
-                      {data.byAgency.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <div style={{ height: 300, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No agency data</div>}
             </div>
           </div>
 
@@ -1382,72 +1414,6 @@ export default function SpendAnalyticsPage() {
             </div>
           )}
         </>
-      )}
-
-      {/* ── Client yearly targets vs achieved (actual schedule spend) ── */}
-      {clientTargets && (clientTargets.rows || []).length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', marginTop: 24 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FDF1EB', color: '#D9521C', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={16} /></div>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 720, color: 'var(--ink)' }}>Client Targets</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly target vs achieved (actual spend) · {clientTargets.year}</div>
-            </div>
-            <div className="field" style={{ margin: 0 }}>
-              <label style={{ fontSize: 11 }}>Year</label>
-              <select className="select" value={ctYear} onChange={e => setCtYear(e.target.value)}>
-                {(clientTargets.availableYears || [clientTargets.year]).map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="tbl-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  <th>Agency</th>
-                  <th style={{ textAlign: 'right' }}>Target</th>
-                  <th style={{ textAlign: 'right' }}>Achieved</th>
-                  <th style={{ textAlign: 'right' }}>Still needed</th>
-                  <th style={{ minWidth: 200 }}>Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientTargets.rows.map(r => {
-                  const pct = r.pct;
-                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 70 ? '#9A5B00' : '#C5391F';
-                  return (
-                    <tr key={r.clientId}>
-                      <td className="strong">{r.name}</td>
-                      <td style={{ color: 'var(--muted)' }}>{r.agencyName || '-'}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.target)}</td>
-                      <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.achieved)}</td>
-                      <td className="mono" style={{ textAlign: 'right', color: r.remaining > 0 ? '#C5391F' : '#15814B', fontWeight: 700 }}>{r.remaining > 0 ? fmtLKR(r.remaining) : 'Reached'}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
-                            <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
-                          </div>
-                          <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {clientTargets.totals && (
-                  <tr style={{ borderTop: '2px solid var(--border)' }}>
-                    <td className="strong">Total</td>
-                    <td />
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.target)}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(clientTargets.totals.achieved)}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 750, color: clientTargets.totals.remaining > 0 ? '#C5391F' : '#15814B' }}>{clientTargets.totals.remaining > 0 ? fmtLKR(clientTargets.totals.remaining) : 'Reached'}</td>
-                    <td className="mono" style={{ fontWeight: 750, color: 'var(--ink)' }}>{clientTargets.totals.pct == null ? '-' : `${clientTargets.totals.pct}%`}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
       {!loading && data && data.totalEntries === 0 && (
