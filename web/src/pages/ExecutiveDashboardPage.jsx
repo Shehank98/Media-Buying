@@ -63,6 +63,9 @@ const TEAM_COLORS = ['#1F5BB5', '#E85D24', '#15814B', '#7c3aed', '#C2185B', '#08
 const YEAR_COLORS = ['#B4C1D6', '#7E97BE', '#1F5BB5', '#15814B', '#E85D24', '#0A1729', '#7c3aed', '#C2185B'];
 // Group Contribution head colours (blue #1F5BB5 is reserved for the Unassigned slice).
 const GC_HEAD_COLORS = ['#E85D24', '#15814B', '#7c3aed', '#C2185B', '#0891b2', '#9A5B00', '#6B3FB5', '#065f46', '#C5391F', '#1e3a5f', '#EAB308', '#0E7490'];
+const CC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const ccPeriodLabel = (c) => (c.startMonth && c.endMonth)
+  ? `${CC_MONTHS[c.startMonth - 1]} ${c.startYear} – ${CC_MONTHS[c.endMonth - 1]} ${c.endYear}` : '';
 
 const ChartEmpty = ({ msg }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--muted)', textAlign: 'center', padding: '0 20px' }}>
@@ -642,10 +645,8 @@ function AchievementSection({
                   const behind = gap > 0.5;
                   const ahead = gap < -0.5;
                   const isOpen = expandedCommit === c.channelMasterId;
-                  // Yearly picture
-                  const yearly = c.yearlyCommitment || 0;
-                  const remainYear = yearly - (c.achieved || 0);
-                  const yearPct = yearly > 0 ? Number((((c.achieved || 0) / yearly) * 100).toFixed(1)) : null;
+                  const period = ccPeriodLabel(c);
+                  const remain = (c.committedToDate || 0) - (c.achieved || 0);
                   return (
                     <Fragment key={c.channelMasterId}>
                     <tr>
@@ -655,6 +656,7 @@ function AchievementSection({
                           <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
                         </button>
                         {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
+                        {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
                       </td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
@@ -677,59 +679,46 @@ function AchievementSection({
                     {isOpen && (
                       <tr>
                         <td colSpan={5} style={{ background: '#F7F8FA', padding: '12px 16px 14px 38px' }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 10 }}>Full-year commitment</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 10 }}>
+                            Commitment period{period ? ` · ${period}` : ''}
+                          </div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-end' }}>
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Yearly target</div>
-                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: '#16243C' }}>{fmtLKR(yearly)}</div>
-                            </div>
-                            <div>
                               <div style={{ fontSize: 11, color: 'var(--muted)' }}>Monthly commitment</div>
-                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-soft,#3B4A63)' }}>{fmtLKR(c.monthlyCommitment)}</div>
+                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: '#16243C' }}>{fmtLKR(c.monthlyCommitment)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Achieved (YTD)</div>
-                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#16243C' }}>{fmtLKR(c.achieved)}{yearPct != null && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 5 }}>({yearPct}% of year)</span>}</div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Committed to date{c.activeRangeLabel ? ` (${c.activeRangeLabel} ${channelCommit.year})` : ''}</div>
+                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-soft,#3B4A63)' }}>{fmtLKR(c.committedToDate)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{remainYear > 0 ? 'Behind yearly target' : 'Yearly target met, over by'}</div>
-                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: remainYear > 0 ? '#C5391F' : '#15814B' }}>{fmtLKR(Math.abs(remainYear))}</div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Achieved</div>
+                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#16243C' }}>{fmtLKR(c.achieved)}{c.achievementPct != null && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 5 }}>({c.achievementPct}%)</span>}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{remain > 0 ? 'Behind' : 'Ahead by'}</div>
+                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: remain > 0 ? '#C5391F' : '#15814B' }}>{fmtLKR(Math.abs(remain))}</div>
                             </div>
                           </div>
-                          {/* Yearly progress bar */}
+                          {/* Progress bar (achieved / committed to date) */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, maxWidth: 520 }}>
                             <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 9, overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.min(100, yearPct || 0)}%`, height: '100%', background: (yearPct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 5 }} />
+                              <div style={{ width: `${Math.min(100, c.achievementPct || 0)}%`, height: '100%', background: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 5 }} />
                             </div>
-                            <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (yearPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{yearPct == null ? '-' : `${yearPct}%`}</span>
+                            <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{c.achievementPct == null ? '-' : `${c.achievementPct}%`}</span>
                           </div>
 
-                          {/* Month-by-month: flat monthly target vs that month's achieved spend */}
+                          {/* Month-by-month: achieved spend per active month (number only) */}
                           {Array.isArray(c.monthlyBreakdown) && c.monthlyBreakdown.length > 0 && (
                             <>
                               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 10px' }}>
                                 Month by month · target {fmtLKR(c.monthlyCommitment)}/mo
                               </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, maxWidth: 760 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, maxWidth: 760 }}>
                                 {c.monthlyBreakdown.map(mb => (
-                                  <div key={mb.monthNum} style={{
-                                    border: `1px solid ${mb.met ? '#BFE0CB' : '#F0C9C1'}`,
-                                    background: mb.met ? '#F1F9F4' : '#FDF3F1',
-                                    borderRadius: 8, padding: '8px 10px',
-                                  }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                                      <span style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C' }}>{mb.label} {channelCommit.year}</span>
-                                      <span style={{ fontWeight: 700, fontSize: 11.5, color: mb.met ? '#15814B' : '#C5391F' }}>
-                                        {mb.met ? '✓ met' : '✕ behind'}
-                                      </span>
-                                    </div>
+                                  <div key={mb.monthNum} style={{ border: '1px solid var(--border)', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
+                                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C', marginBottom: 3 }}>{mb.label} {channelCommit.year}</div>
                                     <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: '#16243C' }}>{fmtLKR(mb.achieved)}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-                                      {mb.met
-                                        ? <>ahead by <span className="mono" style={{ color: '#15814B', fontWeight: 700 }}>{fmtLKR(Math.abs(mb.diff))}</span></>
-                                        : <>behind by <span className="mono" style={{ color: '#C5391F', fontWeight: 700 }}>{fmtLKR(Math.abs(mb.diff))}</span></>}
-                                      {mb.pct != null && <span style={{ marginLeft: 4 }}>({mb.pct}%)</span>}
-                                    </div>
                                   </div>
                                 ))}
                               </div>

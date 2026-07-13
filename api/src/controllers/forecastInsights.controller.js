@@ -196,15 +196,23 @@ export async function getInsightsSummary(req, res) {
       pctOfTotal: mediumTotalSum > 0 ? Number(((mediumTotals[m] / mediumTotalSum) * 100).toFixed(1)) : 0,
     }));
 
-    // Monthly commitment target per channel (ChannelCommitment yearly ÷ 12, in
+    // Monthly commitment target per channel (period model → monthlyAmount, in
     // millions) so the channel-wise view can flag whether the forecast for the
-    // month meets that channel's monthly target and by how much.
+    // month meets that channel's monthly target. Only commitments whose period
+    // actually covers the resolved (year, month) contribute a target.
+    const monthOrd = filters.year * 12 + filters.month;
     const commitments = await prisma.channelCommitment.findMany({
-      where: { year: filters.year, channelMasterId: { in: byChannel.map((g) => g.channelMasterId) } },
-      select: { channelMasterId: true, yearlyAmount: true },
+      where: {
+        monthlyAmount: { not: null },
+        channelMasterId: { in: byChannel.map((g) => g.channelMasterId) },
+        startYear: { lte: filters.year }, endYear: { gte: filters.year },
+      },
+      select: { channelMasterId: true, monthlyAmount: true, startYear: true, startMonth: true, endYear: true, endMonth: true },
     });
     const monthlyTargetById = new Map(
-      commitments.map((c) => [c.channelMasterId, (Number(c.yearlyAmount) || 0) / 12 / 1e6]),
+      commitments
+        .filter((c) => (c.startYear * 12 + c.startMonth) <= monthOrd && monthOrd <= (c.endYear * 12 + c.endMonth))
+        .map((c) => [c.channelMasterId, (Number(c.monthlyAmount) || 0) / 1e6]),
     );
 
     // Per-channel breakdown (each individual ChannelMaster that has a forecast,

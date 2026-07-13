@@ -406,6 +406,32 @@ async function main() {
     console.warn('Commission snapshot backfill skipped:', e.message);
   }
 
+  // ── Channel commitment: legacy (year + yearlyAmount) → period model backfill ──
+  // Older commitments stored a single year + yearlyAmount. Convert each into the
+  // new month-grain period model: startYear/endYear = year, Jan-Dec, and
+  // monthlyAmount = yearlyAmount / 12. Idempotent: only rows that still lack a
+  // monthlyAmount are touched, so genuine period entries are never rewritten.
+  try {
+    const legacy = await prisma.channelCommitment.findMany({
+      where: { monthlyAmount: null, year: { not: null }, yearlyAmount: { not: null } },
+      select: { id: true, year: true, yearlyAmount: true },
+    });
+    let converted = 0;
+    for (const c of legacy) {
+      await prisma.channelCommitment.update({
+        where: { id: c.id },
+        data: {
+          startYear: c.year, startMonth: 1, endYear: c.year, endMonth: 12,
+          monthlyAmount: Number(c.yearlyAmount) / 12,
+        },
+      });
+      converted++;
+    }
+    if (converted) console.log(`Channel commitment period backfill: ${converted} legacy commitment(s) converted`);
+  } catch (e) {
+    console.warn('Channel commitment period backfill skipped:', e.message);
+  }
+
   console.log('\nSeeding complete!');
 }
 

@@ -664,24 +664,36 @@ model AgencyRevenue {
   @@map("agency_revenues")
 }
 
-// Yearly commitment per channel (full LKR). The monthly pace = yearlyAmount / 12;
-// cumulative target to month M = pace × M. Achievement is derived live from
-// ScheduleLog spend on the channel (Jan→latest data month). Admin-managed,
-// company-wide (one per channel per year). Drives the Executive Dashboard's
-// "Channel Commitments" tracker.
+// Per-channel commitment over a MONTH-GRAIN PERIOD (can cross calendar years,
+// e.g. Mar 2026 → Apr 2027). One active commitment per channel (enforced in app
+// code, not a DB unique, so a schema push never fails on legacy duplicates).
+// `monthlyAmount` is the flat commitment per active month; cumulative target
+// within a viewed year = monthlyAmount × the count of the channel's active
+// months in that year up to the latest data month. Achievement is live
+// ScheduleLog spend on those months. Legacy `year`/`yearlyAmount` (pre-period)
+// are kept nullable and back-filled into the period fields by seed.js
+// (year → Jan-Dec, monthlyAmount = yearlyAmount / 12). Drives the Executive
+// Dashboard's "Channel Commitments" tracker.
 model ChannelCommitment {
   id              Int      @id @default(autoincrement())
   channelMasterId Int      @map("channel_master_id")
-  year            Int
-  yearlyAmount    Decimal  @map("yearly_amount") @db.Decimal(16, 2)
+  startYear       Int?     @map("start_year")
+  startMonth      Int?     @map("start_month") // 1=Jan
+  endYear         Int?     @map("end_year")
+  endMonth        Int?     @map("end_month") // 1=Jan
+  monthlyAmount   Decimal? @map("monthly_amount") @db.Decimal(16, 2)
+  // legacy pre-period columns (nullable, back-filled by seed.js, then unused)
+  year            Int?
+  yearlyAmount    Decimal? @map("yearly_amount") @db.Decimal(16, 2)
   createdById     Int?     @map("created_by_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
 
-  @@unique([channelMasterId, year])
-  @@index([year])
+  @@index([channelMasterId])
+  @@index([startYear])
+  @@index([endYear])
   @@map("channel_commitments")
 }
 

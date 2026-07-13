@@ -1418,8 +1418,11 @@ export async function getAchievement(req, res) {
   }
 }
 
-// Channel commitment tracker: per channel, cumulative committed (yearlyAmount/12
-// × months elapsed) vs cumulative achieved (ScheduleLog spend Jan→latest month).
+// Channel commitment tracker (period model, split by the selected year). A
+// commitment runs over a month-grain period that can cross calendar years; for
+// the viewed year we count only the channel's ACTIVE months in that year (the
+// window ∩ [Jan..latest data month]). Cumulative committed = monthlyAmount ×
+// that active-month count; achieved = ScheduleLog spend on those months.
 export async function getChannelCommitments(req, res) {
   try {
     const user = req.user;
@@ -1431,8 +1434,9 @@ export async function getChannelCommitments(req, res) {
     const year = await resolveYear(req.query.year, dataYears);
     const years = await selectableYears(dataYears);
 
+    // Commitments whose period overlaps the viewed year (start ≤ year ≤ end).
     const commitments = await prisma.channelCommitment.findMany({
-      where: { year },
+      where: { monthlyAmount: { not: null }, startYear: { lte: year }, endYear: { gte: year } },
       include: { channelMaster: { select: { id: true, name: true, medium: true } } },
     });
     if (!commitments.length) {
@@ -1440,27 +1444,25 @@ export async function getChannelCommitments(req, res) {
     }
 
     // Latest month with data this year (capped at the current calendar month for
-    // an in-progress year), which sets how many months of commitment have accrued.
+    // an in-progress year) — the global pacing ceiling.
     const aMonths = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
       where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
       _sum: { scheduleValue: true },
     });
-    let monthsElapsed = 0;
-    for (const r of aMonths) { const m = parseInt(String(r.scheduleMonth).slice(5)); if (m > monthsElapsed) monthsElapsed = m; }
+    let dataLatestMonth = 0;
+    for (const r of aMonths) { const m = parseInt(String(r.scheduleMonth).slice(5)); if (m > dataLatestMonth) dataLatestMonth = m; }
     const now = new Date();
-    if (year === now.getFullYear()) monthsElapsed = Math.min(monthsElapsed, now.getMonth() + 1);
-    if (monthsElapsed < 1) monthsElapsed = 0;
+    if (year === now.getFullYear()) dataLatestMonth = Math.min(dataLatestMonth, now.getMonth() + 1);
+    if (dataLatestMonth < 1) dataLatestMonth = 0;
 
-    // Achieved spend per channel PER MONTH Jan→monthsElapsed (so we can show the
-    // month-by-month target-vs-achieved breakdown when a channel is expanded).
+    // Achieved spend per channel PER MONTH Jan→dataLatestMonth (sliced per window).
     const chIds = commitments.map((c) => c.channelMasterId);
-    const spendRows = monthsElapsed > 0 ? await prisma.scheduleLog.groupBy({
+    const spendRows = dataLatestMonth > 0 ? await prisma.scheduleLog.groupBy({
       by: ['channelMasterId', 'scheduleMonth'],
-      where: { ...scope, channelMasterId: { in: chIds }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(monthsElapsed).padStart(2, '0')}` } },
+      where: { ...scope, channelMasterId: { in: chIds }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(dataLatestMonth).padStart(2, '0')}` } },
       _sum: { scheduleValue: true },
     }) : [];
-    // channelMasterId -> { monthNum -> spend }
     const spendByChMonth = new Map();
     for (const r of spendRows) {
       const m = parseInt(String(r.scheduleMonth).slice(5));
@@ -1470,40 +1472,44 @@ export async function getChannelCommitments(req, res) {
     }
 
     const channels = commitments.map((c) => {
-      const yearly = Number(c.yearlyAmount);
-      const monthly = yearly / 12;
-      const committedToDate = monthly * monthsElapsed;
+      const monthly = Number(c.monthlyAmount);
+      // The channel's active month window within THIS year.
+      const firstMonth = c.startYear === year ? c.startMonth : 1;
+      const windowLast = c.endYear === year ? c.endMonth : 12;
+      // How far we pace this year: min(latest data month, window end).
+      const pacingMonth = Math.min(dataLatestMonth, windowLast);
       const byMonth = spendByChMonth.get(c.channelMasterId) || {};
-      // One row per elapsed month: the flat monthly target vs that month's spend.
-      const monthly_breakdown = [];
+
+      const monthlyBreakdown = [];
       let achieved = 0;
-      for (let m = 1; m <= monthsElapsed; m++) {
-        const spend = byMonth[m] || 0;
-        achieved += spend;
-        const diff = spend - monthly; // + = beat the monthly target, - = behind
-        monthly_breakdown.push({
-          monthNum: m,
-          label: MONTH_NAMES[m - 1],
-          target: Number(monthly.toFixed(2)),
-          achieved: Number(spend.toFixed(2)),
-          met: spend + 0.5 >= monthly,
-          diff: Number(diff.toFixed(2)),
-          pct: monthly > 0 ? Number(((spend / monthly) * 100).toFixed(1)) : null,
-        });
+      let monthsCount = 0;
+      if (pacingMonth >= firstMonth) {
+        for (let m = firstMonth; m <= pacingMonth; m++) {
+          const spend = byMonth[m] || 0;
+          achieved += spend; monthsCount++;
+          monthlyBreakdown.push({ monthNum: m, label: MONTH_NAMES[m - 1], target: Number(monthly.toFixed(2)), achieved: Number(spend.toFixed(2)) });
+        }
       }
+      const committedToDate = monthly * monthsCount;
       const pct = committedToDate > 0 ? Number(((achieved / committedToDate) * 100).toFixed(1)) : null;
       return {
         channelMasterId: c.channelMasterId,
         name: c.channelMaster.name,
         medium: c.channelMaster.medium,
-        yearlyCommitment: yearly,
         monthlyCommitment: Number(monthly.toFixed(2)),
         committedToDate: Number(committedToDate.toFixed(2)),
         achieved: Number(achieved.toFixed(2)),
         achievementPct: pct,
-        monthlyBreakdown: monthly_breakdown,
+        monthsCount,
+        // Full period + this-year active window (for display).
+        startYear: c.startYear, startMonth: c.startMonth, endYear: c.endYear, endMonth: c.endMonth,
+        firstMonth, windowLast, pacingMonth,
+        activeRangeLabel: monthsCount > 0
+          ? (firstMonth === pacingMonth ? MONTH_NAMES[firstMonth - 1] : `${MONTH_NAMES[firstMonth - 1]}–${MONTH_NAMES[pacingMonth - 1]}`)
+          : null,
+        monthlyBreakdown,
       };
-    }).sort((a, b) => b.yearlyCommitment - a.yearlyCommitment);
+    }).sort((a, b) => b.committedToDate - a.committedToDate);
 
     const totals = {
       committedToDate: Number(channels.reduce((s, c) => s + c.committedToDate, 0).toFixed(2)),
@@ -1514,8 +1520,8 @@ export async function getChannelCommitments(req, res) {
     return res.json({
       year,
       availableYears: years,
-      monthsElapsed,
-      monthLabel: monthsElapsed > 0 ? MONTH_NAMES[monthsElapsed - 1] : null,
+      monthsElapsed: dataLatestMonth,
+      monthLabel: dataLatestMonth > 0 ? MONTH_NAMES[dataLatestMonth - 1] : null,
       channels,
       totals,
     });
@@ -1539,9 +1545,9 @@ export async function getChannelForecastVsTarget(req, res) {
     const year = await resolveYear(req.query.year, dataYears);
     const years = await selectableYears(dataYears);
 
-    // Channels that have a commitment target this year (defines the roster).
+    // Commitments whose period overlaps the viewed year (defines the roster).
     const commitments = await prisma.channelCommitment.findMany({
-      where: { year },
+      where: { monthlyAmount: { not: null }, startYear: { lte: year }, endYear: { gte: year } },
       include: { channelMaster: { select: { id: true, name: true, medium: true } } },
     });
     if (!commitments.length) {
@@ -1559,6 +1565,14 @@ export async function getChannelForecastVsTarget(req, res) {
       return res.json({ year, availableYears: years, month: null, monthLabel: null, channels: [], totals: null });
     }
 
+    // Only channels whose commitment period actually covers (year, month).
+    const monthOrd = year * 12 + month;
+    const activeCommitments = commitments.filter((c) =>
+      (c.startYear * 12 + c.startMonth) <= monthOrd && monthOrd <= (c.endYear * 12 + c.endMonth));
+    if (!activeCommitments.length) {
+      return res.json({ year, availableYears: years, month, monthLabel: MONTH_NAMES[month - 1], channels: [], totals: null });
+    }
+
     // Forecast per channel for that month.
     const fRows = await prisma.monthlyForecast.groupBy({
       by: ['channelMasterId'],
@@ -1567,8 +1581,8 @@ export async function getChannelForecastVsTarget(req, res) {
     });
     const forecastBy = new Map(fRows.map((r) => [r.channelMasterId, Number(r._sum.amountMillions) || 0]));
 
-    const channels = commitments.map((c) => {
-      const monthlyTarget = Number(c.yearlyAmount) / 12 / 1e6; // millions
+    const channels = activeCommitments.map((c) => {
+      const monthlyTarget = Number(c.monthlyAmount) / 1e6; // millions
       const forecast = forecastBy.get(c.channelMasterId) || 0;
       const met = forecast + 0.005 >= monthlyTarget;
       return {

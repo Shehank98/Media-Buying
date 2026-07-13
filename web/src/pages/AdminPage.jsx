@@ -158,10 +158,9 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [billingSavedAt, setBillingSavedAt] = useState(null);
 
   /* ---- channel commitments (yearly target per channel) ---- */
-  const [ccYear, setCcYear] = useState(now.getFullYear());
-  const [ccYears, setCcYears] = useState([]);
-  const [ccChannels, setCcChannels] = useState([]);   // [{ channelMasterId, name, medium, mediaGroup, yearlyAmount }]
-  const [ccAmounts, setCcAmounts] = useState({});     // { channelMasterId: '120000000' }
+  const [ccChannels, setCcChannels] = useState([]);   // [{ channelMasterId, name, medium, mediaGroup, monthlyAmount, start/end }]
+  // per-channel commitment: { monthlyAmount, startMonth, startYear, endMonth, endYear }
+  const [ccRows, setCcRows] = useState({});
   const [ccLoading, setCcLoading] = useState(false);
   const [ccSavingId, setCcSavingId] = useState(null);
   const [ccSearch, setCcSearch] = useState('');
@@ -978,15 +977,23 @@ export default function AdminPage({ initialTab = 'users' }) {
   const fetchChannelCommitments = async () => {
     setCcLoading(true);
     try {
-      const { data } = await api.get('/admin/channel-commitments', { params: { year: ccYear } });
-      setCcYears(data.availableYears || []);
+      const { data } = await api.get('/admin/channel-commitments');
       const chans = data.channels || [];
       setCcChannels(chans);
-      const amts = {};
-      chans.forEach(c => { amts[c.channelMasterId] = c.yearlyAmount == null ? '' : String(c.yearlyAmount); });
-      setCcAmounts(amts);
+      const curY = new Date().getFullYear();
+      const rows = {};
+      chans.forEach(c => {
+        rows[c.channelMasterId] = {
+          monthlyAmount: c.monthlyAmount == null ? '' : String(c.monthlyAmount),
+          startMonth: c.startMonth ?? 1,
+          startYear: c.startYear ?? curY,
+          endMonth: c.endMonth ?? 12,
+          endYear: c.endYear ?? curY,
+        };
+      });
+      setCcRows(rows);
     } catch {
-      setCcChannels([]); setCcAmounts({});
+      setCcChannels([]); setCcRows({});
     } finally {
       setCcLoading(false);
     }
@@ -994,13 +1001,21 @@ export default function AdminPage({ initialTab = 'users' }) {
   useEffect(() => {
     if (activeTab === 'channel-commitments') fetchChannelCommitments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, ccYear]);
+  }, [activeTab]);
+
+  const setCcField = (channelMasterId, field, value) =>
+    setCcRows(r => ({ ...r, [channelMasterId]: { ...r[channelMasterId], [field]: value } }));
 
   const saveChannelCommitment = async (channelMasterId) => {
-    const raw = ccAmounts[channelMasterId];
+    const row = ccRows[channelMasterId] || {};
     setCcSavingId(channelMasterId);
     try {
-      await api.post('/admin/channel-commitments', { channelMasterId, year: ccYear, yearlyAmount: raw === '' ? null : Number(raw) });
+      await api.post('/admin/channel-commitments', {
+        channelMasterId,
+        monthlyAmount: row.monthlyAmount === '' ? null : Number(row.monthlyAmount),
+        startYear: row.startYear, startMonth: row.startMonth,
+        endYear: row.endYear, endMonth: row.endMonth,
+      });
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save commitment.');
     } finally {
@@ -1818,19 +1833,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       {activeTab === 'channel-commitments' && (
         <div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Year</label>
-              <select className="select" value={ccYear} onChange={e => setCcYear(Number(e.target.value))}>
-                {(ccYears.length ? ccYears : [ccYear]).map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
             <div className="field" style={{ margin: 0, flex: 1, minWidth: 220, position: 'relative' }}>
               <label>Search channel</label>
               <input className="input" type="text" value={ccSearch} onChange={e => setCcSearch(e.target.value)} placeholder="Filter channels…" />
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
-            Set each channel's <b style={{ color: 'var(--ink)' }}>yearly commitment</b> (full LKR) for {ccYear}. The monthly pace = yearly ÷ 12; the Executive Dashboard tracks cumulative achievement (schedule spend Jan→latest month) against it. Clear a value to remove the commitment. Saved automatically when you leave a field.
+            Set each channel's <b style={{ color: 'var(--ink)' }}>monthly commitment</b> (full LKR per month) and the <b style={{ color: 'var(--ink)' }}>period</b> it runs over (start month → end month, and it can cross years, e.g. Mar 2026 → Apr 2027). The Executive Dashboard counts only the channel's active months in the selected year, starting from the start month. Click <b style={{ color: 'var(--ink)' }}>Save</b> on a row to store it; clear the amount and Save to remove.
           </div>
           {ccLoading ? (
             <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading channels…" /></div>
@@ -1841,15 +1850,18 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <tr>
                     <th>Channel</th>
                     <th>Medium</th>
-                    <th style={{ textAlign: 'right' }}>Yearly Commitment (LKR)</th>
-                    <th style={{ textAlign: 'right' }}>Monthly (÷12)</th>
+                    <th style={{ textAlign: 'right' }}>Monthly Commitment (LKR)</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {ccChannels
                     .filter(c => !ccSearch || c.name.toLowerCase().includes(ccSearch.toLowerCase()) || (c.mediaGroup || '').toLowerCase().includes(ccSearch.toLowerCase()))
                     .map(c => {
-                      const val = Number(ccAmounts[c.channelMasterId] || 0);
+                      const row = ccRows[c.channelMasterId] || {};
+                      const yrs = Array.from({ length: (new Date().getFullYear() + 2) - 2022 + 1 }, (_, i) => 2022 + i);
                       return (
                         <tr key={c.channelMasterId}>
                           <td className="strong">{c.name}{c.mediaGroup ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {c.mediaGroup}</span> : null}</td>
@@ -1857,15 +1869,37 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <td style={{ textAlign: 'right' }}>
                             <input
                               className="input" type="number" min="0" step="1000"
-                              value={ccAmounts[c.channelMasterId] ?? ''}
-                              onChange={e => setCcAmounts(a => ({ ...a, [c.channelMasterId]: e.target.value }))}
-                              onBlur={() => saveChannelCommitment(c.channelMasterId)}
+                              value={row.monthlyAmount ?? ''}
+                              onChange={e => setCcField(c.channelMasterId, 'monthlyAmount', e.target.value)}
                               placeholder="-"
-                              style={{ maxWidth: 200, textAlign: 'right' }}
-                              disabled={ccSavingId === c.channelMasterId}
+                              style={{ maxWidth: 170, textAlign: 'right' }}
                             />
                           </td>
-                          <td style={{ textAlign: 'right', color: 'var(--muted)' }} className="mono">{val > 0 ? (val / 12).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '-'}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <select className="select" style={{ minWidth: 78 }} value={row.startMonth} onChange={e => setCcField(c.channelMasterId, 'startMonth', Number(e.target.value))}>
+                                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                              </select>
+                              <select className="select" style={{ minWidth: 84 }} value={row.startYear} onChange={e => setCcField(c.channelMasterId, 'startYear', Number(e.target.value))}>
+                                {yrs.map(y => <option key={y} value={y}>{y}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <select className="select" style={{ minWidth: 78 }} value={row.endMonth} onChange={e => setCcField(c.channelMasterId, 'endMonth', Number(e.target.value))}>
+                                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                              </select>
+                              <select className="select" style={{ minWidth: 84 }} value={row.endYear} onChange={e => setCcField(c.channelMasterId, 'endYear', Number(e.target.value))}>
+                                {yrs.map(y => <option key={y} value={y}>{y}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                          <td>
+                            <button className="btn btn-sm btn-subtle" onClick={() => saveChannelCommitment(c.channelMasterId)} disabled={ccSavingId === c.channelMasterId}>
+                              {ccSavingId === c.channelMasterId ? '…' : 'Save'}
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}

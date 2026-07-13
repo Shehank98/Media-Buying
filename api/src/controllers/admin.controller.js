@@ -1163,35 +1163,31 @@ export async function setGroupRevenue(req, res) {
 
 export async function listChannelCommitments(req, res) {
   try {
-    const years = await prisma.scheduleLog.findMany({
-      where: { isDeleted: false },
-      distinct: ['scheduleMonth'],
-      select: { scheduleMonth: true },
-    });
-    const yearSet = new Set(years.map((r) => parseInt(String(r.scheduleMonth).slice(0, 4))).filter(Boolean));
-    yearSet.add(new Date().getFullYear());
-    const availableYears = [...yearSet].sort((a, b) => b - a);
-
-    const year = parseInt(req.query.year) || availableYears[0] || new Date().getFullYear();
-
     const channels = await prisma.channelMaster.findMany({
       where: { isActive: true },
       select: { id: true, name: true, medium: true, sortOrder: true, mediaGroup: { select: { name: true } } },
       orderBy: [{ medium: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
-    const commitments = await prisma.channelCommitment.findMany({ where: { year } });
-    const byChannel = new Map(commitments.map((c) => [c.channelMasterId, Number(c.yearlyAmount)]));
+    // One active commitment per channel (period model). Legacy rows are converted
+    // by seed.js; here we take the row with a monthlyAmount if present.
+    const commitments = await prisma.channelCommitment.findMany({ where: { monthlyAmount: { not: null } } });
+    const byChannel = new Map(commitments.map((c) => [c.channelMasterId, c]));
 
     return res.json({
-      year,
-      availableYears,
-      channels: channels.map((c) => ({
-        channelMasterId: c.id,
-        name: c.name,
-        medium: c.medium,
-        mediaGroup: c.mediaGroup?.name || '',
-        yearlyAmount: byChannel.has(c.id) ? byChannel.get(c.id) : null,
-      })),
+      channels: channels.map((c) => {
+        const cm = byChannel.get(c.id);
+        return {
+          channelMasterId: c.id,
+          name: c.name,
+          medium: c.medium,
+          mediaGroup: c.mediaGroup?.name || '',
+          monthlyAmount: cm ? Number(cm.monthlyAmount) : null,
+          startYear: cm?.startYear ?? null,
+          startMonth: cm?.startMonth ?? null,
+          endYear: cm?.endYear ?? null,
+          endMonth: cm?.endMonth ?? null,
+        };
+      }),
     });
   } catch (error) {
     console.error('listChannelCommitments error:', error);
@@ -1201,20 +1197,33 @@ export async function listChannelCommitments(req, res) {
 
 export async function setChannelCommitment(req, res) {
   try {
-    const { channelMasterId, year, yearlyAmount } = req.body || {};
-    const chId = parseInt(channelMasterId), y = parseInt(year);
-    if (!chId || !y) return res.status(400).json({ error: 'channelMasterId and year are required' });
-    const num = yearlyAmount === '' || yearlyAmount == null ? null : Number(yearlyAmount);
+    const { channelMasterId, monthlyAmount, startYear, startMonth, endYear, endMonth } = req.body || {};
+    const chId = parseInt(channelMasterId);
+    if (!chId) return res.status(400).json({ error: 'channelMasterId is required' });
+
+    const num = monthlyAmount === '' || monthlyAmount == null ? null : Number(monthlyAmount);
+    // Blank/zero clears the channel's commitment entirely.
     if (num == null || isNaN(num) || num <= 0) {
-      await prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId, year: y } });
-      return res.json({ channelMasterId: chId, year: y, yearlyAmount: null });
+      await prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId } });
+      return res.json({ channelMasterId: chId, monthlyAmount: null });
     }
-    const saved = await prisma.channelCommitment.upsert({
-      where: { channelMasterId_year: { channelMasterId: chId, year: y } },
-      update: { yearlyAmount: num, createdById: req.user?.id ?? null },
-      create: { channelMasterId: chId, year: y, yearlyAmount: num, createdById: req.user?.id ?? null },
-    });
-    return res.json({ channelMasterId: chId, year: y, yearlyAmount: Number(saved.yearlyAmount) });
+
+    const sy = parseInt(startYear), sm = parseInt(startMonth), ey = parseInt(endYear), em = parseInt(endMonth);
+    if (!(sy >= 2000 && sm >= 1 && sm <= 12 && ey >= 2000 && em >= 1 && em <= 12)) {
+      return res.status(400).json({ error: 'start/end month (1-12) and year are required' });
+    }
+    if (ey * 12 + em < sy * 12 + sm) {
+      return res.status(400).json({ error: 'end month must be on or after start month' });
+    }
+
+    // One active commitment per channel: replace any existing.
+    await prisma.$transaction([
+      prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId } }),
+      prisma.channelCommitment.create({
+        data: { channelMasterId: chId, monthlyAmount: num, startYear: sy, startMonth: sm, endYear: ey, endMonth: em, createdById: req.user?.id ?? null },
+      }),
+    ]);
+    return res.json({ channelMasterId: chId, monthlyAmount: num, startYear: sy, startMonth: sm, endYear: ey, endMonth: em });
   } catch (error) {
     console.error('setChannelCommitment error:', error);
     return res.status(500).json({ error: 'Failed to save channel commitment', detail: error.message });
