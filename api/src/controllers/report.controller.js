@@ -1,6 +1,17 @@
 import ExcelJS from 'exceljs';
 import prisma from '../utils/prisma.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
 import { generateExcel, generatePdf, generatePropertyHistoryPdf, generateGroupedTablePdf } from '../services/export.service.js';
+
+// Concrete client-id scope for report access. null = unrestricted (SUPER_ADMIN);
+// otherwise the exact set of clients the user may see (agency clients for a
+// MANAGER, assigned clients for GROUP_HEAD/PLANNER). Empty scope becomes [-1]
+// so a scoped user with no clients matches nothing instead of everything.
+async function accessibleClientScope(user) {
+  if (user.role === 'SUPER_ADMIN') return null;
+  const ids = await getAccessibleClientIds(user.id, user.role);
+  return ids.length ? ids : [-1];
+}
 
 // Build a chronological rate timeline for a property from its change history.
 // First event = the original rate at creation; each subsequent cost change appends.
@@ -59,12 +70,11 @@ export async function byChannel(req, res) {
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    // MANAGER: verify access to this channel's agency
-    if (user.role === 'MANAGER') {
-      const access = await prisma.userAgencyAccess.findUnique({
-        where: { userId_agencyId: { userId: user.id, agencyId: channel.client.agencyId } },
-      });
-      if (!access) return res.status(403).json({ error: 'Access denied' });
+    // Enforce agency + client level access: the channel's client must be in the
+    // user's accessible client scope (SUPER_ADMIN unrestricted).
+    const scope = await accessibleClientScope(user);
+    if (scope && !scope.includes(channel.client.id)) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const reportData = {
@@ -140,12 +150,11 @@ export async function byClient(req, res) {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    // MANAGER: verify access to this client's agency
-    if (user.role === 'MANAGER') {
-      const access = await prisma.userAgencyAccess.findUnique({
-        where: { userId_agencyId: { userId: user.id, agencyId: client.agencyId } },
-      });
-      if (!access) return res.status(403).json({ error: 'Access denied' });
+    // Enforce agency + client level access: this client must be in the user's
+    // accessible client scope (SUPER_ADMIN unrestricted).
+    const scope = await accessibleClientScope(user);
+    if (scope && !scope.includes(client.id)) {
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const reportData = {
@@ -237,6 +246,15 @@ export async function byAgency(req, res) {
       return res.status(404).json({ error: 'Agency not found' });
     }
 
+    // Client-level restriction: a scoped user only exports the clients they can
+    // access within this agency (SUPER_ADMIN unrestricted). For a MANAGER this
+    // is every client in their agency; for GROUP_HEAD/PLANNER only theirs.
+    const scope = await accessibleClientScope(user);
+    if (scope) {
+      const allow = new Set(scope);
+      agency.clients = agency.clients.filter((c) => allow.has(c.id));
+    }
+
     const reportData = {
       agency: { id: agency.id, name: agency.name },
       clients: agency.clients,
@@ -311,26 +329,20 @@ export async function exportProperties(req, res) {
     const channelWhere = {};
     const clientWhere = {};
 
-    if (req.user.role === 'MANAGER') {
-      const access = await prisma.userAgencyAccess.findMany({
-        where: { userId: req.user.id },
-        select: { agencyId: true },
-      });
-      clientWhere.agencyId = { in: access.map((a) => a.agencyId) };
-    }
+    // Agency + client level access: scoped users are limited to their accessible
+    // clients (SUPER_ADMIN unrestricted). Requested agency/client filters are
+    // intersected with that scope, never widening it.
+    const scope = await accessibleClientScope(req.user);
+    if (scope) channelWhere.clientId = { in: scope };
 
-    if (agencyId) {
-      if (clientWhere.agencyId?.in) {
-        const requestedId = parseInt(agencyId);
-        if (!clientWhere.agencyId.in.includes(requestedId)) {
-          return res.status(403).json({ error: 'Access denied to this agency' });
-        }
-        clientWhere.agencyId = requestedId;
-      } else {
-        clientWhere.agencyId = parseInt(agencyId);
+    if (agencyId) clientWhere.agencyId = parseInt(agencyId);
+    if (clientId) {
+      const cid = parseInt(clientId);
+      if (scope && !scope.includes(cid)) {
+        return res.status(403).json({ error: 'Access denied to this client' });
       }
+      channelWhere.clientId = cid;
     }
-    if (clientId) channelWhere.clientId = parseInt(clientId);
     if (channelType) channelWhere.type = channelType;
     // Filter by canonical channel (master) - spans clients & agencies.
     if (channelMasterId) channelWhere.channelMasterId = parseInt(channelMasterId);
@@ -612,29 +624,20 @@ export async function exportScheduleLogs(req, res) {
     // Build where clause
     const where = { isDeleted: false };
 
-    // Role-based access: MANAGER can only see their assigned agencies
-    if (req.user.role === 'MANAGER') {
-      const access = await prisma.userAgencyAccess.findMany({
-        where: { userId: req.user.id },
-        select: { agencyId: true },
-      });
-      const allowedAgencyIds = access.map((a) => a.agencyId);
-      where.agencyId = { in: allowedAgencyIds };
-    }
+    // Agency + client level access: scoped users are limited to their accessible
+    // clients (SUPER_ADMIN unrestricted). Requested agency/client filters are
+    // intersected with that scope, never widening it.
+    const scope = await accessibleClientScope(req.user);
+    if (scope) where.clientId = { in: scope };
 
-    if (agencyId) {
-      // If MANAGER, intersect with their allowed agencies
-      if (where.agencyId?.in) {
-        const requestedId = parseInt(agencyId);
-        if (!where.agencyId.in.includes(requestedId)) {
-          return res.status(403).json({ error: 'Access denied to this agency' });
-        }
-        where.agencyId = requestedId;
-      } else {
-        where.agencyId = parseInt(agencyId);
+    if (agencyId) where.agencyId = parseInt(agencyId);
+    if (clientId) {
+      const cid = parseInt(clientId);
+      if (scope && !scope.includes(cid)) {
+        return res.status(403).json({ error: 'Access denied to this client' });
       }
+      where.clientId = cid;
     }
-    if (clientId) where.clientId = parseInt(clientId);
     if (channelMasterId) where.channelMasterId = parseInt(channelMasterId);
     if (medium) where.medium = medium;
 

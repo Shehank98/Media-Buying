@@ -93,9 +93,15 @@ export default function SpendAnalyticsPage() {
   useEffect(() => {
     api.get('/agencies').then(r => {
       const list = r.data.agencies || r.data || [];
-      setAgencies(Array.isArray(list) ? list : []);
+      const arr = Array.isArray(list) ? list : [];
+      setAgencies(arr);
+      // Non-super-admins (e.g. a manager assigned to a single agency) get that
+      // agency pre-selected instead of having to pick it manually.
+      if (!isSuperAdmin && arr.length === 1) {
+        setAgencyId(String(arr[0].id));
+      }
     }).catch(() => {});
-  }, []);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     if (!agencyId) { setClients([]); setClientId(''); return; }
@@ -138,11 +144,17 @@ export default function SpendAnalyticsPage() {
   }, [agencyId, clientId]);
 
   // Client yearly targets vs achieved (own scope), for the target section.
+  // Scoped to the accessible clients, and further narrowed to the selected
+  // agency/client filters so a manager only sees their own agency's targets.
   useEffect(() => {
-    api.get('/database/client-targets', { params: ctYear ? { year: ctYear } : {} })
+    const params = {};
+    if (ctYear) params.year = ctYear;
+    if (agencyId) params.agencyId = agencyId;
+    if (clientId) params.clientId = clientId;
+    api.get('/database/client-targets', { params })
       .then(({ data }) => { setClientTargets(data); if (!ctYear && data?.year) setCtYear(String(data.year)); })
       .catch(() => setClientTargets(null));
-  }, [ctYear]);
+  }, [ctYear, agencyId, clientId]);
 
   // Comparison period (Period B)
   useEffect(() => {

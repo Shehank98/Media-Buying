@@ -426,6 +426,26 @@ export async function getClientTargets(req, res) {
       clientWhere.id = { in: ids.length ? ids : [-1] };
     }
 
+    // Optional agency/client narrowing from the filter bar — intersected with
+    // the role scope above (AND semantics) so it can only ever restrict, never
+    // widen, what the user is allowed to see.
+    const reqAgencyId = parseInt(req.query.agencyId) || null;
+    const reqClientId = parseInt(req.query.clientId) || null;
+    if (reqAgencyId) {
+      if (clientWhere.agencyId && clientWhere.agencyId.in) {
+        clientWhere.agencyId = { in: clientWhere.agencyId.in.includes(reqAgencyId) ? [reqAgencyId] : [] };
+      } else {
+        clientWhere.agencyId = reqAgencyId;
+      }
+    }
+    if (reqClientId) {
+      if (clientWhere.id && clientWhere.id.in) {
+        clientWhere.id = { in: clientWhere.id.in.includes(reqClientId) ? [reqClientId] : [] };
+      } else {
+        clientWhere.id = reqClientId;
+      }
+    }
+
     const clients = await prisma.client.findMany({
       where: clientWhere,
       select: { id: true, name: true, agency: { select: { name: true } } },

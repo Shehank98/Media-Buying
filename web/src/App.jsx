@@ -28,10 +28,15 @@ import MediaBuyingPage from './pages/MediaBuyingPage';
 import ProfitPage from './pages/ProfitPage';
 import RateCardsPage from './pages/RateCardsPage';
 
-// Home (/) lands on the Executive Dashboard for exec roles, Database otherwise.
+// Home (/) lands on the Executive Dashboard for SUPER_ADMIN, the Deep Dashboard
+// for MANAGER, Database otherwise.
 function HomeRedirect() {
   const { user } = useAuth();
-  const target = ['SUPER_ADMIN', 'MANAGER'].includes(user?.role) ? '/executive-dashboard' : '/database';
+  const target = user?.role === 'SUPER_ADMIN'
+    ? '/executive-dashboard'
+    : user?.role === 'MANAGER'
+      ? '/deep-dashboard'
+      : '/database';
   return <Navigate to={target} replace />;
 }
 
@@ -95,7 +100,7 @@ export default function App() {
             <Route
               path="/executive-dashboard"
               element={
-                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN']}>
                   <ExecutiveDashboardPage />
                 </ProtectedRoute>
               }

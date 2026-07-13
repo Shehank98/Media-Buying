@@ -6,7 +6,8 @@ import api from '../lib/api';
 import { hasPageAccess, isPageGranted } from '../lib/permissions';
 
 const NAV = [
-  { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
+  { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN'] },
+  { key: '/deep-dashboard', label: 'Dashboard', icon: 'bar-chart', roles: ['MANAGER'] },
   { key: '/forecasting', label: 'Forecasting', icon: 'calendar', roles: ['SUPER_ADMIN', 'GROUP_HEAD'] },
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'] },
@@ -42,6 +43,7 @@ function Breadcrumbs({ go }) {
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
   if (path === '/profit') return <>{home}{sep}<b>Profit</b></>;
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
+  if (path === '/deep-dashboard') return <>{home}{sep}<b>Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
   if (path === '/packages') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Media Packages</b></>;
   if (path === '/my-packages') return <>{home}{sep}<b>Media Packages</b></>;
