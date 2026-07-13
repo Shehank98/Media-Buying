@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
-import Icon, { Avatar, RoleBadge } from '../components/Icon';
+import Icon, { Avatar, RoleBadge, fmtLKR } from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
@@ -1926,17 +1926,17 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ ANNUAL TARGETS TABLE ============ */}
       {activeTab === 'group-revenue' && (
-        <div>
-          <div style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 18px', marginBottom: 16 }}>
-            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #15814B, #15814B1A 70%, transparent)' }} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginRight: 6 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="money" size={17} /></div>
-                <div>
-                  <div style={{ fontSize: 14.5, fontWeight: 720, color: 'var(--ink)', lineHeight: 1.1 }}>Group Revenue</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear}</div>
-                </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* ── Toolbar ── */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 18px', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#15814B,#0E6B3D)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="money" size={20} /></div>
+              <div>
+                <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>Group Revenue</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Actual billing, targets &amp; revenue by group head</div>
               </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginLeft: 'auto', flexWrap: 'wrap' }}>
               <div className="field" style={{ margin: 0 }}>
                 <label>Month</label>
                 <select className="select" value={grMonth} onChange={e => { setGrSavedAt(null); setGrMonth(Number(e.target.value)); }}>
@@ -1949,111 +1949,169 @@ export default function AdminPage({ initialTab = 'users' }) {
                   {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
-              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total entered (heads)</div>
-                <div className="mono" style={{ fontSize: 20, fontWeight: 750, color: 'var(--ink)' }}>LKR {grTotal.toLocaleString('en-US')}</div>
-              </div>
               <button className="btn btn-primary" onClick={saveGroupRevenue} disabled={grSaving || grLoading}>
-                {grSaving ? 'Saving…' : 'Save'}
+                {grSaving ? 'Saving…' : 'Save all'}
               </button>
+              {grSavedAt && !grSaving && <span style={{ color: '#15814B', fontWeight: 700, fontSize: 13, alignSelf: 'center', whiteSpace: 'nowrap' }}>✓ Saved</span>}
             </div>
           </div>
 
-          {/* Agency-wise actual billing for the month → Business Units Revenue donut
-              + the month total feeds the Revenue Achievement chart. Saved with the
-              main Save button above (posted alongside the group-head amounts). */}
-          <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-              <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Actual billing · {MONTHS[grMonth - 1]} {grYear} (full LKR, by agency)</label>
-              <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Total <b className="mono" style={{ color: 'var(--ink)' }}>LKR {grAgencyTotal.toLocaleString('en-US')}</b></div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              {grAgencies.map(a => (
-                <div className="field" key={a.agencyId} style={{ margin: 0, flex: '1 1 180px', minWidth: 160 }}>
-                  <label style={{ fontSize: 12 }}>{a.agencyName}</label>
-                  <input
-                    className="input" type="number" min="0" step="1000"
-                    value={grAgencyAmounts[a.agencyId] ?? ''}
-                    onChange={e => { setGrSavedAt(null); setGrAgencyAmounts(m => ({ ...m, [a.agencyId]: e.target.value })); }}
-                    placeholder="0"
-                  />
+          {/* ── Actual billing + Monthly target (two columns) ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, alignItems: 'start' }}>
+            {/* Actual billing by agency */}
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: '#EAF0FA', color: '#1F5BB5', display: 'grid', placeItems: 'center' }}><Icon name="bar-chart" size={15} /></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Actual billing</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · by agency</div>
                 </div>
-              ))}
-              {grAgencies.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '8px 0' }}>No agencies found.</div>}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-              Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut for {MONTHS[grMonth - 1]}. The total is used as this month's company billing, so the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart (Jan→latest month vs prorated target) stays in sync - no separate billing entry needed.
-            </div>
-          </div>
-
-          {/* Monthly REVENUE TARGET for the whole year → cumulative = Revenue Achievement target bar */}
-          <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div className="field" style={{ margin: 0, flex: '1 1 240px', minWidth: 200 }}>
-                <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Monthly revenue target · {grYear} (full LKR, every month)</label>
-                <input
-                  className="input" type="number" min="0" step="1000"
-                  value={grRevenueTarget}
-                  onChange={e => { setGrSavedAt(null); setGrRevenueTarget(e.target.value); }}
-                  placeholder="e.g. 50000000"
-                />
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total</div>
+                  <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#1F5BB5' }}>{fmtLKR(grAgencyTotal)}</div>
+                </div>
               </div>
-              {grRevenueTarget !== '' && Number(grRevenueTarget) > 0 && (
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', paddingBottom: 8 }}>
-                  Cumulative to a month = this × month number.<br />
-                  e.g. up to Jun = <b className="mono" style={{ color: 'var(--ink)' }}>{(Number(grRevenueTarget) * 6).toLocaleString('en-US')}</b> (× 6)
-                </div>
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-              One monthly target for the whole year — it applies to <b style={{ color: 'var(--ink)' }}>every month</b>. The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart = this × the number of months elapsed (Jan→latest billed month), e.g. 10 → 60 at June. Leave blank to fall back to the prorated Annual Target. Saved with the main Save button above (applies to the selected Year).
-            </div>
-          </div>
-
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
-            Enter each group head's revenue for <b style={{ color: 'var(--ink)' }}>{MONTHS[grMonth - 1]} {grYear}</b> (full LKR). This feeds the Revenue Contribution donut on the Executive Dashboard, which pairs it with the previous month's schedule-log budget. Leave a head blank to omit them.
-            {grSavedAt && <span style={{ color: '#15814B', fontWeight: 700, marginLeft: 8 }}>Saved.</span>}
-          </div>
-          {grLoading ? (
-            <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading group heads…" /></div>
-          ) : grHeads.length === 0 ? (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)', background: '#fff', border: '1px solid var(--border)', borderRadius: 14 }}>
-              No group heads found. Add users with the GROUP_HEAD role first.
-            </div>
-          ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Group Head</th>
-                    <th style={{ textAlign: 'right' }}>Revenue (LKR)</th>
-                    <th style={{ textAlign: 'right' }}>Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grHeads.map(h => {
-                    const val = Number(grAmounts[h.headUserId] || 0);
-                    const pct = grTotal > 0 ? (val / grTotal) * 100 : 0;
-                    return (
-                      <tr key={h.headUserId}>
-                        <td className="strong">{h.headName}</td>
-                        <td style={{ textAlign: 'right' }}>
+              <div style={{ padding: '14px 16px' }}>
+                {grAgencies.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '8px 0' }}>No agencies found.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {grAgencies.map(a => {
+                      const av = Number(grAgencyAmounts[a.agencyId] || 0);
+                      const apct = grAgencyTotal > 0 ? (av / grAgencyTotal) * 100 : 0;
+                      return (
+                        <div key={a.agencyId}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                            <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{a.agencyName}</label>
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{av > 0 ? `${apct.toFixed(1)}%` : ''}</span>
+                          </div>
                           <input
                             className="input" type="number" min="0" step="1000"
-                            value={grAmounts[h.headUserId] ?? ''}
-                            onChange={e => { setGrSavedAt(null); setGrAmounts(a => ({ ...a, [h.headUserId]: e.target.value })); }}
+                            value={grAgencyAmounts[a.agencyId] ?? ''}
+                            onChange={e => { setGrSavedAt(null); setGrAgencyAmounts(m => ({ ...m, [a.agencyId]: e.target.value })); }}
                             placeholder="0"
-                            style={{ maxWidth: 190, textAlign: 'right' }}
+                            style={{ textAlign: 'right' }}
                           />
-                        </td>
-                        <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{val > 0 ? `${pct.toFixed(1)}%` : '-'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <div style={{ height: 4, borderRadius: 3, background: '#EEF0F3', marginTop: 6, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, apct)}%`, height: '100%', background: '#1F5BB5', borderRadius: 3 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart — no separate billing entry needed.
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* Monthly revenue target */}
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: '#FBF1DC', color: '#9A5B00', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={15} /></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Monthly revenue target</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{grYear} · applies to every month</div>
+                </div>
+              </div>
+              <div style={{ padding: '14px 16px' }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label style={{ fontSize: 12 }}>Amount per month (full LKR)</label>
+                  <input
+                    className="input" type="number" min="0" step="1000"
+                    value={grRevenueTarget}
+                    onChange={e => { setGrSavedAt(null); setGrRevenueTarget(e.target.value); }}
+                    placeholder="e.g. 50000000"
+                    style={{ textAlign: 'right' }}
+                  />
+                </div>
+                {grRevenueTarget !== '' && Number(grRevenueTarget) > 0 && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', background: '#FCF7EC', border: '1px solid #F0E2C4', borderRadius: 10 }}>
+                    <div style={{ fontSize: 10.5, color: '#9A5B00', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 6 }}>Cumulative target = monthly × month</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {[3, 6, 9, 12].map(mn => (
+                        <div key={mn} style={{ flex: '1 1 70px', textAlign: 'center', background: '#fff', border: '1px solid #F0E2C4', borderRadius: 8, padding: '6px 4px' }}>
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>Up to {MONTHS[mn - 1]}</div>
+                          <div className="mono" style={{ fontSize: 12.5, fontWeight: 750, color: 'var(--ink)' }}>{fmtLKR(Number(grRevenueTarget) * mn)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+                  The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the Revenue Achievement chart = this × months elapsed (e.g. 10 → 60 at June). Leave blank to fall back to the prorated Annual Target.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Revenue by group head ── */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="users" size={15} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by group head</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · feeds the Revenue Contribution donut</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total</div>
+                <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#15814B' }}>{fmtLKR(grTotal)}</div>
+              </div>
+            </div>
+            {grLoading ? (
+              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading group heads…" /></div>
+            ) : grHeads.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
+                No group heads found. Add users with the GROUP_HEAD role first.
+              </div>
+            ) : (
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Group Head</th>
+                      <th style={{ textAlign: 'right', width: 210 }}>Revenue (LKR)</th>
+                      <th style={{ minWidth: 200 }}>Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grHeads.map(h => {
+                      const val = Number(grAmounts[h.headUserId] || 0);
+                      const pct = grTotal > 0 ? (val / grTotal) * 100 : 0;
+                      return (
+                        <tr key={h.headUserId}>
+                          <td className="strong">{h.headName}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <input
+                              className="input" type="number" min="0" step="1000"
+                              value={grAmounts[h.headUserId] ?? ''}
+                              onChange={e => { setGrSavedAt(null); setGrAmounts(a => ({ ...a, [h.headUserId]: e.target.value })); }}
+                              placeholder="0"
+                              style={{ maxWidth: 190, textAlign: 'right' }}
+                            />
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: '#15814B', borderRadius: 5 }} />
+                              </div>
+                              <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: val > 0 ? 'var(--ink)' : 'var(--muted)' }}>{val > 0 ? `${pct.toFixed(1)}%` : '-'}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: '2px solid var(--border)' }}>
+                      <td className="strong">Total</td>
+                      <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grTotal)}</td>
+                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{grHeads.length} group head{grHeads.length === 1 ? '' : 's'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
