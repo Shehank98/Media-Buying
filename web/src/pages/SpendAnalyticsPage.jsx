@@ -1358,25 +1358,6 @@ export default function SpendAnalyticsPage() {
             </div>
           </div>
 
-          {/* Top Clients bar chart */}
-          {data.byClient.length > 1 && (
-            <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
-              <h3 className="spa-ctitle">Top Clients by Spend</h3>
-              <p className="spa-csub" style={{ marginBottom: 12 }}>Highest committed media value (top 12)</p>
-              <ResponsiveContainer width="100%" height={Math.min(420, data.byClient.slice(0, 12).length * 30 + 30)}>
-                <BarChart data={data.byClient.slice(0, 12)} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11.5, fill: '#16243C' }} tickLine={false} axisLine={false} width={140} />
-                  <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                    {data.byClient.slice(0, 12).map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
           {/* By Client Table */}
           {data.byClient.length > 1 && (
             <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
