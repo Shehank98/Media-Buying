@@ -664,6 +664,40 @@ async function splitDuplicates(candidates) {
   return { unique, duplicates, duplicateRows };
 }
 
+// "Replace" import: for every (client, scheduleMonth) pair present in the upload,
+// soft-delete the existing non-deleted rows so the fresh rows take their place
+// (re-uploading a month/year replaces it instead of doubling the totals).
+function clientMonthPairs(candidates) {
+  const byClient = new Map();
+  for (const c of candidates) {
+    if (!byClient.has(c.clientId)) byClient.set(c.clientId, new Set());
+    byClient.get(c.clientId).add(c.scheduleMonth);
+  }
+  return byClient;
+}
+
+async function countExistingForReplace(candidates) {
+  const byClient = clientMonthPairs(candidates);
+  let n = 0;
+  for (const [clientId, months] of byClient) {
+    n += await prisma.scheduleLog.count({ where: { clientId, scheduleMonth: { in: [...months] }, isDeleted: false } });
+  }
+  return n;
+}
+
+async function softDeleteForReplace(candidates, userId) {
+  const byClient = clientMonthPairs(candidates);
+  let removed = 0;
+  for (const [clientId, months] of byClient) {
+    const r = await prisma.scheduleLog.updateMany({
+      where: { clientId, scheduleMonth: { in: [...months] }, isDeleted: false },
+      data: { isDeleted: true, deletedById: userId, deletedAt: new Date() },
+    });
+    removed += r.count;
+  }
+  return removed;
+}
+
 export async function bulkCreateScheduleLogs(req, res) {
   try {
     const { rows, fileName } = req.body;
@@ -1081,7 +1115,7 @@ export async function releaseHeldImportRows({ clientReqId = null, channelReqId =
 
 export async function importAllScheduleLogs(req, res) {
   try {
-    const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false } = req.body;
+    const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false, replaceExisting = false } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
@@ -1223,12 +1257,16 @@ export async function importAllScheduleLogs(req, res) {
         ro: u.roNumber,
         value: u.scheduleValue,
       }));
+      // How many existing rows a "Replace" would soft-delete (the months/clients
+      // in this file), so the UI can offer replace and warn about the count.
+      const existingToReplace = await countExistingForReplace(candidates);
       return res.json({
         dryRun: true,
         total: candidates.length + pendingNewClientRows,
         newRows: unique.length + pendingNewClientRows,
         newClientRows: pendingNewClientRows,
         duplicates,
+        existingToReplace,
         failed: errors.length,
         errors, // full list so the user can download every failed row
         duplicateRows,
@@ -1236,10 +1274,17 @@ export async function importAllScheduleLogs(req, res) {
       });
     }
 
-    // "Re-upload everything" inserts all valid rows (duplicates included);
-    // otherwise insert only the rows not already present. Strip the helper _row.
-    const toInsert = (allowDuplicates ? candidates : unique).map(({ _row, ...rest }) => rest);
-    const reportedDuplicates = allowDuplicates ? 0 : duplicates;
+    // "Replace" mode: soft-delete the existing rows for every (client, month) in
+    // this file, then insert ALL valid rows (so a re-upload replaces the old data
+    // instead of doubling it). Otherwise: "Re-upload everything" inserts all valid
+    // rows (duplicates included); the default inserts only rows not already present.
+    let replacedCount = 0;
+    if (replaceExisting) {
+      replacedCount = await softDeleteForReplace(candidates, user.id);
+    }
+    const insertSource = (replaceExisting || allowDuplicates) ? candidates : unique;
+    const toInsert = insertSource.map(({ _row, ...rest }) => rest);
+    const reportedDuplicates = (replaceExisting || allowDuplicates) ? 0 : duplicates;
     for (const t of toInsert) { usedAgencyIds.add(t.agencyId); usedClientIds.add(t.clientId); }
 
     // One batch record for the whole import.
@@ -1283,6 +1328,7 @@ export async function importAllScheduleLogs(req, res) {
       created: createdCount,
       failed: errors.length,
       duplicates: reportedDuplicates,
+      replaced: replacedCount,
       createdClients,
       errors, // full list so the user can download every failed row
       batchId: uploadBatch?.id || null,

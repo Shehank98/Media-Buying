@@ -800,7 +800,7 @@ export default function DatabasePage() {
         rows, fileName: importFileName, createMissingClients: importCreateClients, dryRun: true,
       });
       data.__rows = rows; data.__held = heldCount;
-      if (data.duplicates > 0 || data.failed > 0) {
+      if (data.duplicates > 0 || data.failed > 0 || data.existingToReplace > 0) {
         setImportCheck(data);
         setImporting(false);
       } else {
@@ -812,8 +812,10 @@ export default function DatabasePage() {
     }
   };
 
-  // Step 3: actually import. allowDuplicates=false → only new rows; true → all rows.
-  const runImport = async (allowDuplicates, rows = importRows, heldCount = 0) => {
+  // Step 3: actually import. allowDuplicates=false → only new rows; true → all rows;
+  // replaceExisting=true → soft-delete existing rows for the file's (client,month)
+  // pairs first, then insert everything (a clean replace, no doubling).
+  const runImport = async (allowDuplicates, rows = importRows, heldCount = 0, replaceExisting = false) => {
     setImporting(true);
     try {
       const { data } = await api.post('/database/import-all', {
@@ -821,6 +823,7 @@ export default function DatabasePage() {
         fileName: importFileName,
         createMissingClients: importCreateClients,
         allowDuplicates,
+        replaceExisting,
       });
       setImportResult({ ...data, held: heldCount });
       setImportCheck(null);
@@ -1576,9 +1579,12 @@ export default function DatabasePage() {
                     </div>
                     <div style={{ fontSize: 13, color: '#6B5A3C' }}>
                       {importCheck.duplicates > 0 && `${importCheck.duplicates} already in the database`}
-                      {importCheck.duplicates > 0 && importCheck.failed > 0 && ' · '}
+                      {importCheck.duplicates > 0 && (importCheck.failed > 0 || importCheck.existingToReplace > 0) && ' · '}
+                      {importCheck.existingToReplace > 0 && `${importCheck.existingToReplace} existing row(s) for these clients/months`}
+                      {importCheck.existingToReplace > 0 && importCheck.failed > 0 && ' · '}
                       {importCheck.failed > 0 && `${importCheck.failed} can't be imported (see below)`}
                       . How do you want to proceed?
+                      {importCheck.existingToReplace > 0 && <><br /><b style={{ color: '#C44A18' }}>Replacing 2025 (or any month)? Use “Replace”</b> — it removes the existing rows first so totals don't double.</>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -1590,6 +1596,12 @@ export default function DatabasePage() {
                       <div style={{ fontSize: 22, fontWeight: 750, color: '#9A5B00', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.duplicates}</div>
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>duplicates</div>
                     </div>
+                    {importCheck.existingToReplace > 0 && (
+                      <div style={{ flex: 1, background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 22, fontWeight: 750, color: '#1F5BB5', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.existingToReplace}</div>
+                        <div style={{ fontSize: 12, color: '#3B4A63' }}>existing rows (for these months)</div>
+                      </div>
+                    )}
                     {importCheck.failed > 0 && (
                       <div style={{ flex: 1, background: '#FBE0DA', border: '1px solid #f6c9bb', borderRadius: 10, padding: '14px 16px' }}>
                         <div style={{ fontSize: 22, fontWeight: 750, color: '#C5391F', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.failed}</div>
@@ -1721,6 +1733,21 @@ export default function DatabasePage() {
                     {importCheck.duplicates > 0 && (
                       <button className="btn btn-ghost" onClick={() => runImport(true, importCheck.__rows || importRows, importCheck.__held || 0)} disabled={importing} title="Insert every row, including duplicates">
                         {importing ? 'Working…' : 'Re-upload everything'}
+                      </button>
+                    )}
+                    {importCheck.existingToReplace > 0 && (
+                      <button
+                        className="btn"
+                        style={{ background: '#C44A18', borderColor: '#C44A18', color: '#fff' }}
+                        onClick={() => {
+                          if (window.confirm(`Replace mode will DELETE the ${importCheck.existingToReplace} existing row(s) for these clients/months, then import this file fresh. Continue?`)) {
+                            runImport(false, importCheck.__rows || importRows, importCheck.__held || 0, true);
+                          }
+                        }}
+                        disabled={importing}
+                        title="Delete existing rows for these months, then import this file (no doubling)"
+                      >
+                        {importing ? 'Working…' : `Replace (${importCheck.existingToReplace} old row${importCheck.existingToReplace === 1 ? '' : 's'})`}
                       </button>
                     )}
                     <button className="btn btn-primary" onClick={() => runImport(false, importCheck.__rows || importRows, importCheck.__held || 0)} disabled={importing || importCheck.newRows === 0}>
