@@ -173,6 +173,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [ctLoading, setCtLoading] = useState(false);
   const [ctSavingId, setCtSavingId] = useState(null);
   const [ctSearch, setCtSearch] = useState('');
+  const [ctSavedId, setCtSavedId] = useState(null); // last client saved (transient tick)
 
   /* ---- database backup (Google Drive) ---- */
   const [backup, setBackup] = useState(null);
@@ -1061,6 +1062,8 @@ export default function AdminPage({ initialTab = 'users' }) {
     setCtSavingId(clientId);
     try {
       await api.post('/admin/client-targets', { clientId, year: ctYear, amount: raw === '' ? null : Number(raw) });
+      setCtSavedId(clientId);
+      setTimeout(() => setCtSavedId(id => (id === clientId ? null : id)), 1600);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save client target.');
     } finally {
@@ -1967,61 +1970,109 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-      {activeTab === 'client-targets' && (
-        <div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Year</label>
-              <select className="select" value={ctYear} onChange={e => setCtYear(Number(e.target.value))}>
-                {(ctYears.length ? ctYears : [ctYear]).map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
+      {activeTab === 'client-targets' && (() => {
+        const filtered = ctClients.filter(c => !ctSearch || c.name.toLowerCase().includes(ctSearch.toLowerCase()) || (c.agencyName || '').toLowerCase().includes(ctSearch.toLowerCase()));
+        const totalTarget = filtered.reduce((s, c) => s + (Number(ctAmounts[c.clientId]) || 0), 0);
+        const setCount = filtered.filter(c => Number(ctAmounts[c.clientId]) > 0).length;
+        // Group filtered clients by agency (preserve order).
+        const groups = [];
+        const gmap = new Map();
+        filtered.forEach(c => {
+          const key = c.agencyName || 'No agency';
+          if (!gmap.has(key)) { gmap.set(key, { name: key, clients: [] }); groups.push(gmap.get(key)); }
+          gmap.get(key).clients.push(c);
+        });
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Toolbar */}
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 18px', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#D9521C,#B23F12)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={20} /></div>
+                <div>
+                  <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>Client Targets</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly spend target per client · achieved from actual schedule spend</div>
+                </div>
+              </div>
+              <div className="field" style={{ margin: 0, marginLeft: 'auto' }}>
+                <label>Year</label>
+                <select className="select" value={ctYear} onChange={e => setCtYear(Number(e.target.value))}>
+                  {(ctYears.length ? ctYears : [ctYear]).map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <div className="field" style={{ margin: 0, minWidth: 200 }}>
+                <label>Search</label>
+                <input className="input" type="text" value={ctSearch} onChange={e => setCtSearch(e.target.value)} placeholder="Client or agency…" />
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total target · {setCount} set</div>
+                <div className="mono" style={{ fontSize: 18, fontWeight: 750, color: '#D9521C' }}>{fmtLKR(totalTarget)}</div>
+              </div>
             </div>
-            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
-              <label>Search client</label>
-              <input className="input" type="text" value={ctSearch} onChange={e => setCtSearch(e.target.value)} placeholder="Filter clients…" />
-            </div>
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
-            Set each client's <b style={{ color: 'var(--ink)' }}>yearly spend target</b> (full LKR) for {ctYear}. Achievement is the client's actual schedule spend for the year, shown on Spend Analytics and the Client Dashboard. Clear a value to remove the target. Saved automatically when you leave a field.
-          </div>
-          {ctLoading ? (
-            <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading clients…" /></div>
-          ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th>Agency</th>
-                    <th style={{ textAlign: 'right' }}>Yearly Target (LKR)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ctClients
-                    .filter(c => !ctSearch || c.name.toLowerCase().includes(ctSearch.toLowerCase()) || (c.agencyName || '').toLowerCase().includes(ctSearch.toLowerCase()))
-                    .map(c => (
-                      <tr key={c.clientId}>
-                        <td className="strong">{c.name}</td>
-                        <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <input
-                            className="input" type="number" min="0" step="1000"
-                            value={ctAmounts[c.clientId] ?? ''}
-                            onChange={e => setCtAmounts(a => ({ ...a, [c.clientId]: e.target.value }))}
-                            onBlur={() => saveClientTarget(c.clientId)}
-                            placeholder="-"
-                            style={{ maxWidth: 200, textAlign: 'right' }}
-                            disabled={ctSavingId === c.clientId}
-                          />
-                        </td>
+
+            {/* Table */}
+            <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+                Enter each client's <b style={{ color: 'var(--ink)' }}>yearly spend target</b> for {ctYear} (full LKR). Saved automatically when you leave a field; clear a value to remove the target.
+              </div>
+              {ctLoading ? (
+                <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading clients…" /></div>
+              ) : filtered.length === 0 ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>No clients match your search.</div>
+              ) : (
+                <div className="tbl-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th style={{ textAlign: 'right', width: 240 }}>Yearly Target (LKR)</th>
+                        <th style={{ width: 90 }}></th>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {groups.map(g => (
+                        <Fragment key={g.name}>
+                          <tr style={{ background: 'var(--bg,#F5F6F8)' }}>
+                            <td colSpan={3} style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: '#6B7790', padding: '8px 12px' }}>
+                              {g.name} <span style={{ color: 'var(--muted)', fontWeight: 600 }}>· {g.clients.length}</span>
+                            </td>
+                          </tr>
+                          {g.clients.map(c => {
+                            const has = Number(ctAmounts[c.clientId]) > 0;
+                            return (
+                              <tr key={c.clientId}>
+                                <td className="strong">{c.name}</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <input
+                                    className="input" type="number" min="0" step="1000"
+                                    value={ctAmounts[c.clientId] ?? ''}
+                                    onChange={e => setCtAmounts(a => ({ ...a, [c.clientId]: e.target.value }))}
+                                    onBlur={() => saveClientTarget(c.clientId)}
+                                    placeholder="Not set"
+                                    style={{ maxWidth: 220, textAlign: 'right', ...(has ? {} : { color: 'var(--muted)' }) }}
+                                    disabled={ctSavingId === c.clientId}
+                                  />
+                                </td>
+                                <td style={{ fontSize: 12, color: '#15814B', fontWeight: 700 }}>
+                                  {ctSavingId === c.clientId ? <span style={{ color: 'var(--muted)' }}>Saving…</span> : ctSavedId === c.clientId ? '✓ Saved' : ''}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </Fragment>
+                      ))}
+                      <tr style={{ borderTop: '2px solid var(--border)' }}>
+                        <td className="strong">Total ({setCount} set)</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(totalTarget)}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       {/* ============ ANNUAL TARGETS TABLE ============ */}
       {activeTab === 'group-revenue' && (
