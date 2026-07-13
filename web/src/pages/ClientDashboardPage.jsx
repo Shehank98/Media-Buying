@@ -211,7 +211,7 @@ export default function ClientDashboardPage() {
           <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: data.yearBlock.remaining > 0 ? '#C5391F' : '#15814B' }}>
             {data.yearBlock.remaining > 0
               ? <>Still needed: <span className="mono">{fmtLKR(data.yearBlock.remaining)}</span></>
-              : <>Target reached — over by <span className="mono">{fmtLKR(Math.abs(data.yearBlock.remaining))}</span></>}
+              : <>Target reached - over by <span className="mono">{fmtLKR(Math.abs(data.yearBlock.remaining))}</span></>}
           </div>
         </div>
       )}

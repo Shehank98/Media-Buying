@@ -329,7 +329,7 @@ export default function MediaBuyingPage() {
   useEffect(() => { setExpandedClientId(null); setYearlyByClient({}); setRollMsg(''); setOnlyMissingDeals(false); }, [channelMasterId]);
 
   // Roll this channel's deals (agency + all clients) forward from a source year
-  // to the next year — only fills years not already negotiated (never overwrites).
+  // to the next year - only fills years not already negotiated (never overwrites).
   const rollForward = useCallback(async (fromYear) => {
     if (!channelMasterId || !fromYear) return;
     const toYear = fromYear + 1;

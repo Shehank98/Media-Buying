@@ -592,7 +592,7 @@ function InsightsTab() {
                             <td className="strong">{c.channelName}</td>
                             <td><span className="medium-tag" data-medium={c.medium}>{c.medium}</span></td>
                             <td className="mono" style={{ textAlign: 'right' }}>{fmtM(c.forecastMillions)}</td>
-                            <td className="mono" style={{ textAlign: 'right', color: hasT ? 'inherit' : 'var(--muted)' }}>{hasT ? fmtM(c.monthlyTargetMillions) : '—'}</td>
+                            <td className="mono" style={{ textAlign: 'right', color: hasT ? 'inherit' : 'var(--muted)' }}>{hasT ? fmtM(c.monthlyTargetMillions) : '-'}</td>
                             <td>
                               {!hasT ? (
                                 <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>No target set</span>

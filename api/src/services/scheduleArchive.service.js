@@ -1,6 +1,6 @@
 // ─── Schedule-log yearly archive to Google Drive ────────────────────────────
 // Exports a full year of ScheduleLog rows (all columns) to an Excel file in
-// Google Drive under Orbit Schedule Logs/<year>/. A backup/archive only — the
+// Google Drive under Orbit Schedule Logs/<year>/. A backup/archive only - the
 // rows stay in the database. Reuses the same Drive auth as the DB backup.
 import { getDriveAccessToken, ensureFolder, hasDriveAuth, oauthConfigured } from './backup.service.js';
 

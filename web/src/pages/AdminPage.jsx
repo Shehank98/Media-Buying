@@ -1886,8 +1886,8 @@ export default function AdminPage({ initialTab = 'users' }) {
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
             Set each channel's commitment <b style={{ color: 'var(--ink)' }}>type</b> and the <b style={{ color: 'var(--ink)' }}>period</b> it runs over (start month → end month, and it can cross years, e.g. Mar 2026 → Apr 2027).
-            <br /><b style={{ color: 'var(--ink)' }}>Monthly commitment</b>: enter the amount per month — each month is judged on its own (met = green, missed = red).
-            <b style={{ color: 'var(--ink)' }}> Annual target</b>: enter the total for the whole period — it is judged cumulatively (pacing to date), not month by month.
+            <br /><b style={{ color: 'var(--ink)' }}>Monthly commitment</b>: enter the amount per month - each month is judged on its own (met = green, missed = red).
+            <b style={{ color: 'var(--ink)' }}> Annual target</b>: enter the total for the whole period - it is judged cumulatively (pacing to date), not month by month.
             The dashboard counts only the channel's active months in the selected year, starting from the start month. Click <b style={{ color: 'var(--ink)' }}>Save</b> per row; clear the amount and Save to remove.
           </div>
           {ccLoading ? (
@@ -2100,7 +2100,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </div>
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
-                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart — no separate billing entry needed.
+                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart - no separate billing entry needed.
                 </div>
               </div>
             </div>

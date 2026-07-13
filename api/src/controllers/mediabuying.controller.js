@@ -254,7 +254,7 @@ export async function getNegotiationPlanner(req, res) {
       const totalSpend = years.reduce((sum, y) => sum + yearMap.get(y), 0);
       const dealsForClient = dealByClientYear.get(clientId) || new Map();
       // Average discount/bonus over the years that actually HAVE a recorded deal
-      // (not over all spend-years) — so a client whose only deal is 2026 shows
+      // (not over all spend-years) - so a client whose only deal is 2026 shows
       // its true 2026 terms instead of being diluted toward 0 by earlier
       // deal-less spend years.
       const dealYears = [...dealsForClient.keys()];

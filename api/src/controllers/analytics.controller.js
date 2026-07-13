@@ -1504,7 +1504,7 @@ export async function getChannelCommitments(req, res) {
     }
 
     // Latest month with data this year (capped at the current calendar month for
-    // an in-progress year) — the global pacing ceiling.
+    // an in-progress year) - the global pacing ceiling.
     const aMonths = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
       where: { ...scope, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
