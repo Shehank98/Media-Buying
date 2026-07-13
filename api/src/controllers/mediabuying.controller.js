@@ -59,11 +59,17 @@ export async function getChannelIntelligence(req, res) {
       if (!latestDealByClient.has(d.clientId)) latestDealByClient.set(d.clientId, d);
     }
 
-    const clients = await Promise.all(grouped.map(async (g) => {
-      const client = await prisma.client.findUnique({
-        where: { id: g.clientId },
-        include: { agency: { select: { id: true, name: true } } },
-      });
+    // Prefetch all clients in one query (avoids an N+1 lookup per client).
+    const clientRecords = grouped.length
+      ? await prisma.client.findMany({
+          where: { id: { in: grouped.map((g) => g.clientId) } },
+          include: { agency: { select: { id: true, name: true } } },
+        })
+      : [];
+    const clientById = new Map(clientRecords.map((c) => [c.id, c]));
+
+    const clients = grouped.map((g) => {
+      const client = clientById.get(g.clientId);
       const totalSpend = safeNum(g._sum.scheduleValue) || 0;
       const deal = latestDealByClient.get(g.clientId);
       return {
@@ -76,8 +82,9 @@ export async function getChannelIntelligence(req, res) {
         dealYear: deal?.year ?? null,
         dealId: deal?.id || null,
         notes: deal?.notes || '',
+        hasDeal: !!deal,
       };
-    }));
+    });
 
     clients.sort((a, b) => b.totalSpend - a.totalSpend);
 
@@ -235,22 +242,38 @@ export async function getNegotiationPlanner(req, res) {
       dealByClientYear.get(d.clientId).set(d.year, d);
     }
 
-    const clientsWithSpend = await Promise.all([...spendByClientYear.entries()].map(async ([clientId, yearMap]) => {
-      const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, name: true } });
+    // Prefetch client names in one query (avoids an N+1 lookup per client).
+    const clientIds = [...spendByClientYear.keys()];
+    const clientRecords = clientIds.length
+      ? await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true } })
+      : [];
+    const clientNameById = new Map(clientRecords.map((c) => [c.id, c.name]));
+
+    const clientsWithSpend = [...spendByClientYear.entries()].map(([clientId, yearMap]) => {
       const years = [...yearMap.keys()];
       const totalSpend = years.reduce((sum, y) => sum + yearMap.get(y), 0);
       const dealsForClient = dealByClientYear.get(clientId) || new Map();
-      const totalDiscount = years.reduce((sum, y) => sum + (safeNum(dealsForClient.get(y)?.discountPct) || 0), 0);
-      const totalBonus = years.reduce((sum, y) => sum + (safeNum(dealsForClient.get(y)?.bonusPct) || 0), 0);
+      // Average discount/bonus over the years that actually HAVE a recorded deal
+      // (not over all spend-years) — so a client whose only deal is 2026 shows
+      // its true 2026 terms instead of being diluted toward 0 by earlier
+      // deal-less spend years.
+      const dealYears = [...dealsForClient.keys()];
+      const avgDiscountPct = dealYears.length
+        ? dealYears.reduce((s, y) => s + (safeNum(dealsForClient.get(y).discountPct) || 0), 0) / dealYears.length
+        : 0;
+      const avgBonusPct = dealYears.length
+        ? dealYears.reduce((s, y) => s + (safeNum(dealsForClient.get(y).bonusPct) || 0), 0) / dealYears.length
+        : 0;
       return {
         clientId,
-        clientName: client?.name || 'Unknown',
+        clientName: clientNameById.get(clientId) || 'Unknown',
         avgYearlySpend: totalSpend / years.length,
-        avgDiscountPct: totalDiscount / years.length,
-        avgBonusPct: totalBonus / years.length,
+        avgDiscountPct,
+        avgBonusPct,
         yearsOfData: years.length,
+        dealYears: dealYears.length,
       };
-    }));
+    });
 
     const spends = clientsWithSpend.map((c) => c.avgYearlySpend).sort((a, b) => a - b);
     let lowMax = 0;
@@ -327,5 +350,51 @@ export async function getNegotiationPlanner(req, res) {
   } catch (error) {
     console.error('getNegotiationPlanner error:', error);
     return res.status(500).json({ error: 'Failed to compute negotiation plan', detail: error.message });
+  }
+}
+
+// Roll a channel's deals forward: copy the agency deal + every client deal from
+// fromYear to toYear. Only creates rows that don't already exist for toYear (so
+// it never overwrites terms already negotiated for the new year). SUPER_ADMIN.
+export async function rollForwardDeals(req, res) {
+  try {
+    const channelMasterId = parseInt(req.params.channelMasterId);
+    const fromYear = parseInt(req.body?.fromYear);
+    const toYear = parseInt(req.body?.toYear);
+    if (!Number.isInteger(channelMasterId) || !(fromYear >= 2000 && fromYear <= 2100) || !(toYear >= 2000 && toYear <= 2100) || toYear === fromYear) {
+      return res.status(400).json({ error: 'channelMasterId and distinct fromYear/toYear (2000-2100) are required' });
+    }
+
+    // Agency-level deal
+    let agencyCopied = 0, agencySkipped = 0;
+    const srcAgency = await prisma.channelAgencyDeal.findUnique({ where: { channelMasterId_year: { channelMasterId, year: fromYear } } });
+    if (srcAgency) {
+      const existing = await prisma.channelAgencyDeal.findUnique({ where: { channelMasterId_year: { channelMasterId, year: toYear } } });
+      if (existing) agencySkipped = 1;
+      else {
+        await prisma.channelAgencyDeal.create({ data: { channelMasterId, year: toYear, discountPct: srcAgency.discountPct, bonusPct: srcAgency.bonusPct, notes: srcAgency.notes, createdById: req.user.id } });
+        agencyCopied = 1;
+      }
+    }
+
+    // Per-client deals
+    const [srcClientDeals, existingToYear] = await Promise.all([
+      prisma.channelClientDeal.findMany({ where: { channelMasterId, year: fromYear } }),
+      prisma.channelClientDeal.findMany({ where: { channelMasterId, year: toYear }, select: { clientId: true } }),
+    ]);
+    const existingSet = new Set(existingToYear.map((d) => d.clientId));
+    let clientsCopied = 0, clientsSkipped = 0;
+    const ops = [];
+    for (const d of srcClientDeals) {
+      if (existingSet.has(d.clientId)) { clientsSkipped++; continue; }
+      ops.push(prisma.channelClientDeal.create({ data: { channelMasterId, clientId: d.clientId, year: toYear, discountPct: d.discountPct, bonusPct: d.bonusPct, notes: d.notes, createdById: req.user.id } }));
+      clientsCopied++;
+    }
+    if (ops.length) await prisma.$transaction(ops);
+
+    return res.json({ ok: true, fromYear, toYear, agencyCopied, agencySkipped, clientsCopied, clientsSkipped });
+  } catch (error) {
+    console.error('rollForwardDeals error:', error);
+    return res.status(500).json({ error: 'Failed to roll deals forward', detail: error.message });
   }
 }

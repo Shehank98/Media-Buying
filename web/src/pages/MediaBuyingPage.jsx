@@ -252,6 +252,9 @@ export default function MediaBuyingPage() {
   const [data, setData] = useState(null);
   const [sortKey, setSortKey] = useState('totalSpend');
   const [sortDir, setSortDir] = useState('desc');
+  const [onlyMissingDeals, setOnlyMissingDeals] = useState(false);
+  const [rolling, setRolling] = useState(false);
+  const [rollMsg, setRollMsg] = useState('');
   const [expandedClientId, setExpandedClientId] = useState(null);
   const [yearlyByClient, setYearlyByClient] = useState({});
   const [yearlyLoading, setYearlyLoading] = useState(false);
@@ -323,7 +326,27 @@ export default function MediaBuyingPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => { setExpandedClientId(null); setYearlyByClient({}); }, [channelMasterId]);
+  useEffect(() => { setExpandedClientId(null); setYearlyByClient({}); setRollMsg(''); setOnlyMissingDeals(false); }, [channelMasterId]);
+
+  // Roll this channel's deals (agency + all clients) forward from a source year
+  // to the next year — only fills years not already negotiated (never overwrites).
+  const rollForward = useCallback(async (fromYear) => {
+    if (!channelMasterId || !fromYear) return;
+    const toYear = fromYear + 1;
+    if (!window.confirm(`Copy ${fromYear} deals to ${toYear} for this channel? Existing ${toYear} deals are kept as-is.`)) return;
+    setRolling(true); setRollMsg('');
+    try {
+      const { data: r } = await api.post(`/media-buying/channels/${channelMasterId}/roll-forward`, { fromYear, toYear });
+      const parts = [];
+      if (r.agencyCopied) parts.push('agency deal');
+      parts.push(`${r.clientsCopied} client deal${r.clientsCopied === 1 ? '' : 's'}`);
+      const skipped = (r.agencySkipped || 0) + (r.clientsSkipped || 0);
+      setRollMsg(`Copied ${parts.join(' + ')} to ${toYear}${skipped ? ` (${skipped} already existed, kept)` : ''}.`);
+      fetchData();
+    } catch (err) {
+      setRollMsg(err.response?.data?.error || 'Failed to roll deals forward.');
+    } finally { setRolling(false); }
+  }, [channelMasterId, fetchData]);
 
   const channelsByMedium = useMemo(() => {
     const groups = {};
@@ -334,9 +357,12 @@ export default function MediaBuyingPage() {
     return groups;
   }, [channels]);
 
+  const noDeal = (c) => !(c.hasDeal ?? (c.discountPct != null || c.bonusPct != null));
+  const missingDealClients = useMemo(() => (data?.clients || []).filter(noDeal), [data]);
   const sortedClients = useMemo(() => {
     if (!data?.clients) return [];
-    const arr = [...data.clients];
+    let arr = [...data.clients];
+    if (onlyMissingDeals) arr = arr.filter(noDeal);
     arr.sort((a, b) => {
       const av = a[sortKey] ?? -Infinity;
       const bv = b[sortKey] ?? -Infinity;
@@ -344,9 +370,15 @@ export default function MediaBuyingPage() {
       return sortDir === 'asc' ? av - bv : bv - av;
     });
     return arr;
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, onlyMissingDeals]);
 
   const latestAgencyDeal = data?.agencyDeals?.[0] || null;
+  const latestDealYear = useMemo(() => {
+    const ys = [];
+    (data?.agencyDeals || []).forEach((d) => ys.push(d.year));
+    (data?.clients || []).forEach((c) => { if (c.dealYear) ys.push(c.dealYear); });
+    return ys.length ? Math.max(...ys) : null;
+  }, [data]);
   const totalClientSpend = useMemo(() => sortedClients.reduce((s, c) => s + (c.totalSpend || 0), 0), [sortedClients]);
 
   function toggleSort(key) {
@@ -661,8 +693,18 @@ export default function MediaBuyingPage() {
               <SectionTitle sub="Year-over-year negotiated terms with the agency for this channel.">
                 Agency-Level Deal: {data.channel.name}
               </SectionTitle>
-              <button className="btn btn-primary btn-sm" onClick={openAgencyModal}>Add / Edit Deal</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {latestDealYear && (
+                  <button className="btn btn-ghost btn-sm" disabled={rolling} onClick={() => rollForward(latestDealYear)} title={`Copy ${latestDealYear} deals (agency + all clients) into ${latestDealYear + 1}`}>
+                    <Icon name="history" size={14} /> {rolling ? 'Rolling…' : `Roll ${latestDealYear} → ${latestDealYear + 1}`}
+                  </button>
+                )}
+                <button className="btn btn-primary btn-sm" onClick={openAgencyModal}>Add / Edit Deal</button>
+              </div>
             </div>
+            {rollMsg && (
+              <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: /fail|error/i.test(rollMsg) ? 'var(--red-600)' : 'var(--green-600)' }}>{rollMsg}</div>
+            )}
             {data.agencyDeals.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '28px 0' }}>
                 <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No agency-level deal recorded yet for this channel.</p>
@@ -691,9 +733,20 @@ export default function MediaBuyingPage() {
 
           {/* Client Breakdown Table */}
           <div className="card" style={{ padding: 20 }}>
-            <SectionTitle sub="Lifetime spend per client on this channel, with their most recently recorded deal terms. Expand a row for the year-by-year breakdown.">
-              Client Breakdown (All Years)
-            </SectionTitle>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+              <SectionTitle sub="Lifetime spend per client on this channel, with their most recently recorded deal terms. Expand a row for the year-by-year breakdown.">
+                Client Breakdown (All Years)
+              </SectionTitle>
+              {missingDealClients.length > 0 && (
+                <button
+                  onClick={() => setOnlyMissingDeals(v => !v)}
+                  className={`btn btn-sm ${onlyMissingDeals ? 'btn-primary' : 'btn-ghost'}`}
+                  title="Clients with spend on this channel but no recorded discount/bonus deal"
+                >
+                  <Icon name="alert" size={14} /> {missingDealClients.length} missing deal{missingDealClients.length === 1 ? '' : 's'}{onlyMissingDeals ? ' · showing' : ''}
+                </button>
+              )}
+            </div>
             {sortedClients.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '28px 0' }}>
                 <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>No clients have bought on this channel yet.</p>
@@ -721,7 +774,13 @@ export default function MediaBuyingPage() {
                               <Icon name={expandedClientId === c.clientId ? 'chevDown' : 'chevR'} size={14} />
                             </button>
                           </td>
-                          <td>{c.clientName}<div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div></td>
+                          <td>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {c.clientName}
+                              {noDeal(c) && <span className="badge" style={{ fontSize: 9.5, background: 'var(--coral-50,#FDEDE7)', color: 'var(--coral-700,#C44A18)' }}>No deal</span>}
+                            </span>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div>
+                          </td>
                           <td className="num strong">{fmtLKR(c.totalSpend)}</td>
                           <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
                           <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>

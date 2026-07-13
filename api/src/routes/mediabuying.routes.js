@@ -8,6 +8,7 @@ import {
   upsertClientDeal,
   deleteClientDeal,
   getNegotiationPlanner,
+  rollForwardDeals,
 } from '../controllers/mediabuying.controller.js';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.use(authenticate, requireRole('SUPER_ADMIN'));
 router.get('/channels/:channelMasterId', getChannelIntelligence);
 router.get('/channels/:channelMasterId/clients/:clientId/yearly', getClientChannelYearly);
 router.get('/channels/:channelMasterId/planner', getNegotiationPlanner);
+router.post('/channels/:channelMasterId/roll-forward', rollForwardDeals);
 router.post('/agency-deals', upsertAgencyDeal);
 router.delete('/agency-deals/:id', deleteAgencyDeal);
 router.post('/client-deals', upsertClientDeal);
