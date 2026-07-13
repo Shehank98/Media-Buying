@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
-import Icon, { Avatar, RoleBadge, fmtLKR } from '../components/Icon';
+import Icon, { Avatar, RoleBadge, fmtLKR, roleLabel } from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
@@ -1533,7 +1533,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                               <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
                                 <Icon name="edit" size={15} />
                               </button>
-                              <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to group heads' : 'Hide from group heads'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
+                              <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to Admin Level 2' : 'Hide from Admin Level 2'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
                                 <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
                               </button>
                               <button className="act-btn" onClick={() => openMove(c)} title="Move to another agency (point-in-time)">
@@ -2090,7 +2090,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#15814B,#0E6B3D)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="money" size={20} /></div>
               <div>
                 <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>Group Revenue</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Actual billing, targets &amp; revenue by group head</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Actual billing, targets &amp; revenue by Admin Level 2</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -2208,7 +2208,7 @@ export default function AdminPage({ initialTab = 'users' }) {
             <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="users" size={15} /></div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by group head</div>
+                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by Admin Level 2</div>
                 <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · feeds the Revenue Contribution donut</div>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -2217,17 +2217,17 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
             </div>
             {grLoading ? (
-              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading group heads…" /></div>
+              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading Admin Level 2 users…" /></div>
             ) : grHeads.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
-                No group heads found. Add users with the GROUP_HEAD role first.
+                No Admin Level 2 users found. Add users with the Admin Level 2 role first.
               </div>
             ) : (
               <div className="tbl-wrap">
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Group Head</th>
+                      <th>Admin Level 2</th>
                       <th style={{ textAlign: 'right', width: 210 }}>Revenue (LKR)</th>
                       <th style={{ minWidth: 200 }}>Share</th>
                     </tr>
@@ -2262,7 +2262,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <tr style={{ borderTop: '2px solid var(--border)' }}>
                       <td className="strong">Total</td>
                       <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grTotal)}</td>
-                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{grHeads.length} group head{grHeads.length === 1 ? '' : 's'}</td>
+                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{grHeads.length} Admin Level 2{grHeads.length === 1 ? '' : ' users'}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -2477,7 +2477,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       border: `1px solid ${on ? 'var(--coral-600, #E85D24)' : 'var(--border)'}`,
                       background: on ? 'var(--coral-50, #fff3ee)' : 'var(--card)',
                       color: on ? 'var(--coral-700, #C44A18)' : 'var(--ink-soft)', fontSize: 12.5, fontWeight: 600 }}>
-                    {on && <Icon name="check" size={13} />}{r.replace('_', ' ')}
+                    {on && <Icon name="check" size={13} />}{roleLabel(r)}
                   </button>
                 );
               })}

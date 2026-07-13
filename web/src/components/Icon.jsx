@@ -110,9 +110,11 @@ export function TypeBadge({ type }) {
 const ROLE_STYLES = {
   SUPER_ADMIN: { label: "Super Admin", bg: "var(--purple-100)", fg: "var(--purple-700)" },
   MANAGER:     { label: "Admin Level 1", bg: "var(--blue-100)",  fg: "var(--blue-700)" },
-  GROUP_HEAD:  { label: "Group Head",  bg: "var(--coral-100)",  fg: "var(--coral-700)" },
-  PLANNER:     { label: "Planner",     bg: "var(--green-100)",  fg: "var(--green-600)" },
+  GROUP_HEAD:  { label: "Admin Level 2",  bg: "var(--coral-100)",  fg: "var(--coral-700)" },
+  PLANNER:     { label: "Admin Level 3",     bg: "var(--green-100)",  fg: "var(--green-600)" },
 };
+
+export const roleLabel = (role) => (ROLE_STYLES[role]?.label) || String(role || '').replace(/_/g, ' ');
 
 export function RoleBadge({ role, small }) {
   const r = ROLE_STYLES[role] || ROLE_STYLES.PLANNER;
