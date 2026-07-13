@@ -54,7 +54,7 @@ export default function UpdateBanner() {
       boxShadow: '0 12px 34px rgba(10,23,41,.34)', fontSize: 13.5,
     }}>
       <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: '#E85D24', flex: 'none' }} />
-      <span style={{ fontWeight: 600 }}>A new version of Ogilvy Trading is available.</span>
+      <span style={{ fontWeight: 600 }}>A new version of Ogilvy Orbit is available.</span>
       <button
         onClick={() => window.location.reload()}
         style={{ background: '#E85D24', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}

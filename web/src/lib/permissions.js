@@ -14,7 +14,8 @@ export const TOGGLEABLE_PAGES = [
 ];
 
 // Paths every signed-in user can always reach.
-const ALWAYS = ['/profile', '/change-password', '/login'];
+// Rate Cards is shared with everyone, so it is never gated by pageAccess.
+const ALWAYS = ['/profile', '/change-password', '/login', '/rate-cards'];
 
 // Map any path to its top-level page key.
 export function pageKeyForPath(pathname) {

@@ -1334,6 +1334,26 @@ export async function uploadChannelRateCardHandler(req, res) {
       },
       select: { id: true, rateCardFileName: true, rateCardMimeType: true, rateCardSize: true, rateCardUploadedAt: true, rateCardVersions: true },
     });
+
+    // Notify EVERY user that a (general) rate card was added/updated. The Rate
+    // Cards tab is visible to all, so everyone gets the "New Rate Card" alert.
+    try {
+      const users = await prisma.user.findMany({ select: { id: true } });
+      if (users.length) {
+        await prisma.notification.createMany({
+          data: users.map((u) => ({
+            userId: u.id,
+            type: 'RATE_CARD',
+            title: 'New Rate Card',
+            message: `${master.name} rate card has been ${version > 1 ? 'updated' : 'added'}.`,
+            link: '/rate-cards',
+          })),
+        });
+      }
+    } catch (e) {
+      console.warn('Rate card notification skipped:', e.message);
+    }
+
     return res.json({ channelMaster: saved });
   } catch (error) {
     console.error('uploadChannelRateCard error:', error);

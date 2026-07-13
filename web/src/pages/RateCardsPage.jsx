@@ -140,6 +140,16 @@ export default function RateCardsPage() {
         <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{error}</div>
       )}
 
+      {(() => {
+        const newCount = cards.filter(c => c.uploadedAt && (Date.now() - new Date(c.uploadedAt).getTime()) < 7 * 864e5).length;
+        return newCount > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ECF8F1', border: '1px solid #BFE0CB', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#15814B' }}>
+            <Icon name="bell" size={16} />
+            <span><b>{newCount} new rate card{newCount === 1 ? '' : 's'}</b> updated in the last 7 days.</span>
+          </div>
+        ) : null;
+      })()}
+
       <div style={{ position: 'relative', marginBottom: 16, maxWidth: 360 }}>
         <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
         <input className="input" placeholder="Search channel, medium or media group…" value={q} onChange={e => setQ(e.target.value)} style={{ paddingLeft: 34 }} />
@@ -168,9 +178,15 @@ export default function RateCardsPage() {
               {filtered.map(c => {
                 const isOpen = expanded === c.channelMasterId;
                 const versions = [...(c.versions || [])].reverse(); // newest first
+                const isNewCard = c.uploadedAt && (Date.now() - new Date(c.uploadedAt).getTime()) < 7 * 864e5;
                 return [
                   <tr key={c.channelMasterId}>
-                    <td className="strong">{c.name}</td>
+                    <td className="strong">
+                      {c.name}
+                      {isNewCard && (
+                        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 20, background: '#ECF8F1', color: '#15814B', border: '1px solid #BFE0CB' }}>New</span>
+                      )}
+                    </td>
                     <td><span className="medium-tag" data-medium={c.medium}>{c.medium}</span></td>
                     <td style={{ color: 'var(--muted)' }}>{c.mediaGroup || '-'}</td>
                     <td style={{ color: 'var(--muted)', fontSize: 12 }} title={c.fileName}>
