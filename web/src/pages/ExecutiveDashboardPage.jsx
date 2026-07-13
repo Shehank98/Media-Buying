@@ -641,6 +641,8 @@ function AchievementSection({
         )}
       </div>
 
+      {/* Group Contribution vs Forecast - hidden per request */}
+      {false && (
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div className="chart-card-title">Group Contribution vs Forecast</div>
         <div className="chart-card-sub">
@@ -666,6 +668,7 @@ function AchievementSection({
           </ResponsiveContainer>
         )}
       </div>
+      )}
 
       {/* Revenue Achievement - admin billing YTD vs prorated annual target */}
       <div className="chart-card" style={{ marginTop: 16 }}>
