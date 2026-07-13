@@ -210,8 +210,10 @@ export async function listForecastClients(req, res) {
       by: ['clientId'],
       where: { year, month, clientId: { in: clients.map(c => c.id) } },
       _max: { submittedAt: true },
+      _sum: { amountMillions: true },
     });
     const submittedAtByClient = new Map(submittedAgg.map(s => [s.clientId, s._max.submittedAt]));
+    const totalByClient = new Map(submittedAgg.map(s => [s.clientId, Number(s._sum.amountMillions) || 0]));
 
     const rows = clients.map(c => ({
       id: c.id,
@@ -220,6 +222,9 @@ export async function listForecastClients(req, res) {
       agencyName: c.agency?.name || '',
       status: submittedAtByClient.has(c.id) ? 'submitted' : 'pending',
       submittedAt: submittedAtByClient.get(c.id) || null,
+      // Total forecast entered for this client this month (full LKR).
+      totalAmount: Number(((totalByClient.get(c.id) || 0) * 1e6).toFixed(2)),
+      totalMillions: Number((totalByClient.get(c.id) || 0).toFixed(2)),
     }));
     // Latest-submitted client first; then not-yet-submitted clients A→Z.
     rows.sort((a, b) => {

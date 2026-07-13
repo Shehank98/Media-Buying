@@ -1503,11 +1503,14 @@ export default function ForecastingPage() {
                     <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 2 }}>{c.agencyName || '-'}</div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6B7790' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.dot }} />{st.label}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#6B7790', minWidth: 0 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: st.dot, flex: 'none' }} />{st.label}
+                    {c.totalAmount > 0 && (
+                      <span className="mono" style={{ marginLeft: 4, color: '#16243C', fontWeight: 700, whiteSpace: 'nowrap' }}>· LKR {fmtShortLKR(c.totalAmount)}</span>
+                    )}
                   </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C' }}>Enter <Icon name="chevR" size={14} /></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C', flex: 'none' }}>Enter <Icon name="chevR" size={14} /></span>
                 </div>
               </div>
             );
