@@ -745,6 +745,22 @@ model MonthlyRevenueTarget {
   @@map("monthly_revenue_targets")
 }
 
+// Admin-entered single MONTHLY revenue target that applies to EVERY month of the
+// year (full LKR). The Revenue Achievement Target bar = monthlyAmount × the
+// number of months elapsed (Jan→latest billed month), e.g. 10 → 60 at June. One
+// row per year. Takes precedence over the per-month MonthlyRevenueTarget rows and
+// the prorated AnnualTarget fallback.
+model YearRevenueTarget {
+  id            Int      @id @default(autoincrement())
+  year          Int      @unique
+  monthlyAmount Decimal  @map("monthly_amount") @db.Decimal(16, 2)
+  createdById   Int?     @map("created_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("year_revenue_targets")
+}
+
 model ClientRequest {
   id            Int       @id @default(autoincrement())
   requestedById Int       @map("requested_by_id")

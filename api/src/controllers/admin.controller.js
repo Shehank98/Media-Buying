@@ -1044,12 +1044,12 @@ export async function listGroupRevenue(req, res) {
       year = currentRevenueMonth?.year ?? d.getFullYear();
       month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
     }
-    const [heads, agencies, rows, agencyRows, targetRow] = await Promise.all([
+    const [heads, agencies, rows, agencyRows, yearTargetRow] = await Promise.all([
       prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
-      prisma.monthlyRevenueTarget.findUnique({ where: { year_month: { year, month } } }),
+      prisma.yearRevenueTarget.findUnique({ where: { year } }),
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
@@ -1061,9 +1061,9 @@ export async function listGroupRevenue(req, res) {
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
-      // Company-wide monthly revenue target for this month (drives the cumulative
-      // Target bar of the Revenue Achievement chart).
-      revenueTarget: targetRow ? Number(targetRow.amount) : null,
+      // Single monthly revenue target for the whole year (applies to every month).
+      // The Revenue Achievement Target bar = this × months elapsed.
+      yearMonthlyTarget: yearTargetRow ? Number(yearTargetRow.monthlyAmount) : null,
     });
   } catch (error) {
     console.error('listGroupRevenue error:', error);
@@ -1073,13 +1073,13 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts, revenueTarget } = req.body || {};
+    const { year, month, amounts, agencyAmounts, yearMonthlyTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
-    const hasTarget = revenueTarget !== undefined;
+    const hasTarget = yearMonthlyTarget !== undefined;
     if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasTarget)) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or revenueTarget are required' });
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or yearMonthlyTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
@@ -1122,16 +1122,16 @@ export async function setGroupRevenue(req, res) {
         }
       }
     }
-    // Company-wide monthly revenue target (blank/0 clears the row).
+    // Single monthly revenue target for the WHOLE year (blank/0 clears it).
     if (hasTarget) {
-      const num = revenueTarget === '' || revenueTarget == null ? null : Number(revenueTarget);
+      const num = yearMonthlyTarget === '' || yearMonthlyTarget == null ? null : Number(yearMonthlyTarget);
       if (num == null || isNaN(num) || num <= 0) {
-        ops.push(prisma.monthlyRevenueTarget.deleteMany({ where: { year: y, month: m } }));
+        ops.push(prisma.yearRevenueTarget.deleteMany({ where: { year: y } }));
       } else {
-        ops.push(prisma.monthlyRevenueTarget.upsert({
-          where: { year_month: { year: y, month: m } },
-          update: { amount: num, createdById: req.user?.id ?? null },
-          create: { year: y, month: m, amount: num, createdById: req.user?.id ?? null },
+        ops.push(prisma.yearRevenueTarget.upsert({
+          where: { year: y },
+          update: { monthlyAmount: num, createdById: req.user?.id ?? null },
+          create: { year: y, monthlyAmount: num, createdById: req.user?.id ?? null },
         }));
       }
     }

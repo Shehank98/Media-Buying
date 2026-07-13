@@ -1689,9 +1689,14 @@ export async function getRevenueAchievement(req, res) {
     const target = await prisma.annualTarget.findUnique({ where: { year } });
     const targetMillions = target ? Number(target.totalTargetMillions) : 0;
 
-    // Admin-entered monthly revenue targets (full LKR → millions). Their cumulative
-    // sum Jan→positionMonth is the preferred Target bar; only if none are entered
-    // for the year do we fall back to the prorated AnnualTarget (÷ 12 × months).
+    // Target sources, in priority order:
+    //  1. YearRevenueTarget - one monthly figure for the whole year; cumulative
+    //     Target bar = monthlyAmount × months elapsed (e.g. 10 → 60 at June).
+    //  2. MonthlyRevenueTarget - per-month figures, summed Jan→positionMonth.
+    //  3. AnnualTarget - prorated (÷ 12 × months).
+    const yearTargetRow = await prisma.yearRevenueTarget.findUnique({ where: { year } });
+    const yearMonthlyTargetM = yearTargetRow ? Number(yearTargetRow.monthlyAmount) / 1e6 : null;
+
     const monthlyTargetRows = await prisma.monthlyRevenueTarget.findMany({ where: { year }, orderBy: { month: 'asc' } });
     const monthlyTargetByMonth = {};
     for (const r of monthlyTargetRows) monthlyTargetByMonth[r.month] = Number(r.amount) / 1e6;
@@ -1709,17 +1714,24 @@ export async function getRevenueAchievement(req, res) {
     for (let m = 1; m <= positionMonth; m++) achievementMillions += billingByMonth[m] || 0;
     achievementMillions = Number(achievementMillions.toFixed(2));
 
-    // Target bar: cumulative monthly targets Jan→positionMonth when present, else
-    // the prorated annual target across the same number of months.
+    // Target bar to date (same month window as achievement).
     let uptoTargetMillions = 0;
+    let targetSource = null;
     if (positionMonth > 0) {
-      if (hasMonthlyTargets) {
+      if (yearMonthlyTargetM != null) {
+        uptoTargetMillions = Number((yearMonthlyTargetM * positionMonth).toFixed(2));
+        targetSource = 'yearMonthly';
+      } else if (hasMonthlyTargets) {
         let sum = 0;
         for (let m = 1; m <= positionMonth; m++) sum += monthlyTargetByMonth[m] || 0;
         uptoTargetMillions = Number(sum.toFixed(2));
+        targetSource = 'monthly';
       } else if (target) {
         uptoTargetMillions = Number(((targetMillions / 12) * positionMonth).toFixed(2));
+        targetSource = 'annual';
       }
+    } else {
+      targetSource = yearMonthlyTargetM != null ? 'yearMonthly' : (hasMonthlyTargets ? 'monthly' : (target ? 'annual' : null));
     }
     const achievementPct = uptoTargetMillions > 0
       ? Number(((achievementMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
@@ -1727,8 +1739,9 @@ export async function getRevenueAchievement(req, res) {
     return res.json({
       year,
       availableYears: years,
-      hasTarget: hasMonthlyTargets || !!target,
-      targetSource: hasMonthlyTargets ? 'monthly' : (target ? 'annual' : null),
+      hasTarget: yearMonthlyTargetM != null || hasMonthlyTargets || !!target,
+      targetSource,
+      yearMonthlyTargetMillions: yearMonthlyTargetM,
       hasBilling: positionMonth > 0,
       positionMonth,
       monthLabel: positionMonth > 0 ? MONTH_NAMES[positionMonth - 1] : null,

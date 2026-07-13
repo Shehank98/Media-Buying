@@ -909,7 +909,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
-      setGrRevenueTarget(data.revenueTarget == null ? '' : String(data.revenueTarget));
+      setGrRevenueTarget(data.yearMonthlyTarget == null ? '' : String(data.yearMonthlyTarget));
     } catch {
       setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrRevenueTarget('');
     } finally {
@@ -928,7 +928,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, revenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, yearMonthlyTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -939,7 +939,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
-      setGrRevenueTarget(data.revenueTarget == null ? '' : String(data.revenueTarget));
+      setGrRevenueTarget(data.yearMonthlyTarget == null ? '' : String(data.yearMonthlyTarget));
       setGrSavedAt(Date.now());
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save group revenue.');
@@ -1986,11 +1986,11 @@ export default function AdminPage({ initialTab = 'users' }) {
             </div>
           </div>
 
-          {/* Monthly REVENUE TARGET for this month → cumulative = Revenue Achievement target bar */}
+          {/* Monthly REVENUE TARGET for the whole year → cumulative = Revenue Achievement target bar */}
           <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div className="field" style={{ margin: 0, flex: '1 1 220px', minWidth: 200 }}>
-                <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Revenue target · {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
+              <div className="field" style={{ margin: 0, flex: '1 1 240px', minWidth: 200 }}>
+                <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Monthly revenue target · {grYear} (full LKR, every month)</label>
                 <input
                   className="input" type="number" min="0" step="1000"
                   value={grRevenueTarget}
@@ -1998,9 +1998,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                   placeholder="e.g. 50000000"
                 />
               </div>
+              {grRevenueTarget !== '' && Number(grRevenueTarget) > 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', paddingBottom: 8 }}>
+                  Cumulative to a month = this × month number.<br />
+                  e.g. up to Jun = <b className="mono" style={{ color: 'var(--ink)' }}>{(Number(grRevenueTarget) * 6).toLocaleString('en-US')}</b> (× 6)
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-              Set one target per month (Jan, Feb, …). The <b style={{ color: 'var(--ink)' }}>cumulative</b> sum Jan→the latest billed month becomes the yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart. Leave blank to fall back to the prorated Annual Target. Saved with the main Save button above.
+              One monthly target for the whole year — it applies to <b style={{ color: 'var(--ink)' }}>every month</b>. The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart = this × the number of months elapsed (Jan→latest billed month), e.g. 10 → 60 at June. Leave blank to fall back to the prorated Annual Target. Saved with the main Save button above (applies to the selected Year).
             </div>
           </div>
 
