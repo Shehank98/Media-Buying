@@ -60,8 +60,12 @@ export default function ChannelIntelligencePage() {
   // client. SUPER_ADMIN can toggle back to overall (all-clients) numbers.
   const [scopeOverall, setScopeOverall] = useState(false);
   const [showRcVersions, setShowRcVersions] = useState(false);
+  const [year, setYear] = useState(String(new Date().getFullYear())); // '' = All
   const scopedClientId = (urlClientId && !scopeOverall) ? urlClientId : null;
-  const scopeParams = scopedClientId ? { clientId: scopedClientId } : {};
+  const scopeParams = {
+    ...(scopedClientId ? { clientId: scopedClientId } : {}),
+    ...(year ? { year } : {}),
+  };
 
   const [summary, setSummary] = useState(null);
   const [monthly, setMonthly] = useState({ years: [], data: [] });
@@ -113,7 +117,7 @@ export default function ChannelIntelligencePage() {
     };
     setLoading(true);
     load();
-  }, [id, scopedClientId]);
+  }, [id, scopedClientId, year]);
 
   const sortedClients = useMemo(() => {
     return [...clients].sort((a, b) => {
@@ -298,6 +302,13 @@ export default function ChannelIntelligencePage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label style={{ fontSize: 11 }}>Year</label>
+            <select className="select" value={year} onChange={e => setYear(e.target.value)}>
+              <option value="">All time</option>
+              {(summary?.availableYears || [new Date().getFullYear()]).map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
           {/* Rate card (latest) - view / download, + version history */}
           {summary?.rateCard ? (
             <>

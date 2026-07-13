@@ -21,6 +21,15 @@ function singleClientFilter(req, cids) {
   return cid;
 }
 
+// Channel Intelligence year filter: when ?year is a 4-digit year, restrict a
+// ScheduleLog where to that calendar year. "all"/blank = no restriction.
+function applyYearScope(where, yearParam) {
+  if (/^\d{4}$/.test(String(yearParam || ''))) {
+    where.scheduleMonth = { gte: `${yearParam}-01`, lte: `${yearParam}-12` };
+  }
+  return where;
+}
+
 BigInt.prototype.toJSON = function () { return Number(this); };
 
 function safeNum(v) {
@@ -576,6 +585,11 @@ export async function getChannelSummary(req, res) {
     if (cids) base.clientId = { in: cids };
     const onlyClient = singleClientFilter(req, cids);
     if (onlyClient) base.clientId = onlyClient;
+    // Optional year filter: restricts the headline + per-year cards to that year.
+    // The YoY aggregates below set their own month ranges, so they still reach the
+    // prior year (base's client/channel scope applies, its scheduleMonth is overridden).
+    const baseNoYear = { ...base }; // all-time (for YoY prior year + per-year cards + availableYears)
+    applyYearScope(base, req.query.year);
     // Anchor to the latest year that has data on this channel (not the calendar year).
     const { lys, lycm, cys, cye, year, ym } = await refPeriod(base);
     // Period-aligned YoY: compare the current year Jan→latest-data-month against
@@ -586,12 +600,16 @@ export async function getChannelSummary(req, res) {
 
     const [curYearAgg, lyAgg, lyAlignedAgg, activeClients, totalEntries, monthAgg] = await Promise.all([
       prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: ym } }, _sum: { scheduleValue: true } }),
-      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
-      prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lyAlignedEnd } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.aggregate({ where: { ...baseNoYear, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.aggregate({ where: { ...baseNoYear, scheduleMonth: { gte: lys, lte: lyAlignedEnd } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.findMany({ where: base, select: { clientId: true }, distinct: ['clientId'] }),
       prisma.scheduleLog.count({ where: base }),
-      prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where: base, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where: baseNoYear, _sum: { scheduleValue: true } }),
     ]);
+    // Year options for the filter (all years with data + current year), newest first.
+    const availYearSet = new Set([new Date().getFullYear()]);
+    for (const r of monthAgg) { const y = String(r.scheduleMonth || '').slice(0, 4); if (/^\d{4}$/.test(y)) availYearSet.add(parseInt(y)); }
+    const availableYears = [...availYearSet].sort((a, b) => b - a);
 
     const ytd = safeNum(curYearAgg._sum.scheduleValue) || 0;   // current year, Jan→latest month (aligned)
     const ly = safeNum(lyAgg._sum.scheduleValue) || 0;          // previous FULL year (for the year spend card)
@@ -615,6 +633,8 @@ export async function getChannelSummary(req, res) {
 
     return res.json({
       channel: { id: channel.id, name: channel.name, medium: channel.medium, mediaGroup: channel.mediaGroup?.name },
+      availableYears,
+      selectedYear: /^\d{4}$/.test(String(req.query.year || '')) ? parseInt(req.query.year) : null,
       rateCard: channel.rateCardFileName
         ? {
           fileName: channel.rateCardFileName, size: channel.rateCardSize, uploadedAt: channel.rateCardUploadedAt,
@@ -683,6 +703,7 @@ export async function getChannelMonthlySpend(req, res) {
     if (cids) base.clientId = { in: cids };
     const onlyClient = singleClientFilter(req, cids);
     if (onlyClient) base.clientId = onlyClient;
+    applyYearScope(base, req.query.year);
 
     const rows = await prisma.scheduleLog.groupBy({
       by: ['scheduleMonth'],
@@ -786,6 +807,7 @@ export async function getChannelAgencyMonthly(req, res) {
     if (cids) base.clientId = { in: cids };
     const onlyClient = singleClientFilter(req, cids);
     if (onlyClient) base.clientId = onlyClient;
+    applyYearScope(base, req.query.year);
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['agencyId', 'scheduleMonth'],
@@ -828,6 +850,7 @@ export async function getChannelClients(req, res) {
     const scope = { channelMasterId, isDeleted: false, ...(cids ? { clientId: { in: cids } } : {}) };
     const onlyClient = singleClientFilter(req, cids);
     if (onlyClient) scope.clientId = onlyClient;
+    applyYearScope(scope, req.query.year);
 
     const grouped = await prisma.scheduleLog.groupBy({
       by: ['clientId'],
