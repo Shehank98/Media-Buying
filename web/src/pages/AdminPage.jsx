@@ -983,8 +983,10 @@ export default function AdminPage({ initialTab = 'users' }) {
       const curY = new Date().getFullYear();
       const rows = {};
       chans.forEach(c => {
+        const amt = c.type === 'ANNUAL' ? c.totalAmount : c.monthlyAmount;
         rows[c.channelMasterId] = {
-          monthlyAmount: c.monthlyAmount == null ? '' : String(c.monthlyAmount),
+          type: c.type || 'MONTHLY',
+          amount: amt == null ? '' : String(amt),
           startMonth: c.startMonth ?? 1,
           startYear: c.startYear ?? curY,
           endMonth: c.endMonth ?? 12,
@@ -1012,7 +1014,8 @@ export default function AdminPage({ initialTab = 'users' }) {
     try {
       await api.post('/admin/channel-commitments', {
         channelMasterId,
-        monthlyAmount: row.monthlyAmount === '' ? null : Number(row.monthlyAmount),
+        type: row.type || 'MONTHLY',
+        amount: row.amount === '' ? null : Number(row.amount),
         startYear: row.startYear, startMonth: row.startMonth,
         endYear: row.endYear, endMonth: row.endMonth,
       });
@@ -1839,7 +1842,10 @@ export default function AdminPage({ initialTab = 'users' }) {
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.5 }}>
-            Set each channel's <b style={{ color: 'var(--ink)' }}>monthly commitment</b> (full LKR per month) and the <b style={{ color: 'var(--ink)' }}>period</b> it runs over (start month → end month, and it can cross years, e.g. Mar 2026 → Apr 2027). The Executive Dashboard counts only the channel's active months in the selected year, starting from the start month. Click <b style={{ color: 'var(--ink)' }}>Save</b> on a row to store it; clear the amount and Save to remove.
+            Set each channel's commitment <b style={{ color: 'var(--ink)' }}>type</b> and the <b style={{ color: 'var(--ink)' }}>period</b> it runs over (start month → end month, and it can cross years, e.g. Mar 2026 → Apr 2027).
+            <br /><b style={{ color: 'var(--ink)' }}>Monthly commitment</b>: enter the amount per month — each month is judged on its own (met = green, missed = red).
+            <b style={{ color: 'var(--ink)' }}> Annual target</b>: enter the total for the whole period — it is judged cumulatively (pacing to date), not month by month.
+            The dashboard counts only the channel's active months in the selected year, starting from the start month. Click <b style={{ color: 'var(--ink)' }}>Save</b> per row; clear the amount and Save to remove.
           </div>
           {ccLoading ? (
             <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading channels…" /></div>
@@ -1850,7 +1856,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <tr>
                     <th>Channel</th>
                     <th>Medium</th>
-                    <th style={{ textAlign: 'right' }}>Monthly Commitment (LKR)</th>
+                    <th>Type</th>
+                    <th style={{ textAlign: 'right' }}>Amount (LKR)</th>
                     <th>Start</th>
                     <th>End</th>
                     <th></th>
@@ -1866,12 +1873,19 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <tr key={c.channelMasterId}>
                           <td className="strong">{c.name}{c.mediaGroup ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {c.mediaGroup}</span> : null}</td>
                           <td><span className="medium-tag">{c.medium}</span></td>
+                          <td>
+                            <select className="select" style={{ minWidth: 130 }} value={row.type || 'MONTHLY'} onChange={e => setCcField(c.channelMasterId, 'type', e.target.value)}>
+                              <option value="MONTHLY">Monthly commitment</option>
+                              <option value="ANNUAL">Annual target</option>
+                            </select>
+                          </td>
                           <td style={{ textAlign: 'right' }}>
                             <input
                               className="input" type="number" min="0" step="1000"
-                              value={row.monthlyAmount ?? ''}
-                              onChange={e => setCcField(c.channelMasterId, 'monthlyAmount', e.target.value)}
-                              placeholder="-"
+                              value={row.amount ?? ''}
+                              onChange={e => setCcField(c.channelMasterId, 'amount', e.target.value)}
+                              placeholder={row.type === 'ANNUAL' ? 'total for period' : 'per month'}
+                              title={row.type === 'ANNUAL' ? 'Total for the whole period' : 'Amount per month'}
                               style={{ maxWidth: 170, textAlign: 'right' }}
                             />
                           </td>

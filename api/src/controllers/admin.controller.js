@@ -1169,8 +1169,10 @@ export async function listChannelCommitments(req, res) {
       orderBy: [{ medium: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
     // One active commitment per channel (period model). Legacy rows are converted
-    // by seed.js; here we take the row with a monthlyAmount if present.
-    const commitments = await prisma.channelCommitment.findMany({ where: { monthlyAmount: { not: null } } });
+    // by seed.js; a valid row has either a monthlyAmount (MONTHLY) or totalAmount (ANNUAL).
+    const commitments = await prisma.channelCommitment.findMany({
+      where: { OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }] },
+    });
     const byChannel = new Map(commitments.map((c) => [c.channelMasterId, c]));
 
     return res.json({
@@ -1181,7 +1183,9 @@ export async function listChannelCommitments(req, res) {
           name: c.name,
           medium: c.medium,
           mediaGroup: c.mediaGroup?.name || '',
-          monthlyAmount: cm ? Number(cm.monthlyAmount) : null,
+          type: cm?.type || 'MONTHLY',
+          monthlyAmount: cm?.monthlyAmount != null ? Number(cm.monthlyAmount) : null,
+          totalAmount: cm?.totalAmount != null ? Number(cm.totalAmount) : null,
           startYear: cm?.startYear ?? null,
           startMonth: cm?.startMonth ?? null,
           endYear: cm?.endYear ?? null,
@@ -1197,17 +1201,18 @@ export async function listChannelCommitments(req, res) {
 
 export async function setChannelCommitment(req, res) {
   try {
-    const { channelMasterId, monthlyAmount, startYear, startMonth, endYear, endMonth } = req.body || {};
+    const { channelMasterId, type, amount, startYear, startMonth, endYear, endMonth } = req.body || {};
     const chId = parseInt(channelMasterId);
     if (!chId) return res.status(400).json({ error: 'channelMasterId is required' });
 
-    const num = monthlyAmount === '' || monthlyAmount == null ? null : Number(monthlyAmount);
+    const num = amount === '' || amount == null ? null : Number(amount);
     // Blank/zero clears the channel's commitment entirely.
     if (num == null || isNaN(num) || num <= 0) {
       await prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId } });
-      return res.json({ channelMasterId: chId, monthlyAmount: null });
+      return res.json({ channelMasterId: chId, amount: null });
     }
 
+    const ctype = type === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
     const sy = parseInt(startYear), sm = parseInt(startMonth), ey = parseInt(endYear), em = parseInt(endMonth);
     if (!(sy >= 2000 && sm >= 1 && sm <= 12 && ey >= 2000 && em >= 1 && em <= 12)) {
       return res.status(400).json({ error: 'start/end month (1-12) and year are required' });
@@ -1216,14 +1221,20 @@ export async function setChannelCommitment(req, res) {
       return res.status(400).json({ error: 'end month must be on or after start month' });
     }
 
+    // MONTHLY stores monthlyAmount; ANNUAL stores totalAmount (total for the period).
+    const data = {
+      channelMasterId: chId, type: ctype,
+      monthlyAmount: ctype === 'MONTHLY' ? num : null,
+      totalAmount: ctype === 'ANNUAL' ? num : null,
+      startYear: sy, startMonth: sm, endYear: ey, endMonth: em,
+      createdById: req.user?.id ?? null,
+    };
     // One active commitment per channel: replace any existing.
     await prisma.$transaction([
       prisma.channelCommitment.deleteMany({ where: { channelMasterId: chId } }),
-      prisma.channelCommitment.create({
-        data: { channelMasterId: chId, monthlyAmount: num, startYear: sy, startMonth: sm, endYear: ey, endMonth: em, createdById: req.user?.id ?? null },
-      }),
+      prisma.channelCommitment.create({ data }),
     ]);
-    return res.json({ channelMasterId: chId, monthlyAmount: num, startYear: sy, startMonth: sm, endYear: ey, endMonth: em });
+    return res.json({ channelMasterId: chId, type: ctype, amount: num, startYear: sy, startMonth: sm, endYear: ey, endMonth: em });
   } catch (error) {
     console.error('setChannelCommitment error:', error);
     return res.status(500).json({ error: 'Failed to save channel commitment', detail: error.message });

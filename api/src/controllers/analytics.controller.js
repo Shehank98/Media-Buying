@@ -1418,6 +1418,16 @@ export async function getAchievement(req, res) {
   }
 }
 
+// Per-active-month target/pace of a commitment (full LKR): MONTHLY → the flat
+// monthlyAmount; ANNUAL → totalAmount ÷ the number of months in the period.
+function commitmentPace(c) {
+  if (c.type === 'ANNUAL') {
+    const totalMonths = (c.endYear * 12 + c.endMonth) - (c.startYear * 12 + c.startMonth) + 1;
+    return totalMonths > 0 ? Number(c.totalAmount || 0) / totalMonths : 0;
+  }
+  return Number(c.monthlyAmount || 0);
+}
+
 // Channel commitment tracker (period model, split by the selected year). A
 // commitment runs over a month-grain period that can cross calendar years; for
 // the viewed year we count only the channel's ACTIVE months in that year (the
@@ -1436,7 +1446,7 @@ export async function getChannelCommitments(req, res) {
 
     // Commitments whose period overlaps the viewed year (start ≤ year ≤ end).
     const commitments = await prisma.channelCommitment.findMany({
-      where: { monthlyAmount: { not: null }, startYear: { lte: year }, endYear: { gte: year } },
+      where: { OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }], startYear: { lte: year }, endYear: { gte: year } },
       include: { channelMaster: { select: { id: true, name: true, medium: true } } },
     });
     if (!commitments.length) {
@@ -1472,7 +1482,8 @@ export async function getChannelCommitments(req, res) {
     }
 
     const channels = commitments.map((c) => {
-      const monthly = Number(c.monthlyAmount);
+      const isMonthly = c.type !== 'ANNUAL';
+      const monthly = commitmentPace(c); // per-active-month target/pace (full LKR)
       // The channel's active month window within THIS year.
       const firstMonth = c.startYear === year ? c.startMonth : 1;
       const windowLast = c.endYear === year ? c.endMonth : 12;
@@ -1487,7 +1498,12 @@ export async function getChannelCommitments(req, res) {
         for (let m = firstMonth; m <= pacingMonth; m++) {
           const spend = byMonth[m] || 0;
           achieved += spend; monthsCount++;
-          monthlyBreakdown.push({ monthNum: m, label: MONTH_NAMES[m - 1], target: Number(monthly.toFixed(2)), achieved: Number(spend.toFixed(2)) });
+          monthlyBreakdown.push({
+            monthNum: m, label: MONTH_NAMES[m - 1],
+            target: Number(monthly.toFixed(2)), achieved: Number(spend.toFixed(2)),
+            // MONTHLY: each month judged on its own (green/red). ANNUAL: no per-month flag.
+            met: isMonthly ? (spend + 0.5 >= monthly) : null,
+          });
         }
       }
       const committedToDate = monthly * monthsCount;
@@ -1496,6 +1512,7 @@ export async function getChannelCommitments(req, res) {
         channelMasterId: c.channelMasterId,
         name: c.channelMaster.name,
         medium: c.channelMaster.medium,
+        type: c.type || 'MONTHLY',
         monthlyCommitment: Number(monthly.toFixed(2)),
         committedToDate: Number(committedToDate.toFixed(2)),
         achieved: Number(achieved.toFixed(2)),
@@ -1547,7 +1564,7 @@ export async function getChannelForecastVsTarget(req, res) {
 
     // Commitments whose period overlaps the viewed year (defines the roster).
     const commitments = await prisma.channelCommitment.findMany({
-      where: { monthlyAmount: { not: null }, startYear: { lte: year }, endYear: { gte: year } },
+      where: { OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }], startYear: { lte: year }, endYear: { gte: year } },
       include: { channelMaster: { select: { id: true, name: true, medium: true } } },
     });
     if (!commitments.length) {
@@ -1582,7 +1599,7 @@ export async function getChannelForecastVsTarget(req, res) {
     const forecastBy = new Map(fRows.map((r) => [r.channelMasterId, Number(r._sum.amountMillions) || 0]));
 
     const channels = activeCommitments.map((c) => {
-      const monthlyTarget = Number(c.monthlyAmount) / 1e6; // millions
+      const monthlyTarget = commitmentPace(c) / 1e6; // millions (per-month pace)
       const forecast = forecastBy.get(c.channelMasterId) || 0;
       const met = forecast + 0.005 >= monthlyTarget;
       return {

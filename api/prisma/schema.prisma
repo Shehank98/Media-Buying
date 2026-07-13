@@ -664,30 +664,42 @@ model AgencyRevenue {
   @@map("agency_revenues")
 }
 
+// Two commitment types (per channel):
+//  MONTHLY - `monthlyAmount` is a flat per-month target; each active month is
+//            judged on its own (met = that month's spend ≥ target → green/red).
+//  ANNUAL  - `totalAmount` is the total for the whole period; the monthly pace =
+//            total ÷ months-in-period, and it is judged cumulatively (pacing to
+//            date), not month-by-month.
+enum CommitmentType {
+  MONTHLY
+  ANNUAL
+}
+
 // Per-channel commitment over a MONTH-GRAIN PERIOD (can cross calendar years,
 // e.g. Mar 2026 → Apr 2027). One active commitment per channel (enforced in app
 // code, not a DB unique, so a schema push never fails on legacy duplicates).
-// `monthlyAmount` is the flat commitment per active month; cumulative target
-// within a viewed year = monthlyAmount × the count of the channel's active
-// months in that year up to the latest data month. Achievement is live
-// ScheduleLog spend on those months. Legacy `year`/`yearlyAmount` (pre-period)
-// are kept nullable and back-filled into the period fields by seed.js
-// (year → Jan-Dec, monthlyAmount = yearlyAmount / 12). Drives the Executive
-// Dashboard's "Channel Commitments" tracker.
+// Cumulative target within a viewed year = monthly pace × the count of the
+// channel's active months in that year up to the latest data month. Achievement
+// is live ScheduleLog spend on those months. Legacy `year`/`yearlyAmount`
+// (pre-period) are kept nullable and back-filled into the period fields by
+// seed.js (year → Jan-Dec, MONTHLY, monthlyAmount = yearlyAmount / 12). Drives
+// the Executive Dashboard's "Channel Commitments" tracker.
 model ChannelCommitment {
-  id              Int      @id @default(autoincrement())
-  channelMasterId Int      @map("channel_master_id")
-  startYear       Int?     @map("start_year")
-  startMonth      Int?     @map("start_month") // 1=Jan
-  endYear         Int?     @map("end_year")
-  endMonth        Int?     @map("end_month") // 1=Jan
-  monthlyAmount   Decimal? @map("monthly_amount") @db.Decimal(16, 2)
+  id              Int            @id @default(autoincrement())
+  channelMasterId Int            @map("channel_master_id")
+  type            CommitmentType @default(MONTHLY)
+  startYear       Int?           @map("start_year")
+  startMonth      Int?           @map("start_month") // 1=Jan
+  endYear         Int?           @map("end_year")
+  endMonth        Int?           @map("end_month") // 1=Jan
+  monthlyAmount   Decimal?       @map("monthly_amount") @db.Decimal(16, 2) // MONTHLY type
+  totalAmount     Decimal?       @map("total_amount") @db.Decimal(16, 2) // ANNUAL type (total for the period)
   // legacy pre-period columns (nullable, back-filled by seed.js, then unused)
   year            Int?
-  yearlyAmount    Decimal? @map("yearly_amount") @db.Decimal(16, 2)
-  createdById     Int?     @map("created_by_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  yearlyAmount    Decimal?       @map("yearly_amount") @db.Decimal(16, 2)
+  createdById     Int?           @map("created_by_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
 

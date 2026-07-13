@@ -203,16 +203,24 @@ export async function getInsightsSummary(req, res) {
     const monthOrd = filters.year * 12 + filters.month;
     const commitments = await prisma.channelCommitment.findMany({
       where: {
-        monthlyAmount: { not: null },
+        OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }],
         channelMasterId: { in: byChannel.map((g) => g.channelMasterId) },
         startYear: { lte: filters.year }, endYear: { gte: filters.year },
       },
-      select: { channelMasterId: true, monthlyAmount: true, startYear: true, startMonth: true, endYear: true, endMonth: true },
+      select: { channelMasterId: true, type: true, monthlyAmount: true, totalAmount: true, startYear: true, startMonth: true, endYear: true, endMonth: true },
     });
+    // Per-month pace: MONTHLY → monthlyAmount; ANNUAL → totalAmount ÷ months in period.
+    const paceOf = (c) => {
+      if (c.type === 'ANNUAL') {
+        const tm = (c.endYear * 12 + c.endMonth) - (c.startYear * 12 + c.startMonth) + 1;
+        return tm > 0 ? (Number(c.totalAmount) || 0) / tm : 0;
+      }
+      return Number(c.monthlyAmount) || 0;
+    };
     const monthlyTargetById = new Map(
       commitments
         .filter((c) => (c.startYear * 12 + c.startMonth) <= monthOrd && monthOrd <= (c.endYear * 12 + c.endMonth))
-        .map((c) => [c.channelMasterId, (Number(c.monthlyAmount) || 0) / 1e6]),
+        .map((c) => [c.channelMasterId, paceOf(c) / 1e6]),
     );
 
     // Per-channel breakdown (each individual ChannelMaster that has a forecast,

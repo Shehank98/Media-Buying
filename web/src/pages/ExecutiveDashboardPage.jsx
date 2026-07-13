@@ -656,6 +656,7 @@ function AchievementSection({
                           <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
                         </button>
                         {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 5, background: c.type === 'ANNUAL' ? '#EAF0FA' : '#F0ECF9', color: c.type === 'ANNUAL' ? '#1F5BB5' : '#6B3FB5' }}>{c.type === 'ANNUAL' ? 'Annual' : 'Monthly'}</span>
                         {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
                       </td>
                       <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
@@ -713,14 +714,23 @@ function AchievementSection({
                             <>
                               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 10px' }}>
                                 Month by month · target {fmtLKR(c.monthlyCommitment)}/mo
+                                {c.type === 'ANNUAL' && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, color: 'var(--muted)' }}> · annual target, judged cumulatively</span>}
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, maxWidth: 760 }}>
-                                {c.monthlyBreakdown.map(mb => (
-                                  <div key={mb.monthNum} style={{ border: '1px solid var(--border)', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
-                                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C', marginBottom: 3 }}>{mb.label} {channelCommit.year}</div>
-                                    <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: '#16243C' }}>{fmtLKR(mb.achieved)}</div>
-                                  </div>
-                                ))}
+                                {c.monthlyBreakdown.map(mb => {
+                                  const colored = mb.met != null; // MONTHLY type only
+                                  const green = mb.met === true;
+                                  return (
+                                    <div key={mb.monthNum} style={{
+                                      border: `1px solid ${colored ? (green ? '#BFE0CB' : '#F0C9C1') : 'var(--border)'}`,
+                                      background: colored ? (green ? '#F1F9F4' : '#FDF3F1') : '#fff',
+                                      borderRadius: 8, padding: '8px 10px',
+                                    }}>
+                                      <div style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C', marginBottom: 3 }}>{mb.label} {channelCommit.year}</div>
+                                      <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: colored ? (green ? '#15814B' : '#C5391F') : '#16243C' }}>{fmtLKR(mb.achieved)}</div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </>
                           )}
