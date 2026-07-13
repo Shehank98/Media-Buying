@@ -59,13 +59,17 @@ export default function ClientDashboardPage() {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [year, setYear] = useState(''); // '' until first load resolves the current year
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/analytics/client/${clientId}/overview`)
-      .then(({ data }) => setData(data))
+    api.get(`/analytics/client/${clientId}/overview`, { params: year ? { year } : {} })
+      .then(({ data }) => { setData(data); if (!year && data?.yearBlock?.year) setYear(String(data.yearBlock.year)); })
       .catch(() => setError('Failed to load client dashboard.'))
       .finally(() => setLoading(false));
+  }, [clientId, year]);
+
+  useEffect(() => {
     // Channels for the contacts / deals / rate-cards directory (independent load).
     api.get(`/clients/${clientId}/channels`)
       .then((r) => setChannels(Array.isArray(r.data) ? r.data : []))
@@ -140,30 +144,66 @@ export default function ClientDashboardPage() {
           <h1 className="page-title">{c.name}</h1>
           <p className="page-sub">Client Dashboard{c.agencyName ? ` · ${c.agencyName}` : ''}</p>
         </div>
-        <button className="btn btn-ghost" onClick={() => navigate(`/clients/${clientId}`)}>
-          <Icon name="settings" size={15} /> Manage channels &amp; properties
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label style={{ fontSize: 11 }}>Year</label>
+            <select className="select" value={year} onChange={e => setYear(e.target.value)}>
+              {(data.availableYears || [data.yearBlock?.year]).filter(Boolean).map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <button className="btn btn-ghost" onClick={() => navigate(`/clients/${clientId}`)}>
+            <Icon name="settings" size={15} /> Manage channels &amp; properties
+          </button>
+        </div>
       </div>
 
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <Stat label="Total Spend" value={fmtLKR(data.totalValue)} sub={`${data.totalEntries} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
-        <Stat label="First Active" value={fmtMonth(data.firstMonth)} tone={['#EDF3FD', '#1F5BB5']} icon="calendar" />
-        <Stat label="Last Active" value={fmtMonth(data.lastMonth)} sub={`${data.monthsActive} months active`} tone={['#EDF3FD', '#1F5BB5']} icon="clock" />
-        <Stat label="Channels Used" value={data.channelCount ?? 0} tone={['#E8DEF8', '#6B3FB5']} icon="tv" />
-        <Stat label="Brands" value={data.brandCount ?? 0} tone={['#FCF4E2', '#9A5B00']} icon="folder" />
-        <Stat label="Avg / Month" value={fmtLKR(avgMonth)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
-        {yoy && yoy.yoyPct != null && (
-          <Stat
-            label="YoY Growth"
-            value={`${yoyUp ? '+' : ''}${yoy.yoyPct}%`}
-            sub={yoySub}
-            tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
-            icon={yoyUp ? 'trending-up' : 'trending-down'}
-            accent={yoyUp ? '#15814B' : '#C5391F'}
-          />
-        )}
-      </div>
+      {/* Stat cards (year-scoped) */}
+      {(() => {
+        const yb = data.yearBlock || {};
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 20 }}>
+            <Stat label={`Spend ${yb.year || ''}`} value={fmtLKR(yb.spend || 0)} sub={`${yb.entries || 0} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
+            <Stat label={`Target ${yb.year || ''}`} value={yb.target != null ? fmtLKR(yb.target) : 'Not set'} sub={yb.target != null && yb.pct != null ? `${yb.pct}% achieved` : 'Set in Admin → Client Targets'} tone={['#EDF3FD', '#1F5BB5']} icon="trending-up" accent="#1F5BB5" />
+            <Stat label="Avg / Month" value={fmtLKR(yb.avgMonth || 0)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
+            {yoy && yoy.yoyPct != null && (
+              <Stat
+                label="YoY Growth"
+                value={`${yoyUp ? '+' : ''}${yoy.yoyPct}%`}
+                sub={yoySub}
+                tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
+                icon={yoyUp ? 'trending-up' : 'trending-down'}
+                accent={yoyUp ? '#15814B' : '#C5391F'}
+              />
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Client target progress for the selected year */}
+      {data.yearBlock && data.yearBlock.target != null && (
+        <div style={{ ...CARD, padding: 20, marginBottom: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>{data.yearBlock.year} Target Progress</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>Achieved from actual schedule spend</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="mono" style={{ fontSize: 20, fontWeight: 750, color: (data.yearBlock.pct || 0) >= 100 ? '#15814B' : '#16243C' }}>{data.yearBlock.pct == null ? '-' : `${data.yearBlock.pct}%`}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                {fmtLKR(data.yearBlock.achieved)} of {fmtLKR(data.yearBlock.target)}
+              </div>
+            </div>
+          </div>
+          <div style={{ background: '#EEF0F3', borderRadius: 6, height: 12, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, data.yearBlock.pct || 0)}%`, height: '100%', background: (data.yearBlock.pct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 6 }} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: data.yearBlock.remaining > 0 ? '#C5391F' : '#15814B' }}>
+            {data.yearBlock.remaining > 0
+              ? <>Still needed: <span className="mono">{fmtLKR(data.yearBlock.remaining)}</span></>
+              : <>Target reached — over by <span className="mono">{fmtLKR(Math.abs(data.yearBlock.remaining))}</span></>}
+          </div>
+        </div>
+      )}
 
       {/* Monthly spend trend - one line per year so peak months are comparable */}
       <div style={{ ...CARD, padding: 24, marginBottom: 24 }}>

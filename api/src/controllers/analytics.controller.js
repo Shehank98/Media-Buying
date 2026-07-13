@@ -1053,8 +1053,35 @@ export async function getClientOverview(req, res) {
     const yoyPct = previousYearSpendAligned > 0 ? Math.round((yoyValue / previousYearSpendAligned) * 1000) / 10 : null;
     const yoyThroughMonth = latestYear != null && alignIdx >= 0 ? `${latestYear}-${String(alignIdx + 1).padStart(2, '0')}` : null;
 
+    // Year-scoped block (spend + target vs achieved) for the Client Dashboard's
+    // year filter. Achieved = actual schedule spend for the selected year.
+    const nowYear = new Date().getFullYear();
+    const availableYears = [...new Set([nowYear, ...trendYearsY])].sort((a, b) => b - a);
+    let selYear = parseInt(req.query.year);
+    if (!(selYear >= 2000)) selYear = nowYear;
+    const yArr = trend[selYear] || [];
+    const yearSpend = yArr.reduce((s, v) => s + (v || 0), 0);
+    const yearMonthsWithData = yArr.filter((v) => v > 0).length;
+    let yearEntries = 0;
+    for (const mk in byMonth) if (mk.slice(0, 4) === String(selYear)) yearEntries += byMonth[mk].count;
+    const targetRow = await prisma.clientTarget.findUnique({ where: { clientId_year: { clientId, year: selYear } } });
+    const targetAmt = targetRow ? Number(targetRow.amount) : null;
+    const yearBlock = {
+      year: selYear,
+      spend: Math.round(yearSpend),
+      entries: yearEntries,
+      monthsWithData: yearMonthsWithData,
+      avgMonth: Math.round(yearMonthsWithData > 0 ? yearSpend / yearMonthsWithData : 0),
+      target: targetAmt,
+      achieved: Math.round(yearSpend),
+      remaining: targetAmt != null ? Math.round(targetAmt - yearSpend) : null,
+      pct: targetAmt && targetAmt > 0 ? Number(((yearSpend / targetAmt) * 100).toFixed(1)) : null,
+    };
+
     return res.json({
       client: { id: client.id, name: client.name, agencyId: client.agency?.id, agencyName: client.agency?.name },
+      availableYears,
+      yearBlock,
       totalValue: Math.round(total),
       yoy: { latestYear, previousYear, currentYearSpend: Math.round(currentYearSpend), previousYearSpendAligned: Math.round(previousYearSpendAligned), yoyValue: Math.round(yoyValue), yoyPct, throughMonth: yoyThroughMonth },
       totalWithVat: Math.round(totalVat),
