@@ -646,7 +646,7 @@ function AchievementSection({
                     <Fragment key={c.channelMasterId}>
                     <tr>
                       <td className="strong">
-                        <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide yearly detail' : 'Show yearly detail'}
+                        <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide monthly detail' : 'Show month-by-month detail'}
                           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, marginRight: 8, color: 'var(--ink-soft,#3B4A63)', verticalAlign: 'middle' }}>
                           <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
                         </button>
@@ -699,6 +699,38 @@ function AchievementSection({
                             </div>
                             <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (yearPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{yearPct == null ? '-' : `${yearPct}%`}</span>
                           </div>
+
+                          {/* Month-by-month: flat monthly target vs that month's achieved spend */}
+                          {Array.isArray(c.monthlyBreakdown) && c.monthlyBreakdown.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 10px' }}>
+                                Month by month · target {fmtLKR(c.monthlyCommitment)}/mo
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, maxWidth: 760 }}>
+                                {c.monthlyBreakdown.map(mb => (
+                                  <div key={mb.monthNum} style={{
+                                    border: `1px solid ${mb.met ? '#BFE0CB' : '#F0C9C1'}`,
+                                    background: mb.met ? '#F1F9F4' : '#FDF3F1',
+                                    borderRadius: 8, padding: '8px 10px',
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                      <span style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C' }}>{mb.label} {channelCommit.year}</span>
+                                      <span style={{ fontWeight: 700, fontSize: 11.5, color: mb.met ? '#15814B' : '#C5391F' }}>
+                                        {mb.met ? '✓ met' : '✕ behind'}
+                                      </span>
+                                    </div>
+                                    <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: '#16243C' }}>{fmtLKR(mb.achieved)}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
+                                      {mb.met
+                                        ? <>ahead by <span className="mono" style={{ color: '#15814B', fontWeight: 700 }}>{fmtLKR(Math.abs(mb.diff))}</span></>
+                                        : <>behind by <span className="mono" style={{ color: '#C5391F', fontWeight: 700 }}>{fmtLKR(Math.abs(mb.diff))}</span></>}
+                                      {mb.pct != null && <span style={{ marginLeft: 4 }}>({mb.pct}%)</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )}

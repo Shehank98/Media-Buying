@@ -1452,30 +1452,56 @@ export async function getChannelCommitments(req, res) {
     if (year === now.getFullYear()) monthsElapsed = Math.min(monthsElapsed, now.getMonth() + 1);
     if (monthsElapsed < 1) monthsElapsed = 0;
 
-    // Achieved spend per channel Jan→monthsElapsed.
+    // Achieved spend per channel PER MONTH Jan→monthsElapsed (so we can show the
+    // month-by-month target-vs-achieved breakdown when a channel is expanded).
     const chIds = commitments.map((c) => c.channelMasterId);
     const spendRows = monthsElapsed > 0 ? await prisma.scheduleLog.groupBy({
-      by: ['channelMasterId'],
+      by: ['channelMasterId', 'scheduleMonth'],
       where: { ...scope, channelMasterId: { in: chIds }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(monthsElapsed).padStart(2, '0')}` } },
       _sum: { scheduleValue: true },
     }) : [];
-    const achievedBy = new Map(spendRows.map((r) => [r.channelMasterId, safeNum(r._sum.scheduleValue) || 0]));
+    // channelMasterId -> { monthNum -> spend }
+    const spendByChMonth = new Map();
+    for (const r of spendRows) {
+      const m = parseInt(String(r.scheduleMonth).slice(5));
+      if (!(m >= 1 && m <= 12)) continue;
+      if (!spendByChMonth.has(r.channelMasterId)) spendByChMonth.set(r.channelMasterId, {});
+      spendByChMonth.get(r.channelMasterId)[m] = safeNum(r._sum.scheduleValue) || 0;
+    }
 
     const channels = commitments.map((c) => {
       const yearly = Number(c.yearlyAmount);
       const monthly = yearly / 12;
       const committedToDate = monthly * monthsElapsed;
-      const achieved = achievedBy.get(c.channelMasterId) || 0;
+      const byMonth = spendByChMonth.get(c.channelMasterId) || {};
+      // One row per elapsed month: the flat monthly target vs that month's spend.
+      const monthly_breakdown = [];
+      let achieved = 0;
+      for (let m = 1; m <= monthsElapsed; m++) {
+        const spend = byMonth[m] || 0;
+        achieved += spend;
+        const diff = spend - monthly; // + = beat the monthly target, - = behind
+        monthly_breakdown.push({
+          monthNum: m,
+          label: MONTH_NAMES[m - 1],
+          target: Number(monthly.toFixed(2)),
+          achieved: Number(spend.toFixed(2)),
+          met: spend + 0.5 >= monthly,
+          diff: Number(diff.toFixed(2)),
+          pct: monthly > 0 ? Number(((spend / monthly) * 100).toFixed(1)) : null,
+        });
+      }
       const pct = committedToDate > 0 ? Number(((achieved / committedToDate) * 100).toFixed(1)) : null;
       return {
         channelMasterId: c.channelMasterId,
         name: c.channelMaster.name,
         medium: c.channelMaster.medium,
         yearlyCommitment: yearly,
-        monthlyCommitment: monthly,
+        monthlyCommitment: Number(monthly.toFixed(2)),
         committedToDate: Number(committedToDate.toFixed(2)),
         achieved: Number(achieved.toFixed(2)),
         achievementPct: pct,
+        monthlyBreakdown: monthly_breakdown,
       };
     }).sort((a, b) => b.yearlyCommitment - a.yearlyCommitment);
 
