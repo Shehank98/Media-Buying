@@ -864,6 +864,7 @@ export default function ExecutiveDashboardPage() {
   const [channelCommitLoading, setChannelCommitLoading] = useState(true);
   const [channelFcTarget, setChannelFcTarget] = useState(null);
   const [channelFcTargetLoading, setChannelFcTargetLoading] = useState(true);
+  const [showUntargeted, setShowUntargeted] = useState(false);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -1578,6 +1579,42 @@ export default function ExecutiveDashboardPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Expander: channels with a forecast this month but NO target set */}
+          {!channelFcTargetLoading && (channelFcTarget?.untargeted || []).length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-sm btn-subtle" onClick={() => setShowUntargeted(v => !v)}>
+                <Icon name={showUntargeted ? 'chevDown' : 'chevR'} size={13} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                {showUntargeted ? 'Hide' : 'Show'} channels without a target ({channelFcTarget.untargeted.length}) · forecast {fmtLKR((channelFcTarget.untargetedTotalMillions || 0) * 1e6)}
+              </button>
+              {showUntargeted && (
+                <div className="tbl-wrap" style={{ overflowX: 'auto', marginTop: 10 }}>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Channel</th>
+                        <th>Medium</th>
+                        <th style={{ textAlign: 'right' }}>Forecast ({channelFcTarget.monthLabel})</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {channelFcTarget.untargeted.map(c => (
+                        <tr key={c.channelMasterId ?? 'unspecified'}>
+                          <td className="strong">{c.name}</td>
+                          <td><span className="medium-tag">{c.medium}</span></td>
+                          <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.forecastMillions * 1e6)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid var(--border)' }}>
+                        <td className="strong" colSpan={2}>Total ({channelFcTarget.untargeted.length})</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR((channelFcTarget.untargetedTotalMillions || 0) * 1e6)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1609,13 +1609,35 @@ export async function getChannelForecastVsTarget(req, res) {
       return res.json({ year, availableYears: years, month, monthLabel: MONTH_NAMES[month - 1], channels: [], totals: null });
     }
 
-    // Forecast per channel for that month.
-    const fRows = await prisma.monthlyForecast.groupBy({
+    // Forecast per channel for that month, ALL channels (scoped) - used both for
+    // the targeted rows and for the "no target set" expander list.
+    const allWhere = { year, month };
+    if (ids) allWhere.agencyId = { in: ids };
+    const allRows = await prisma.monthlyForecast.groupBy({
       by: ['channelMasterId'],
-      where: { ...fWhereBase, month },
+      where: allWhere,
       _sum: { amountMillions: true },
     });
-    const forecastBy = new Map(fRows.map((r) => [r.channelMasterId, Number(r._sum.amountMillions) || 0]));
+    const forecastBy = new Map(allRows.map((r) => [r.channelMasterId, Number(r._sum.amountMillions) || 0]));
+
+    // Channels with a forecast this month but NO active commitment target.
+    const targetedIds = new Set(activeCommitments.map((c) => c.channelMasterId));
+    const untargetedRows = allRows.filter((r) => !targetedIds.has(r.channelMasterId) && (Number(r._sum.amountMillions) || 0) > 0);
+    const untargetedRealIds = untargetedRows.map((r) => r.channelMasterId).filter((id) => id != null);
+    const untargetedMasters = untargetedRealIds.length
+      ? await prisma.channelMaster.findMany({ where: { id: { in: untargetedRealIds } }, select: { id: true, name: true, medium: true } })
+      : [];
+    const umById = new Map(untargetedMasters.map((m) => [m.id, m]));
+    const untargeted = untargetedRows.map((r) => {
+      const m = r.channelMasterId != null ? umById.get(r.channelMasterId) : null;
+      return {
+        channelMasterId: r.channelMasterId,
+        name: m?.name || (r.channelMasterId == null ? 'Unspecified' : 'Unlinked'),
+        medium: m?.medium || 'OTHER',
+        forecastMillions: Number((Number(r._sum.amountMillions) || 0).toFixed(2)),
+      };
+    }).sort((a, b) => b.forecastMillions - a.forecastMillions);
+    const untargetedTotalMillions = Number(untargeted.reduce((s, c) => s + c.forecastMillions, 0).toFixed(2));
 
     const channels = activeCommitments.map((c) => {
       const monthlyTarget = commitmentPace(c) / 1e6; // millions (per-month pace)
@@ -1646,6 +1668,8 @@ export async function getChannelForecastVsTarget(req, res) {
       monthLabel: MONTH_NAMES[month - 1],
       channels,
       totals,
+      untargeted,
+      untargetedTotalMillions,
     });
   } catch (error) {
     console.error('getChannelForecastVsTarget error:', error);
