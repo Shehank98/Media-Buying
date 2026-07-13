@@ -35,36 +35,38 @@ export async function createClient(req, res) {
 export async function list(req, res) {
   try {
     const agencyIds = await getAccessibleAgencyIds(req.user.id, req.user.role);
+    // Scope the client count + spend to the clients THIS user can access, so a
+    // group head/planner with 2 clients in an agency sees only those 2 clients'
+    // spend (not the whole agency's). SUPER_ADMIN/MANAGER get all their clients.
+    const clientIds = await getAccessibleClientIds(req.user.id, req.user.role);
 
     const agencies = await prisma.agency.findMany({
       where: { id: { in: agencyIds } },
-      include: { _count: { select: { clients: true } } },
       orderBy: { name: 'asc' },
     });
 
-    // Total spend (sum of schedule values) + distinct channels used, per agency
-    const [spendRows, channelRows] = await Promise.all([
-      prisma.scheduleLog.groupBy({
-        by: ['agencyId'],
-        where: { agencyId: { in: agencyIds }, isDeleted: false },
-        _sum: { scheduleValue: true },
-      }),
-      prisma.scheduleLog.findMany({
-        where: { agencyId: { in: agencyIds }, isDeleted: false },
-        select: { agencyId: true, channelMasterId: true },
-        distinct: ['agencyId', 'channelMasterId'],
-      }),
+    const [accessibleClients, spendRows] = await Promise.all([
+      clientIds.length
+        ? prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, agencyId: true } })
+        : [],
+      clientIds.length
+        ? prisma.scheduleLog.groupBy({
+            by: ['agencyId'],
+            where: { clientId: { in: clientIds }, isDeleted: false },
+            _sum: { scheduleValue: true },
+          })
+        : [],
     ]);
 
+    const clientCountMap = {};
+    accessibleClients.forEach((c) => { clientCountMap[c.agencyId] = (clientCountMap[c.agencyId] || 0) + 1; });
     const spendMap = {};
     spendRows.forEach((r) => { spendMap[r.agencyId] = Number(r._sum.scheduleValue) || 0; });
-    const channelMap = {};
-    channelRows.forEach((r) => { channelMap[r.agencyId] = (channelMap[r.agencyId] || 0) + 1; });
 
     const result = agencies.map((a) => ({
       ...a,
+      _count: { clients: clientCountMap[a.id] || 0 },
       totalSpend: spendMap[a.id] || 0,
-      channelCount: channelMap[a.id] || 0,
     }));
 
     return res.json(result);

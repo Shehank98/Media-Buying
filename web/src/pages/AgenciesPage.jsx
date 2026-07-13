@@ -128,7 +128,6 @@ export default function AgenciesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 18 }}>
         {agencies.map((ag, i) => {
           const clientCount = ag._count?.clients ?? ag.clientCount ?? 0;
-          const channelCount = ag._count?.channels ?? ag.channelCount ?? null;
           const spend = ag.totalSpend ?? ag.spend ?? null;
           const sub = ag.lead || ag.owner || ag.ownerName || null;
           const brand = BRAND_COLORS[i % BRAND_COLORS.length];
@@ -171,14 +170,10 @@ export default function AgenciesPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '14px 10px' }}>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{clientCount}</div>
                   <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Clients</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color: '#16243C' }}>{channelCount ?? '-'}</div>
-                  <div style={{ fontSize: 11.5, color: '#93A0B5' }}>Channels</div>
                 </div>
                 <div style={{ gridColumn: '1/-1', borderTop: '1px solid #EEF0F3', paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, color: '#6B7790' }}>Total spend</span>
