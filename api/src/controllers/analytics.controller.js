@@ -1243,9 +1243,13 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 // then the current calendar year.
 async function resolveYear(reqYear, dataYears) {
   if (reqYear && /^\d{4}$/.test(String(reqYear))) return parseInt(reqYear);
+  // Default to the latest year that actually has schedule data, so newly
+  // uploaded data (e.g. a fresh year) surfaces immediately without waiting for
+  // an AnnualTarget to be entered for it. Only fall back to the latest target
+  // year when there is no data at all (a brand-new, empty system).
+  if (dataYears.length) return parseInt(dataYears[0]);
   const t = await prisma.annualTarget.findFirst({ select: { year: true }, orderBy: { year: 'desc' } });
   if (t) return t.year;
-  if (dataYears.length) return parseInt(dataYears[0]);
   return new Date().getFullYear();
 }
 
