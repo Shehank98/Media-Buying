@@ -1525,6 +1525,84 @@ export async function getChannelCommitments(req, res) {
   }
 }
 
+// Channel-wise Forecast vs monthly target (Executive Dashboard, after Medium
+// Split). For the latest month in the year that has forecast data, compare each
+// channel's submitted MonthlyForecast against its monthly commitment target
+// (ChannelCommitment yearly ÷ 12). ONLY channels that have a target set are
+// returned. Forecast is agency-scoped for MANAGER; the target is company-wide
+// (same convention as getChannelCommitments).
+export async function getChannelForecastVsTarget(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user); // null = unrestricted
+    const dataYears = await availableYears({ isDeleted: false });
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    // Channels that have a commitment target this year (defines the roster).
+    const commitments = await prisma.channelCommitment.findMany({
+      where: { year },
+      include: { channelMaster: { select: { id: true, name: true, medium: true } } },
+    });
+    if (!commitments.length) {
+      return res.json({ year, availableYears: years, month: null, monthLabel: null, channels: [], totals: null });
+    }
+    const chIds = commitments.map((c) => c.channelMasterId);
+
+    // Latest month in the year that has forecast data for these channels (scoped).
+    const fWhereBase = { year, channelMasterId: { in: chIds } };
+    if (ids) fWhereBase.agencyId = { in: ids };
+    const monthsRows = await prisma.monthlyForecast.groupBy({ by: ['month'], where: fWhereBase, _sum: { amountMillions: true } });
+    let month = 0;
+    for (const r of monthsRows) { if (r.month > month) month = r.month; }
+    if (!month) {
+      return res.json({ year, availableYears: years, month: null, monthLabel: null, channels: [], totals: null });
+    }
+
+    // Forecast per channel for that month.
+    const fRows = await prisma.monthlyForecast.groupBy({
+      by: ['channelMasterId'],
+      where: { ...fWhereBase, month },
+      _sum: { amountMillions: true },
+    });
+    const forecastBy = new Map(fRows.map((r) => [r.channelMasterId, Number(r._sum.amountMillions) || 0]));
+
+    const channels = commitments.map((c) => {
+      const monthlyTarget = Number(c.yearlyAmount) / 12 / 1e6; // millions
+      const forecast = forecastBy.get(c.channelMasterId) || 0;
+      const met = forecast + 0.005 >= monthlyTarget;
+      return {
+        channelMasterId: c.channelMasterId,
+        name: c.channelMaster.name,
+        medium: c.channelMaster.medium,
+        forecastMillions: Number(forecast.toFixed(2)),
+        monthlyTargetMillions: Number(monthlyTarget.toFixed(2)),
+        met,
+        diffMillions: Number((forecast - monthlyTarget).toFixed(2)),
+        pct: monthlyTarget > 0 ? Number(((forecast / monthlyTarget) * 100).toFixed(1)) : null,
+      };
+    }).sort((a, b) => b.monthlyTargetMillions - a.monthlyTargetMillions);
+
+    const totals = {
+      forecastMillions: Number(channels.reduce((s, c) => s + c.forecastMillions, 0).toFixed(2)),
+      monthlyTargetMillions: Number(channels.reduce((s, c) => s + c.monthlyTargetMillions, 0).toFixed(2)),
+    };
+    totals.met = totals.forecastMillions + 0.005 >= totals.monthlyTargetMillions;
+
+    return res.json({
+      year,
+      availableYears: years,
+      month,
+      monthLabel: MONTH_NAMES[month - 1],
+      channels,
+      totals,
+    });
+  } catch (error) {
+    console.error('getChannelForecastVsTarget error:', error);
+    return res.status(500).json({ error: 'Failed to build channel forecast vs target', detail: error.message });
+  }
+}
+
 // Revenue Achievement: yellow Target bar = AnnualTarget ÷ 12 × months entered;
 // green Achievement bar = admin-entered actual billing (MonthlyBilling) summed
 // Jan→latest entered month. Company-wide (billing has no agency dimension).

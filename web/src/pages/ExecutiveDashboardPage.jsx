@@ -610,9 +610,9 @@ function AchievementSection({
           <div>
             <div className="chart-card-title">Channel Commitments</div>
             <div className="chart-card-sub">
-              {channelCommit?.monthLabel
-                ? `Committed vs achieved, Jan–${channelCommit.monthLabel} ${channelCommit.year} · yearly commitment ÷ 12 × months`
-                : 'Yearly commitment per channel vs cumulative schedule spend'}
+              {channelCommit?.monthLabel ? (
+                <>Committed vs achieved, <strong style={{ color: '#16243C', fontWeight: 700 }}>Jan–{channelCommit.monthLabel} {channelCommit.year}</strong> · yearly commitment ÷ 12 × months</>
+              ) : 'Yearly commitment per channel vs cumulative schedule spend'}
             </div>
           </div>
         </div>
@@ -816,6 +816,8 @@ export default function ExecutiveDashboardPage() {
   const [revenueAchLoading, setRevenueAchLoading] = useState(true);
   const [channelCommit, setChannelCommit] = useState(null);
   const [channelCommitLoading, setChannelCommitLoading] = useState(true);
+  const [channelFcTarget, setChannelFcTarget] = useState(null);
+  const [channelFcTargetLoading, setChannelFcTargetLoading] = useState(true);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -907,6 +909,15 @@ export default function ExecutiveDashboardPage() {
       .then(r => setChannelCommit(r.data))
       .catch(() => setChannelCommit(null))
       .finally(() => setChannelCommitLoading(false));
+  }, [year]);
+
+  // Channel-wise forecast vs monthly target (only channels with a target set)
+  useEffect(() => {
+    setChannelFcTargetLoading(true);
+    api.get('/analytics/dashboard/channel-forecast-target', { params: year ? { year } : {} })
+      .then(r => setChannelFcTarget(r.data))
+      .catch(() => setChannelFcTarget(null))
+      .finally(() => setChannelFcTargetLoading(false));
   }, [year]);
 
   // Group contribution (last two months with data, by team head's client portfolio)
@@ -1459,6 +1470,69 @@ export default function ExecutiveDashboardPage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 6: Channel-wise Forecast vs monthly target (targets-only) */}
+      <div className="dash-section">
+        <div className="chart-card">
+          <div style={{ marginBottom: 16 }}>
+            <div className="chart-card-title">Channel-wise Forecast (by channel)</div>
+            <div className="chart-card-sub">
+              {channelFcTarget?.monthLabel
+                ? <>Forecast for <strong style={{ color: '#16243C', fontWeight: 700 }}>{channelFcTarget.monthLabel} {channelFcTarget.year}</strong> vs monthly target · only channels with a target set</>
+                : 'Forecast vs monthly target · only channels with a target set'}
+            </div>
+          </div>
+          {channelFcTargetLoading ? <Skeleton h={180} /> : !(channelFcTarget?.channels || []).length ? (
+            <ChartEmpty msg="No channel targets set for this year, or no forecast entered yet. Add targets in Admin → Channel Commitments." />
+          ) : (
+            <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Channel</th>
+                    <th style={{ textAlign: 'right' }}>Forecast</th>
+                    <th style={{ textAlign: 'right' }}>Monthly Target</th>
+                    <th>vs Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelFcTarget.channels.map(c => {
+                    const col = c.met ? '#15814B' : '#C5391F';
+                    return (
+                      <tr key={c.channelMasterId}>
+                        <td className="strong">{c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span></td>
+                        <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.forecastMillions * 1e6)}</td>
+                        <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.monthlyTargetMillions * 1e6)}</td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5, color: col }}>
+                            <span>{c.met ? '✓' : '✕'}</span>
+                            <span>{c.met ? 'Met' : 'Behind'}</span>
+                            <span className="mono" style={{ fontWeight: 600 }}>{fmtLKR(Math.abs(c.diffMillions) * 1e6)}</span>
+                            {c.pct != null && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>({c.pct}%)</span>}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {channelFcTarget?.totals && (
+                    <tr style={{ borderTop: '2px solid var(--border)' }}>
+                      <td className="strong">Total</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelFcTarget.totals.forecastMillions * 1e6)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelFcTarget.totals.monthlyTargetMillions * 1e6)}</td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 12.5, color: channelFcTarget.totals.met ? '#15814B' : '#C5391F' }}>
+                          <span>{channelFcTarget.totals.met ? '✓' : '✕'}</span>
+                          <span>{channelFcTarget.totals.met ? 'Met' : 'Behind'}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

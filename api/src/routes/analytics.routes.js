@@ -21,6 +21,7 @@ import {
   getDeepDashboard,
   getAchievement,
   getChannelCommitments,
+  getChannelForecastVsTarget,
   getRevenueAchievement,
   getAgencyAchievement,
   getForecastMonthly,
@@ -57,6 +58,7 @@ router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'
 // Forecasting dashboard
 router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
 router.get('/dashboard/channel-commitments', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getChannelCommitments);
+router.get('/dashboard/channel-forecast-target', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getChannelForecastVsTarget);
 router.get('/dashboard/revenue-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRevenueAchievement);
 router.get('/agency-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getAgencyAchievement);
 router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
