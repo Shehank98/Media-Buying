@@ -554,6 +554,23 @@ export default function SpendAnalyticsPage() {
           )}
           <div className="spa-filters">
             <div className="spa-field">
+              <label>Year</label>
+              <select
+                className="spa-input"
+                value={(monthFrom && monthTo && monthFrom.slice(0, 4) === monthTo.slice(0, 4) && monthFrom.endsWith('-01') && monthTo.endsWith('-12')) ? monthFrom.slice(0, 4) : ''}
+                onChange={e => {
+                  const y = e.target.value;
+                  if (!y) { setMonthFrom(''); setMonthTo(''); }
+                  else { setMonthFrom(`${y}-01`); setMonthTo(`${y}-12`); }
+                }}
+              >
+                <option value="">All time</option>
+                {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).reverse().map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="spa-field">
               <label>Agency</label>
               <select className="spa-input" value={agencyId} onChange={e => setAgencyId(e.target.value)}>
                 <option value="">All Agencies</option>
