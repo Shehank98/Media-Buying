@@ -137,6 +137,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   /* ---- forecasting requests ---- */
   const [clientRequests, setClientRequests] = useState([]);
   const [channelRequests, setChannelRequests] = useState([]);
+  const [channelReqGroup, setChannelReqGroup] = useState({}); // { requestId: mediaGroupId } for approval
 
   /* ---- group revenue contribution (per group head, per month) ---- */
   const now = new Date();
@@ -445,7 +446,13 @@ export default function AdminPage({ initialTab = 'users' }) {
         if (!aId) return;
         body.agencyId = parseInt(aId);
       }
+      if (kind === 'channel' && status === 'approved') {
+        const gid = channelReqGroup[r.id];
+        if (!gid) { setError('Pick a media group for this channel before approving.'); return; }
+        body.mediaGroupId = parseInt(gid);
+      }
       await api.put(`/admin/${kind === 'client' ? 'client-requests' : 'channel-requests'}/${r.id}`, body);
+      setError('');
       await fetchData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to review request.');
@@ -2398,7 +2405,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         <div className="tbl-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Channel Name</th><th>Category</th><th>Requested By</th><th>Notes</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+              <tr><th>Channel Name</th><th>Category</th><th>Requested By</th><th>Notes</th><th>Media Group</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr>
             </thead>
             <tbody>
               {channelRequests.map(r => (
@@ -2407,11 +2414,24 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <td><span className="medium-tag" data-medium={r.category}>{r.category}</span></td>
                   <td>{r.requestedByName}</td>
                   <td style={{ color: 'var(--muted)' }}>{r.notes || '-'}</td>
+                  <td>
+                    {r.status === 'pending' ? (
+                      <select
+                        className="select"
+                        style={{ minWidth: 190, maxWidth: 240 }}
+                        value={channelReqGroup[r.id] || ''}
+                        onChange={e => setChannelReqGroup(m => ({ ...m, [r.id]: e.target.value }))}
+                      >
+                        <option value="">Select media group…</option>
+                        {mediaGroups.filter(g => g.isActive !== false).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    ) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>-</span>}
+                  </td>
                   <td><span className="badge">{r.status}</span></td>
                   <td>
                     {r.status === 'pending' ? (
                       <div className="row-actions">
-                        <button className="act-btn" title="Approve" style={{ color: 'var(--green-600)' }} onClick={() => reviewRequest('channel', r, 'approved')}><Icon name="check" size={15} /></button>
+                        <button className="act-btn" title={channelReqGroup[r.id] ? 'Approve' : 'Pick a media group first'} style={{ color: channelReqGroup[r.id] ? 'var(--green-600)' : 'var(--muted)' }} disabled={!channelReqGroup[r.id]} onClick={() => reviewRequest('channel', r, 'approved')}><Icon name="check" size={15} /></button>
                         <button className="act-btn" title="Reject" style={{ color: 'var(--red-600,#dc2626)' }} onClick={() => reviewRequest('channel', r, 'rejected')}><Icon name="x" size={15} /></button>
                       </div>
                     ) : <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.status}</span>}

@@ -991,7 +991,7 @@ export async function listChannelRequests(req, res) {
 export async function reviewChannelRequest(req, res) {
   try {
     const id = parseInt(req.params.id);
-    const { status } = req.body;
+    const { status, mediaGroupId } = req.body;
     if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'status must be approved or rejected' });
     const reqRow = await prisma.channelRequest.findUnique({ where: { id } });
     if (!reqRow) return res.status(404).json({ error: 'Request not found' });
@@ -1000,8 +1000,13 @@ export async function reviewChannelRequest(req, res) {
     if (status === 'approved') {
       const existing = await prisma.channelMaster.findFirst({ where: { name: { equals: reqRow.channelName, mode: 'insensitive' } }, select: { id: true } });
       if (!existing) {
-        const group = await prisma.mediaGroup.findFirst({ select: { id: true } });
-        if (!group) return res.status(400).json({ error: 'No media group exists to attach the channel to' });
+        // Admin must pick the media group the new channel belongs to.
+        const gid = parseInt(mediaGroupId);
+        if (!Number.isFinite(gid)) {
+          return res.status(400).json({ error: 'Select a media group for this channel.', needMediaGroup: true });
+        }
+        const group = await prisma.mediaGroup.findUnique({ where: { id: gid }, select: { id: true } });
+        if (!group) return res.status(400).json({ error: 'The selected media group does not exist.', needMediaGroup: true });
         await prisma.channelMaster.create({ data: { name: reqRow.channelName, medium: reqRow.category, aliases: [], isActive: true, mediaGroupId: group.id, createdById: req.user.id } });
       }
     }
