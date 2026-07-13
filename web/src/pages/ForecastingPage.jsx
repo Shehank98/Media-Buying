@@ -316,9 +316,15 @@ function InsightsTab() {
       ['TOTAL', summary?.channelBreakdownTotalMillions ?? 0, '100%'],
     ];
     const chChannelRows = [
-      ['Channel', 'Medium', 'Forecast (M LKR)', '% of Total'],
-      ...(summary?.channelBreakdownByChannel || []).map((c) => [c.channelName, c.medium, c.forecastMillions, `${c.pctOfTotal}%`]),
-      ['TOTAL', '', summary?.channelBreakdownTotalMillions ?? 0, '100%'],
+      ['Channel', 'Medium', 'Forecast (M LKR)', 'Monthly Target (M LKR)', 'vs Target', 'Diff (M LKR)'],
+      ...(summary?.channelBreakdownByChannel || []).map((c) => [
+        c.channelName, c.medium, c.forecastMillions,
+        c.monthlyTargetMillions == null ? '' : c.monthlyTargetMillions,
+        c.monthlyTargetMillions == null ? 'No target' : (c.targetMet ? 'Met' : 'Behind') + (c.targetPct != null ? ` (${c.targetPct}%)` : ''),
+        c.targetDiffMillions == null ? '' : c.targetDiffMillions,
+      ]),
+      ['TOTAL', '', summary?.channelBreakdownTotalMillions ?? 0,
+        (summary?.channelBreakdownByChannel || []).reduce((s, c) => s + (c.monthlyTargetMillions || 0), 0), '', ''],
     ];
     return [filterSheet, { name: 'Client Forecast', rows: clientRows }, { name: 'Medium Breakdown', rows: chRows }, { name: 'Channel Breakdown', rows: chChannelRows }];
   };
@@ -575,25 +581,35 @@ function InsightsTab() {
                 ) : (
                   (summary?.channelBreakdownByChannel || []).length === 0 ? <Empty /> : (
                     <table className="tbl" style={{ fontSize: 12.5 }}>
-                      <thead><tr><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ width: '30%' }}>% of Total</th></tr></thead>
+                      <thead><tr><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Forecast</th><th style={{ textAlign: 'right' }}>Monthly Target</th><th>vs Target</th></tr></thead>
                       <tbody>
-                        {summary.channelBreakdownByChannel.map((c) => (
+                        {summary.channelBreakdownByChannel.map((c) => {
+                          const hasT = c.monthlyTargetMillions != null;
+                          const met = c.targetMet;
+                          const col = !hasT ? '#6B7790' : met ? '#15814B' : '#C5391F';
+                          return (
                           <tr key={c.channelMasterId}>
                             <td className="strong">{c.channelName}</td>
                             <td><span className="medium-tag" data-medium={c.medium}>{c.medium}</span></td>
                             <td className="mono" style={{ textAlign: 'right' }}>{fmtM(c.forecastMillions)}</td>
+                            <td className="mono" style={{ textAlign: 'right', color: hasT ? 'inherit' : 'var(--muted)' }}>{hasT ? fmtM(c.monthlyTargetMillions) : '—'}</td>
                             <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#EEF0F3', overflow: 'hidden' }}>
-                                  <div style={{ width: `${c.pctOfTotal}%`, height: '100%', background: MEDIUM_COLORS[c.medium] || '#1e3a5f' }} />
-                                </div>
-                                <span className="mono" style={{ fontSize: 11.5, width: 44, textAlign: 'right' }}>{c.pctOfTotal}%</span>
-                              </div>
+                              {!hasT ? (
+                                <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>No target set</span>
+                              ) : (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 700, fontSize: 12, color: col }}>
+                                  <span>{met ? '✓' : '✕'}</span>
+                                  <span>{met ? 'Met' : 'Behind'}</span>
+                                  <span className="mono" style={{ fontWeight: 600 }}>{fmtM(Math.abs(c.targetDiffMillions))}</span>
+                                  {c.targetPct != null && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>({c.targetPct}%)</span>}
+                                </span>
+                              )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
-                      <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Total ({summary.channelBreakdownByChannel.length})</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM(summary?.channelBreakdownTotalMillions)}</td><td>100%</td></tr></tfoot>
+                      <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={2}>Total ({summary.channelBreakdownByChannel.length})</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM(summary?.channelBreakdownTotalMillions)}</td><td className="mono" style={{ textAlign: 'right' }}>{fmtM((summary.channelBreakdownByChannel || []).reduce((s, c) => s + (c.monthlyTargetMillions || 0), 0))}</td><td /></tr></tfoot>
                     </table>
                   )
                 )}

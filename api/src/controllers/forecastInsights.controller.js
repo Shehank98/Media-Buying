@@ -196,6 +196,17 @@ export async function getInsightsSummary(req, res) {
       pctOfTotal: mediumTotalSum > 0 ? Number(((mediumTotals[m] / mediumTotalSum) * 100).toFixed(1)) : 0,
     }));
 
+    // Monthly commitment target per channel (ChannelCommitment yearly ÷ 12, in
+    // millions) so the channel-wise view can flag whether the forecast for the
+    // month meets that channel's monthly target and by how much.
+    const commitments = await prisma.channelCommitment.findMany({
+      where: { year: filters.year, channelMasterId: { in: byChannel.map((g) => g.channelMasterId) } },
+      select: { channelMasterId: true, yearlyAmount: true },
+    });
+    const monthlyTargetById = new Map(
+      commitments.map((c) => [c.channelMasterId, (Number(c.yearlyAmount) || 0) / 12 / 1e6]),
+    );
+
     // Per-channel breakdown (each individual ChannelMaster that has a forecast,
     // including the per-medium "Total"/Unspecified buckets for amounts a head
     // couldn't split), so the Summary can show a true channel-wise view - not
@@ -204,12 +215,18 @@ export async function getInsightsSummary(req, res) {
       .map((g) => {
         const cm = cmById.get(g.channelMasterId);
         const amt = Number(g._sum.amountMillions) || 0;
+        const target = monthlyTargetById.get(g.channelMasterId);
+        const hasTarget = target != null && target > 0;
         return {
           channelMasterId: g.channelMasterId,
           channelName: cm?.name || 'Unlinked',
           medium: cm?.medium || 'OTHER',
           forecastMillions: Number(amt.toFixed(2)),
           pctOfTotal: mediumTotalSum > 0 ? Number(((amt / mediumTotalSum) * 100).toFixed(1)) : 0,
+          monthlyTargetMillions: hasTarget ? Number(target.toFixed(2)) : null,
+          targetMet: hasTarget ? (amt + 0.005 >= target) : null,
+          targetDiffMillions: hasTarget ? Number((amt - target).toFixed(2)) : null,
+          targetPct: hasTarget ? Number(((amt / target) * 100).toFixed(1)) : null,
         };
       })
       .sort((a, b) => (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || (b.forecastMillions - a.forecastMillions) || a.channelName.localeCompare(b.channelName));
