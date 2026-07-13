@@ -1044,11 +1044,12 @@ export async function listGroupRevenue(req, res) {
       year = currentRevenueMonth?.year ?? d.getFullYear();
       month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
     }
-    const [heads, agencies, rows, agencyRows] = await Promise.all([
+    const [heads, agencies, rows, agencyRows, targetRow] = await Promise.all([
       prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
+      prisma.monthlyRevenueTarget.findUnique({ where: { year_month: { year, month } } }),
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
@@ -1060,6 +1061,9 @@ export async function listGroupRevenue(req, res) {
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
+      // Company-wide monthly revenue target for this month (drives the cumulative
+      // Target bar of the Revenue Achievement chart).
+      revenueTarget: targetRow ? Number(targetRow.amount) : null,
     });
   } catch (error) {
     console.error('listGroupRevenue error:', error);
@@ -1069,12 +1073,13 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts } = req.body || {};
+    const { year, month, amounts, agencyAmounts, revenueTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
-    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies)) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } are required' });
+    const hasTarget = revenueTarget !== undefined;
+    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasTarget)) {
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or revenueTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
@@ -1115,6 +1120,19 @@ export async function setGroupRevenue(req, res) {
             create: { year: y, month: m, agencyId, amount: num, createdById: req.user?.id ?? null },
           }));
         }
+      }
+    }
+    // Company-wide monthly revenue target (blank/0 clears the row).
+    if (hasTarget) {
+      const num = revenueTarget === '' || revenueTarget == null ? null : Number(revenueTarget);
+      if (num == null || isNaN(num) || num <= 0) {
+        ops.push(prisma.monthlyRevenueTarget.deleteMany({ where: { year: y, month: m } }));
+      } else {
+        ops.push(prisma.monthlyRevenueTarget.upsert({
+          where: { year_month: { year: y, month: m } },
+          update: { amount: num, createdById: req.user?.id ?? null },
+          create: { year: y, month: m, amount: num, createdById: req.user?.id ?? null },
+        }));
       }
     }
     await prisma.$transaction(ops);

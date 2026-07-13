@@ -581,11 +581,15 @@ function AchievementSection({
                 ? `${revenueAch.achievementPct}% Revenue Achievement · ${revenueAch.year} ${revenueAch.monthLabel} YTD`
                 : 'Revenue Achievement'}
             </div>
-            <div className="chart-card-sub">Revenue based on actual billing · LKR millions</div>
+            <div className="chart-card-sub">
+              {revenueAch?.targetSource === 'monthly'
+                ? 'Cumulative monthly revenue target vs actual billing · LKR millions'
+                : 'Prorated annual target vs actual billing · LKR millions'}
+            </div>
           </div>
         </div>
         {revenueAchLoading ? <Skeleton h={240} /> : !revenueAch?.hasTarget ? (
-          <ChartEmpty msg="No annual target set for this year. Add one in Admin → Annual Targets." />
+          <ChartEmpty msg="No revenue target set for this year. Add monthly targets in Admin → Group Revenue, or an Annual Target in Admin → Annual Targets." />
         ) : !revenueAch?.hasBilling ? (
           <ChartEmpty msg="No actual billing entered yet. Add it in Admin → Group Revenue (Actual billing)." />
         ) : (

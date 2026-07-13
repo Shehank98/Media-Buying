@@ -702,6 +702,25 @@ model MonthlyBilling {
   @@map("monthly_billings")
 }
 
+// Admin-entered company-wide monthly REVENUE TARGET (full LKR), one per month
+// (Jan, Feb, ...). Their cumulative sum Jan→the latest billed month is the yellow
+// "Target" bar of the Executive Dashboard's Revenue Achievement chart. Entered in
+// Admin → Group Revenue. When no monthly targets exist for a year, the chart
+// falls back to the prorated AnnualTarget (÷ 12 × months).
+model MonthlyRevenueTarget {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month])
+  @@index([year])
+  @@map("monthly_revenue_targets")
+}
+
 model ClientRequest {
   id            Int       @id @default(autoincrement())
   requestedById Int       @map("requested_by_id")

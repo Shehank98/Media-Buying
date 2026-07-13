@@ -1615,6 +1615,14 @@ export async function getRevenueAchievement(req, res) {
     const target = await prisma.annualTarget.findUnique({ where: { year } });
     const targetMillions = target ? Number(target.totalTargetMillions) : 0;
 
+    // Admin-entered monthly revenue targets (full LKR → millions). Their cumulative
+    // sum Jan→positionMonth is the preferred Target bar; only if none are entered
+    // for the year do we fall back to the prorated AnnualTarget (÷ 12 × months).
+    const monthlyTargetRows = await prisma.monthlyRevenueTarget.findMany({ where: { year }, orderBy: { month: 'asc' } });
+    const monthlyTargetByMonth = {};
+    for (const r of monthlyTargetRows) monthlyTargetByMonth[r.month] = Number(r.amount) / 1e6;
+    const hasMonthlyTargets = monthlyTargetRows.length > 0;
+
     const billingRows = await prisma.monthlyBilling.findMany({ where: { year }, orderBy: { month: 'asc' } });
     const billingByMonth = {};
     let positionMonth = 0;
@@ -1627,15 +1635,26 @@ export async function getRevenueAchievement(req, res) {
     for (let m = 1; m <= positionMonth; m++) achievementMillions += billingByMonth[m] || 0;
     achievementMillions = Number(achievementMillions.toFixed(2));
 
-    const uptoTargetMillions = target && positionMonth > 0
-      ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
+    // Target bar: cumulative monthly targets Jan→positionMonth when present, else
+    // the prorated annual target across the same number of months.
+    let uptoTargetMillions = 0;
+    if (positionMonth > 0) {
+      if (hasMonthlyTargets) {
+        let sum = 0;
+        for (let m = 1; m <= positionMonth; m++) sum += monthlyTargetByMonth[m] || 0;
+        uptoTargetMillions = Number(sum.toFixed(2));
+      } else if (target) {
+        uptoTargetMillions = Number(((targetMillions / 12) * positionMonth).toFixed(2));
+      }
+    }
     const achievementPct = uptoTargetMillions > 0
       ? Number(((achievementMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
 
     return res.json({
       year,
       availableYears: years,
-      hasTarget: !!target,
+      hasTarget: hasMonthlyTargets || !!target,
+      targetSource: hasMonthlyTargets ? 'monthly' : (target ? 'annual' : null),
       hasBilling: positionMonth > 0,
       positionMonth,
       monthLabel: positionMonth > 0 ? MONTH_NAMES[positionMonth - 1] : null,

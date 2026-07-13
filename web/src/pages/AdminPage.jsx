@@ -146,6 +146,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
   const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
+  const [grRevenueTarget, setGrRevenueTarget] = useState(''); // monthly revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
   const [grSaving, setGrSaving] = useState(false);
   const [grSavedAt, setGrSavedAt] = useState(null);
@@ -909,8 +910,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      setGrRevenueTarget(data.revenueTarget == null ? '' : String(data.revenueTarget));
     } catch {
-      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({});
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrRevenueTarget('');
     } finally {
       setGrLoading(false);
     }
@@ -927,7 +929,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, revenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -938,6 +940,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      setGrRevenueTarget(data.revenueTarget == null ? '' : String(data.revenueTarget));
       setGrSavedAt(Date.now());
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save group revenue.');
@@ -1932,6 +1935,24 @@ export default function AdminPage({ initialTab = 'users' }) {
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
               Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut for {MONTHS[grMonth - 1]}. The total is used as this month's company billing, so the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart (Jan→latest month vs prorated target) stays in sync - no separate billing entry needed.
+            </div>
+          </div>
+
+          {/* Monthly REVENUE TARGET for this month → cumulative = Revenue Achievement target bar */}
+          <div style={{ marginBottom: 14, padding: '12px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 12 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="field" style={{ margin: 0, flex: '1 1 220px', minWidth: 200 }}>
+                <label style={{ fontWeight: 700, color: 'var(--ink)' }}>Revenue target · {MONTHS[grMonth - 1]} {grYear} (full LKR)</label>
+                <input
+                  className="input" type="number" min="0" step="1000"
+                  value={grRevenueTarget}
+                  onChange={e => { setGrSavedAt(null); setGrRevenueTarget(e.target.value); }}
+                  placeholder="e.g. 50000000"
+                />
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
+              Set one target per month (Jan, Feb, …). The <b style={{ color: 'var(--ink)' }}>cumulative</b> sum Jan→the latest billed month becomes the yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart. Leave blank to fall back to the prorated Annual Target. Saved with the main Save button above.
             </div>
           </div>
 
