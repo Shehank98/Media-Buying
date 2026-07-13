@@ -191,6 +191,98 @@ function AchievementSection({
     committedM: (c.committedToDate || 0) / 1e6,
     achievedM: (c.achieved || 0) / 1e6,
   }));
+  const annualCommit = ccRows.filter(c => c.type === 'ANNUAL');
+  const monthlyCommit = ccRows.filter(c => c.type !== 'ANNUAL');
+  // Behind/Ahead cell (gap = committed − achieved, both full LKR).
+  const behindAheadCell = (gap) => {
+    const behind = gap > 0.5, ahead = gap < -0.5;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12.5, color: behind ? '#C5391F' : ahead ? '#15814B' : '#6B7790' }}>
+        {behind ? '▼' : ahead ? '▲' : '●'}
+        <span className="mono">{behind || ahead ? fmtLKR(Math.abs(gap)) : 'On target'}</span>
+        {(behind || ahead) && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{behind ? 'behind' : 'ahead'}</span>}
+      </span>
+    );
+  };
+  const progressCell = (pct) => {
+    const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
+        </div>
+        <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
+      </div>
+    );
+  };
+  const commitNameCell = (c, isOpen, period) => (
+    <td className="strong">
+      <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide monthly detail' : 'Show month-by-month detail'}
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, marginRight: 8, color: 'var(--ink-soft,#3B4A63)', verticalAlign: 'middle' }}>
+        <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
+      </button>
+      {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
+      {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
+    </td>
+  );
+  const commitExpandRow = (c, period, colSpan) => (
+    <tr>
+      <td colSpan={colSpan} style={{ background: '#F7F8FA', padding: '12px 16px 14px 38px' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 10 }}>
+          Commitment period{period ? ` · ${period}` : ''}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-end' }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.type === 'ANNUAL' ? 'Monthly pace' : 'Monthly commitment'}</div>
+            <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: '#16243C' }}>{fmtLKR(c.monthlyCommitment)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Committed to date{c.activeRangeLabel ? ` (${c.activeRangeLabel} ${channelCommit.year})` : ''}</div>
+            <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-soft,#3B4A63)' }}>{fmtLKR(c.committedToDate)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Achieved</div>
+            <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#16243C' }}>{fmtLKR(c.achieved)}{c.achievementPct != null && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 5 }}>({c.achievementPct}%)</span>}</div>
+          </div>
+          {c.type === 'ANNUAL' && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>To reach {channelCommit.year} target</div>
+              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: c.remainingToYearTarget > 0 ? '#C5391F' : '#15814B' }}>{c.remainingToYearTarget > 0 ? fmtLKR(c.remainingToYearTarget) : 'Reached'}</div>
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, maxWidth: 520 }}>
+          <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 9, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, c.achievementPct || 0)}%`, height: '100%', background: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 5 }} />
+          </div>
+          <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{c.achievementPct == null ? '-' : `${c.achievementPct}%`}</span>
+        </div>
+        {Array.isArray(c.monthlyBreakdown) && c.monthlyBreakdown.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 10px' }}>
+              Month by month · {c.type === 'ANNUAL' ? `pace ${fmtLKR(c.monthlyCommitment)}/mo · annual target, judged cumulatively` : `target ${fmtLKR(c.monthlyCommitment)}/mo`}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, maxWidth: 760 }}>
+              {c.monthlyBreakdown.map(mb => {
+                const colored = mb.met != null; // MONTHLY type only
+                const green = mb.met === true;
+                return (
+                  <div key={mb.monthNum} style={{
+                    border: `1px solid ${colored ? (green ? '#BFE0CB' : '#F0C9C1') : 'var(--border)'}`,
+                    background: colored ? (green ? '#F1F9F4' : '#FDF3F1') : '#fff',
+                    borderRadius: 8, padding: '8px 10px',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C', marginBottom: 3 }}>{mb.label} {channelCommit.year}</div>
+                    <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: colored ? (green ? '#15814B' : '#C5391F') : '#16243C' }}>{fmtLKR(mb.achieved)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </td>
+    </tr>
+  );
   const years = achievement?.availableYears || [];
   const selYears = (achievement?.year && !years.includes(achievement.year)) ? [achievement.year, ...years] : years;
   const bars = achievement ? [
@@ -611,166 +703,117 @@ function AchievementSection({
         )}
       </div>
 
-      {/* Channel Commitments - cumulative committed vs achieved per channel */}
+      {/* Channel Commitments - grouped by type: Annual targets first, then Monthly */}
       <div className="chart-card" style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="chart-card-title">Channel Commitments</div>
             <div className="chart-card-sub">
-              {channelCommit?.monthLabel ? (
-                <>Committed vs achieved, <strong style={{ color: '#16243C', fontWeight: 700 }}>Jan–{channelCommit.monthLabel} {channelCommit.year}</strong> · yearly commitment ÷ 12 × months</>
-              ) : 'Yearly commitment per channel vs cumulative schedule spend'}
+              {channelCommit?.monthLabel
+                ? <>Achievement vs target · <strong style={{ color: '#16243C', fontWeight: 700 }}>{channelCommit.year}</strong>, data through <strong style={{ color: '#16243C', fontWeight: 700 }}>{channelCommit.monthLabel}</strong></>
+                : 'Per-channel commitment vs schedule spend'}
             </div>
           </div>
         </div>
         {channelCommitLoading ? <Skeleton h={200} /> : ccRows.length === 0 ? (
           <ChartEmpty msg="No channel commitments set for this year. Add them in Admin → Channel Commitments." />
         ) : (
-          <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th style={{ textAlign: 'right' }}>Committed ({channelCommit.monthLabel})</th>
-                  <th style={{ textAlign: 'right' }}>Achieved</th>
-                  <th style={{ textAlign: 'right' }}>Behind / Ahead</th>
-                  <th style={{ minWidth: 200 }}>Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ccRows.map(c => {
-                  const pct = c.achievementPct;
-                  const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
-                  const gap = (c.committedToDate || 0) - (c.achieved || 0);
-                  const behind = gap > 0.5;
-                  const ahead = gap < -0.5;
-                  const isOpen = expandedCommit === c.channelMasterId;
-                  const period = ccPeriodLabel(c);
-                  const remain = (c.committedToDate || 0) - (c.achieved || 0);
-                  return (
-                    <Fragment key={c.channelMasterId}>
-                    <tr>
-                      <td className="strong">
-                        <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide monthly detail' : 'Show month-by-month detail'}
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, marginRight: 8, color: 'var(--ink-soft,#3B4A63)', verticalAlign: 'middle' }}>
-                          <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
-                        </button>
-                        {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
-                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 5, background: c.type === 'ANNUAL' ? '#EAF0FA' : '#F0ECF9', color: c.type === 'ANNUAL' ? '#1F5BB5' : '#6B3FB5' }}>{c.type === 'ANNUAL' ? 'Annual' : 'Monthly'}</span>
-                        {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
-                      </td>
-                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
-                      <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12.5, color: behind ? '#C5391F' : ahead ? '#15814B' : '#6B7790' }}>
-                          {behind ? '▼' : ahead ? '▲' : '●'}
-                          <span className="mono">{behind || ahead ? fmtLKR(Math.abs(gap)) : 'On target'}</span>
-                          {(behind || ahead) && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{behind ? 'behind' : 'ahead'}</span>}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
-                            <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: col, borderRadius: 5 }} />
-                          </div>
-                          <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: col }}>{pct == null ? '-' : `${pct}%`}</span>
-                        </div>
-                      </td>
-                    </tr>
-                    {isOpen && (
+          <>
+            {/* ── Annual targets (cumulative pacing to date) ── */}
+            {annualCommit.length > 0 && (
+              <div style={{ marginBottom: monthlyCommit.length ? 26 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: '#1F5BB5' }}>Annual targets</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>cumulative pacing, Jan–{channelCommit.monthLabel} {channelCommit.year}</span>
+                </div>
+                <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+                  <table className="tbl">
+                    <thead>
                       <tr>
-                        <td colSpan={5} style={{ background: '#F7F8FA', padding: '12px 16px 14px 38px' }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 10 }}>
-                            Commitment period{period ? ` · ${period}` : ''}
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-end' }}>
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Monthly commitment</div>
-                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: '#16243C' }}>{fmtLKR(c.monthlyCommitment)}</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Committed to date{c.activeRangeLabel ? ` (${c.activeRangeLabel} ${channelCommit.year})` : ''}</div>
-                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-soft,#3B4A63)' }}>{fmtLKR(c.committedToDate)}</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>Achieved</div>
-                              <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: '#16243C' }}>{fmtLKR(c.achieved)}{c.achievementPct != null && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 5 }}>({c.achievementPct}%)</span>}</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{remain > 0 ? 'Behind' : 'Ahead by'}</div>
-                              <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: remain > 0 ? '#C5391F' : '#15814B' }}>{fmtLKR(Math.abs(remain))}</div>
-                            </div>
-                          </div>
-                          {/* Progress bar (achieved / committed to date) */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, maxWidth: 520 }}>
-                            <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 9, overflow: 'hidden' }}>
-                              <div style={{ width: `${Math.min(100, c.achievementPct || 0)}%`, height: '100%', background: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 5 }} />
-                            </div>
-                            <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: (c.achievementPct || 0) >= 100 ? '#15814B' : '#1F5BB5' }}>{c.achievementPct == null ? '-' : `${c.achievementPct}%`}</span>
-                          </div>
-
-                          {/* Month-by-month: achieved spend per active month (number only) */}
-                          {Array.isArray(c.monthlyBreakdown) && c.monthlyBreakdown.length > 0 && (
-                            <>
-                              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', margin: '18px 0 10px' }}>
-                                Month by month · target {fmtLKR(c.monthlyCommitment)}/mo
-                                {c.type === 'ANNUAL' && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, color: 'var(--muted)' }}> · annual target, judged cumulatively</span>}
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, maxWidth: 760 }}>
-                                {c.monthlyBreakdown.map(mb => {
-                                  const colored = mb.met != null; // MONTHLY type only
-                                  const green = mb.met === true;
-                                  return (
-                                    <div key={mb.monthNum} style={{
-                                      border: `1px solid ${colored ? (green ? '#BFE0CB' : '#F0C9C1') : 'var(--border)'}`,
-                                      background: colored ? (green ? '#F1F9F4' : '#FDF3F1') : '#fff',
-                                      borderRadius: 8, padding: '8px 10px',
-                                    }}>
-                                      <div style={{ fontWeight: 700, fontSize: 12.5, color: '#16243C', marginBottom: 3 }}>{mb.label} {channelCommit.year}</div>
-                                      <div className="mono" style={{ fontSize: 14, fontWeight: 750, color: colored ? (green ? '#15814B' : '#C5391F') : '#16243C' }}>{fmtLKR(mb.achieved)}</div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          )}
-                        </td>
+                        <th>Channel</th>
+                        <th style={{ textAlign: 'right' }}>Committed (Jan–{channelCommit.monthLabel})</th>
+                        <th style={{ textAlign: 'right' }}>Achieved (Jan–{channelCommit.monthLabel})</th>
+                        <th style={{ textAlign: 'right' }}>Behind / Ahead</th>
+                        <th style={{ minWidth: 180 }}>Progress</th>
+                        <th style={{ textAlign: 'right' }}>To reach {channelCommit.year} target</th>
                       </tr>
-                    )}
-                    </Fragment>
-                  );
-                })}
-                {channelCommit?.totals && (() => {
-                  const tGap = (channelCommit.totals.committedToDate || 0) - (channelCommit.totals.achieved || 0);
-                  const tBehind = tGap > 0.5, tAhead = tGap < -0.5;
-                  const tPct = channelCommit.totals.achievementPct;
-                  const tCol = tPct == null ? '#6B7790' : tPct >= 100 ? '#15814B' : tPct >= 85 ? '#9A5B00' : '#C5391F';
-                  return (
-                  <tr style={{ borderTop: '2px solid var(--border)' }}>
-                    <td className="strong">Total</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.committedToDate)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }} className="mono">{fmtLKR(channelCommit.totals.achieved)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 12.5, color: tBehind ? '#C5391F' : tAhead ? '#15814B' : '#6B7790' }}>
-                        {tBehind ? '▼' : tAhead ? '▲' : '●'}
-                        <span className="mono">{tBehind || tAhead ? fmtLKR(Math.abs(tGap)) : 'On target'}</span>
-                        {(tBehind || tAhead) && <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{tBehind ? 'behind' : 'ahead'}</span>}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ flex: 1, background: '#EEF0F3', borderRadius: 5, height: 8, overflow: 'hidden' }}>
-                          <div style={{ width: `${Math.min(100, tPct || 0)}%`, height: '100%', background: tCol, borderRadius: 5 }} />
-                        </div>
-                        <span className="mono" style={{ width: 46, textAlign: 'right', fontWeight: 700, color: tCol }}>{tPct == null ? '-' : `${tPct}%`}</span>
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })()}
-              </tbody>
-            </table>
-          </div>
+                    </thead>
+                    <tbody>
+                      {annualCommit.map(c => {
+                        const isOpen = expandedCommit === c.channelMasterId;
+                        const period = ccPeriodLabel(c);
+                        const gap = (c.committedToDate || 0) - (c.achieved || 0);
+                        return (
+                          <Fragment key={c.channelMasterId}>
+                            <tr>
+                              {commitNameCell(c, isOpen, period)}
+                              <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
+                              <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.achieved)}</td>
+                              <td style={{ textAlign: 'right' }}>{behindAheadCell(gap)}</td>
+                              <td>{progressCell(c.achievementPct)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: c.remainingToYearTarget > 0 ? '#C5391F' : '#15814B' }} className="mono">
+                                {c.remainingToYearTarget > 0 ? fmtLKR(c.remainingToYearTarget) : 'Reached'}
+                              </td>
+                            </tr>
+                            {isOpen && commitExpandRow(c, period, 6)}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── Monthly commitments (latest month) ── */}
+            {monthlyCommit.length > 0 && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: '#6B3FB5' }}>Monthly commitments</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>latest month{channelCommit.monthLabel ? ` · ${channelCommit.monthLabel} ${channelCommit.year}` : ''}, each month judged on its own</span>
+                </div>
+                <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Channel</th>
+                        <th style={{ textAlign: 'right' }}>Committed (month)</th>
+                        <th style={{ textAlign: 'right' }}>Achieved (month)</th>
+                        <th style={{ textAlign: 'right' }}>Behind / Ahead</th>
+                        <th style={{ minWidth: 180 }}>Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyCommit.map(c => {
+                        const isOpen = expandedCommit === c.channelMasterId;
+                        const period = ccPeriodLabel(c);
+                        const mLabel = c.latestMonthLabel;
+                        const committed = c.latestMonthCommitted || 0;
+                        const achieved = c.latestMonthAchieved || 0;
+                        const gap = committed - achieved;
+                        const mpct = committed > 0 ? Number(((achieved / committed) * 100).toFixed(1)) : null;
+                        return (
+                          <Fragment key={c.channelMasterId}>
+                            <tr>
+                              {commitNameCell(c, isOpen, period)}
+                              <td style={{ textAlign: 'right' }} className="mono">
+                                {mLabel ? fmtLKR(committed) : '-'}
+                                {mLabel && <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 400 }}>{mLabel} {channelCommit.year}</div>}
+                              </td>
+                              <td style={{ textAlign: 'right' }} className="mono">{mLabel ? fmtLKR(achieved) : '-'}</td>
+                              <td style={{ textAlign: 'right' }}>{mLabel ? behindAheadCell(gap) : <span style={{ color: 'var(--muted)' }}>-</span>}</td>
+                              <td>{mLabel ? progressCell(mpct) : <span style={{ color: 'var(--muted)' }}>No data yet</span>}</td>
+                            </tr>
+                            {isOpen && commitExpandRow(c, period, 5)}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1393,7 +1436,6 @@ export default function ExecutiveDashboardPage() {
                   <div className="agency-sum-name">{ag.agencyName}</div>
                   <div className="agency-sum-row"><span>YTD Billings</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdBillings)}</span></div>
                   <div className="agency-sum-row"><span>Active clients</span><span>{ag.activeClients}</span></div>
-                  <div className="agency-sum-row"><span>Active channels</span><span>{ag.activeChannels}</span></div>
                 </div>
               ))}
             </div>

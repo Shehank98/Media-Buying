@@ -1508,6 +1508,17 @@ export async function getChannelCommitments(req, res) {
       }
       const committedToDate = monthly * monthsCount;
       const pct = committedToDate > 0 ? Number(((achieved / committedToDate) * 100).toFixed(1)) : null;
+
+      // ANNUAL: the selected year's full-window target and how much is still
+      // needed to reach it (year target − achieved so far).
+      const yearActiveMonths = windowLast - firstMonth + 1;
+      const yearTargetTotal = monthly * yearActiveMonths;
+      const remainingToYearTarget = yearTargetTotal - achieved;
+
+      // MONTHLY: the latest active month's single-month figures (row view).
+      const hasLatest = pacingMonth >= firstMonth;
+      const latestMonthAchieved = hasLatest ? (byMonth[pacingMonth] || 0) : 0;
+
       return {
         channelMasterId: c.channelMasterId,
         name: c.channelMaster.name,
@@ -1518,6 +1529,14 @@ export async function getChannelCommitments(req, res) {
         achieved: Number(achieved.toFixed(2)),
         achievementPct: pct,
         monthsCount,
+        // ANNUAL row: year target + remaining to reach it.
+        yearTargetTotal: Number(yearTargetTotal.toFixed(2)),
+        remainingToYearTarget: Number(remainingToYearTarget.toFixed(2)),
+        // MONTHLY row: latest active month's committed vs achieved.
+        latestMonthNum: hasLatest ? pacingMonth : null,
+        latestMonthLabel: hasLatest ? MONTH_NAMES[pacingMonth - 1] : null,
+        latestMonthCommitted: hasLatest ? Number(monthly.toFixed(2)) : 0,
+        latestMonthAchieved: Number(latestMonthAchieved.toFixed(2)),
         // Full period + this-year active window (for display).
         startYear: c.startYear, startMonth: c.startMonth, endYear: c.endYear, endMonth: c.endMonth,
         firstMonth, windowLast, pacingMonth,
