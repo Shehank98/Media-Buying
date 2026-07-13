@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import OrbitLoader from './OrbitLoader';
-import { hasPageAccess, TOGGLEABLE_PAGES } from '../lib/permissions';
+import { hasPageAccess, isPageGranted, TOGGLEABLE_PAGES } from '../lib/permissions';
 
 export default function ProtectedRoute({ children, requiredRoles }) {
   const { isAuthenticated, loading, user } = useAuth();
@@ -23,8 +23,10 @@ export default function ProtectedRoute({ children, requiredRoles }) {
     return <Navigate to="/change-password" replace />;
   }
 
+  // A pageAccess grant overrides the role requirement (an admin can give a
+  // planner / Admin Level 3 access to a page their role wouldn't normally allow).
   if (requiredRoles && requiredRoles.length > 0) {
-    if (!requiredRoles.includes(user?.role)) {
+    if (!requiredRoles.includes(user?.role) && !isPageGranted(user, location.pathname)) {
       return <Navigate to="/" replace />;
     }
   }

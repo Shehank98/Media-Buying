@@ -48,8 +48,9 @@ export default function RateCardsPage() {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return cards;
-    return cards.filter(c => c.name.toLowerCase().includes(s) || (c.mediaGroup || '').toLowerCase().includes(s) || (c.medium || '').toLowerCase().includes(s));
+    const base = !s ? cards : cards.filter(c => c.name.toLowerCase().includes(s) || (c.mediaGroup || '').toLowerCase().includes(s) || (c.medium || '').toLowerCase().includes(s));
+    // Most recently updated rate cards first.
+    return [...base].sort((a, b) => (b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0) - (a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0));
   }, [cards, q]);
 
   const open = async (channelMasterId, download, driveId, fileName) => {

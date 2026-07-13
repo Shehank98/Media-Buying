@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge } from './Icon';
 import api from '../lib/api';
-import { hasPageAccess } from '../lib/permissions';
+import { hasPageAccess, isPageGranted } from '../lib/permissions';
 
 const NAV = [
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
@@ -182,7 +182,10 @@ export default function Layout() {
   const userName = user?.name || 'User';
   const userRole = user?.role || 'PLANNER';
 
-  const filteredNav = NAV.filter(n => (!n.roles || n.roles.includes(userRole)) && hasPageAccess(user, n.key));
+  // A page shows if the user's role allows it OR the admin granted it via
+  // pageAccess (an explicit grant overrides the role gate), and it passes any
+  // pageAccess restriction. Admin-only nav is never granted this way.
+  const filteredNav = NAV.filter(n => (!n.roles || n.roles.includes(userRole) || isPageGranted(user, n.key)) && hasPageAccess(user, n.key));
   const filteredAdminNav = NAV_ADMIN.filter(n => (!n.roles || n.roles.includes(userRole)) && hasPageAccess(user, n.key));
 
   return (
