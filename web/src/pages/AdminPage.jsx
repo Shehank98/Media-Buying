@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge, fmtLKR, roleLabel } from '../components/Icon';
+import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
@@ -2003,10 +2004,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                             </select>
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <input
-                              className="input" type="number" min="0" step="1000"
+                            <MoneyInput
+                              className="input"
                               value={row.amount ?? ''}
-                              onChange={e => setCcField(c.channelMasterId, 'amount', e.target.value)}
+                              onValueChange={v => setCcField(c.channelMasterId, 'amount', v)}
                               placeholder={row.type === 'ANNUAL' ? 'total for period' : 'per month'}
                               title={row.type === 'ANNUAL' ? 'Total for the whole period' : 'Amount per month'}
                               style={{ maxWidth: 170, textAlign: 'right' }}
@@ -2119,10 +2120,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                               <tr key={c.clientId}>
                                 <td className="strong">{c.name}</td>
                                 <td style={{ textAlign: 'right' }}>
-                                  <input
-                                    className="input" type="number" min="0" step="1000"
+                                  <MoneyInput
+                                    className="input"
                                     value={ctAmounts[c.clientId] ?? ''}
-                                    onChange={e => setCtAmounts(a => ({ ...a, [c.clientId]: e.target.value }))}
+                                    onValueChange={v => setCtAmounts(a => ({ ...a, [c.clientId]: v }))}
                                     onBlur={() => saveClientTarget(c.clientId)}
                                     placeholder="Not set"
                                     style={{ maxWidth: 220, textAlign: 'right', ...(has ? {} : { color: 'var(--muted)' }) }}
@@ -2212,10 +2213,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                             <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{a.agencyName}</label>
                             <span style={{ fontSize: 11, color: 'var(--muted)' }}>{av > 0 ? `${apct.toFixed(1)}%` : ''}</span>
                           </div>
-                          <input
-                            className="input" type="number" min="0" step="1000"
+                          <MoneyInput
+                            className="input"
                             value={grAgencyAmounts[a.agencyId] ?? ''}
-                            onChange={e => { setGrSavedAt(null); setGrAgencyAmounts(m => ({ ...m, [a.agencyId]: e.target.value })); }}
+                            onValueChange={v => { setGrSavedAt(null); setGrAgencyAmounts(m => ({ ...m, [a.agencyId]: v })); }}
                             placeholder="0"
                             style={{ textAlign: 'right' }}
                           />
@@ -2245,11 +2246,11 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ padding: '14px 16px' }}>
                 <div className="field" style={{ margin: 0 }}>
                   <label style={{ fontSize: 12 }}>Amount per year (full LKR)</label>
-                  <input
-                    className="input" type="number" min="0" step="1000"
+                  <MoneyInput
+                    className="input"
                     value={grRevenueTarget}
-                    onChange={e => { setGrSavedAt(null); setGrRevenueTarget(e.target.value); }}
-                    placeholder="e.g. 600000000"
+                    onValueChange={v => { setGrSavedAt(null); setGrRevenueTarget(v); }}
+                    placeholder="e.g. 600,000,000"
                     style={{ textAlign: 'right' }}
                   />
                 </div>
@@ -2312,10 +2313,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <tr key={h.headUserId}>
                           <td className="strong">{h.headName}</td>
                           <td style={{ textAlign: 'right' }}>
-                            <input
-                              className="input" type="number" min="0" step="1000"
+                            <MoneyInput
+                              className="input"
                               value={grAmounts[h.headUserId] ?? ''}
-                              onChange={e => { setGrSavedAt(null); setGrAmounts(a => ({ ...a, [h.headUserId]: e.target.value })); }}
+                              onValueChange={v => { setGrSavedAt(null); setGrAmounts(a => ({ ...a, [h.headUserId]: v })); }}
                               placeholder="0"
                               style={{ maxWidth: 190, textAlign: 'right' }}
                             />
@@ -2419,10 +2420,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                         <tr key={a.agencyId}>
                           <td className="strong">{a.agencyName}</td>
                           <td style={{ textAlign: 'right' }}>
-                            <input
-                              className="input" type="number" min="0" step="1"
+                            <MoneyInput
+                              className="input"
                               value={agTargetVals[a.agencyId] ?? ''}
-                              onChange={e => setAgTargetVals(v => ({ ...v, [a.agencyId]: e.target.value }))}
+                              onValueChange={v => setAgTargetVals(vals => ({ ...vals, [a.agencyId]: v }))}
                               onBlur={() => saveAgencyTarget(a.agencyId)}
                               placeholder="-"
                               style={{ maxWidth: 170, textAlign: 'right' }}
@@ -2940,7 +2941,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 </div>
                 <div className="field">
                   <label className="field-label">Annual Budget Target (LKR Millions) <span className="req">*</span></label>
-                  <input className="input" type="number" step="0.01" value={targetForm.totalTargetMillions} onChange={e => setTargetForm(p => ({ ...p, totalTargetMillions: e.target.value }))} placeholder="4200" />
+                  <MoneyInput className="input" value={targetForm.totalTargetMillions} onValueChange={v => setTargetForm(p => ({ ...p, totalTargetMillions: v }))} placeholder="4,200" />
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 0' }}>
                   Set the full Jan–Dec target. Leave <b>pacing month</b> on <b>Auto</b> and the dashboard compares actuals against the target up to the latest month you have data for. Only pin a month if you want the upcoming month filled by group-head forecasts instead.
@@ -2997,15 +2998,12 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <option value="COMMISSION">Commission (%)</option>
                       <option value="AOR">AOR (fixed LKR)</option>
                     </select>
-                    <input
+                    <MoneyInput
                       className="input"
-                      type="number"
-                      step="0.01"
-                      min="0"
                       disabled={!clientForm.commissionType}
                       value={clientForm.commissionValue}
-                      onChange={e => setClientForm(p => ({ ...p, commissionValue: e.target.value }))}
-                      placeholder={clientForm.commissionType === 'AOR' ? 'e.g. 50000' : clientForm.commissionType === 'COMMISSION' ? 'e.g. 4' : '-'}
+                      onValueChange={v => setClientForm(p => ({ ...p, commissionValue: v }))}
+                      placeholder={clientForm.commissionType === 'AOR' ? 'e.g. 50,000' : clientForm.commissionType === 'COMMISSION' ? 'e.g. 4' : '-'}
                       style={{ flex: 1 }}
                     />
                   </div>

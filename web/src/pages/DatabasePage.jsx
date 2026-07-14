@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import RecentUploads from '../components/RecentUploads';
+import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 import OrbitLoader from '../components/OrbitLoader';
@@ -1157,13 +1158,10 @@ export default function DatabasePage() {
                       </select>
                     </td>
                     <td className="cell cell-editable" style={{ textAlign: 'right' }}>
-                      <input
+                      <MoneyInput
                         className="cell-input"
-                        type="number"
-                        step="0.01"
-                        min="0"
                         value={nRow.scheduleValue}
-                        onChange={e => updateNewRow(idx, 'scheduleValue', e.target.value)}
+                        onValueChange={v => updateNewRow(idx, 'scheduleValue', v)}
                         onFocus={() => { setFocusedCol('scheduleValue'); setFocusedRowIdx(idx); }}
                         placeholder="0.00"
                         style={{ textAlign: 'right' }}
@@ -1224,7 +1222,7 @@ export default function DatabasePage() {
                       </td>
                       <td className="cell cell-click" style={{ textAlign: 'right' }} onDoubleClick={() => startEdit(row.id, 'scheduleValue', row.scheduleValue)}>
                         {isEditing('scheduleValue') ? (
-                          <input className="cell-input" type="number" step="0.01" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} style={{ textAlign: 'right' }} />
+                          <MoneyInput className="cell-input" autoFocus value={editValue} onValueChange={v => setEditValue(v)} onKeyDown={handleEditKeyDown} onBlur={commitEdit} style={{ textAlign: 'right' }} />
                         ) : <span className="mono">{fmtLKR(row.scheduleValue)}</span>}
                       </td>
                       {canWrite && (
@@ -1404,7 +1402,7 @@ export default function DatabasePage() {
                         </select>
                       </td>
                       <td className="cell cell-editable">
-                        <input className="cell-input" type="number" step="0.01" value={r.scheduleValue} onChange={e => updateUploadRow(idx, 'scheduleValue', e.target.value)} style={{ textAlign: 'right' }} />
+                        <MoneyInput className="cell-input" value={r.scheduleValue} onValueChange={v => updateUploadRow(idx, 'scheduleValue', v)} style={{ textAlign: 'right' }} />
                       </td>
                       <td className="cell" style={{ textAlign: 'center' }}>
                         <button className="icon-btn" onClick={() => removeUploadRow(idx)}><Icon name="x" size={13} style={{ color: '#ef4444' }} /></button>

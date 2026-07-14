@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, TypeBadge, fmtLKR } from '../components/Icon';
+import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 
@@ -821,14 +822,11 @@ export default function ChannelDetailPage() {
                     <label className="field-label">
                       Property value (LKR)<span className="req">*</span>
                     </label>
-                    <input
+                    <MoneyInput
                       className="input"
-                      type="number"
-                      min="0"
-                      step="0.01"
                       placeholder="0"
                       value={propertyForm.cost}
-                      onChange={(e) => setPropertyForm((prev) => ({ ...prev, cost: e.target.value }))}
+                      onValueChange={(v) => setPropertyForm((prev) => ({ ...prev, cost: v }))}
                     />
                   </div>
                   <div className="field">

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import api from '../lib/api';
 import Icon, { fmtLKR } from '../components/Icon';
+import MoneyInput from '../components/MoneyInput';
 import OrbitLoader from '../components/OrbitLoader';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -920,7 +921,7 @@ export default function MediaBuyingPage() {
         <div className="panel-body">
           <div className="field">
             <label className="field-label">Proposed Monthly Budget (LKR)</label>
-            <input className="input" type="number" value={plannerBudget} onChange={(e) => setPlannerBudget(e.target.value)} placeholder="500000" />
+            <MoneyInput className="input" value={plannerBudget} onValueChange={(v) => setPlannerBudget(v)} placeholder="500,000" />
           </div>
           <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
             Suggestions are averaged across every year this channel has recorded data; no single deal year is used.

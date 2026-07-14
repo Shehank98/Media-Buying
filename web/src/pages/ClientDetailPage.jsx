@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
+import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import OrbitLoader from '../components/OrbitLoader';
@@ -567,7 +568,7 @@ export default function ClientDetailPage() {
                   </div>
                   <div className="field">
                     <label className="field-label">Schedule Value <span className="req">*</span></label>
-                    <input className="input" type="number" step="0.01" value={logForm.scheduleValue} onChange={e => setLogForm(p => ({ ...p, scheduleValue: e.target.value }))} placeholder="0.00" />
+                    <MoneyInput className="input" value={logForm.scheduleValue} onValueChange={v => setLogForm(p => ({ ...p, scheduleValue: v }))} placeholder="0.00" />
                     {logForm.scheduleValue && (
                       <span className="field-hint">With VAT (18%): LKR {(parseFloat(logForm.scheduleValue) * 1.18).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     )}

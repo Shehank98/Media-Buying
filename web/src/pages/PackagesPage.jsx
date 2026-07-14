@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Icon from '../components/Icon';
+import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 
@@ -316,7 +317,7 @@ export default function PackagesPage() {
                   {form.lineItems.map((li, idx) => (
                     <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <input className="input" style={{ flex: 2 }} value={li.label} onChange={(e) => setLineItem(idx, 'label', e.target.value)} placeholder="Channel name" />
-                      <input className="input" style={{ flex: 1 }} type="number" step="0.01" value={li.rate} onChange={(e) => setLineItem(idx, 'rate', e.target.value)} placeholder="Rate (LKR)" />
+                      <MoneyInput className="input" style={{ flex: 1 }} value={li.rate} onValueChange={(v) => setLineItem(idx, 'rate', v)} placeholder="Rate (LKR)" />
                       <button type="button" className="act-btn" onClick={() => removeLineItem(idx)} title="Remove" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="x" size={15} /></button>
                     </div>
                   ))}
