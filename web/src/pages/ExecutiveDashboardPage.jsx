@@ -701,7 +701,6 @@ function AchievementSection({
               <Tooltip formatter={(v) => [`LKR ${Number(v).toFixed(1)}M`, '']} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
               <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={120}>
                 {raBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
-                <LabelList dataKey="value" position="top" formatter={(v) => `${Number(v).toFixed(1)}M`} style={{ fontSize: 12, fontWeight: 700, fill: '#16243C' }} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
