@@ -332,8 +332,8 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink, dea
       (rows
         ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:28px;border-collapse:separate;overflow:hidden;">' +
             '<tr>' +
-              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Channel</td>' +
-              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;">Rate</td>' +
+              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Sponsorship</td>' +
+              '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;">Package Rate</td>' +
             '</tr>' + rows +
           '</table>'
         : '') +

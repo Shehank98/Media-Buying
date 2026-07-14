@@ -76,7 +76,7 @@ function PackageCard({ item, myClients, onResponded }) {
         {pkg.lineItems.length > 0 && (
           <div className="tbl-wrap" style={{ marginBottom: 16 }}>
             <table className="tbl" style={{ fontSize: 13 }}>
-              <thead><tr><th>Channel</th><th style={{ textAlign: 'right' }}>Rate</th></tr></thead>
+              <thead><tr><th>Sponsorship</th><th style={{ textAlign: 'right' }}>Package Rate</th></tr></thead>
               <tbody>
                 {pkg.lineItems.map((li) => (
                   <tr key={li.id}><td className="strong">{li.label}</td><td style={{ textAlign: 'right', fontFamily: "'Spline Sans Mono', monospace" }}>{fmtLKR(li.rate)}</td></tr>

@@ -255,7 +255,7 @@ export default function PackagesPage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{p.name}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} channel(s)</span>
+                      <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} sponsorship(s)</span>
                       {p.deadline && <span style={{ fontSize: 11.5, color: expired ? '#C5391F' : '#6B7790' }}>· Due {fmtDate(p.deadline)}</span>}
                     </div>
                   </div>
@@ -313,15 +313,15 @@ export default function PackagesPage() {
                   <textarea className="input" rows={3} value={form.emailIntro} onChange={(e) => setForm((f) => ({ ...f, emailIntro: e.target.value }))} placeholder="Short intro shown in the email body…" />
                 </div>
                 <div className="field">
-                  <label className="field-label">Channels &amp; rates</label>
+                  <label className="field-label">Sponsorships &amp; package rates</label>
                   {form.lineItems.map((li, idx) => (
                     <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <input className="input" style={{ flex: 2 }} value={li.label} onChange={(e) => setLineItem(idx, 'label', e.target.value)} placeholder="Channel name" />
-                      <MoneyInput className="input" style={{ flex: 1 }} value={li.rate} onValueChange={(v) => setLineItem(idx, 'rate', v)} placeholder="Rate (LKR)" />
+                      <input className="input" style={{ flex: 2 }} value={li.label} onChange={(e) => setLineItem(idx, 'label', e.target.value)} placeholder="Sponsorship" />
+                      <MoneyInput className="input" style={{ flex: 1 }} value={li.rate} onValueChange={(v) => setLineItem(idx, 'rate', v)} placeholder="Package rate (LKR)" />
                       <button type="button" className="act-btn" onClick={() => removeLineItem(idx)} title="Remove" style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="x" size={15} /></button>
                     </div>
                   ))}
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={addLineItem}><Icon name="plus" size={14} /> Add channel</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={addLineItem}><Icon name="plus" size={14} /> Add sponsorship</button>
                 </div>
               </div>
               <div className="modal-foot">
@@ -420,7 +420,7 @@ export default function PackagesPage() {
               <div>
                 <h2 style={{ margin: 0 }}>Responses - {respPkg.name}</h2>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
-                  {respDetail?.lineItems?.length ? `${respDetail.lineItems.length} channel(s)` : ''}
+                  {respDetail?.lineItems?.length ? `${respDetail.lineItems.length} sponsorship(s)` : ''}
                   {(() => {
                     const val = respDetail?.lineItems?.reduce((s, li) => s + Number(li.rate || 0), 0);
                     return val ? ` · ${fmtLKR(val)}` : '';
