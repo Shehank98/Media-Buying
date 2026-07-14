@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Icon from '../components/Icon';
+import Icon, { roleLabel } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
@@ -168,7 +168,7 @@ export default function PackagesPage() {
   };
   const doSend = async () => {
     setSendErr(''); setSendOk('');
-    if (recipientIds.length === 0) { setSendErr('Select at least one team head.'); return; }
+    if (recipientIds.length === 0) { setSendErr('Select at least one recipient.'); return; }
     setSending(true);
     try {
       const { data } = await api.post(`/packages/${sendPkg.id}/send`, {
@@ -204,7 +204,7 @@ export default function PackagesPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Media Packages</h1>
-          <p className="page-sub">Create packages, send them to team heads, and track responses</p>
+          <p className="page-sub">Create packages, send them to any account, and track responses</p>
         </div>
         <button className="btn btn-primary" onClick={openCreate}><Icon name="plus" size={16} /> New package</button>
       </div>
@@ -343,7 +343,7 @@ export default function PackagesPage() {
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 13.5, color: 'var(--ink-soft,#3B4A63)', margin: 0, lineHeight: 1.5 }}>
-                <strong style={{ color: 'var(--ink)' }}>{deletePrompt.name}</strong> has been sent to {deletePrompt._count?.recipients} team head(s). Choose how to remove it:
+                <strong style={{ color: 'var(--ink)' }}>{deletePrompt.name}</strong> has been sent to {deletePrompt._count?.recipients} recipient(s). Choose how to remove it:
               </p>
               <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
                 {deletePrompt.isActive && (
@@ -383,17 +383,34 @@ export default function PackagesPage() {
               {sendErr && <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 14 }}>{sendErr}</div>}
               {sendOk && <div style={{ background: 'var(--green-100)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--green-600)', marginBottom: 14, fontWeight: 600 }}>{sendOk}</div>}
               <div className="field">
-                <label className="field-label">Team heads <span className="req">*</span></label>
+                <label className="field-label">Recipients <span className="req">*</span></label>
                 {groupHeads.length === 0 ? (
-                  <p style={{ color: 'var(--muted)', fontSize: 13 }}>No GROUP_HEAD users found.</p>
+                  <p style={{ color: 'var(--muted)', fontSize: 13 }}>No accounts found.</p>
                 ) : (
-                  <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {groupHeads.map((u) => (
-                      <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={recipientIds.includes(u.id)} onChange={(e) => setRecipientIds((prev) => e.target.checked ? [...prev, u.id] : prev.filter((id) => id !== u.id))} />
-                        <span style={{ flex: 1 }}><span className="strong" style={{ fontSize: 13 }}>{u.name}</span> <span style={{ color: 'var(--muted)', fontSize: 12 }}>{u.email}</span></span>
-                      </label>
-                    ))}
+                  <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    {['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'].map((role) => {
+                      const group = groupHeads.filter((u) => u.role === role);
+                      if (!group.length) return null;
+                      const groupIds = group.map((u) => u.id);
+                      const allOn = groupIds.every((id) => recipientIds.includes(id));
+                      return (
+                        <div key={role}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '7px 12px', background: '#F6F8FA', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--muted)' }}>{roleLabel(role)} · {group.length}</span>
+                            <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => setRecipientIds((prev) => allOn ? prev.filter((id) => !groupIds.includes(id)) : [...new Set([...prev, ...groupIds])])}>
+                              {allOn ? 'Clear' : 'Select all'}
+                            </button>
+                          </div>
+                          {group.map((u) => (
+                            <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={recipientIds.includes(u.id)} onChange={(e) => setRecipientIds((prev) => e.target.checked ? [...prev, u.id] : prev.filter((id) => id !== u.id))} />
+                              <span style={{ flex: 1 }}><span className="strong" style={{ fontSize: 13 }}>{u.name}</span> <span style={{ color: 'var(--muted)', fontSize: 12 }}>{u.email}</span></span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -406,7 +423,7 @@ export default function PackagesPage() {
             </div>
             <div className="modal-foot">
               <button type="button" className="btn btn-ghost" onClick={() => setSendPkg(null)}>Close</button>
-              <button type="button" className="btn btn-primary" onClick={doSend} disabled={sending}>{sending ? 'Sending…' : `Send to ${recipientIds.length || ''} team head(s)`}</button>
+              <button type="button" className="btn btn-primary" onClick={doSend} disabled={sending}>{sending ? 'Sending…' : `Send to ${recipientIds.length || ''} recipient(s)`}</button>
             </div>
           </div>
         </div>

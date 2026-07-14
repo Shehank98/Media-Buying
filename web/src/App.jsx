@@ -156,7 +156,7 @@ export default function App() {
             <Route
               path="/my-packages"
               element={
-                <ProtectedRoute requiredRoles={['GROUP_HEAD']}>
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER']}>
                   <MyPackagesPage />
                 </ProtectedRoute>
               }

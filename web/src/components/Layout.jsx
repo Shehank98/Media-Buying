@@ -13,7 +13,7 @@ const NAV = [
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/rate-cards', label: 'Rate Cards', icon: 'file' },
-  { key: '/my-packages', label: 'Media Packages', icon: 'mail', roles: ['GROUP_HEAD'] },
+  { key: '/my-packages', label: 'Media Packages', icon: 'mail', roles: ['MANAGER', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [

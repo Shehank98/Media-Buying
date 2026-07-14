@@ -17,9 +17,9 @@ import {
 
 const router = Router();
 
-// Team head (GROUP_HEAD) in-app inbox - literal segments before '/:id'.
-router.get('/inbox', authenticate, requireRole('GROUP_HEAD'), listMyPackages);
-router.post('/inbox/:recipientId/respond', authenticate, requireRole('GROUP_HEAD'), respondToMyPackage);
+// In-app inbox - any signed-in account can receive & respond to a package.
+router.get('/inbox', authenticate, listMyPackages);
+router.post('/inbox/:recipientId/respond', authenticate, respondToMyPackage);
 
 // Admin (SUPER_ADMIN) - literal segments before '/:id'.
 router.get('/recipients/group-heads', authenticate, requireRole('SUPER_ADMIN'), listGroupHeads);

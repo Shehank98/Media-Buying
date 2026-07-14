@@ -205,15 +205,15 @@ export async function deletePackage(req, res) {
 
 export async function listGroupHeads(req, res) {
   try {
+    // All accounts are selectable recipients (grouped by role in the UI).
     const users = await prisma.user.findMany({
-      where: { role: 'GROUP_HEAD' },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
     });
     return res.json({ users });
   } catch (error) {
-    console.error('List group heads error:', error);
-    return res.status(500).json({ error: 'Failed to list team heads', detail: error.message });
+    console.error('List recipients error:', error);
+    return res.status(500).json({ error: 'Failed to list recipients', detail: error.message });
   }
 }
 
@@ -235,11 +235,12 @@ export async function sendPackage(req, res) {
     if (!pkg) return res.status(404).json({ error: 'Package not found' });
 
     const userIds = recipientUserIds.map(Number).filter(Number.isInteger);
+    // Any account can be a recipient (grouped by role in the picker).
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds }, role: 'GROUP_HEAD' },
+      where: { id: { in: userIds } },
       select: { id: true, name: true, email: true },
     });
-    if (!users.length) return res.status(400).json({ error: 'No valid team-head recipients' });
+    if (!users.length) return res.status(400).json({ error: 'No valid recipients' });
 
     const base = frontendBase();
     const inboxLink = `${base}/my-packages`;
@@ -369,8 +370,9 @@ export async function listMyPackages(req, res) {
       },
     });
 
-    // The team head's own clients - for the "interested clients" multi-select.
-    const myClientIds = await getAccessibleClientIds(req.user.id, 'GROUP_HEAD');
+    // The recipient's own accessible clients - for the "interested clients"
+    // multi-select (scoped by their actual role, any role can receive now).
+    const myClientIds = await getAccessibleClientIds(req.user.id, req.user.role);
     const myClients = myClientIds.length
       ? await prisma.client.findMany({ where: { id: { in: myClientIds } }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
       : [];
@@ -430,10 +432,10 @@ export async function respondToMyPackage(req, res) {
       return res.status(409).json({ error: 'This proposal has closed. Its deadline has passed.' });
     }
 
-    // Keep only client ids the team head actually manages.
+    // Keep only client ids the recipient actually can access (their own role).
     let clientIds = [];
     if (Array.isArray(interestedClientIds) && interestedClientIds.length) {
-      const accessible = new Set(await getAccessibleClientIds(req.user.id, 'GROUP_HEAD'));
+      const accessible = new Set(await getAccessibleClientIds(req.user.id, req.user.role));
       clientIds = [...new Set(interestedClientIds.map(Number).filter(n => Number.isInteger(n) && accessible.has(n)))];
     }
 
