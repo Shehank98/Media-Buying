@@ -3075,7 +3075,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <label className="field-label">Role <span className="req">*</span></label>
                   <div className="role-grid">
                     {ROLES.map(role => (
-                      <label key={role} className={'role-opt' + (userForm.role === role ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, role }))}>
+                      <label key={role} className={'role-opt' + (userForm.role === role ? ' sel' : '')} onClick={() => setUserForm(p => ({ ...p, role }))}>
                         <input type="radio" name="role" value={role} checked={userForm.role === role} onChange={() => setUserForm(p => ({ ...p, role }))} style={{ display: 'none' }} />
                         <RoleBadge role={role} small />
                         <span style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{ROLE_DESC[role]}</span>
