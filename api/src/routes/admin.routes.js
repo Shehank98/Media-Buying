@@ -39,6 +39,9 @@ import {
   setGroupRevenue,
   listChannelCommitments,
   setChannelCommitment,
+  listCommitmentGroups,
+  saveCommitmentGroup,
+  deleteCommitmentGroup,
   listClientTargets,
   setClientTarget,
   listMonthlyBilling,
@@ -112,6 +115,11 @@ router.post('/group-revenue', setGroupRevenue);
 // Channel commitments (yearly target per channel) → Executive Dashboard tracker
 router.get('/channel-commitments', listChannelCommitments);
 router.post('/channel-commitments', setChannelCommitment);
+
+// Channel commitment GROUPS (one target across several channels)
+router.get('/commitment-groups', listCommitmentGroups);
+router.post('/commitment-groups', saveCommitmentGroup);
+router.delete('/commitment-groups/:id', deleteCommitmentGroup);
 router.get('/client-targets', listClientTargets);
 router.post('/client-targets', setClientTarget);
 

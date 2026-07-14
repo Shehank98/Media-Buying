@@ -1266,6 +1266,84 @@ export async function setChannelCommitment(req, res) {
   }
 }
 
+// ── Channel commitment GROUPS (one deal / one target across several channels) ──
+
+export async function listCommitmentGroups(req, res) {
+  try {
+    const groups = await prisma.channelCommitmentGroup.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    const memberIds = [...new Set(groups.flatMap((g) => g.channelMasterIds || []))];
+    const members = memberIds.length
+      ? await prisma.channelMaster.findMany({ where: { id: { in: memberIds } }, select: { id: true, name: true, medium: true } })
+      : [];
+    const byId = new Map(members.map((m) => [m.id, m]));
+    return res.json({
+      groups: groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        type: g.type,
+        amount: g.type === 'ANNUAL' ? (g.totalAmount != null ? Number(g.totalAmount) : null) : (g.monthlyAmount != null ? Number(g.monthlyAmount) : null),
+        startYear: g.startYear, startMonth: g.startMonth, endYear: g.endYear, endMonth: g.endMonth,
+        channelMasterIds: g.channelMasterIds || [],
+        channels: (g.channelMasterIds || []).map((id) => byId.get(id)).filter(Boolean),
+      })),
+    });
+  } catch (error) {
+    console.error('listCommitmentGroups error:', error);
+    return res.status(500).json({ error: 'Failed to load commitment groups', detail: error.message });
+  }
+}
+
+export async function saveCommitmentGroup(req, res) {
+  try {
+    const { id, name, type, amount, channelMasterIds, startYear, startMonth, endYear, endMonth } = req.body || {};
+    const nm = String(name || '').trim();
+    if (!nm) return res.status(400).json({ error: 'A group name is required' });
+
+    const chIds = Array.isArray(channelMasterIds) ? [...new Set(channelMasterIds.map((x) => parseInt(x)).filter(Boolean))] : [];
+    if (chIds.length < 2) return res.status(400).json({ error: 'Pick at least two channels for a deal group' });
+
+    const num = amount === '' || amount == null ? null : Number(amount);
+    if (num == null || isNaN(num) || num <= 0) return res.status(400).json({ error: 'A target amount greater than 0 is required' });
+
+    const ctype = type === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+    const sy = parseInt(startYear), sm = parseInt(startMonth), ey = parseInt(endYear), em = parseInt(endMonth);
+    if (!(sy >= 2000 && sm >= 1 && sm <= 12 && ey >= 2000 && em >= 1 && em <= 12)) {
+      return res.status(400).json({ error: 'start/end month (1-12) and year are required' });
+    }
+    if (ey * 12 + em < sy * 12 + sm) {
+      return res.status(400).json({ error: 'end month must be on or after start month' });
+    }
+
+    const data = {
+      name: nm, type: ctype,
+      monthlyAmount: ctype === 'MONTHLY' ? num : null,
+      totalAmount: ctype === 'ANNUAL' ? num : null,
+      channelMasterIds: chIds,
+      startYear: sy, startMonth: sm, endYear: ey, endMonth: em,
+      createdById: req.user?.id ?? null,
+    };
+    const saved = id
+      ? await prisma.channelCommitmentGroup.update({ where: { id: parseInt(id) }, data })
+      : await prisma.channelCommitmentGroup.create({ data });
+    return res.json({ id: saved.id });
+  } catch (error) {
+    console.error('saveCommitmentGroup error:', error);
+    return res.status(500).json({ error: 'Failed to save commitment group', detail: error.message });
+  }
+}
+
+export async function deleteCommitmentGroup(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'id is required' });
+    await prisma.channelCommitmentGroup.delete({ where: { id } });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('deleteCommitmentGroup error:', error);
+    return res.status(500).json({ error: 'Failed to delete commitment group', detail: error.message });
+  }
+}
+
 // ── Client yearly targets (full LKR spend target per client per year) ──
 export async function listClientTargets(req, res) {
   try {

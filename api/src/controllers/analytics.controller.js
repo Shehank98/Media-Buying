@@ -1499,7 +1499,14 @@ export async function getChannelCommitments(req, res) {
       where: { OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }], startYear: { lte: year }, endYear: { gte: year } },
       include: { channelMaster: { select: { id: true, name: true, medium: true } } },
     });
-    if (!commitments.length) {
+    // Deal groups (one target across several channels) overlapping the year.
+    const groups = await prisma.channelCommitmentGroup.findMany({
+      where: {
+        OR: [{ monthlyAmount: { not: null } }, { totalAmount: { not: null } }],
+        startYear: { lte: year }, endYear: { gte: year },
+      },
+    });
+    if (!commitments.length && !groups.length) {
       return res.json({ year, availableYears: years, monthsElapsed: 0, monthLabel: null, channels: [], totals: null });
     }
 
@@ -1516,9 +1523,16 @@ export async function getChannelCommitments(req, res) {
     if (year === now.getFullYear()) dataLatestMonth = Math.min(dataLatestMonth, now.getMonth() + 1);
     if (dataLatestMonth < 1) dataLatestMonth = 0;
 
+    const groupMemberIds = [...new Set(groups.flatMap((g) => g.channelMasterIds || []))];
+    const groupMembers = groupMemberIds.length
+      ? await prisma.channelMaster.findMany({ where: { id: { in: groupMemberIds } }, select: { id: true, name: true, medium: true } })
+      : [];
+    const memberById = new Map(groupMembers.map((m) => [m.id, m]));
+
     // Achieved spend per channel PER MONTH Jan→dataLatestMonth (sliced per window).
-    const chIds = commitments.map((c) => c.channelMasterId);
-    const spendRows = dataLatestMonth > 0 ? await prisma.scheduleLog.groupBy({
+    // Includes both single-channel commitment channels and every group member.
+    const chIds = [...new Set([...commitments.map((c) => c.channelMasterId), ...groupMemberIds])];
+    const spendRows = dataLatestMonth > 0 && chIds.length ? await prisma.scheduleLog.groupBy({
       by: ['channelMasterId', 'scheduleMonth'],
       where: { ...scope, channelMasterId: { in: chIds }, scheduleMonth: { gte: `${year}-01`, lte: `${year}-${String(dataLatestMonth).padStart(2, '0')}` } },
       _sum: { scheduleValue: true },
@@ -1531,15 +1545,14 @@ export async function getChannelCommitments(req, res) {
       spendByChMonth.get(r.channelMasterId)[m] = safeNum(r._sum.scheduleValue) || 0;
     }
 
-    const channels = commitments.map((c) => {
+    // Build a commitment row from a commitment-like object (single channel or
+    // group) + a {monthNum: spend} map. Identity fields are merged by the caller.
+    const buildRow = (c, byMonth) => {
       const isMonthly = c.type !== 'ANNUAL';
       const monthly = commitmentPace(c); // per-active-month target/pace (full LKR)
-      // The channel's active month window within THIS year.
       const firstMonth = c.startYear === year ? c.startMonth : 1;
       const windowLast = c.endYear === year ? c.endMonth : 12;
-      // How far we pace this year: min(latest data month, window end).
       const pacingMonth = Math.min(dataLatestMonth, windowLast);
-      const byMonth = spendByChMonth.get(c.channelMasterId) || {};
 
       const monthlyBreakdown = [];
       let achieved = 0;
@@ -1551,43 +1564,31 @@ export async function getChannelCommitments(req, res) {
           monthlyBreakdown.push({
             monthNum: m, label: MONTH_NAMES[m - 1],
             target: Number(monthly.toFixed(2)), achieved: Number(spend.toFixed(2)),
-            // MONTHLY: each month judged on its own (green/red). ANNUAL: no per-month flag.
             met: isMonthly ? (spend + 0.5 >= monthly) : null,
           });
         }
       }
       const committedToDate = monthly * monthsCount;
       const pct = committedToDate > 0 ? Number(((achieved / committedToDate) * 100).toFixed(1)) : null;
-
-      // ANNUAL: the selected year's full-window target and how much is still
-      // needed to reach it (year target − achieved so far).
       const yearActiveMonths = windowLast - firstMonth + 1;
       const yearTargetTotal = monthly * yearActiveMonths;
       const remainingToYearTarget = yearTargetTotal - achieved;
-
-      // MONTHLY: the latest active month's single-month figures (row view).
       const hasLatest = pacingMonth >= firstMonth;
       const latestMonthAchieved = hasLatest ? (byMonth[pacingMonth] || 0) : 0;
 
       return {
-        channelMasterId: c.channelMasterId,
-        name: c.channelMaster.name,
-        medium: c.channelMaster.medium,
         type: c.type || 'MONTHLY',
         monthlyCommitment: Number(monthly.toFixed(2)),
         committedToDate: Number(committedToDate.toFixed(2)),
         achieved: Number(achieved.toFixed(2)),
         achievementPct: pct,
         monthsCount,
-        // ANNUAL row: year target + remaining to reach it.
         yearTargetTotal: Number(yearTargetTotal.toFixed(2)),
         remainingToYearTarget: Number(remainingToYearTarget.toFixed(2)),
-        // MONTHLY row: latest active month's committed vs achieved.
         latestMonthNum: hasLatest ? pacingMonth : null,
         latestMonthLabel: hasLatest ? MONTH_NAMES[pacingMonth - 1] : null,
         latestMonthCommitted: hasLatest ? Number(monthly.toFixed(2)) : 0,
         latestMonthAchieved: Number(latestMonthAchieved.toFixed(2)),
-        // Full period + this-year active window (for display).
         startYear: c.startYear, startMonth: c.startMonth, endYear: c.endYear, endMonth: c.endMonth,
         firstMonth, windowLast, pacingMonth,
         activeRangeLabel: monthsCount > 0
@@ -1595,7 +1596,40 @@ export async function getChannelCommitments(req, res) {
           : null,
         monthlyBreakdown,
       };
-    }).sort((a, b) => b.committedToDate - a.committedToDate);
+    };
+
+    const channelRows = commitments.map((c) => ({
+      rowKey: `c${c.channelMasterId}`,
+      channelMasterId: c.channelMasterId,
+      name: c.channelMaster.name,
+      medium: c.channelMaster.medium,
+      isGroup: false,
+      ...buildRow(c, spendByChMonth.get(c.channelMasterId) || {}),
+    }));
+
+    const groupRows = groups.map((g) => {
+      const memberIds = g.channelMasterIds || [];
+      // Combined spend of every member channel, month by month.
+      const byMonth = {};
+      for (const cid of memberIds) {
+        const bm = spendByChMonth.get(cid) || {};
+        for (const [m, v] of Object.entries(bm)) byMonth[m] = (byMonth[m] || 0) + v;
+      }
+      const members = memberIds.map((id) => memberById.get(id)).filter(Boolean);
+      const mediums = [...new Set(members.map((m) => m.medium))];
+      return {
+        rowKey: `g${g.id}`,
+        channelMasterId: null,
+        groupId: g.id,
+        name: g.name,
+        medium: mediums.length === 1 ? mediums[0] : 'MIXED',
+        isGroup: true,
+        memberNames: members.map((m) => m.name),
+        ...buildRow(g, byMonth),
+      };
+    });
+
+    const channels = [...channelRows, ...groupRows].sort((a, b) => b.committedToDate - a.committedToDate);
 
     const totals = {
       committedToDate: Number(channels.reduce((s, c) => s + c.committedToDate, 0).toFixed(2)),

@@ -166,6 +166,17 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [ccLoading, setCcLoading] = useState(false);
   const [ccSavingId, setCcSavingId] = useState(null);
   const [ccSearch, setCcSearch] = useState('');
+  // Deal groups: one target across several channels (combined achievement).
+  const [cgGroups, setCgGroups] = useState([]);
+  const [cgModalOpen, setCgModalOpen] = useState(false);
+  const [cgSaving, setCgSaving] = useState(false);
+  const [cgError, setCgError] = useState('');
+  const emptyCgForm = () => {
+    const y = new Date().getFullYear();
+    return { id: null, name: '', type: 'ANNUAL', amount: '', channelMasterIds: [], startMonth: 1, startYear: y, endMonth: 12, endYear: y };
+  };
+  const [cgForm, setCgForm] = useState(emptyCgForm());
+  const [cgChannelSearch, setCgChannelSearch] = useState('');
 
   /* ---- client yearly targets ---- */
   const [ctYear, setCtYear] = useState(new Date().getFullYear());
@@ -1114,6 +1125,73 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- channel commitment deal groups (one target across several channels) ---- */
+  const fetchCommitmentGroups = async () => {
+    try {
+      const { data } = await api.get('/admin/commitment-groups');
+      setCgGroups(data.groups || []);
+    } catch {
+      setCgGroups([]);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'channel-commitments') fetchCommitmentGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const openCgModal = (g) => {
+    setCgError('');
+    if (g) {
+      setCgForm({
+        id: g.id, name: g.name, type: g.type || 'ANNUAL',
+        amount: g.amount == null ? '' : String(g.amount),
+        channelMasterIds: g.channelMasterIds || [],
+        startMonth: g.startMonth ?? 1, startYear: g.startYear ?? new Date().getFullYear(),
+        endMonth: g.endMonth ?? 12, endYear: g.endYear ?? new Date().getFullYear(),
+      });
+    } else {
+      setCgForm(emptyCgForm());
+    }
+    setCgChannelSearch('');
+    setCgModalOpen(true);
+  };
+  const toggleCgChannel = (id) =>
+    setCgForm(f => ({ ...f, channelMasterIds: f.channelMasterIds.includes(id) ? f.channelMasterIds.filter(x => x !== id) : [...f.channelMasterIds, id] }));
+
+  const saveCommitmentGroup = async () => {
+    setCgError('');
+    if (!cgForm.name.trim()) { setCgError('Enter a group name.'); return; }
+    if (cgForm.channelMasterIds.length < 2) { setCgError('Pick at least two channels.'); return; }
+    if (cgForm.amount === '' || Number(cgForm.amount) <= 0) { setCgError('Enter a target amount.'); return; }
+    setCgSaving(true);
+    try {
+      await api.post('/admin/commitment-groups', {
+        id: cgForm.id,
+        name: cgForm.name.trim(),
+        type: cgForm.type,
+        amount: Number(cgForm.amount),
+        channelMasterIds: cgForm.channelMasterIds,
+        startYear: cgForm.startYear, startMonth: cgForm.startMonth,
+        endYear: cgForm.endYear, endMonth: cgForm.endMonth,
+      });
+      setCgModalOpen(false);
+      await fetchCommitmentGroups();
+    } catch (err) {
+      setCgError(err.response?.data?.error || 'Failed to save deal group.');
+    } finally {
+      setCgSaving(false);
+    }
+  };
+  const deleteCommitmentGroup = async (g) => {
+    if (!window.confirm(`Delete the deal group "${g.name}"?`)) return;
+    try {
+      await api.delete(`/admin/commitment-groups/${g.id}`);
+      await fetchCommitmentGroups();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete deal group.');
+    }
+  };
+
   const fetchClientTargets = async () => {
     setCtLoading(true);
     try {
@@ -2045,6 +2123,136 @@ export default function AdminPage({ initialTab = 'users' }) {
               </table>
             </div>
           )}
+
+          {/* ── Deal groups: one target across several channels ── */}
+          <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 740, color: 'var(--ink)' }}>Deal groups</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, maxWidth: 560, lineHeight: 1.5 }}>
+                  One target across several channels (e.g. a media-group buy: Hiru FM + Sooriyan FM + Sun FM).
+                  Achievement combines the spend of every channel in the group. Shown as one combined row on the Executive Dashboard.
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={() => openCgModal(null)}>New deal group</button>
+            </div>
+            {cgGroups.length === 0 ? (
+              <div style={{ padding: '18px', background: '#F7F8FA', borderRadius: 10, color: 'var(--muted)', fontSize: 13 }}>
+                No deal groups yet. Create one to track a combined target across multiple channels.
+              </div>
+            ) : (
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Group</th>
+                      <th>Channels</th>
+                      <th>Type</th>
+                      <th style={{ textAlign: 'right' }}>Target (LKR)</th>
+                      <th>Period</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cgGroups.map(g => (
+                      <tr key={g.id}>
+                        <td className="strong">{g.name}</td>
+                        <td style={{ fontSize: 12.5 }}>{(g.channels || []).map(c => c.name).join(', ')}</td>
+                        <td>{g.type === 'ANNUAL' ? 'Annual (total)' : 'Monthly'}</td>
+                        <td className="mono" style={{ textAlign: 'right' }}>{g.amount != null ? fmtLKR(g.amount) : '-'}</td>
+                        <td style={{ fontSize: 12.5, color: 'var(--muted)' }}>{MONTHS[(g.startMonth || 1) - 1]} {g.startYear} – {MONTHS[(g.endMonth || 1) - 1]} {g.endYear}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-sm btn-subtle" onClick={() => openCgModal(g)}>Edit</button>
+                          <button className="btn btn-sm btn-subtle" style={{ marginLeft: 6, color: '#C5391F' }} onClick={() => deleteCommitmentGroup(g)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============ DEAL GROUP MODAL ============ */}
+      {cgModalOpen && (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setCgModalOpen(false); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+            <div className="modal-head">
+              <h2>{cgForm.id ? 'Edit deal group' : 'New deal group'}</h2>
+              <button className="act-btn" onClick={() => setCgModalOpen(false)}><Icon name="x" size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {cgError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>{cgError}</div>
+              )}
+              <div className="field">
+                <label className="field-label">Group name <span className="req">*</span></label>
+                <input className="input" value={cgForm.name} onChange={e => setCgForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Asia Broadcasting Radio deal" autoFocus />
+              </div>
+              <div className="field-grid2">
+                <div className="field">
+                  <label className="field-label">Type</label>
+                  <select className="select" value={cgForm.type} onChange={e => setCgForm(f => ({ ...f, type: e.target.value }))}>
+                    <option value="ANNUAL">Annual (total for period)</option>
+                    <option value="MONTHLY">Monthly (per month)</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="field-label">{cgForm.type === 'ANNUAL' ? 'Total target (LKR)' : 'Monthly target (LKR)'} <span className="req">*</span></label>
+                  <MoneyInput className="input" value={cgForm.amount} onValueChange={v => setCgForm(f => ({ ...f, amount: v }))} placeholder="e.g. 10,000,000" style={{ textAlign: 'right' }} />
+                </div>
+              </div>
+              <div className="field-grid2">
+                <div className="field">
+                  <label className="field-label">Start</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select className="select" value={cgForm.startMonth} onChange={e => setCgForm(f => ({ ...f, startMonth: Number(e.target.value) }))}>
+                      {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    </select>
+                    <select className="select" value={cgForm.startYear} onChange={e => setCgForm(f => ({ ...f, startYear: Number(e.target.value) }))}>
+                      {Array.from({ length: (new Date().getFullYear() + 2) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="field-label">End</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select className="select" value={cgForm.endMonth} onChange={e => setCgForm(f => ({ ...f, endMonth: Number(e.target.value) }))}>
+                      {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    </select>
+                    <select className="select" value={cgForm.endYear} onChange={e => setCgForm(f => ({ ...f, endYear: Number(e.target.value) }))}>
+                      {Array.from({ length: (new Date().getFullYear() + 2) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="field">
+                <label className="field-label">Channels in this group <span className="req">*</span> <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({cgForm.channelMasterIds.length} selected)</span></label>
+                <input className="input" value={cgChannelSearch} onChange={e => setCgChannelSearch(e.target.value)} placeholder="Search channels…" style={{ marginBottom: 8 }} />
+                <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                  {ccChannels
+                    .filter(c => !cgChannelSearch || c.name.toLowerCase().includes(cgChannelSearch.toLowerCase()) || (c.mediaGroup || '').toLowerCase().includes(cgChannelSearch.toLowerCase()))
+                    .map(c => {
+                      const on = cgForm.channelMasterIds.includes(c.channelMasterId);
+                      return (
+                        <label key={c.channelMasterId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #F1F2F5', background: on ? '#F5F0FB' : 'transparent' }}>
+                          <input type="checkbox" checked={on} onChange={() => toggleCgChannel(c.channelMasterId)} />
+                          <span style={{ fontSize: 13, fontWeight: on ? 700 : 500 }}>{c.name}</span>
+                          <span className="medium-tag">{c.medium}</span>
+                          {c.mediaGroup && <span style={{ fontSize: 11.5, color: 'var(--muted)', marginLeft: 'auto' }}>{c.mediaGroup}</span>}
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-ghost" onClick={() => setCgModalOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveCommitmentGroup} disabled={cgSaving}>{cgSaving ? 'Saving…' : 'Save group'}</button>
+            </div>
+          </div>
         </div>
       )}
 

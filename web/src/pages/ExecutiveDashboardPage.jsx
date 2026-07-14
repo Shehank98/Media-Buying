@@ -217,11 +217,15 @@ function AchievementSection({
   };
   const commitNameCell = (c, isOpen, period) => (
     <td className="strong">
-      <button onClick={() => setExpandedCommit(isOpen ? null : c.channelMasterId)} title={isOpen ? 'Hide monthly detail' : 'Show month-by-month detail'}
+      <button onClick={() => setExpandedCommit(isOpen ? null : c.rowKey)} title={isOpen ? 'Hide monthly detail' : 'Show month-by-month detail'}
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, marginRight: 8, color: 'var(--ink-soft,#3B4A63)', verticalAlign: 'middle' }}>
         <Icon name={isOpen ? 'chevDown' : 'chevR'} size={14} />
       </button>
       {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
+      {c.isGroup && <span className="badge" style={{ marginLeft: 6, background: '#EDE7F8', color: '#6B3FB5', fontWeight: 700, fontSize: 10.5 }}>Group · {(c.memberNames || []).length} channels</span>}
+      {c.isGroup && (c.memberNames || []).length > 0 && (
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{c.memberNames.join(' + ')}</div>
+      )}
       {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
     </td>
   );
@@ -744,11 +748,11 @@ function AchievementSection({
                     </thead>
                     <tbody>
                       {annualCommit.map(c => {
-                        const isOpen = expandedCommit === c.channelMasterId;
+                        const isOpen = expandedCommit === c.rowKey;
                         const period = ccPeriodLabel(c);
                         const gap = (c.committedToDate || 0) - (c.achieved || 0);
                         return (
-                          <Fragment key={c.channelMasterId}>
+                          <Fragment key={c.rowKey}>
                             <tr>
                               {commitNameCell(c, isOpen, period)}
                               <td style={{ textAlign: 'right' }} className="mono">{fmtLKR(c.committedToDate)}</td>
@@ -789,7 +793,7 @@ function AchievementSection({
                     </thead>
                     <tbody>
                       {monthlyCommit.map(c => {
-                        const isOpen = expandedCommit === c.channelMasterId;
+                        const isOpen = expandedCommit === c.rowKey;
                         const period = ccPeriodLabel(c);
                         const mLabel = c.latestMonthLabel;
                         const committed = c.latestMonthCommitted || 0;
@@ -797,7 +801,7 @@ function AchievementSection({
                         const gap = committed - achieved;
                         const mpct = committed > 0 ? Number(((achieved / committed) * 100).toFixed(1)) : null;
                         return (
-                          <Fragment key={c.channelMasterId}>
+                          <Fragment key={c.rowKey}>
                             <tr>
                               {commitNameCell(c, isOpen, period)}
                               <td style={{ textAlign: 'right' }} className="mono">

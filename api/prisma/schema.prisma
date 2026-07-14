@@ -58,50 +58,50 @@ enum CommissionType {
 }
 
 model User {
-  id                    Int                  @id @default(autoincrement())
-  email                 String               @unique
-  passwordHash          String               @map("password_hash")
-  name                  String
-  role                  Role
-  mustChangePassword    Boolean              @default(true) @map("must_change_password")
-  pageAccess            String[]             @default([]) @map("page_access")
-  canExport             Boolean              @default(true) @map("can_export")
-  readOnly              Boolean              @default(false) @map("read_only")
-  failedLogins          Int                  @default(0) @map("failed_logins")
-  lockedUntil           DateTime?            @map("locked_until")
-  tokenVersion          Int                  @default(0) @map("token_version")
-  createdAt             DateTime             @default(now()) @map("created_at")
-  updatedAt             DateTime             @updatedAt @map("updated_at")
-  agencyAccess          UserAgencyAccess[]
-  clientAccess          UserClientAccess[]
-  teamMembers           TeamMember[]
-  teamsHeaded           Team[]               @relation("TeamHead")
-  channelAgencyDealsCreated ChannelAgencyDeal[] @relation("ChannelAgencyDealCreator")
-  channelClientDealsCreated ChannelClientDeal[] @relation("ChannelClientDealCreator")
-  properties            Property[]           @relation("CreatedBy")
-  propertyHistory       PropertyHistory[]    @relation("ChangedBy")
-  passwordResetTokens   PasswordResetToken[]
+  id                        Int                  @id @default(autoincrement())
+  email                     String               @unique
+  passwordHash              String               @map("password_hash")
+  name                      String
+  role                      Role
+  mustChangePassword        Boolean              @default(true) @map("must_change_password")
+  pageAccess                String[]             @default([]) @map("page_access")
+  canExport                 Boolean              @default(true) @map("can_export")
+  readOnly                  Boolean              @default(false) @map("read_only")
+  failedLogins              Int                  @default(0) @map("failed_logins")
+  lockedUntil               DateTime?            @map("locked_until")
+  tokenVersion              Int                  @default(0) @map("token_version")
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
+  agencyAccess              UserAgencyAccess[]
+  clientAccess              UserClientAccess[]
+  teamMembers               TeamMember[]
+  teamsHeaded               Team[]               @relation("TeamHead")
+  channelAgencyDealsCreated ChannelAgencyDeal[]  @relation("ChannelAgencyDealCreator")
+  channelClientDealsCreated ChannelClientDeal[]  @relation("ChannelClientDealCreator")
+  properties                Property[]           @relation("CreatedBy")
+  propertyHistory           PropertyHistory[]    @relation("ChangedBy")
+  passwordResetTokens       PasswordResetToken[]
   // Phase 3 relations
-  mediaGroups           MediaGroup[]         @relation("MediaGroupCreator")
-  channelMastersCreated ChannelMaster[]      @relation("ChannelMasterCreator")
-  brandsCreated         Brand[]              @relation("BrandCreator")
-  campaignsCreated      Campaign[]           @relation("CampaignCreator")
-  scheduleLogs          ScheduleLog[]        @relation("ScheduleLogUploader")
-  deletedScheduleLogs   ScheduleLog[]        @relation("ScheduleLogDeleter")
-  uploadBatches         UploadBatch[]        @relation("UploadBatchUploader")
-  scheduleLogEdits      ScheduleLogEdit[]    @relation("ScheduleLogEditor")
-  notifications         Notification[]
-  packagesCreated       MediaPackage[]       @relation("PackageCreator")
-  packageRecipients     PackageRecipient[]   @relation("PackageRecipientUser")
-  groupRevenues         GroupRevenue[]       @relation("GroupRevenueHead")
+  mediaGroups               MediaGroup[]         @relation("MediaGroupCreator")
+  channelMastersCreated     ChannelMaster[]      @relation("ChannelMasterCreator")
+  brandsCreated             Brand[]              @relation("BrandCreator")
+  campaignsCreated          Campaign[]           @relation("CampaignCreator")
+  scheduleLogs              ScheduleLog[]        @relation("ScheduleLogUploader")
+  deletedScheduleLogs       ScheduleLog[]        @relation("ScheduleLogDeleter")
+  uploadBatches             UploadBatch[]        @relation("UploadBatchUploader")
+  scheduleLogEdits          ScheduleLogEdit[]    @relation("ScheduleLogEditor")
+  notifications             Notification[]
+  packagesCreated           MediaPackage[]       @relation("PackageCreator")
+  packageRecipients         PackageRecipient[]   @relation("PackageRecipientUser")
+  groupRevenues             GroupRevenue[]       @relation("GroupRevenueHead")
 
   @@map("users")
 }
 
 model Agency {
-  id            Int                @id @default(autoincrement())
-  name          String             @unique
-  createdAt     DateTime           @default(now()) @map("created_at")
+  id            Int                  @id @default(autoincrement())
+  name          String               @unique
+  createdAt     DateTime             @default(now()) @map("created_at")
   users         UserAgencyAccess[]
   clients       Client[]
   teams         Team[]
@@ -126,20 +126,20 @@ model UserAgencyAccess {
 }
 
 model Client {
-  id              Int                @id @default(autoincrement())
-  agencyId        Int                @map("agency_id")
+  id              Int                 @id @default(autoincrement())
+  agencyId        Int                 @map("agency_id")
   name            String
   // Alternate spellings/variants learned from bulk-import reconciliation, so a
   // raw name mapped to this client once auto-matches on future imports (mirrors
   // ChannelMaster.aliases). Matched case-insensitively.
-  aliases         String[]           @default([])
-  isActive        Boolean            @default(true) @map("is_active")
+  aliases         String[]            @default([])
+  isActive        Boolean             @default(true) @map("is_active")
   // Agency remuneration for the Overall Budget tab: type = COMMISSION (value is
   // a %) or AOR (value is a fixed LKR fee). Both null = not set.
-  commissionType  CommissionType?    @map("commission_type")
-  commissionValue Decimal?           @map("commission_value") @db.Decimal(14, 2)
-  createdAt       DateTime           @default(now()) @map("created_at")
-  agency          Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  commissionType  CommissionType?     @map("commission_type")
+  commissionValue Decimal?            @map("commission_value") @db.Decimal(14, 2)
+  createdAt       DateTime            @default(now()) @map("created_at")
+  agency          Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   users           UserClientAccess[]
   channels        Channel[]
   teams           TeamClient[]
@@ -220,36 +220,36 @@ model MediaGroup {
 // ─── Channel Master (canonical channel registry) ───────────────────────────
 
 model ChannelMaster {
-  id              Int              @id @default(autoincrement())
-  name            String           @unique
-  medium          ChannelType
-  aliases         String[]         @default([])
-  isActive        Boolean          @default(true) @map("is_active")
-  sortOrder       Int?             @map("sort_order")
+  id                 Int                 @id @default(autoincrement())
+  name               String              @unique
+  medium             ChannelType
+  aliases            String[]            @default([])
+  isActive           Boolean             @default(true) @map("is_active")
+  sortOrder          Int?                @map("sort_order")
   // GENERAL channel rate card in Google Drive (General Rate Cards/<channel>/).
   // Any format (PDF/JPG/PNG/Excel/…); rateCardMimeType is used on download.
   // rateCard* = the LATEST version (for quick display/download); every upload is
   // kept as a new version in rateCardVersions (newest last) rather than replacing
   // the old file — [{ version, driveId, fileName, mimeType, size, uploadedAt }].
-  rateCardDriveId    String?       @map("rate_card_drive_id")
-  rateCardFileName   String?       @map("rate_card_file_name")
-  rateCardMimeType   String?       @map("rate_card_mime_type")
-  rateCardSize       Int?          @map("rate_card_size")
-  rateCardUploadedAt DateTime?     @map("rate_card_uploaded_at")
-  rateCardVersions   Json?         @map("rate_card_versions")
-  mediaGroupId    Int              @map("media_group_id")
-  createdById     Int              @map("created_by_id")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  channels        Channel[]
-  scheduleLogs    ScheduleLog[]
-  uploadBatchRows UploadBatchRow[]
-  forecasts       MonthlyForecast[]
-  agencyDeals     ChannelAgencyDeal[]
-  clientDeals     ChannelClientDeal[]
-  commitments     ChannelCommitment[]
-  mediaGroup      MediaGroup       @relation(fields: [mediaGroupId], references: [id])
-  creator         User             @relation("ChannelMasterCreator", fields: [createdById], references: [id])
+  rateCardDriveId    String?             @map("rate_card_drive_id")
+  rateCardFileName   String?             @map("rate_card_file_name")
+  rateCardMimeType   String?             @map("rate_card_mime_type")
+  rateCardSize       Int?                @map("rate_card_size")
+  rateCardUploadedAt DateTime?           @map("rate_card_uploaded_at")
+  rateCardVersions   Json?               @map("rate_card_versions")
+  mediaGroupId       Int                 @map("media_group_id")
+  createdById        Int                 @map("created_by_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  channels           Channel[]
+  scheduleLogs       ScheduleLog[]
+  uploadBatchRows    UploadBatchRow[]
+  forecasts          MonthlyForecast[]
+  agencyDeals        ChannelAgencyDeal[]
+  clientDeals        ChannelClientDeal[]
+  commitments        ChannelCommitment[]
+  mediaGroup         MediaGroup          @relation(fields: [mediaGroupId], references: [id])
+  creator            User                @relation("ChannelMasterCreator", fields: [createdById], references: [id])
 
   @@map("channel_masters")
 }
@@ -257,15 +257,15 @@ model ChannelMaster {
 // ─── Media Buying: channel negotiation deals (discount/bonus terms) ────────
 
 model ChannelAgencyDeal {
-  id              Int      @id @default(autoincrement())
-  channelMasterId Int      @map("channel_master_id")
+  id              Int           @id @default(autoincrement())
+  channelMasterId Int           @map("channel_master_id")
   year            Int
-  discountPct     Decimal  @map("discount_pct") @db.Decimal(5, 2)
-  bonusPct        Decimal  @map("bonus_pct") @db.Decimal(5, 2)
+  discountPct     Decimal       @map("discount_pct") @db.Decimal(5, 2)
+  bonusPct        Decimal       @map("bonus_pct") @db.Decimal(5, 2)
   notes           String?
-  createdById     Int      @map("created_by_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     Int           @map("created_by_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
   channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
   createdBy       User          @relation("ChannelAgencyDealCreator", fields: [createdById], references: [id])
 
@@ -274,16 +274,16 @@ model ChannelAgencyDeal {
 }
 
 model ChannelClientDeal {
-  id              Int      @id @default(autoincrement())
-  channelMasterId Int      @map("channel_master_id")
-  clientId        Int      @map("client_id")
+  id              Int           @id @default(autoincrement())
+  channelMasterId Int           @map("channel_master_id")
+  clientId        Int           @map("client_id")
   year            Int
-  discountPct     Decimal  @map("discount_pct") @db.Decimal(5, 2)
-  bonusPct        Decimal  @map("bonus_pct") @db.Decimal(5, 2)
+  discountPct     Decimal       @map("discount_pct") @db.Decimal(5, 2)
+  bonusPct        Decimal       @map("bonus_pct") @db.Decimal(5, 2)
   notes           String?
-  createdById     Int      @map("created_by_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     Int           @map("created_by_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
   channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
   client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy       User          @relation("ChannelClientDealCreator", fields: [createdById], references: [id])
@@ -295,31 +295,31 @@ model ChannelClientDeal {
 // ─── Channel (client-specific channel record) ──────────────────────────────
 
 model Channel {
-  id              Int            @id @default(autoincrement())
-  clientId        Int            @map("client_id")
-  type            ChannelType
-  name            String
-  channelMasterId Int?           @map("channel_master_id")
+  id                 Int            @id @default(autoincrement())
+  clientId           Int            @map("client_id")
+  type               ChannelType
+  name               String
+  channelMasterId    Int?           @map("channel_master_id")
   // Channel's rep contact (the sales/booking person AT the channel), captured
   // when the channel is added to a client. Per-client so each client can keep
   // its own contact for the same channel.
-  contactName     String?        @map("contact_name")
-  contactEmail    String?        @map("contact_email")
-  contactMobile   String?        @map("contact_mobile")
+  contactName        String?        @map("contact_name")
+  contactEmail       String?        @map("contact_email")
+  contactMobile      String?        @map("contact_mobile")
   // Client-specific rate card on Google Drive (Client Rate Cards/<client>/<channel>/).
   // Mirrors ChannelMaster.rateCard* (which is the GENERAL, per-channel card):
   // rateCard* = the latest version; every upload is appended to rateCardVersions.
   // Any format (PDF/JPG/PNG/Excel/…) — rateCardMimeType is used on download.
-  rateCardDriveId    String?     @map("rate_card_drive_id")
-  rateCardFileName   String?     @map("rate_card_file_name")
-  rateCardMimeType   String?     @map("rate_card_mime_type")
-  rateCardSize       Int?        @map("rate_card_size")
-  rateCardUploadedAt DateTime?   @map("rate_card_uploaded_at")
-  rateCardVersions   Json?       @map("rate_card_versions")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  channelMaster   ChannelMaster? @relation(fields: [channelMasterId], references: [id])
-  properties      Property[]
+  rateCardDriveId    String?        @map("rate_card_drive_id")
+  rateCardFileName   String?        @map("rate_card_file_name")
+  rateCardMimeType   String?        @map("rate_card_mime_type")
+  rateCardSize       Int?           @map("rate_card_size")
+  rateCardUploadedAt DateTime?      @map("rate_card_uploaded_at")
+  rateCardVersions   Json?          @map("rate_card_versions")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  client             Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  channelMaster      ChannelMaster? @relation(fields: [channelMasterId], references: [id])
+  properties         Property[]
 
   @@unique([clientId, name])
   @@map("channels")
@@ -414,40 +414,40 @@ model Campaign {
 // ─── Schedule Log (monthly execution record) ────────────────────────────────
 
 model ScheduleLog {
-  id                   Int       @id @default(autoincrement())
-  agencyId             Int       @map("agency_id")
-  clientId             Int       @map("client_id")
-  brandId              Int?      @map("brand_id")
-  campaignId           Int?      @map("campaign_id")
-  uploadedById         Int       @map("uploaded_by_id")
-  uploadBatchId        Int?      @map("upload_batch_id")
-  roNumber             String    @map("ro_number")
-  scheduleMonth        String    @map("schedule_month")
-  invoiceMonth         String    @map("invoice_month")
-  channelMasterId      Int       @map("channel_master_id")
-  medium               String
-  mediaGroup           String    @map("media_group")
-  brandName            String?   @map("brand_name")
-  scheduleValue        Decimal   @map("schedule_value") @db.Decimal(14, 2)
-  scheduleValueWithVat Decimal   @map("schedule_value_with_vat") @db.Decimal(14, 2)
+  id                    Int       @id @default(autoincrement())
+  agencyId              Int       @map("agency_id")
+  clientId              Int       @map("client_id")
+  brandId               Int?      @map("brand_id")
+  campaignId            Int?      @map("campaign_id")
+  uploadedById          Int       @map("uploaded_by_id")
+  uploadBatchId         Int?      @map("upload_batch_id")
+  roNumber              String    @map("ro_number")
+  scheduleMonth         String    @map("schedule_month")
+  invoiceMonth          String    @map("invoice_month")
+  channelMasterId       Int       @map("channel_master_id")
+  medium                String
+  mediaGroup            String    @map("media_group")
+  brandName             String?   @map("brand_name")
+  scheduleValue         Decimal   @map("schedule_value") @db.Decimal(14, 2)
+  scheduleValueWithVat  Decimal   @map("schedule_value_with_vat") @db.Decimal(14, 2)
   // Agency commission snapshotted at entry (immutable) for the Profit tab.
   // type = COMMISSION (rate is a %) or AOR (rate holds the fixed LKR fee); null
   // when the client had no commission set. commissionBackfilled flags rows whose
   // snapshot was filled in retroactively rather than captured at true entry time.
-  commissionTypeAtEntry String?  @map("commission_type_at_entry")
-  commissionRateAtEntry Decimal? @map("commission_rate_at_entry") @db.Decimal(14, 2)
-  commissionBackfilled  Boolean  @default(false) @map("commission_backfilled")
+  commissionTypeAtEntry String?   @map("commission_type_at_entry")
+  commissionRateAtEntry Decimal?  @map("commission_rate_at_entry") @db.Decimal(14, 2)
+  commissionBackfilled  Boolean   @default(false) @map("commission_backfilled")
   // Extra spreadsheet columns kept verbatim on bulk import (Invoice Value, CAG/
   // AOR %, station & agency invoice numbers, dates, Payment Received, etc.) that
   // the system does not compute with — retained for the record and re-exportable.
   // Keyed by original column header. Not used in any aggregation.
-  importExtra          Json?     @map("import_extra")
-  propertyId           Int?      @map("property_id")
-  isDeleted            Boolean   @default(false) @map("is_deleted")
-  deletedById          Int?      @map("deleted_by_id")
-  deletedAt            DateTime? @map("deleted_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  importExtra           Json?     @map("import_extra")
+  propertyId            Int?      @map("property_id")
+  isDeleted             Boolean   @default(false) @map("is_deleted")
+  deletedById           Int?      @map("deleted_by_id")
+  deletedAt             DateTime? @map("deleted_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   agency         Agency            @relation(fields: [agencyId], references: [id])
   client         Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -702,12 +702,37 @@ model ChannelCommitment {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  channelMaster   ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
+  channelMaster ChannelMaster @relation(fields: [channelMasterId], references: [id], onDelete: Cascade)
 
   @@index([channelMasterId])
   @@index([startYear])
   @@index([endYear])
   @@map("channel_commitments")
+}
+
+// A single deal spanning MULTIPLE channels (typically one media-group buy, e.g.
+// Hiru FM + Sooriyan FM + Sun FM). ONE target for the whole group; achievement =
+// the COMBINED ScheduleLog spend of every member channel over the committed
+// period. Same period/type semantics as ChannelCommitment. Shown as one combined
+// row in the Executive Dashboard's Channel Commitments tracker.
+model ChannelCommitmentGroup {
+  id               Int            @id @default(autoincrement())
+  name             String
+  type             CommitmentType @default(MONTHLY)
+  startYear        Int            @map("start_year")
+  startMonth       Int            @map("start_month") // 1=Jan
+  endYear          Int            @map("end_year")
+  endMonth         Int            @map("end_month") // 1=Jan
+  monthlyAmount    Decimal?       @map("monthly_amount") @db.Decimal(16, 2) // MONTHLY type
+  totalAmount      Decimal?       @map("total_amount") @db.Decimal(16, 2) // ANNUAL type (total for the period)
+  channelMasterIds Int[]          @map("channel_master_ids") // member channels
+  createdById      Int?           @map("created_by_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([startYear])
+  @@index([endYear])
+  @@map("channel_commitment_groups")
 }
 
 // Admin-entered company-wide actual billing (full LKR), one figure per month.
@@ -820,8 +845,8 @@ model PendingImportRow {
   id           Int      @id @default(autoincrement())
   fileName     String   @map("file_name")
   rowData      Json     @map("row_data")
-  clientReqId  Int?     @map("client_req_id")   // waiting on this ClientRequest
-  channelReqId Int?     @map("channel_req_id")  // waiting on this ChannelRequest
+  clientReqId  Int?     @map("client_req_id") // waiting on this ClientRequest
+  channelReqId Int?     @map("channel_req_id") // waiting on this ChannelRequest
   createdById  Int      @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -850,7 +875,7 @@ model MediaPackage {
   name        String
   category    String?
   emailIntro  String             @map("email_intro")
-  deadline    DateTime?          // proposal deadline; past it the package auto-deactivates
+  deadline    DateTime? // proposal deadline; past it the package auto-deactivates
   isActive    Boolean            @default(true) @map("is_active")
   createdById Int                @map("created_by_id")
   createdAt   DateTime           @default(now()) @map("created_at")
@@ -874,22 +899,22 @@ model PackageLineItem {
 }
 
 model PackageRecipient {
-  id          Int              @id @default(autoincrement())
-  packageId   Int              @map("package_id")
-  userId      Int              @map("user_id")
-  tokenHash   String?          @unique @map("token_hash")
-  expiresAt   DateTime?        @map("expires_at")
-  sentAt      DateTime?        @map("sent_at")
-  respondedAt DateTime?        @map("responded_at")
-  interest    PackageInterest?
-  budgetNote  String?          @map("budget_note")
-  clientName  String?          @map("client_name")
-  interestedClientIds Int[]    @default([]) @map("interested_client_ids")
-  notes       String?
-  followUp    ResponseFollowUp @default(PENDING) @map("follow_up")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  package     MediaPackage     @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  user        User             @relation("PackageRecipientUser", fields: [userId], references: [id])
+  id                  Int              @id @default(autoincrement())
+  packageId           Int              @map("package_id")
+  userId              Int              @map("user_id")
+  tokenHash           String?          @unique @map("token_hash")
+  expiresAt           DateTime?        @map("expires_at")
+  sentAt              DateTime?        @map("sent_at")
+  respondedAt         DateTime?        @map("responded_at")
+  interest            PackageInterest?
+  budgetNote          String?          @map("budget_note")
+  clientName          String?          @map("client_name")
+  interestedClientIds Int[]            @default([]) @map("interested_client_ids")
+  notes               String?
+  followUp            ResponseFollowUp @default(PENDING) @map("follow_up")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  package             MediaPackage     @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user                User             @relation("PackageRecipientUser", fields: [userId], references: [id])
 
   @@map("package_recipients")
 }
