@@ -266,10 +266,18 @@ export async function getAgencyComparison(req, res) {
       const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
       const curYear = safeNum(curYearAgg._sum.scheduleValue) || 0;
       const ly = safeNum(lastYearAgg._sum.scheduleValue) || 0;
-      // Agency annual target (LKR millions) prorated to the latest data month.
+      // Agency annual target (LKR millions) prorated over the agency's ACTIVE
+      // months in the year, NOT Jan-based. An agency that started mid-year (e.g.
+      // RedWorks from May, after clients moved to it) is measured May→latest: its
+      // annual target is divided by its operating months (May-Dec = 8), not 12,
+      // and only its active months so far (May-Jun = 2) count as elapsed.
       const targetMillions = target ? Number(target.totalTargetMillions) : 0;
-      const targetToDate = targetMillions > 0 && monthsElapsed > 0
-        ? Number(((targetMillions / 12) * monthsElapsed * 1e6).toFixed(2)) : 0;
+      const firstActiveMonth = monthlyData.length ? parseInt(String(monthlyData[0].scheduleMonth).slice(5)) : null;
+      const agencyLatestMonth = monthlyData.length ? parseInt(String(monthlyData[monthlyData.length - 1].scheduleMonth).slice(5)) : null;
+      const activeMonthsInYear = firstActiveMonth != null ? (12 - firstActiveMonth + 1) : 0;   // e.g. May → 8
+      const monthsElapsedActive = firstActiveMonth != null ? (agencyLatestMonth - firstActiveMonth + 1) : 0; // e.g. May-Jun → 2
+      const targetToDate = targetMillions > 0 && activeMonthsInYear > 0 && monthsElapsedActive > 0
+        ? Number(((targetMillions / activeMonthsInYear) * monthsElapsedActive * 1e6).toFixed(2)) : 0;
       const targetPct = targetToDate > 0 ? Number(((ytd / targetToDate) * 100).toFixed(1)) : null;
       return {
         agencyId: agency.id,
@@ -282,7 +290,11 @@ export async function getAgencyComparison(req, res) {
         annualTargetMillions: targetMillions,
         targetToDate,
         targetPct,
-        targetMonthLabel: monthsElapsed > 0 ? MONTH_NAMES[monthsElapsed - 1] : null,
+        targetRangeLabel: firstActiveMonth != null && agencyLatestMonth != null
+          ? (firstActiveMonth === agencyLatestMonth
+            ? `${MONTH_NAMES[firstActiveMonth - 1]}`
+            : `${MONTH_NAMES[firstActiveMonth - 1]}–${MONTH_NAMES[agencyLatestMonth - 1]}`)
+          : null,
         monthly: monthlyData.map(m => ({ month: m.scheduleMonth, scheduleValue: safeNum(m._sum.scheduleValue) || 0 })),
       };
     }));

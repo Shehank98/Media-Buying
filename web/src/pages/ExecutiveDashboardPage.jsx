@@ -1448,7 +1448,7 @@ export default function ExecutiveDashboardPage() {
                     {ag.annualTargetMillions > 0 ? (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
-                          <span>Target{ag.targetMonthLabel ? ` (Jan–${ag.targetMonthLabel})` : ''}</span>
+                          <span>Target{ag.targetRangeLabel ? ` (${ag.targetRangeLabel})` : ''}</span>
                           <span className="mono" style={{ fontWeight: 700, color: barColor }}>{pct == null ? '' : `${pct}%`}</span>
                         </div>
                         <div style={{ height: 8, background: '#EEF0F3', borderRadius: 5, overflow: 'hidden' }}>
