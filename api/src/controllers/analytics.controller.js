@@ -1956,6 +1956,13 @@ export async function getAgencyAchievement(req, res) {
       let positionMonth = 0;
       for (let m = 1; m <= 12; m++) if (!monthValue(m).empty) positionMonth = m;
       if (year === now.getFullYear()) positionMonth = Math.min(positionMonth, now.getMonth() + 1);
+      // First active month (mid-year starters like RedWorks/May prorate their
+      // target over operating months, not from Jan).
+      let firstActiveMonth = 0;
+      for (let m = 1; m <= 12; m++) { if (!monthValue(m).empty) { firstActiveMonth = m; break; } }
+      const activeMonthsInYear = firstActiveMonth > 0 ? (12 - firstActiveMonth + 1) : 0; // May → 8
+      const monthsElapsedActive = firstActiveMonth > 0 && positionMonth >= firstActiveMonth
+        ? (positionMonth - firstActiveMonth + 1) : 0;                                     // May-Jul → 3
 
       const target = await prisma.agencyAnnualTarget.findUnique({ where: { agencyId_year: { agencyId: ag.id, year } } });
       const targetMillions = target ? Number(target.totalTargetMillions) : 0;
@@ -1964,7 +1971,10 @@ export async function getAgencyAchievement(req, res) {
       for (let m = 1; m <= positionMonth; m++) { const mv = monthValue(m); actualSum += mv.v; if (mv.fc) { forecastUsed += mv.v; fillMonths.push(m); } }
       let lastActualMonth = 0;
       for (let m = 1; m <= positionMonth; m++) { const mv = monthValue(m); if (!mv.fc && !mv.empty) lastActualMonth = m; }
-      const uptoTargetMillions = target && positionMonth > 0 ? Number(((targetMillions / 12) * positionMonth).toFixed(2)) : 0;
+      // Target to date = per-active-month pace × active months elapsed. RedWorks
+      // (544.9M / 8 = 68.11M per month) upto Jul = 68.11M × 3 (May-Jul).
+      const uptoTargetMillions = target && activeMonthsInYear > 0 && monthsElapsedActive > 0
+        ? Number(((targetMillions / activeMonthsInYear) * monthsElapsedActive).toFixed(2)) : 0;
       const actualMillions = Number(actualSum.toFixed(2));
       const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
 
@@ -1982,7 +1992,15 @@ export async function getAgencyAchievement(req, res) {
         actualOnlyMillions: Number((actualSum - forecastUsed).toFixed(2)),
         forecastFillMillions: Number(forecastUsed.toFixed(2)),
         forecastFillLabel: fillMonths.length ? fillMonths.map(m => MONTH_NAMES[m - 1]).join(', ') : null,
-        actualRangeLabel: lastActualMonth > 0 ? (lastActualMonth === 1 ? MONTH_NAMES[0] : `${MONTH_NAMES[0]}–${MONTH_NAMES[lastActualMonth - 1]}`) : null,
+        actualRangeLabel: lastActualMonth > 0
+          ? (firstActiveMonth === lastActualMonth ? MONTH_NAMES[firstActiveMonth - 1] : `${MONTH_NAMES[firstActiveMonth - 1]}–${MONTH_NAMES[lastActualMonth - 1]}`)
+          : null,
+        // Range the target-to-date covers (e.g. "May–Jul" for a mid-year starter).
+        targetRangeLabel: firstActiveMonth > 0 && positionMonth >= firstActiveMonth
+          ? (firstActiveMonth === positionMonth ? MONTH_NAMES[firstActiveMonth - 1] : `${MONTH_NAMES[firstActiveMonth - 1]}–${MONTH_NAMES[positionMonth - 1]}`)
+          : null,
+        startMonthLabel: firstActiveMonth > 0 ? MONTH_NAMES[firstActiveMonth - 1] : null,
+        activeMonthsInYear,
         achievementPct,
         monthly,
       });

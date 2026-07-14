@@ -742,10 +742,11 @@ export default function SpendAnalyticsPage() {
           {/* Agency-wise Annual Achievement + this-year monthly spend (per accessible agency) */}
           {canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
             const fmtM = (v) => `${Number(v || 0).toFixed(1)}M`;
+            const targetLabel = a.targetRangeLabel ? `${a.targetRangeLabel} Target` : `Upto ${a.uptoMonthLabel || '-'} Target`;
             const bars = [
               { name: 'Budget Forecast', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
-              { name: `Upto ${a.uptoMonthLabel || '-'} Target`, actualPart: a.uptoTargetMillions, forecastPart: 0, total: a.uptoTargetMillions, fill: '#9A5B00' },
-              { name: `Actual upto ${a.uptoMonthLabel || '-'}`, actualPart: a.actualOnlyMillions, forecastPart: a.forecastFillMillions, total: a.actualMillions, fill: '#15814B' },
+              { name: targetLabel, actualPart: a.uptoTargetMillions, forecastPart: 0, total: a.uptoTargetMillions, fill: '#9A5B00' },
+              { name: `Actual ${a.actualRangeLabel || ('upto ' + (a.uptoMonthLabel || '-'))}`, actualPart: a.actualOnlyMillions, forecastPart: a.forecastFillMillions, total: a.actualMillions, fill: '#15814B' },
             ];
             const pctColor = a.achievementPct == null ? '#6B7790' : a.achievementPct >= 100 ? '#15814B' : a.achievementPct >= 80 ? '#9A5B00' : '#C5391F';
             return (
@@ -755,7 +756,7 @@ export default function SpendAnalyticsPage() {
                     <h3 className="spa-ctitle">{a.agencyName} · Annual Achievement · {agencyAch.year}</h3>
                     <p className="spa-csub">
                       {a.hasTarget
-                        ? `Budget vs pacing vs actual · LKR millions${a.forecastFillLabel ? ` (incl. ${a.forecastFillLabel} forecast)` : ''}`
+                        ? `Budget vs pacing vs actual · LKR millions${a.startMonthLabel && a.startMonthLabel !== 'Jan' ? ` · target prorated over ${a.activeMonthsInYear} mo (from ${a.startMonthLabel})` : ''}${a.forecastFillLabel ? ` (incl. ${a.forecastFillLabel} forecast)` : ''}`
                         : 'No annual target set for this agency. Add one in Admin → Annual Targets → Agency Targets'}
                     </p>
                   </div>
