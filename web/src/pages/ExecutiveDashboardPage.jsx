@@ -1462,12 +1462,13 @@ export default function ExecutiveDashboardPage() {
               {[
                 {
                   key: 'cm',
-                  // This Month: title carries the month name; per-medium change is vs last month (MoM).
+                  // This Month: title carries the month name; per-medium change is vs the
+                  // average of the prior months this year (e.g. Jun vs Jan–May avg).
                   title: mediumSplit.currentMonthLabel || 'This Month',
-                  sub: mediumSplit.prevMonthLabel ? `vs ${mediumSplit.prevMonthLabel} (MoM)` : 'This month',
+                  sub: mediumSplit.priorAvgLabel ? `vs ${mediumSplit.priorAvgLabel}` : 'This month',
                   data: mediumSplit.currentMonth || [],
-                  compare: mediumSplit.previousMonth || [],
-                  changeTag: 'MoM',
+                  compare: mediumSplit.priorMonthsAvg || [],
+                  changeTag: 'vs avg',
                 },
                 {
                   key: 'ytd',

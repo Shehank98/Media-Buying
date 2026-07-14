@@ -420,30 +420,50 @@ export async function getMediumSplit(req, res) {
     const lyStart = `${yr - 1}-01`;                               // last year Jan
     const lyEnd = `${yr - 1}-${String(mo).padStart(2, '0')}`;     // last year, same month
     const pYm = prevMonth(ym);                                    // previous month (for MoM)
+    // Prior months THIS year (Jan..month-1) — for the "vs Jan–May average" compare.
+    const priorMonthsCount = mo - 1;
+    const priorEnd = priorMonthsCount > 0 ? `${yr}-${String(mo - 1).padStart(2, '0')}` : null;
 
-    const [cm, pm, ytd, ly] = await Promise.all([
+    const [cm, pm, ytd, ly, priorAgg] = await Promise.all([
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: ym }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: pYm }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: cyStart, lte: ym } }, _sum: { scheduleValue: true } }),
       prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: lyStart, lte: lyEnd } }, _sum: { scheduleValue: true } }),
+      priorEnd
+        ? prisma.scheduleLog.groupBy({ by: ['medium'], where: { ...base, scheduleMonth: { gte: cyStart, lte: priorEnd } }, _sum: { scheduleValue: true } })
+        : Promise.resolve([]),
     ]);
 
     function toSplit(rows) {
       const total = rows.reduce((s, r) => s + (safeNum(r._sum.scheduleValue) || 0), 0);
       return rows.map(r => ({ medium: r.medium, value: safeNum(r._sum.scheduleValue) || 0, pct: total > 0 ? Number(((safeNum(r._sum.scheduleValue) || 0) / total * 100).toFixed(2)) : 0 }));
     }
+    // Average per medium across the prior months (sum ÷ month count). Pct is
+    // proportional so it matches whether computed from sums or averages.
+    function toAvgSplit(rows, divisor) {
+      const totalAvg = rows.reduce((s, r) => s + ((safeNum(r._sum.scheduleValue) || 0) / divisor), 0);
+      return rows.map(r => {
+        const avg = (safeNum(r._sum.scheduleValue) || 0) / divisor;
+        return { medium: r.medium, value: avg, pct: totalAvg > 0 ? Number((avg / totalAvg * 100).toFixed(2)) : 0 };
+      });
+    }
 
     const periodLabel = mo === 1 ? `${MONTH_NAMES[0]} ${yr}` : `${MONTH_NAMES[0]} to ${MONTH_NAMES[mo - 1]} ${yr}`;
     const lastYearLabel = mo === 1 ? `${MONTH_NAMES[0]} ${yr - 1}` : `${MONTH_NAMES[0]} to ${MONTH_NAMES[mo - 1]} ${yr - 1}`;
+    const priorAvgLabel = priorMonthsCount > 0
+      ? (priorMonthsCount === 1 ? `${MONTH_NAMES[0]} ${yr} avg` : `${MONTH_NAMES[0]}–${MONTH_NAMES[mo - 2]} avg ${yr}`)
+      : null;
 
     return res.json({
       year: yr,
       currentMonth: toSplit(cm),
       previousMonth: toSplit(pm),
+      priorMonthsAvg: priorMonthsCount > 0 ? toAvgSplit(priorAgg, priorMonthsCount) : [],
       ytd: toSplit(ytd),
       lastYearYtd: toSplit(ly),
       currentMonthLabel: `${MONTH_NAMES[mo - 1]} ${yr}`,
       prevMonthLabel: pYm ? `${MONTH_NAMES[parseInt(pYm.slice(5)) - 1]} ${pYm.slice(0, 4)}` : null,
+      priorAvgLabel,
       ytdLabel: periodLabel,
       lastYearLabel,
     });
