@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import Icon, { Avatar, RoleBadge } from './Icon';
+import Icon, { Avatar, RoleBadge, roleLabel } from './Icon';
 import api from '../lib/api';
 import { hasPageAccess, isPageGranted } from '../lib/permissions';
 
@@ -236,7 +236,7 @@ export default function Layout() {
             <Avatar name={userName} size={32} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="nm">{userName}</div>
-              <div className="rl">{userRole.replace('_', ' ')}</div>
+              <div className="rl">{roleLabel(userRole)}</div>
             </div>
             <button
               className="nav-item"
