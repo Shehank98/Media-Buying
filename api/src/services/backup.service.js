@@ -23,7 +23,7 @@
 //   BACKUP_TZ                    Timezone for the cron schedule (default "Asia/Colombo").
 
 import { spawn } from 'child_process';
-import { createGzip } from 'zlib';
+import { createGzip, createGunzip } from 'zlib';
 import { createWriteStream, createReadStream, promises as fsp } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -168,6 +168,82 @@ function dumpDatabase(destPath) {
       } catch (err) { reject(err); }
     });
   });
+}
+
+// Create a fresh gzipped full-database dump in a temp file. Returns its path,
+// name and size. Used by both the scheduled/Drive backup and the on-demand
+// download endpoint (which works even when Drive is not configured).
+export async function createDumpFile() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `${FILE_PREFIX}${stamp}.sql.gz`;
+  const localPath = path.join(tmpdir(), fileName);
+  const sizeBytes = await dumpDatabase(localPath);
+  return { localPath, fileName, sizeBytes };
+}
+
+// Small helper: run a one-off psql command, capturing stderr on failure.
+function runPsql(bin, url, args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(bin, [...args, '--dbname=' + url], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    p.stderr.on('data', (d) => { stderr += d.toString(); });
+    p.on('error', (err) => reject(new Error(`psql failed to start: ${err.message}`)));
+    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`psql exited ${code}: ${stderr.slice(-800)}`))));
+  });
+}
+
+// Restore the WHOLE database from a dump file (plain SQL, optionally gzipped).
+// The public schema is dropped and recreated first, so the restore is a clean
+// replace of everything - every table, every setting, every number - regardless
+// of whether the dump was taken with --clean. Uses psql (postgresql-client).
+export async function restoreDatabase(localPath) {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('DATABASE_URL is not set');
+  const psqlBin = process.env.PSQL_PATH || 'psql';
+
+  // 1) Reset the schema to a clean slate so the dump can recreate everything.
+  await runPsql(psqlBin, url, ['-v', 'ON_ERROR_STOP=1', '-c',
+    'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;']);
+
+  // 2) Stream the dump (gunzip on the fly for .gz) into psql.
+  const isGz = /\.gz$/i.test(localPath);
+  await new Promise((resolve, reject) => {
+    const psql = spawn(psqlBin, ['-v', 'ON_ERROR_STOP=1', '--dbname=' + url], {
+      stdio: ['pipe', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    psql.stderr.on('data', (d) => { stderr += d.toString(); });
+    psql.on('error', (err) => reject(new Error(`psql failed to start: ${err.message}`)));
+    psql.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`psql restore exited ${code}: ${stderr.slice(-800)}`));
+    });
+    const src = createReadStream(localPath);
+    src.on('error', (err) => { try { psql.kill(); } catch { /* ignore */ } reject(err); });
+    if (isGz) {
+      const gunzip = createGunzip();
+      gunzip.on('error', (err) => { try { psql.kill(); } catch { /* ignore */ } reject(err); });
+      src.pipe(gunzip).pipe(psql.stdin);
+    } else {
+      src.pipe(psql.stdin);
+    }
+  });
+}
+
+// Download a Drive file (by id) to a local temp path. Returns the path.
+export async function downloadDriveFile(fileId, token) {
+  const dest = path.join(tmpdir(), `${FILE_PREFIX}restore-${Date.now()}.sql.gz`);
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Drive download failed (${resp.status}): ${t.slice(0, 300)}`);
+  }
+  const buf = Buffer.from(await resp.arrayBuffer());
+  await fsp.writeFile(dest, buf);
+  return dest;
 }
 
 // Multipart upload of a local file to the Drive folder. Returns the file resource.

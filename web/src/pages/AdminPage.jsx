@@ -226,6 +226,68 @@ export default function AdminPage({ initialTab = 'users' }) {
     } finally { setBackupRunning(false); }
   };
 
+  const [backupDownloading, setBackupDownloading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const restoreInputRef = useRef(null);
+
+  // Download a fresh full-database dump (all data + settings) to the browser.
+  const downloadBackupNow = async () => {
+    setBackupDownloading(true); setBackupMsg('');
+    try {
+      const res = await api.get('/admin/backup/download', { responseType: 'blob' });
+      const cd = res.headers['content-disposition'] || '';
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      const name = (m && m[1]) || `orbit-backup-${new Date().toISOString().slice(0, 10)}.sql.gz`;
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click();
+      a.remove(); window.URL.revokeObjectURL(url);
+      setBackupMsg(`Backup downloaded: ${name}`);
+    } catch (err) {
+      setBackupMsg(err.response?.data?.error || 'Download failed.');
+    } finally { setBackupDownloading(false); }
+  };
+
+  // Restore the whole database from a chosen dump file. DESTRUCTIVE.
+  const restoreFromFile = async (file) => {
+    if (!file) return;
+    const ok = window.confirm(
+      `Restore the ENTIRE database from "${file.name}"?\n\n` +
+      'This REPLACES all current data, targets, settings and numbers with the ' +
+      'contents of this backup. It cannot be undone. Continue?');
+    if (!ok) return;
+    setRestoring(true); setBackupMsg('');
+    try {
+      const buf = await file.arrayBuffer();
+      const { data } = await api.post('/admin/backup/restore', buf, {
+        headers: { 'Content-Type': 'application/octet-stream' },
+      });
+      setBackupMsg(data.message || 'Database restored.');
+      await fetchBackup();
+    } catch (err) {
+      setBackupMsg(err.response?.data?.detail || err.response?.data?.error || 'Restore failed.');
+    } finally {
+      setRestoring(false);
+      if (restoreInputRef.current) restoreInputRef.current.value = '';
+    }
+  };
+
+  // Restore from one of the backups already in the Drive folder. DESTRUCTIVE.
+  const restoreFromDriveBackup = async (f) => {
+    const ok = window.confirm(
+      `Restore the ENTIRE database from the Drive backup "${f.name}"?\n\n` +
+      'This REPLACES all current data with that backup and cannot be undone. Continue?');
+    if (!ok) return;
+    setRestoring(true); setBackupMsg('');
+    try {
+      const { data } = await api.post('/admin/backup/restore-drive', { fileId: f.id });
+      setBackupMsg(data.message || 'Database restored.');
+      await fetchBackup();
+    } catch (err) {
+      setBackupMsg(err.response?.data?.detail || err.response?.data?.error || 'Restore failed.');
+    } finally { setRestoring(false); }
+  };
+
   /* ---- send notification (announcement) ---- */
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
@@ -2568,19 +2630,51 @@ export default function AdminPage({ initialTab = 'users' }) {
           <div className="card" style={{ padding: 20, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Database backup to Google Drive</div>
+                <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Database backup &amp; restore</div>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
-                  A full, restorable dump of the whole database, gzipped and uploaded to your Drive folder.
+                  A full, restorable dump of the whole database — every table, target, setting and number.
+                  Download a copy locally, upload to Google Drive, or restore from a backup file.
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 {backup && (
                   <span className="badge" style={{ background: backup.configured ? '#ECF8F1' : '#FBE0DA', color: backup.configured ? '#15814B' : '#C5391F', fontWeight: 700 }}>
-                    {backup.configured ? 'Enabled' : 'Not configured'}
+                    Drive: {backup.configured ? 'Enabled' : 'Not configured'}
                   </span>
                 )}
+                <button className="btn btn-ghost" disabled={backupDownloading || restoring} onClick={downloadBackupNow}>
+                  {backupDownloading ? 'Preparing…' : 'Download backup'}
+                </button>
                 <button className="btn btn-primary" disabled={backupRunning || !backup?.configured} onClick={runBackupNow}>
-                  {backupRunning ? 'Backing up…' : 'Back up now'}
+                  {backupRunning ? 'Backing up…' : 'Back up to Drive'}
+                </button>
+              </div>
+            </div>
+
+            {/* Restore from an uploaded backup file */}
+            <div style={{ marginTop: 16, padding: '14px 16px', background: '#FFF7F5', border: '1px solid #F3D3CB', borderRadius: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 720, color: '#9A3412' }}>Restore from a backup file</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2, maxWidth: 460 }}>
+                    Upload a <code>.sql</code> or <code>.sql.gz</code> dump to replace ALL current data with that
+                    backup. This cannot be undone.
+                  </div>
+                </div>
+                <input
+                  ref={restoreInputRef}
+                  type="file"
+                  accept=".gz,.sql,application/gzip,application/sql,application/octet-stream"
+                  style={{ display: 'none' }}
+                  onChange={(e) => restoreFromFile(e.target.files?.[0])}
+                />
+                <button
+                  className="btn btn-ghost"
+                  style={{ borderColor: '#E4A08C', color: '#9A3412' }}
+                  disabled={restoring || backupRunning}
+                  onClick={() => restoreInputRef.current?.click()}
+                >
+                  {restoring ? 'Restoring…' : 'Choose file & restore'}
                 </button>
               </div>
             </div>
@@ -2627,13 +2721,18 @@ export default function AdminPage({ initialTab = 'users' }) {
           {backup?.configured && (
             <div className="tbl-wrap">
               <table className="tbl">
-                <thead><tr><th>Backup file</th><th>Size</th><th style={{ textAlign: 'right' }}>Created</th></tr></thead>
+                <thead><tr><th>Backup file</th><th>Size</th><th>Created</th><th style={{ textAlign: 'right' }}>Restore</th></tr></thead>
                 <tbody>
                   {(backup.backups || []).map(f => (
                     <tr key={f.id}>
                       <td className="strong" style={{ fontFamily: "'Spline Sans Mono', monospace", fontSize: 12 }}>{f.name}</td>
                       <td>{f.size ? `${(Number(f.size) / 1024).toFixed(1)} KB` : '-'}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{f.createdTime ? new Date(f.createdTime).toLocaleString() : '-'}</td>
+                      <td style={{ color: 'var(--muted)' }}>{f.createdTime ? new Date(f.createdTime).toLocaleString() : '-'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-ghost btn-sm" disabled={restoring || backupRunning} onClick={() => restoreFromDriveBackup(f)}>
+                          Restore
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
