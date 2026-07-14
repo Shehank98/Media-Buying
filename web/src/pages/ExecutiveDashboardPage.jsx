@@ -1435,14 +1435,33 @@ export default function ExecutiveDashboardPage() {
             </ResponsiveContainer>
           )}
           {!agencyCompLoading && agencyComparison.length > 0 && (
-            <div className="agency-comp-summary">
-              {agencyComparison.map((ag, i) => (
-                <div key={ag.agencyId} className="agency-sum-card" style={{ borderLeft: `3px solid ${AGENCY_COLORS[i % AGENCY_COLORS.length]}` }}>
-                  <div className="agency-sum-name">{ag.agencyName}</div>
-                  <div className="agency-sum-row"><span>YTD Billings</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdBillings)}</span></div>
-                  <div className="agency-sum-row"><span>Active clients</span><span>{ag.activeClients}</span></div>
-                </div>
-              ))}
+            <div className="agency-comp-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center', marginTop: 18 }}>
+              {agencyComparison.map((ag, i) => {
+                const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
+                const pct = ag.targetPct;
+                const barColor = pct == null ? color : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
+                return (
+                  <div key={ag.agencyId} className="agency-sum-card" style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)' }}>
+                    <div className="agency-sum-name" style={{ fontWeight: 750, color: 'var(--ink)', marginBottom: 10 }}>{ag.agencyName}</div>
+                    <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 6 }}><span style={{ color: 'var(--muted)' }}>YTD Billings</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdBillings)}</span></div>
+                    <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 10 }}><span style={{ color: 'var(--muted)' }}>Active clients</span><span style={{ fontWeight: 700 }}>{ag.activeClients}</span></div>
+                    {ag.annualTargetMillions > 0 ? (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+                          <span>Target{ag.targetMonthLabel ? ` (Jan–${ag.targetMonthLabel})` : ''}</span>
+                          <span className="mono" style={{ fontWeight: 700, color: barColor }}>{pct == null ? '' : `${pct}%`}</span>
+                        </div>
+                        <div style={{ height: 8, background: '#EEF0F3', borderRadius: 5, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: barColor, borderRadius: 5 }} />
+                        </div>
+                        <div className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, textAlign: 'right' }}>{fmtLKR(ag.ytdBillings)} / {fmtLKR(ag.targetToDate)}</div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>No target set (Admin → Agencies)</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -237,14 +237,20 @@ export async function getAgencyComparison(req, res) {
     // month that has data, rather than a rolling trailing window.
     const monthlyStart = `${parseInt(ym.slice(0, 4))}-01`;
 
+    // The year + latest data month the window anchors to, for the target proration.
+    const targetYear = parseInt(ym.slice(0, 4));
+    const monthsElapsed = parseInt(ym.slice(5)); // latest month WITH data (1-12)
+
     const result = await Promise.all(agencies.map(async (agency) => {
       const base = { isDeleted: false, agencyId: agency.id };
-      const [ytdAgg, activeClients, activeChannels, curYearAgg, lastYearAgg, uploads, monthlyData] = await Promise.all([
+      const [ytdAgg, activeClients, activeChannels, curYearAgg, lastYearAgg, uploads, monthlyData, target] = await Promise.all([
         // YTD Billings reflects the selected year (or current year in "All" mode),
         // Jan to the latest month with data - matching the chart's window - not
         // an all-time total.
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: monthlyStart, lte: ym } }, _sum: { scheduleValue: true } }),
-        prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, select: { clientId: true }, distinct: ['clientId'] }),
+        // Active clients = distinct clients with at least one schedule entry in
+        // THIS year's window (Jan → latest data month), not all-time.
+        prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: monthlyStart, lte: ym } }, select: { clientId: true }, distinct: ['clientId'] }),
         prisma.scheduleLog.findMany({ where: { ...base, scheduleMonth: { gte: ys, lte: ym } }, select: { channelMasterId: true }, distinct: ['channelMasterId'] }),
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: cys, lte: cye } }, _sum: { scheduleValue: true } }),
         prisma.scheduleLog.aggregate({ where: { ...base, scheduleMonth: { gte: lys, lte: lycm } }, _sum: { scheduleValue: true } }),
@@ -255,10 +261,16 @@ export async function getAgencyComparison(req, res) {
           _sum: { scheduleValue: true },
           orderBy: { scheduleMonth: 'asc' },
         }),
+        prisma.agencyAnnualTarget.findUnique({ where: { agencyId_year: { agencyId: agency.id, year: targetYear } } }),
       ]);
       const ytd = safeNum(ytdAgg._sum.scheduleValue) || 0;
       const curYear = safeNum(curYearAgg._sum.scheduleValue) || 0;
       const ly = safeNum(lastYearAgg._sum.scheduleValue) || 0;
+      // Agency annual target (LKR millions) prorated to the latest data month.
+      const targetMillions = target ? Number(target.totalTargetMillions) : 0;
+      const targetToDate = targetMillions > 0 && monthsElapsed > 0
+        ? Number(((targetMillions / 12) * monthsElapsed * 1e6).toFixed(2)) : 0;
+      const targetPct = targetToDate > 0 ? Number(((ytd / targetToDate) * 100).toFixed(1)) : null;
       return {
         agencyId: agency.id,
         agencyName: agency.name,
@@ -267,6 +279,10 @@ export async function getAgencyComparison(req, res) {
         activeChannels: activeChannels.length,
         ytdGrowthPct: ly > 0 ? Number(((curYear - ly) / ly * 100).toFixed(2)) : null,
         uploadsThisMonth: uploads,
+        annualTargetMillions: targetMillions,
+        targetToDate,
+        targetPct,
+        targetMonthLabel: monthsElapsed > 0 ? MONTH_NAMES[monthsElapsed - 1] : null,
         monthly: monthlyData.map(m => ({ month: m.scheduleMonth, scheduleValue: safeNum(m._sum.scheduleValue) || 0 })),
       };
     }));
