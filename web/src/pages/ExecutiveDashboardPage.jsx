@@ -223,10 +223,6 @@ function AchievementSection({
       </button>
       {c.name} <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span>
       {c.isGroup && <span className="badge" style={{ marginLeft: 6, background: '#EDE7F8', color: '#6B3FB5', fontWeight: 700, fontSize: 10.5 }}>Group · {(c.memberNames || []).length} channels</span>}
-      {c.isGroup && (c.memberNames || []).length > 0 && (
-        <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{c.memberNames.join(' + ')}</div>
-      )}
-      {period && <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 22 }}>{period}{c.activeRangeLabel ? ` · ${c.activeRangeLabel} ${channelCommit.year}` : ''}</div>}
     </td>
   );
   const commitExpandRow = (c, period, colSpan) => (
@@ -685,7 +681,7 @@ function AchievementSection({
             </div>
             <div className="chart-card-sub">
               {revenueAch?.targetSource === 'yearAnnual'
-                ? `Annual target ${fmtLKR((revenueAch.annualRevTargetMillions || 0) * 1e6)} ÷ 12 × ${revenueAch.positionMonth || 0} month${(revenueAch.positionMonth || 0) === 1 ? '' : 's'} vs actual billing · LKR millions`
+                ? `Annual target ÷ 12 × ${revenueAch.positionMonth || 0} month${(revenueAch.positionMonth || 0) === 1 ? '' : 's'} vs actual billing · LKR millions`
                 : revenueAch?.targetSource === 'monthly'
                   ? 'Cumulative monthly revenue target vs actual billing · LKR millions'
                   : 'Prorated annual target vs actual billing · LKR millions'}
