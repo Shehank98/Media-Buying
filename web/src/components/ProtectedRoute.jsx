@@ -24,7 +24,7 @@ export default function ProtectedRoute({ children, requiredRoles }) {
   }
 
   // A pageAccess grant overrides the role requirement (an admin can give a
-  // planner / Admin Level 3 access to a page their role wouldn't normally allow).
+  // planner / Desk access to a page their role wouldn't normally allow).
   if (requiredRoles && requiredRoles.length > 0) {
     if (!requiredRoles.includes(user?.role) && !isPageGranted(user, location.pathname)) {
       return <Navigate to="/" replace />;

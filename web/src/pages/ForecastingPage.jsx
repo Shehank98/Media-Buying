@@ -492,7 +492,7 @@ function InsightsTab() {
         </FilterField>
         <FilterField label="Account Manager">
           <select className="select" value={filters.headUserId} onChange={(e) => setF({ headUserId: e.target.value })} style={{ minWidth: 160 }}>
-            <option value="">All group heads</option>
+            <option value="">All Hubs</option>
             {groupHeads.map((gh) => <option key={gh.id} value={gh.id}>{gh.name}</option>)}
           </select>
         </FilterField>

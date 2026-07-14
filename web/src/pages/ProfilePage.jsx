@@ -37,10 +37,10 @@ const ROLE_PILL_COLORS = {
 };
 
 const ROLE_LABELS = {
-  SUPER_ADMIN: 'Super Admin',
-  MANAGER: 'Admin Level 1',
-  GROUP_HEAD: 'Admin Level 2',
-  PLANNER: 'Admin Level 3',
+  SUPER_ADMIN: 'Control Room',
+  MANAGER: 'Boardroom',
+  GROUP_HEAD: 'Hub',
+  PLANNER: 'Desk',
 };
 
 function initialsOf(name) {

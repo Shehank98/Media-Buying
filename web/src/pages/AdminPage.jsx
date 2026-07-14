@@ -1395,7 +1395,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">User Management</h1>
-          <p className="page-sub">Super Admin &middot; {users.length} users across {agencies.length} agencies</p>
+          <p className="page-sub">Control Room &middot; {users.length} users across {agencies.length} agencies</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" onClick={exportAll} title="Export all admin data to one Excel workbook (a sheet per entity)">
@@ -1682,7 +1682,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                               <button className="act-btn" onClick={() => openEditClient(c)} title="Edit client">
                                 <Icon name="edit" size={15} />
                               </button>
-                              <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to Admin Level 2' : 'Hide from Admin Level 2'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
+                              <button className="act-btn" onClick={() => toggleClient(c)} title={c.isActive === false ? 'Show to Hub' : 'Hide from Hub'} style={{ color: c.isActive === false ? 'var(--green-600)' : 'var(--muted)' }}>
                                 <Icon name={c.isActive === false ? 'check' : 'eye'} size={15} />
                               </button>
                               <button className="act-btn" onClick={() => openMove(c)} title="Move to another agency (point-in-time)">
@@ -2369,7 +2369,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#15814B,#0E6B3D)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="money" size={20} /></div>
               <div>
                 <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>Group Revenue</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Actual billing, targets &amp; revenue by Admin Level 2</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Actual billing, targets &amp; revenue by Hub</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -2489,7 +2489,7 @@ export default function AdminPage({ initialTab = 'users' }) {
             <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="users" size={15} /></div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by Admin Level 2</div>
+                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by Hub</div>
                 <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · feeds the Revenue Contribution donut</div>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -2498,17 +2498,17 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
             </div>
             {grLoading ? (
-              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading Admin Level 2 users…" /></div>
+              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading Hub users…" /></div>
             ) : grHeads.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
-                No Admin Level 2 users found. Add users with the Admin Level 2 role first.
+                No Hub users found. Add users with the Hub role first.
               </div>
             ) : (
               <div className="tbl-wrap">
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Admin Level 2</th>
+                      <th>Hub</th>
                       <th style={{ textAlign: 'right', width: 210 }}>Revenue (LKR)</th>
                       <th style={{ minWidth: 200 }}>Share</th>
                     </tr>
@@ -2543,7 +2543,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <tr style={{ borderTop: '2px solid var(--border)' }}>
                       <td className="strong">Total</td>
                       <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grTotal)}</td>
-                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{grHeads.length} Admin Level 2{grHeads.length === 1 ? '' : ' users'}</td>
+                      <td style={{ color: 'var(--muted)', fontSize: 12 }}>{grHeads.length} Hub{grHeads.length === 1 ? '' : ' users'}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3055,7 +3055,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </div>
                 )}
 
-                {/* Permissions (not for Super Admin - they always have full access) */}
+                {/* Permissions (not for Control Room - they always have full access) */}
                 {userForm.role !== 'SUPER_ADMIN' && (
                   <div className="field" style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
                     <label className="field-label">Page access</label>

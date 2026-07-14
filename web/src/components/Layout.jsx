@@ -45,9 +45,9 @@ function Breadcrumbs({ go }) {
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/deep-dashboard') return <>{home}{sep}<b>Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
-  if (path === '/packages') return <>{home}{sep}<a>Super Admin</a>{sep}<b>Media Packages</b></>;
+  if (path === '/packages') return <>{home}{sep}<a>Control Room</a>{sep}<b>Media Packages</b></>;
   if (path === '/my-packages') return <>{home}{sep}<b>Media Packages</b></>;
-  if (path === '/admin') return <>{home}{sep}<a>Super Admin</a>{sep}<b>User Management</b></>;
+  if (path === '/admin') return <>{home}{sep}<a>Control Room</a>{sep}<b>User Management</b></>;
   if (path === '/profile') return <>{home}{sep}<b>Profile</b></>;
   return <>{home}</>;
 }

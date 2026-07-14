@@ -34,7 +34,7 @@ export function pageKeyForPath(pathname) {
 
 // Has the admin explicitly GRANTED this page to the user via pageAccess? When set,
 // pageAccess is the definitive allow-list and grants the listed pages regardless of
-// the user's role (so e.g. an Admin Level 3 / planner can be given Spend Analytics,
+// the user's role (so e.g. an Desk / planner can be given Spend Analytics,
 // Reports, etc.). Empty pageAccess = fall back to role defaults (no grant).
 export function isPageGranted(user, pathname) {
   const access = user?.pageAccess;

@@ -108,10 +108,10 @@ export function TypeBadge({ type }) {
 }
 
 const ROLE_STYLES = {
-  SUPER_ADMIN: { label: "Super Admin", bg: "var(--purple-100)", fg: "var(--purple-700)" },
-  MANAGER:     { label: "Admin Level 1", bg: "var(--blue-100)",  fg: "var(--blue-700)" },
-  GROUP_HEAD:  { label: "Admin Level 2",  bg: "var(--coral-100)",  fg: "var(--coral-700)" },
-  PLANNER:     { label: "Admin Level 3",     bg: "var(--green-100)",  fg: "var(--green-600)" },
+  SUPER_ADMIN: { label: "Control Room", bg: "var(--purple-100)", fg: "var(--purple-700)" },
+  MANAGER:     { label: "Boardroom", bg: "var(--blue-100)",  fg: "var(--blue-700)" },
+  GROUP_HEAD:  { label: "Hub",  bg: "var(--coral-100)",  fg: "var(--coral-700)" },
+  PLANNER:     { label: "Desk",     bg: "var(--green-100)",  fg: "var(--green-600)" },
 };
 
 export const roleLabel = (role) => (ROLE_STYLES[role]?.label) || String(role || '').replace(/_/g, ' ');
