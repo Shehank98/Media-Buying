@@ -732,6 +732,25 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  // Download every usage (schedule-log) row for a single channel as Excel.
+  const [chLogBusyId, setChLogBusyId] = useState(null);
+  const downloadChannelLogs = async ch => {
+    setChLogBusyId(ch.id);
+    try {
+      const res = await api.get('/reports/schedule-logs', {
+        params: { channelMasterId: ch.id, groupBy: 'all', format: 'excel' },
+        responseType: 'blob',
+      });
+      const safe = String(ch.name || 'channel').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = `usage-logs-${safe}.xlsx`; document.body.appendChild(a); a.click();
+      a.remove(); window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to download usage logs.');
+    } finally { setChLogBusyId(null); }
+  };
+
   // ── Channel rate card (PDF in Google Drive) ──
   const pickRateCard = ch => { setRcTarget(ch); rcInputRef.current?.click(); };
   const onRateCardFile = async e => {
@@ -1885,6 +1904,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <div className="row-actions">
                       <button className="act-btn" onClick={() => openEditChannel(ch)} title="Edit channel">
                         <Icon name="edit" size={15} />
+                      </button>
+                      <button
+                        className="act-btn"
+                        onClick={() => downloadChannelLogs(ch)}
+                        disabled={chLogBusyId === ch.id || !(ch._count?.scheduleLogs > 0)}
+                        title={ch._count?.scheduleLogs > 0 ? 'Download usage logs (Excel)' : 'No usage logs to download'}
+                        style={{ color: ch._count?.scheduleLogs > 0 ? 'var(--blue-700)' : 'var(--muted-2)' }}
+                      >
+                        <Icon name={chLogBusyId === ch.id ? 'history' : 'download'} size={15} />
                       </button>
                       <button className="act-btn" onClick={() => openMergeModal(ch)} title="Merge into another channel">
                         <Icon name="merge" size={15} />
