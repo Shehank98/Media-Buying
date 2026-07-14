@@ -4,6 +4,8 @@ import { sendEmail } from '../services/email.service.js';
 import { releaseHeldImportRows } from './database.controller.js';
 import { uploadRateCard, deleteRateCard, isRateCardConfigured, mimeForFile, isAllowedRateCard, extOf, rateCardName } from '../services/ratecard.service.js';
 import { isDriveArchiveConfigured, uploadScheduleArchive } from '../services/scheduleArchive.service.js';
+import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
+import { accountManagerByClient } from './forecastInsights.controller.js';
 import ExcelJS from 'exceljs';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
@@ -1067,20 +1069,41 @@ export async function listGroupRevenue(req, res) {
       year = currentRevenueMonth?.year ?? d.getFullYear();
       month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
     }
-    const [heads, agencies, rows, agencyRows, yearTargetRow] = await Promise.all([
+    const [heads, agencies, rows, agencyRows, yearTargetRow, rosterClients, clientRevRows] = await Promise.all([
       prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
       prisma.yearRevenueTarget.findUnique({ where: { year } }),
+      // Hub-assigned clients (same roster as forecasting) for the by-client grid.
+      prisma.client.findMany({
+        where: { isActive: true, OR: GROUP_HEAD_CLIENT_OR },
+        select: { id: true, name: true, agency: { select: { name: true } } },
+        orderBy: [{ name: 'asc' }],
+      }),
+      prisma.clientRevenue.findMany({ where: { year, month } }),
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
+    // Per-client revenue for the by-client entry grid, tagged with the managing head.
+    const clientRevBy = new Map(clientRevRows.map((r) => [r.clientId, Number(r.amount)]));
+    const headByClient = await accountManagerByClient(rosterClients.map((c) => c.id));
+    const clients = rosterClients
+      .map((c) => ({
+        clientId: c.id,
+        name: c.name,
+        agencyName: c.agency?.name || '',
+        headName: headByClient.get(c.id) || 'Unassigned',
+        amount: clientRevBy.has(c.id) ? clientRevBy.get(c.id) : null,
+      }))
+      .sort((a, b) => a.headName.localeCompare(b.headName) || a.name.localeCompare(b.name));
     return res.json({
       year,
       month,
       currentRevenueMonth,
       heads: heads.map((h) => ({ headUserId: h.id, headName: h.name, amount: byHead.has(h.id) ? byHead.get(h.id) : null })),
+      // Hub-assigned clients + each one's admin-entered revenue for the month.
+      clients,
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
@@ -1097,13 +1120,14 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts, annualRevenueTarget } = req.body || {};
+    const { year, month, amounts, agencyAmounts, clientAmounts, annualRevenueTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
+    const hasClients = clientAmounts && typeof clientAmounts === 'object';
     const hasTarget = annualRevenueTarget !== undefined;
-    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasTarget)) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId: value } and/or agencyAmounts { agencyId: value } and/or annualRevenueTarget are required' });
+    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasClients && !hasTarget)) {
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId } and/or agencyAmounts { agencyId } and/or clientAmounts { clientId } and/or annualRevenueTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
@@ -1142,6 +1166,26 @@ export async function setGroupRevenue(req, res) {
             where: { year_month_agencyId: { year: y, month: m, agencyId } },
             update: { amount: num, createdById: req.user?.id ?? null },
             create: { year: y, month: m, agencyId, amount: num, createdById: req.user?.id ?? null },
+          }));
+        }
+      }
+    }
+    // Per-client revenue: upsert/clear one row per client. A head's roll-up total
+    // is derived from these on read (getGroupContribution).
+    if (hasClients) {
+      const ids = Object.keys(clientAmounts).map((k) => parseInt(k)).filter(Boolean);
+      const valid = new Set((await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c) => c.id));
+      for (const [k, v] of Object.entries(clientAmounts)) {
+        const clientId = parseInt(k);
+        if (!valid.has(clientId)) continue;
+        const num = v === '' || v == null ? null : Number(v);
+        if (num == null || isNaN(num) || num <= 0) {
+          ops.push(prisma.clientRevenue.deleteMany({ where: { year: y, month: m, clientId } }));
+        } else {
+          ops.push(prisma.clientRevenue.upsert({
+            where: { year_month_clientId: { year: y, month: m, clientId } },
+            update: { amount: num, createdById: req.user?.id ?? null },
+            create: { year: y, month: m, clientId, amount: num, createdById: req.user?.id ?? null },
           }));
         }
       }

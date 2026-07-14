@@ -148,6 +148,9 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
   const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
+  const [grClients, setGrClients] = useState([]);      // [{ clientId, name, agencyName, headName, amount }]
+  const [grClientAmounts, setGrClientAmounts] = useState({}); // { clientId: '12345' }
+  const [grRevMode, setGrRevMode] = useState('head'); // 'head' | 'client'
   const [grRevenueTarget, setGrRevenueTarget] = useState(''); // annual revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
   const [grSaving, setGrSaving] = useState(false);
@@ -1008,9 +1011,14 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const cls = data.clients || [];
+      setGrClients(cls);
+      const camts = {};
+      cls.forEach(c => { camts[c.clientId] = c.amount == null ? '' : String(c.amount); });
+      setGrClientAmounts(camts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
     } catch {
-      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrRevenueTarget('');
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrClients([]); setGrClientAmounts({}); setGrRevenueTarget('');
     } finally {
       setGrLoading(false);
     }
@@ -1027,7 +1035,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const clientAmounts = {};
+      Object.entries(grClientAmounts).forEach(([id, v]) => { clientAmounts[id] = v === '' ? null : Number(v); });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, clientAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -1038,6 +1048,11 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const cls = data.clients || [];
+      setGrClients(cls);
+      const camts = {};
+      cls.forEach(c => { camts[c.clientId] = c.amount == null ? '' : String(c.amount); });
+      setGrClientAmounts(camts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
       setGrSavedAt(Date.now());
     } catch (err) {
@@ -1264,6 +1279,19 @@ export default function AdminPage({ initialTab = 'users' }) {
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const grTotal = Object.values(grAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   const grAgencyTotal = Object.values(grAgencyAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
+  const grClientTotal = Object.values(grClientAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
+  // Clients grouped by Hub head (for the by-client entry grid), with per-head subtotals.
+  const grClientsByHead = (() => {
+    const map = new Map();
+    grClients.forEach(c => {
+      const key = c.headName || 'Unassigned';
+      if (!map.has(key)) map.set(key, { headName: key, clients: [], subtotal: 0 });
+      const g = map.get(key);
+      g.clients.push(c);
+      g.subtotal += Number(grClientAmounts[c.clientId] || 0);
+    });
+    return [...map.values()];
+  })();
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -2490,15 +2518,67 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ width: 30, height: 30, borderRadius: 8, background: '#ECF8F1', color: '#15814B', display: 'grid', placeItems: 'center' }}><Icon name="users" size={15} /></div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>Revenue by Hub</div>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · feeds the Revenue Contribution donut</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{MONTHS[grMonth - 1]} {grYear} · feeds the Revenue Contribution donut{grRevMode === 'client' ? ' · client entries roll up to each Hub' : ''}</div>
+              </div>
+              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {[['head', 'By Hub'], ['client', 'By client']].map(([k, lbl]) => (
+                  <button key={k} onClick={() => setGrRevMode(k)} style={{ border: 'none', padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: grRevMode === k ? '#15814B' : '#fff', color: grRevMode === k ? '#fff' : 'var(--ink-soft)' }}>{lbl}</button>
+                ))}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total</div>
-                <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#15814B' }}>{fmtLKR(grTotal)}</div>
+                <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#15814B' }}>{fmtLKR(grRevMode === 'client' ? grClientTotal : grTotal)}</div>
               </div>
             </div>
             {grLoading ? (
               <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading Hub users…" /></div>
+            ) : grRevMode === 'client' ? (
+              grClients.length === 0 ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
+                  No Hub-assigned clients found. Assign clients to a Hub (Teams / Users) first.
+                </div>
+              ) : (
+                <div className="tbl-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Agency</th>
+                        <th style={{ textAlign: 'right', width: 210 }}>Revenue (LKR)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grClientsByHead.map(g => (
+                        <Fragment key={g.headName}>
+                          <tr style={{ background: '#F6F8FA' }}>
+                            <td colSpan={2} style={{ fontWeight: 750, color: '#15814B' }}>{g.headName}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(g.subtotal)}</td>
+                          </tr>
+                          {g.clients.map(c => (
+                            <tr key={c.clientId}>
+                              <td className="strong" style={{ paddingLeft: 22 }}>{c.name}</td>
+                              <td style={{ color: 'var(--muted)', fontSize: 12 }}>{c.agencyName}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                <MoneyInput
+                                  className="input"
+                                  value={grClientAmounts[c.clientId] ?? ''}
+                                  onValueChange={v => { setGrSavedAt(null); setGrClientAmounts(a => ({ ...a, [c.clientId]: v })); }}
+                                  placeholder="0"
+                                  style={{ maxWidth: 190, textAlign: 'right' }}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))}
+                      <tr style={{ borderTop: '2px solid var(--border)' }}>
+                        <td className="strong" colSpan={2}>Total</td>
+                        <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grClientTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )
             ) : grHeads.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
                 No Hub users found. Add users with the Hub role first.

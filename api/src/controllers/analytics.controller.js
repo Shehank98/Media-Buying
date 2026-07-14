@@ -2117,13 +2117,31 @@ export async function getGroupContribution(req, res) {
       .filter(g => g.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // ── Revenue donut: admin-entered per group head, named heads only ──
-    const revRows = await prisma.groupRevenue.findMany({
-      where: { year: ly, month: lm },
-      include: { head: { select: { name: true } } },
-    });
-    const revenueList = revRows
-      .map(r => ({ key: `head-${r.head?.name}`, headName: r.head?.name || 'Unknown', value: Number((Number(r.amount) / 1e6).toFixed(2)) }))
+    // ── Revenue donut: admin-entered, named heads only. A head's total = the sum
+    // of their clients' ClientRevenue when any exist, else the direct GroupRevenue
+    // figure for that head. ──
+    const [revRows, clientRevRows] = await Promise.all([
+      prisma.groupRevenue.findMany({ where: { year: ly, month: lm }, include: { head: { select: { name: true } } } }),
+      prisma.clientRevenue.findMany({ where: { year: ly, month: lm } }),
+    ]);
+    const directByHead = new Map(revRows.map(r => [r.head?.name, Number(r.amount) / 1e6]));
+    const clientSumByHead = {};
+    if (clientRevRows.length) {
+      const revHeadByClient = await accountManagerByClient(clientRevRows.map(r => r.clientId));
+      for (const r of clientRevRows) {
+        const head = revHeadByClient.get(r.clientId);
+        if (!head) continue; // Hub-assigned heads only
+        clientSumByHead[head] = (clientSumByHead[head] || 0) + (Number(r.amount) / 1e6);
+      }
+    }
+    const headNames = new Set([...directByHead.keys(), ...Object.keys(clientSumByHead)].filter(Boolean));
+    const revenueList = [...headNames]
+      .map(name => ({
+        key: `head-${name}`,
+        headName: name || 'Unknown',
+        // Client roll-up wins when the head has any client-level revenue.
+        value: Number((clientSumByHead[name] != null ? clientSumByHead[name] : (directByHead.get(name) || 0)).toFixed(2)),
+      }))
       .filter(g => g.value > 0)
       .sort((a, b) => b.value - a.value);
 

@@ -150,6 +150,7 @@ model Client {
   budgets         MonthlyBudget[]
   channelDeals    ChannelClientDeal[]
   targets         ClientTarget[]
+  revenues        ClientRevenue[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -642,6 +643,27 @@ model GroupRevenue {
   @@unique([year, month, headUserId])
   @@index([year, month])
   @@map("group_revenues")
+}
+
+// Admin-entered revenue per CLIENT per month. A Hub head's revenue total = the
+// sum of their clients' entries here (when any exist), rolled up in the Executive
+// Dashboard Revenue Contribution donut; otherwise the direct GroupRevenue figure
+// for that head is used. Blank/0 clears the row.
+model ClientRevenue {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  clientId    Int      @map("client_id")
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([year, month, clientId])
+  @@index([year, month])
+  @@map("client_revenues")
 }
 
 // Admin-entered actual billing/revenue per AGENCY per month (full LKR). Drives
