@@ -102,7 +102,9 @@ export async function listChannelMasters(req, res) {
       orderBy: { name: 'asc' },
       include: {
         mediaGroup: { select: { id: true, name: true } },
-        _count: { select: { scheduleLogs: true } },
+        // Count only LIVE usage (non-deleted) so the Usage column matches the
+        // per-channel export, which excludes soft-deleted rows.
+        _count: { select: { scheduleLogs: { where: { isDeleted: false } } } },
       },
     });
     return res.json({ channelMasters });
