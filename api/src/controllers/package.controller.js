@@ -104,7 +104,7 @@ function lineItemRows(lineItems) {
 
 export async function createPackage(req, res) {
   try {
-    const { name, category, emailIntro, lineItems, deadline } = req.body;
+    const { name, category, emailIntro, lineItems } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
     }
@@ -113,7 +113,6 @@ export async function createPackage(req, res) {
         name: String(name).trim(),
         category: category ? String(category).trim() : null,
         emailIntro: emailIntro ? String(emailIntro) : '',
-        deadline: parseDeadline(deadline),
         createdById: req.user.id,
         lineItems: { create: lineItemRows(lineItems) },
       },
@@ -129,13 +128,12 @@ export async function createPackage(req, res) {
 export async function updatePackage(req, res) {
   try {
     const id = parseInt(req.params.id);
-    const { name, category, emailIntro, lineItems, deadline } = req.body;
+    const { name, category, emailIntro, lineItems } = req.body;
 
     const data = {};
     if (name !== undefined) data.name = String(name).trim();
     if (category !== undefined) data.category = category ? String(category).trim() : null;
     if (emailIntro !== undefined) data.emailIntro = String(emailIntro);
-    if (deadline !== undefined) data.deadline = parseDeadline(deadline);
 
     // Replace line items atomically when provided.
     const ops = [prisma.mediaPackage.update({ where: { id }, data })];
@@ -278,7 +276,6 @@ export async function sendPackage(req, res) {
           packageName: pkg.name,
           intro: pkg.emailIntro,
           lineItems: lineItemsForEmail,
-          deadline: pkg.deadline ? new Date(pkg.deadline).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
           responseLink: inboxLink,
           pdfBase64: pdfBase64 || null,
           pdfFileName: pdfFileName || `${pkg.name}.pdf`,

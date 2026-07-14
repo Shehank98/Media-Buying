@@ -23,7 +23,7 @@ const FOLLOW_UPS = ['PENDING', 'FOLLOWED_UP', 'BOOKED', 'CLOSED'];
 const FOLLOW_LABEL = { PENDING: 'Pending', FOLLOWED_UP: 'Followed up', BOOKED: 'Booked', CLOSED: 'Closed' };
 const MAX_PDF_MB = 10;
 
-const emptyForm = () => ({ name: '', emailIntro: '', deadline: '', lineItems: [{ label: '', rate: '' }] });
+const emptyForm = () => ({ name: '', emailIntro: '', lineItems: [{ label: '', rate: '' }] });
 
 function Detail({ label, value }) {
   return (
@@ -97,7 +97,6 @@ export default function PackagesPage() {
       setEditingId(p.id);
       setForm({
         name: p.name, emailIntro: p.emailIntro || '',
-        deadline: p.deadline ? String(p.deadline).slice(0, 10) : '',
         lineItems: p.lineItems.length ? p.lineItems.map((li) => ({ label: li.label, rate: String(li.rate) })) : [{ label: '', rate: '' }],
       });
       setShowForm(true);
@@ -116,7 +115,6 @@ export default function PackagesPage() {
     setSaving(true);
     const payload = {
       name: form.name, emailIntro: form.emailIntro,
-      deadline: form.deadline || null,
       lineItems: form.lineItems.filter((li) => li.label.trim()).map((li) => ({ label: li.label, rate: li.rate })),
     };
     try {
@@ -256,7 +254,6 @@ export default function PackagesPage() {
                     <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: '-.2px', color: '#16243C' }}>{p.name}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: '#93A0B5' }}>{p._count?.lineItems ?? 0} sponsorship(s)</span>
-                      {p.deadline && <span style={{ fontSize: 11.5, color: expired ? '#C5391F' : '#6B7790' }}>· Due {fmtDate(p.deadline)}</span>}
                     </div>
                   </div>
                   <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: statusChip.bg, color: statusChip.fg, whiteSpace: 'nowrap' }}>{statusChip.label}</span>
@@ -298,15 +295,9 @@ export default function PackagesPage() {
             <form onSubmit={saveForm}>
               <div className="modal-body">
                 {formErr && <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{formErr}</div>}
-                <div className="field-grid2">
-                  <div className="field">
-                    <label className="field-label">Name <span className="req">*</span></label>
-                    <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Package name" />
-                  </div>
-                  <div className="field">
-                    <label className="field-label">Proposal deadline</label>
-                    <input className="input" type="date" value={form.deadline} onChange={(e) => setForm((f) => ({ ...f, deadline: e.target.value }))} />
-                  </div>
+                <div className="field">
+                  <label className="field-label">Name <span className="req">*</span></label>
+                  <input className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Package name" />
                 </div>
                 <div className="field">
                   <label className="field-label">Email intro</label>
@@ -442,7 +433,6 @@ export default function PackagesPage() {
                     const val = respDetail?.lineItems?.reduce((s, li) => s + Number(li.rate || 0), 0);
                     return val ? ` · ${fmtLKR(val)}` : '';
                   })()}
-                  {respDetail?.deadline ? ` · Due ${fmtDate(respDetail.deadline)}` : ''}
                 </div>
               </div>
               <button className="act-btn" onClick={() => setRespPkg(null)}><Icon name="x" size={18} /></button>

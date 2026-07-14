@@ -11,7 +11,7 @@
  *   Welcome:  { type: "welcome",  to, name, password, loginUrl }
  *   Reset:    { type: "reset",    to, name, resetLink }
  *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
- *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, deadline?, pdfBase64?, pdfFileName? }
+ *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
  */
 
 var BRAND_NAME = "Ogilvy Orbit";
@@ -293,10 +293,9 @@ function sendPackageEmail(data) {
   var intro        = data.intro        || "";
   var lineItems    = data.lineItems    || [];
   var responseLink = data.responseLink || "#";
-  var deadline     = data.deadline     || "";
 
   var subject = packageName + ": media package shared with you";
-  var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink, deadline);
+  var html    = buildPackageHtml(name, packageName, intro, lineItems, responseLink);
 
   var options = { name: FROM_NAME, htmlBody: html };
 
@@ -310,7 +309,7 @@ function sendPackageEmail(data) {
   GmailApp.sendEmail(to, subject, stripTags(html), options);
 }
 
-function buildPackageHtml(name, packageName, intro, lineItems, responseLink, deadline) {
+function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
   var rows = "";
   for (var i = 0; i < lineItems.length; i++) {
     var li = lineItems[i] || {};
@@ -336,10 +335,6 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink, dea
               '<td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;">Package Rate</td>' +
             '</tr>' + rows +
           '</table>'
-        : '') +
-
-      (deadline
-        ? '<p style="margin:0 0 24px;color:' + C_INK + ';font-size:13px;">Please respond by <strong>' + escHtml(deadline) + '</strong>.</p>'
         : '') +
 
       ctaButton(responseLink, 'Open in Ogilvy Orbit &rarr;') +

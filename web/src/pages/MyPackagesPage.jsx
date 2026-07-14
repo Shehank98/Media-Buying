@@ -64,7 +64,6 @@ function PackageCard({ item, myClients, onResponded }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
             Shared by {pkg.sharedBy || 'the media team'} · {fmtDate(item.sentAt)}
-            {pkg.deadline && <> · <span style={{ color: expired ? '#C5391F' : 'inherit' }}>Respond by {fmtDate(pkg.deadline)}</span></>}
           </div>
         </div>
         {statusPill}
