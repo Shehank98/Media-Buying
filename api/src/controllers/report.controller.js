@@ -956,3 +956,345 @@ export async function exportScheduleLogs(req, res) {
     return res.status(500).json({ error: 'Failed to export schedule logs' });
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Media Group Report
+//
+// A full spend breakdown for a media group (e.g. "MTV Channel (Pvt) LTD"):
+//   • Year-wise total spend on the media group
+//   • Every CHANNEL in the media group, spend broken down by year
+//   • Every AGENCY that spent on the media group, spend broken down by year
+//   • The Agency × Channel matrix (each agency's spend on each of the group's
+//     channels), also year-wise
+// All in one report (JSON for the on-screen preview, one multi-sheet Excel
+// workbook, or a branded PDF). When `mediaGroup` is omitted the report covers
+// ALL media groups and adds a per-media-group summary section.
+//
+// Spend is confirmed actual spend only (ScheduleLog, isDeleted:false). The
+// year is taken from scheduleMonth (YYYY-MM). MANAGER is scoped to their
+// assigned agencies, matching every other report endpoint.
+// ═══════════════════════════════════════════════════════════════════════════
+export async function mediaGroupReport(req, res) {
+  try {
+    const { mediaGroup, agencyId, monthFrom, monthTo, format = 'json' } = req.query;
+
+    // Base scope (role + optional agency + month range), WITHOUT the media-group
+    // filter — used both for the main fetch and for the available-groups picker.
+    const scopeWhere = { isDeleted: false };
+
+    if (req.user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({
+        where: { userId: req.user.id },
+        select: { agencyId: true },
+      });
+      scopeWhere.agencyId = { in: access.map((a) => a.agencyId) };
+    }
+
+    if (agencyId) {
+      const requestedId = parseInt(agencyId);
+      if (scopeWhere.agencyId?.in) {
+        if (!scopeWhere.agencyId.in.includes(requestedId)) {
+          return res.status(403).json({ error: 'Access denied to this agency' });
+        }
+      }
+      scopeWhere.agencyId = requestedId;
+    }
+
+    if (monthFrom || monthTo) {
+      scopeWhere.scheduleMonth = {};
+      if (monthFrom) scopeWhere.scheduleMonth.gte = monthFrom;
+      if (monthTo) scopeWhere.scheduleMonth.lte = monthTo;
+    }
+
+    // Distinct media groups available under the current scope (for the picker),
+    // with lifetime spend so the UI can show the biggest first.
+    const groupAgg = await prisma.scheduleLog.groupBy({
+      by: ['mediaGroup'],
+      where: scopeWhere,
+      _sum: { scheduleValue: true },
+    });
+    const availableMediaGroups = groupAgg
+      .map((g) => ({ name: g.mediaGroup || 'Unknown', value: Number(g._sum.scheduleValue) || 0 }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+
+    // Main fetch — add the media-group filter if one was chosen.
+    const where = { ...scopeWhere };
+    if (mediaGroup) where.mediaGroup = mediaGroup;
+
+    const logs = await prisma.scheduleLog.findMany({
+      where,
+      include: {
+        agency: { select: { name: true } },
+        channelMaster: { select: { name: true } },
+      },
+    });
+
+    // ── Aggregate ──────────────────────────────────────────────────────────
+    const yearOf = (m) => (m && m.length >= 4 ? m.slice(0, 4) : 'Unknown');
+    const yearsSet = new Set();
+    const byYear = {};            // year -> {value, vat, entries}
+    const byChannel = {};         // channel -> {value, vat, entries, byYear}
+    const byAgency = {};          // agency -> {value, vat, entries, byYear}
+    const byAgencyChannel = {};   // agency||channel -> {agency, channel, value, vat, byYear}
+    const byMediaGroup = {};      // mg -> {value, vat, entries, byYear}  (only when not filtered)
+
+    const bump = (bucket, key, year, sv, vat, extra) => {
+      if (!bucket[key]) bucket[key] = { value: 0, vat: 0, entries: 0, byYear: {}, ...extra };
+      bucket[key].value += sv;
+      bucket[key].vat += vat;
+      bucket[key].entries += 1;
+      bucket[key].byYear[year] = (bucket[key].byYear[year] || 0) + sv;
+    };
+
+    for (const log of logs) {
+      const year = yearOf(log.scheduleMonth);
+      const sv = Number(log.scheduleValue) || 0;
+      const vat = Number(log.scheduleValueWithVat) || 0;
+      const channel = log.channelMaster?.name || 'Unknown';
+      const agency = log.agency?.name || 'Unknown';
+      const mg = log.mediaGroup || 'Unknown';
+      yearsSet.add(year);
+
+      if (!byYear[year]) byYear[year] = { value: 0, vat: 0, entries: 0 };
+      byYear[year].value += sv; byYear[year].vat += vat; byYear[year].entries += 1;
+
+      bump(byChannel, channel, year, sv, vat, { channel });
+      bump(byAgency, agency, year, sv, vat, { agency });
+      bump(byAgencyChannel, `${agency}||${channel}`, year, sv, vat, { agency, channel });
+      if (!mediaGroup) bump(byMediaGroup, mg, year, sv, vat, { mediaGroup: mg });
+    }
+
+    const years = Array.from(yearsSet).sort();
+    const totalValue = logs.reduce((s, l) => s + (Number(l.scheduleValue) || 0), 0);
+    const totalVat = logs.reduce((s, l) => s + (Number(l.scheduleValueWithVat) || 0), 0);
+
+    const toSortedRows = (bucket, labelKey) =>
+      Object.values(bucket)
+        .map((r) => ({ ...r, [labelKey]: r[labelKey] }))
+        .sort((a, b) => b.value - a.value || String(a[labelKey]).localeCompare(String(b[labelKey])));
+
+    const report = {
+      mediaGroup: mediaGroup || null,
+      availableMediaGroups,
+      years,
+      summary: {
+        totalValue,
+        totalVat,
+        entries: logs.length,
+        channelCount: Object.keys(byChannel).length,
+        agencyCount: Object.keys(byAgency).length,
+        byYear: years.map((y) => ({ year: y, value: byYear[y]?.value || 0, vat: byYear[y]?.vat || 0, entries: byYear[y]?.entries || 0 })),
+      },
+      byChannel: toSortedRows(byChannel, 'channel'),
+      byAgency: toSortedRows(byAgency, 'agency'),
+      byAgencyChannel: Object.values(byAgencyChannel)
+        .sort((a, b) => a.agency.localeCompare(b.agency) || b.value - a.value || a.channel.localeCompare(b.channel)),
+      byMediaGroup: mediaGroup ? [] : toSortedRows(byMediaGroup, 'mediaGroup'),
+    };
+
+    if (format !== 'excel' && format !== 'pdf') {
+      return res.json(report);
+    }
+
+    const label = mediaGroup || 'All Media Groups';
+    const fmtNum = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    // ── Excel export (multi-sheet, dynamic year columns) ─────────────────────
+    if (format === 'excel') {
+      const NAVY_BG = '0A1729';
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Ogilvy Orbit';
+      workbook.created = new Date();
+
+      const styleHeader = (sheet, colCount) => {
+        const headerRow = sheet.getRow(1);
+        headerRow.eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        });
+        sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: colCount } };
+      };
+      const autoWidth = (sheet) => {
+        sheet.columns.forEach((column) => {
+          let maxLength = column.header ? String(column.header).length : 10;
+          column.eachCell({ includeEmpty: false }, (cell) => {
+            const len = cell.value != null ? String(cell.value.formula ? '0.00' : cell.value).length : 0;
+            if (len > maxLength) maxLength = len;
+          });
+          column.width = Math.min(maxLength + 4, 42);
+        });
+      };
+
+      // A pivot sheet: <labelCols...> | <year cols> | Total | With VAT | Entries
+      const addPivotSheet = (sheetName, labelCols, rowsData, labelValsOf) => {
+        const safeName = sheetName.replace(/[\\/*?:\[\]]/g, '').substring(0, 31);
+        const sheet = workbook.addWorksheet(safeName);
+        const cols = [
+          ...labelCols.map((c) => ({ header: c.header, key: c.key, width: 22 })),
+          ...years.map((y) => ({ header: y, key: `y_${y}`, width: 16 })),
+          { header: 'Total (LKR)', key: 'total', width: 18 },
+          { header: 'With VAT (LKR)', key: 'vat', width: 18 },
+          { header: 'Entries', key: 'entries', width: 10 },
+        ];
+        sheet.columns = cols;
+        for (const r of rowsData) {
+          const row = {};
+          const labelVals = labelValsOf(r);
+          labelCols.forEach((c, i) => { row[c.key] = labelVals[i]; });
+          years.forEach((y) => { row[`y_${y}`] = r.byYear[y] || 0; });
+          row.total = r.value;
+          row.vat = r.vat;
+          row.entries = r.entries;
+          sheet.addRow(row);
+        }
+        // Number formats for numeric columns (years + total + vat)
+        const firstNumCol = labelCols.length + 1;
+        const lastNumCol = labelCols.length + years.length + 2; // through VAT
+        for (let c = firstNumCol; c <= lastNumCol; c++) sheet.getColumn(c).numFmt = '#,##0.00';
+        styleHeader(sheet, cols.length);
+        // Totals row
+        if (rowsData.length > 0) {
+          const totalsRowNum = rowsData.length + 2;
+          const tr = sheet.getRow(totalsRowNum);
+          tr.getCell(1).value = 'TOTAL';
+          for (let c = firstNumCol; c <= lastNumCol; c++) {
+            const colLetter = sheet.getColumn(c).letter;
+            tr.getCell(c).value = { formula: `SUM(${colLetter}2:${colLetter}${totalsRowNum - 1})` };
+            tr.getCell(c).numFmt = '#,##0.00';
+          }
+          const entriesCol = lastNumCol + 1;
+          const entriesLetter = sheet.getColumn(entriesCol).letter;
+          tr.getCell(entriesCol).value = { formula: `SUM(${entriesLetter}2:${entriesLetter}${totalsRowNum - 1})` };
+          tr.eachCell((cell) => { cell.font = { bold: true }; });
+        }
+        autoWidth(sheet);
+        return sheet;
+      };
+
+      // 1) Summary sheet
+      const summary = workbook.addWorksheet('Summary');
+      summary.mergeCells('A1:D1');
+      summary.getCell('A1').value = `Media Group Report — ${label}`;
+      summary.getCell('A1').font = { bold: true, size: 15, color: { argb: `FF${NAVY_BG}` } };
+      const metaLines = [
+        `Generated: ${dateStr}`,
+        agencyId ? `Agency filter applied` : `All agencies`,
+        (monthFrom || monthTo) ? `Months: ${monthFrom || '…'} – ${monthTo || '…'}` : `All months`,
+      ];
+      summary.getCell('A2').value = metaLines.join('    ·    ');
+      summary.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF6B7790' } };
+      summary.addRow([]);
+      const totalsHeaderRow = summary.addRow(['Total Schedule Value', 'With VAT', 'Entries', 'Channels', 'Agencies']);
+      totalsHeaderRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
+      });
+      const totalsValRow = summary.addRow([totalValue, totalVat, logs.length, report.summary.channelCount, report.summary.agencyCount]);
+      totalsValRow.getCell(1).numFmt = '#,##0.00';
+      totalsValRow.getCell(2).numFmt = '#,##0.00';
+      summary.addRow([]);
+      const ywHeader = summary.addRow(['Year', 'Schedule Value (LKR)', 'With VAT (LKR)', 'Entries']);
+      ywHeader.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${NAVY_BG}` } };
+      });
+      for (const yr of report.summary.byYear) {
+        const r = summary.addRow([yr.year, yr.value, yr.vat, yr.entries]);
+        r.getCell(2).numFmt = '#,##0.00';
+        r.getCell(3).numFmt = '#,##0.00';
+      }
+      summary.getColumn(1).width = 26;
+      summary.getColumn(2).width = 22;
+      summary.getColumn(3).width = 22;
+      summary.getColumn(4).width = 12;
+      summary.getColumn(5).width = 12;
+
+      // 2) By Media Group (only when covering all groups)
+      if (!mediaGroup && report.byMediaGroup.length) {
+        addPivotSheet('By Media Group', [{ header: 'Media Group', key: 'mediaGroup' }], report.byMediaGroup, (r) => [r.mediaGroup]);
+      }
+
+      // 3) By Channel (year-wise)
+      addPivotSheet('By Channel', [{ header: 'Channel', key: 'channel' }], report.byChannel, (r) => [r.channel]);
+
+      // 4) By Agency (year-wise)
+      addPivotSheet('By Agency', [{ header: 'Agency', key: 'agency' }], report.byAgency, (r) => [r.agency]);
+
+      // 5) Agency × Channel (year-wise)
+      addPivotSheet(
+        'Agency x Channel',
+        [{ header: 'Agency', key: 'agency' }, { header: 'Channel', key: 'channel' }],
+        report.byAgencyChannel,
+        (r) => [r.agency, r.channel],
+      );
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fnameGroup = (mediaGroup || 'all').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="media-group-${fnameGroup}-${dateStr}.xlsx"`);
+      return res.send(Buffer.from(buffer));
+    }
+
+    // ── PDF export (branded, grouped by agency → channels) ───────────────────
+    if (format === 'pdf') {
+      // Keep year columns only when few, so the table stays legible.
+      const showYears = years.length > 0 && years.length <= 4;
+      const yearCols = showYears ? years.map((y) => ({ key: y, label: y, align: 'right', w: 1.0 })) : [];
+      const columns = [
+        { key: 'Channel', label: 'Channel', align: 'left', w: 2.0 },
+        ...yearCols,
+        { key: 'Total', label: 'Total', align: 'right', w: 1.4 },
+        { key: 'With VAT', label: 'With VAT', align: 'right', w: 1.4 },
+      ];
+
+      // Group by agency; rows = channels for that agency.
+      const byAgencyMap = {};
+      for (const r of report.byAgencyChannel) {
+        (byAgencyMap[r.agency] = byAgencyMap[r.agency] || []).push(r);
+      }
+      const groups = Object.keys(byAgencyMap).sort((a, b) => a.localeCompare(b)).map((agencyName) => {
+        const items = byAgencyMap[agencyName].sort((a, b) => b.value - a.value);
+        const subVal = items.reduce((s, r) => s + r.value, 0);
+        const subVat = items.reduce((s, r) => s + r.vat, 0);
+        const subYears = {};
+        if (showYears) years.forEach((y) => { subYears[y] = fmtNum(items.reduce((s, r) => s + (r.byYear[y] || 0), 0)); });
+        return {
+          name: agencyName,
+          rows: items.map((r) => {
+            const row = { Channel: r.channel, Total: fmtNum(r.value), 'With VAT': fmtNum(r.vat) };
+            if (showYears) years.forEach((y) => { row[y] = fmtNum(r.byYear[y] || 0); });
+            return row;
+          }),
+          subtotal: { Channel: `Subtotal · ${items.length} channel(s)`, ...subYears, Total: fmtNum(subVal), 'With VAT': fmtNum(subVat) },
+        };
+      });
+
+      const grandYears = {};
+      if (showYears) years.forEach((y) => { grandYears[y] = fmtNum(report.summary.byYear.find((b) => b.year === y)?.value || 0); });
+      const totals = {
+        _label: `${label} · ${years.length ? years.join(', ') : 'no data'} · ${fmtNum(totalValue)} total`,
+        Channel: 'GRAND TOTAL',
+        ...grandYears,
+        Total: fmtNum(totalValue),
+        'With VAT': fmtNum(totalVat),
+      };
+
+      const ftParts = [`Media Group: ${label}`];
+      if (agencyId) ftParts.push('Agency filter applied');
+      if (monthFrom || monthTo) ftParts.push(`Months: ${monthFrom || '…'} – ${monthTo || '…'}`);
+      ftParts.push(`Total spend across ${report.summary.channelCount} channel(s), ${report.summary.agencyCount} agency(ies)`);
+      const filtersText = ftParts.join('   ·   ');
+
+      const buffer = await generateGroupedTablePdf({ title: 'Media Group Report', filtersText, columns, groups, totals });
+      const fnameGroup = (mediaGroup || 'all').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="media-group-${fnameGroup}-${dateStr}.pdf"`);
+      return res.send(buffer);
+    }
+  } catch (error) {
+    console.error('Media group report error:', error);
+    return res.status(500).json({ error: 'Failed to generate media group report' });
+  }
+}

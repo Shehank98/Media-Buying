@@ -465,27 +465,30 @@ export default function ReportsPage() {
           <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', color: '#16243C', margin: 0 }}>Reports</h1>
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>Generate and export media buying reports</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className="btn btn-ghost"
-            onClick={() => handleExportPdf()}
-            disabled={loading || exporting || rows.length === 0}
-          >
-            <Icon name="file" size={16} />
-            PDF
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => handleExportExcel()}
-            disabled={loading || exporting || rows.length === 0}
-          >
-            <Icon name="download" size={16} />
-            {exporting ? 'Exporting...' : 'Export Excel'}
-          </button>
-        </div>
+        {source !== 'mediaGroup' && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => handleExportPdf()}
+              disabled={loading || exporting || rows.length === 0}
+            >
+              <Icon name="file" size={16} />
+              PDF
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleExportExcel()}
+              disabled={loading || exporting || rows.length === 0}
+            >
+              <Icon name="download" size={16} />
+              {exporting ? 'Exporting...' : 'Export Excel'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Report Cards */}
+      {source !== 'mediaGroup' && (
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -535,6 +538,7 @@ export default function ReportsPage() {
           );
         })}
       </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -560,6 +564,7 @@ export default function ReportsPage() {
         {[
           { key: 'properties', label: 'Properties', icon: 'file' },
           { key: 'scheduleLogs', label: 'Schedule Logs', icon: 'calendar' },
+          { key: 'mediaGroup', label: 'Media Groups', icon: 'grid' },
         ].map((opt) => {
           const active = source === opt.key;
           return (
@@ -583,7 +588,13 @@ export default function ReportsPage() {
         })}
       </div>
 
+      {/* Media Group Report (self-contained) */}
+      {source === 'mediaGroup' && (
+        <MediaGroupReport agencies={agencies} agenciesLoading={agenciesLoading} showToast={showToast} onError={setError} />
+      )}
+
       {/* Group By Selector */}
+      {source !== 'mediaGroup' && (<>
       <div style={{
         display: 'flex', gap: 6, marginBottom: 16,
         background: 'var(--bg-sunken)', borderRadius: 10, padding: 4, width: 'fit-content',
@@ -907,6 +918,7 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+      </>)}
 
       {/* Toast */}
       {toast && (
@@ -914,6 +926,269 @@ export default function ReportsPage() {
           <span className="toast-icon"><Icon name="check" size={14} /></span>
           {toast}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Media Group Report ──────────────────────────────────────────────────────
+// Full spend breakdown for a media group: year-wise totals, per-channel (year-
+// wise), per-agency (year-wise), and the Agency × Channel matrix — all in one
+// place, with Excel (multi-sheet) + PDF export mirroring the on-screen preview.
+function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
+  const [mediaGroup, setMediaGroup] = useState('');   // '' = all media groups
+  const [agencyId, setAgencyId] = useState('');
+  const [monthFrom, setMonthFrom] = useState('');
+  const [monthTo, setMonthTo] = useState('');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [expandedAgency, setExpandedAgency] = useState(() => new Set());
+
+  const buildQs = useCallback((format) => {
+    const p = new URLSearchParams();
+    if (mediaGroup) p.set('mediaGroup', mediaGroup);
+    if (agencyId) p.set('agencyId', agencyId);
+    if (monthFrom) p.set('monthFrom', monthFrom);
+    if (monthTo) p.set('monthTo', monthTo);
+    if (format) p.set('format', format);
+    return p.toString();
+  }, [mediaGroup, agencyId, monthFrom, monthTo]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const { data: d } = await api.get(`/reports/media-group?${buildQs('json')}`);
+        if (!cancelled) setData(d);
+      } catch {
+        if (!cancelled) { onError?.('Failed to load media group report.'); setData(null); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [buildQs, onError]);
+
+  const doExport = async (format) => {
+    setExporting(true);
+    try {
+      const resp = await api.get(`/reports/media-group?${buildQs(format)}`, { responseType: 'blob' });
+      const blob = new Blob([resp.data], format === 'pdf' ? { type: 'application/pdf' } : {});
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const g = (mediaGroup || 'all').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+      a.download = `media-group-${g}-${new Date().toISOString().slice(0, 10)}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast?.(`${format.toUpperCase()} exported successfully`);
+    } catch {
+      onError?.('Failed to export. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const years = data?.years || [];
+  const availGroups = data?.availableMediaGroups || [];
+  const hasData = !!data && (data.summary?.entries || 0) > 0;
+  const label = mediaGroup || 'All media groups';
+
+  const toggleAgency = (name) => setExpandedAgency((prev) => {
+    const next = new Set(prev);
+    next.has(name) ? next.delete(name) : next.add(name);
+    return next;
+  });
+
+  // A year-wise pivot table for a list of {label, byYear, value, vat}.
+  const PivotTable = ({ title, rows, labelHeader }) => (
+    <div className="section-card" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 18px', fontSize: 14, fontWeight: 700, color: '#16243C', borderBottom: '1px solid #EEF0F3' }}>{title}</div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>{labelHeader}</th>
+              {years.map((y) => <th key={y} style={{ textAlign: 'right' }}>{y}</th>)}
+              <th style={{ textAlign: 'right' }}>Total</th>
+              <th style={{ textAlign: 'right' }}>With VAT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="strong">{r.label}</td>
+                {years.map((y) => <td key={y} className="mono" style={{ textAlign: 'right' }}>{r.byYear[y] ? fmtLKR(r.byYear[y]) : '-'}</td>)}
+                <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(r.value)}</td>
+                <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.vat)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const statCard = (label2, value, color, icon) => (
+    <div className="section-card" style={{ padding: '16px 20px' }}>
+      <div className="stat">
+        <div className="stat-top">
+          <span className="stat-label">{label2}</span>
+          <span className="stat-ico" style={{ color }}><Icon name={icon} size={18} /></span>
+        </div>
+        <div className="stat-val mono">{value}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      {/* Filter Bar */}
+      <div className="filterbar">
+        <div className="filter-field">
+          <label>Media Group</label>
+          <select className="select" value={mediaGroup} onChange={(e) => setMediaGroup(e.target.value)}>
+            <option value="">All media groups</option>
+            {availGroups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Agency</label>
+          <select className="select" value={agencyId} onChange={(e) => setAgencyId(e.target.value)} disabled={agenciesLoading}>
+            <option value="">All agencies</option>
+            {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Month From</label>
+          <input type="month" className="input" value={monthFrom} onChange={(e) => setMonthFrom(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Month To</label>
+          <input type="month" className="input" value={monthTo} onChange={(e) => setMonthTo(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 2, marginLeft: 'auto' }}>
+          <button className="btn btn-ghost" onClick={() => doExport('pdf')} disabled={loading || exporting || !hasData}>
+            <Icon name="file" size={16} /> PDF
+          </button>
+          <button className="btn btn-primary" onClick={() => doExport('excel')} disabled={loading || exporting || !hasData}>
+            <Icon name="download" size={16} /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+        </div>
+      </div>
+
+      {loading && <OrbitLoader fullHeight label="Loading media group report…" />}
+
+      {!loading && !hasData && (
+        <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
+          <Icon name="grid" size={36} style={{ opacity: 0.25, marginBottom: 12, display: 'inline-block' }} />
+          <p style={{ margin: 0, fontSize: 14 }}>No schedule log spend found for {label}. Upload schedule logs via the Database page.</p>
+        </div>
+      )}
+
+      {!loading && hasData && (
+        <>
+          {/* Summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 18, marginTop: 8 }}>
+            {statCard('Total Spend', fmtLKR(data.summary.totalValue), 'var(--green-600)', 'bar-chart')}
+            {statCard('With VAT', fmtLKR(data.summary.totalVat), 'var(--coral-600)', 'trending-up')}
+            {statCard('Channels', data.summary.channelCount.toLocaleString('en-US'), 'var(--blue-700)', 'tv')}
+            {statCard('Agencies', data.summary.agencyCount.toLocaleString('en-US'), 'var(--purple-700)', 'building')}
+          </div>
+
+          {/* Spend by Year */}
+          {data.summary.byYear.length > 0 && (
+            <PivotTable
+              title={`Spend by Year — ${label}`}
+              labelHeader="Year"
+              rows={data.summary.byYear.map((y) => ({ label: y.year, byYear: { [y.year]: y.value }, value: y.value, vat: y.vat }))}
+            />
+          )}
+
+          {/* By Media Group (only when covering all groups) */}
+          {(!mediaGroup && (data.byMediaGroup || []).length > 0) && (
+            <PivotTable
+              title="Spend by Media Group"
+              labelHeader="Media Group"
+              rows={data.byMediaGroup.map((r) => ({ label: r.mediaGroup, byYear: r.byYear, value: r.value, vat: r.vat }))}
+            />
+          )}
+
+          {/* By Channel */}
+          <PivotTable
+            title="Spend by Channel (year-wise)"
+            labelHeader="Channel"
+            rows={data.byChannel.map((r) => ({ label: r.channel, byYear: r.byYear, value: r.value, vat: r.vat }))}
+          />
+
+          {/* By Agency */}
+          <PivotTable
+            title="Spend by Agency (year-wise)"
+            labelHeader="Agency"
+            rows={data.byAgency.map((r) => ({ label: r.agency, byYear: r.byYear, value: r.value, vat: r.vat }))}
+          />
+
+          {/* Agency × Channel (grouped, expandable) */}
+          <div className="section-card" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', fontSize: 14, fontWeight: 700, color: '#16243C', borderBottom: '1px solid #EEF0F3' }}>
+              Agency × Channel (year-wise)
+            </div>
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Agency / Channel</th>
+                    {years.map((y) => <th key={y} style={{ textAlign: 'right' }}>{y}</th>)}
+                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th style={{ textAlign: 'right' }}>With VAT</th>
+                  </tr>
+                </thead>
+                {(() => {
+                  const byAg = {};
+                  for (const r of data.byAgencyChannel) (byAg[r.agency] = byAg[r.agency] || []).push(r);
+                  const agencyNames = Object.keys(byAg).sort((a, b) => {
+                    const sa = byAg[a].reduce((s, r) => s + r.value, 0);
+                    const sb = byAg[b].reduce((s, r) => s + r.value, 0);
+                    return sb - sa || a.localeCompare(b);
+                  });
+                  return agencyNames.map((ag) => {
+                    const items = byAg[ag].slice().sort((a, b) => b.value - a.value);
+                    const subVal = items.reduce((s, r) => s + r.value, 0);
+                    const subVat = items.reduce((s, r) => s + r.vat, 0);
+                    const subYear = (y) => items.reduce((s, r) => s + (r.byYear[y] || 0), 0);
+                    const collapsed = !expandedAgency.has(ag);
+                    return (
+                      <tbody key={ag}>
+                        <tr onClick={() => toggleAgency(ag)} style={{ cursor: 'pointer', background: 'var(--bg-sunken)' }}>
+                          <td style={{ fontWeight: 700 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Icon name={collapsed ? 'chevR' : 'chevD'} size={15} />
+                              <span style={{ color: 'var(--ink)' }}>{ag}</span>
+                              <span style={{ color: 'var(--muted)', fontWeight: 600, fontSize: 12 }}>· {items.length} channel(s)</span>
+                            </div>
+                          </td>
+                          {years.map((y) => <td key={y} className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{subYear(y) ? fmtLKR(subYear(y)) : '-'}</td>)}
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(subVal)}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(subVat)}</td>
+                        </tr>
+                        {!collapsed && items.map((r, i) => (
+                          <tr key={i}>
+                            <td style={{ paddingLeft: 34 }}>{r.channel}</td>
+                            {years.map((y) => <td key={y} className="mono" style={{ textAlign: 'right' }}>{r.byYear[y] ? fmtLKR(r.byYear[y]) : '-'}</td>)}
+                            <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(r.value)}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.vat)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    );
+                  });
+                })()}
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

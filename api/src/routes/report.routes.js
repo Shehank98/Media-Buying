@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { byChannel, byClient, byAgency, exportScheduleLogs, exportProperties } from '../controllers/report.controller.js';
+import { byChannel, byClient, byAgency, exportScheduleLogs, exportProperties, mediaGroupReport } from '../controllers/report.controller.js';
 
 const router = Router();
 
@@ -8,6 +8,7 @@ router.use(authenticate, requireRole('SUPER_ADMIN', 'MANAGER'));
 
 router.get('/properties', exportProperties);
 router.get('/schedule-logs', exportScheduleLogs);
+router.get('/media-group', mediaGroupReport);
 router.get('/channel/:channelId', byChannel);
 router.get('/client/:clientId', byClient);
 router.get('/agency/:agencyId', byAgency);

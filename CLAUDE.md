@@ -304,6 +304,15 @@ GET    /api/reports/properties           (AUTH + SUPER_ADMIN|MANAGER)
        Excel: per-group sheets + "Rate History" sheet. PDF: branded, per-property rate timeline.
 GET    /api/reports/schedule-logs        (AUTH + SUPER_ADMIN|MANAGER)
        ?groupBy &agencyId &clientId &channelMasterId &medium &monthFrom &monthTo &format=json|excel|pdf
+GET    /api/reports/media-group          (AUTH + SUPER_ADMIN|MANAGER)   mediaGroupReport
+       ?mediaGroup &agencyId &monthFrom &monthTo &format=json|excel|pdf
+       Full spend breakdown for ONE media group (or ALL when mediaGroup omitted), from ScheduleLog
+       (isDeleted:false), year taken from scheduleMonth. Returns/exports: year-wise totals, per-CHANNEL
+       (year-wise), per-AGENCY (year-wise), and the Agency×Channel matrix (year-wise) — all in one report.
+       JSON also carries availableMediaGroups (scoped, for the picker). Excel = multi-sheet (Summary +
+       By Channel + By Agency + Agency×Channel, dynamic year columns, + By Media Group when unfiltered);
+       PDF = branded, grouped by agency→channels (year columns shown when ≤4 years). MANAGER agency-scoped.
+       Surfaced as the "Media Groups" source on ReportsPage (its own picker + preview + Excel/PDF export).
 
 ### Media Packages
 ```
