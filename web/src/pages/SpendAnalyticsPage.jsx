@@ -1493,7 +1493,7 @@ function RevVerificationModal({ user, onClose }) {
         body.amount = d.amount === '' || d.amount == null ? null : Number(d.amount);
         body.reason = (d.reason || '').trim();
         if (body.amount == null) { setErr('Enter the amount you believe is correct.'); setBusyId(null); return; }
-        if (!body.reason) { setErr('Enter a reason for the dispute.'); setBusyId(null); return; }
+        if (!body.reason) { setErr('Enter a note for the dispute.'); setBusyId(null); return; }
       }
       const { data } = await api.post('/revenue/verification', body);
       setRows(data.clients || []);
@@ -1603,8 +1603,8 @@ function RevVerificationModal({ user, onClose }) {
                                     style={{ maxWidth: 190, textAlign: 'right' }} />
                                 </div>
                                 <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
-                                  <label>Reason</label>
-                                  <input className="input" value={d.reason ?? ''} placeholder="Why the finance figure is wrong…"
+                                  <label>Note</label>
+                                  <input className="input" value={d.reason ?? ''} placeholder="Confirmed with the finance"
                                     onChange={e => setDrafts(p => ({ ...p, [c.clientId]: { ...p[c.clientId], reason: e.target.value } }))} />
                                 </div>
                                 <button className="btn btn-primary btn-sm" onClick={() => submit(c.clientId, 'dispute')} disabled={busyId === c.clientId}>

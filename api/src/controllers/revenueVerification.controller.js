@@ -108,7 +108,7 @@ export async function submitRevenueVerification(req, res) {
       const amount = num(req.body.amount);
       const reason = (req.body.reason || '').trim();
       if (amount == null) return res.status(400).json({ error: 'A corrected amount is required to dispute' });
-      if (!reason) return res.status(400).json({ error: 'A reason is required to dispute' });
+      if (!reason) return res.status(400).json({ error: 'A note is required to dispute' });
       data = { verifyStatus: 'DISPUTED', verifiedAmount: amount, verifyReason: reason, verifiedById: req.user.id, verifiedAt: new Date() };
     }
 

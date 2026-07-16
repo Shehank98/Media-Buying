@@ -10,6 +10,8 @@ const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
 const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 
+const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+
 // Parse a money cell that may use accounting parentheses for negatives, e.g.
 // "(1,000)" → -1000, "-1000" → -1000, "1,000" → 1000, "" → null.
 function parseAccountingAmount(v) {
@@ -1128,7 +1130,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const next = { ...prev };
       let changed = false;
       sumByHead.forEach((v, hid) => {
-        const val = String(v.sum);
+        const val = String(round2(v.sum)); // 2dp — avoid float artifacts like 2,961,704.1399999997
         if (next[hid] !== val) { next[hid] = val; changed = true; }
       });
       return changed ? next : prev;
@@ -1145,6 +1147,23 @@ export default function AdminPage({ initialTab = 'users' }) {
   // Auto-save a single client's Revenue + Rev. from finance (used by the by-client
   // grid). Posts only that client so it's cheap; the response refreshes the row's
   // verification status. Shows a per-row saving/saved mark.
+  // Hub head roll-up (per-head sum of their clients' Revenue) → persisted so the
+  // By-Hub figures save automatically alongside the by-client entries.
+  const computeHubRollup = (clientAmounts) => {
+    const idByName = new Map(grHeads.map(h => [h.headName, h.headUserId]));
+    const sums = {};
+    grClients.forEach(c => {
+      const hid = idByName.get(c.headName);
+      if (hid == null) return;
+      const raw = clientAmounts[c.clientId];
+      if (raw === '' || raw == null) return;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return;
+      sums[hid] = round2((sums[hid] || 0) + n);
+    });
+    return sums;
+  };
+
   const autoSaveClient = async (clientId) => {
     const { year, month } = grCtxRef.current;
     const revRaw = crEditsRef.current.amounts[clientId];
@@ -1156,6 +1175,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         year, month,
         clientAmounts: { [clientId]: toVal(revRaw) },
         clientFinanceAmounts: { [clientId]: toVal(finRaw) },
+        amounts: computeHubRollup(crEditsRef.current.amounts),
       });
       // Refresh row metadata (verification badge, head) without touching the
       // inputs the admin is still editing.
@@ -1457,7 +1477,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const exportClientRevenue = () => {
     const wb = XLSX.utils.book_new();
     const rows = [
-      ['Group Head', 'Client', 'Agency', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Reason', 'Verified By'],
+      ['Group Head', 'Client', 'Agency', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Note', 'Verified By'],
       ...grClients.map(c => [
         c.headName || 'Unassigned', c.name, c.agencyName,
         grClientAmounts[c.clientId] === '' || grClientAmounts[c.clientId] == null ? '' : Number(grClientAmounts[c.clientId]),
@@ -1537,9 +1557,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       if (r.revenue != null) clientAmounts[r.matchId] = r.revenue;
       if (r.finance != null) clientFinanceAmounts[r.matchId] = r.finance;
     }
+    // Persist the By-Hub roll-up too, from existing + just-imported Revenue.
+    const mergedAmounts = { ...grClientAmounts };
+    Object.entries(clientAmounts).forEach(([id, v]) => { mergedAmounts[id] = String(v); });
+    const amounts = computeHubRollup(mergedAmounts);
     setCrImporting(true);
     try {
-      await api.post('/admin/group-revenue', { year: grYear, month: grMonth, clientAmounts, clientFinanceAmounts });
+      await api.post('/admin/group-revenue', { year: grYear, month: grMonth, clientAmounts, clientFinanceAmounts, amounts });
       await fetchGroupRevenue();
       setCrImport(null);
       setGrSavedAt(Date.now());
