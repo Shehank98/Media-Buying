@@ -1084,27 +1084,37 @@ export async function getClientOverview(req, res) {
       },
     });
 
+    // When a specific year is selected (?year=YYYY) the "current view" breakdowns
+    // (byMonth, byChannel, byMedium, byBrand) are scoped to that year so every
+    // chart/card respects the filter; with no year they stay all-time. The
+    // cross-year `trend` (for YoY) and lifetime totals/tenure are always all-time.
+    const yearParam = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : null;
+
     let total = 0, totalVat = 0;
     const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
     const months = new Set();
-    const trend = {}; // year -> [12] monthly totals, for period-aligned YoY
+    const trend = {}; // year -> [12] monthly totals, for period-aligned YoY (all-time)
     for (const l of logs) {
       const v = safeNum(l.scheduleValue) || 0;
-      total += v; totalVat += safeNum(l.scheduleValueWithVat) || 0;
+      total += v; totalVat += safeNum(l.scheduleValueWithVat) || 0;   // lifetime totals
       const m = l.scheduleMonth;
       const mm = /^(\d{4})-(\d{2})$/.exec(m);
+      const logYear = mm ? Number(mm[1]) : null;
       if (mm) {
-        months.add(m);
-        (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++;
+        months.add(m); // lifetime tenure
         const y = Number(mm[1]), mi = Number(mm[2]) - 1;
         (trend[y] ||= Array(12).fill(0))[mi] += v;
       }
-      const ch = l.channelMaster?.name || 'Unknown';
-      (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
-      const med = l.medium || 'Unknown';
-      (byMedium[med] ||= { name: med, value: 0 }).value += v;
-      const br = l.brandName || 'Unbranded';
-      (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+      // Year-scoped "current view" breakdowns (all-time when no year is chosen).
+      if (yearParam == null || logYear === yearParam) {
+        if (mm) { (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
+        const ch = l.channelMaster?.name || 'Unknown';
+        (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+        const med = l.medium || 'Unknown';
+        (byMedium[med] ||= { name: med, value: 0 }).value += v;
+        const br = l.brandName || 'Unbranded';
+        (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+      }
     }
     const sortedMonths = [...months].sort();
 
