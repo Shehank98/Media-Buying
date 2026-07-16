@@ -1706,22 +1706,34 @@ export default function AdminPage({ initialTab = 'users' }) {
     return <OrbitLoader fullHeight label="Loading…" />;
   }
 
-  const tabs = [
-    { key: 'users', label: 'Users', count: users.length },
-    { key: 'agencies', label: 'Agencies', count: agencies.length },
-    { key: 'clients', label: 'Clients', count: allClients.length },
-    { key: 'teams', label: 'Teams', count: teams.length },
-    { key: 'channels', label: 'Channels', count: channelMasters.length },
-    { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
-    { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
-    { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
-    { key: 'channel-commitments', label: 'Channel Commitments' },
-    { key: 'client-targets', label: 'Client Targets' },
-    { key: 'group-revenue', label: 'Group Revenue' },
-    { key: 'requests', label: 'Requests', count: clientRequests.filter(r => r.status === 'pending').length + channelRequests.filter(r => r.status === 'pending').length },
-    { key: 'notify', label: 'Notify' },
-    { key: 'backup', label: 'Backup' },
+  // Two-level tabs: top-level groups, each with one or more leaf tabs. `activeTab`
+  // stays the LEAF key so every content block / effect below is unchanged.
+  const reqPending = clientRequests.filter(r => r.status === 'pending').length + channelRequests.filter(r => r.status === 'pending').length;
+  const tabGroups = [
+    { label: 'Users', members: [
+      { key: 'users', label: 'Users', count: users.length },
+      { key: 'teams', label: 'Teams', count: teams.length },
+    ] },
+    { label: 'Agencies & Clients', members: [
+      { key: 'agencies', label: 'Agencies', count: agencies.length },
+      { key: 'clients', label: 'Clients', count: allClients.length },
+    ] },
+    { label: 'Master Data', members: [
+      { key: 'channels', label: 'Channels', count: channelMasters.length },
+      { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
+      { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
+    ] },
+    { label: 'Targets', members: [
+      { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
+      { key: 'client-targets', label: 'Client Targets' },
+    ] },
+    { label: 'Channel Commitments', members: [{ key: 'channel-commitments', label: 'Channel Commitments' }] },
+    { label: 'Group Revenue', members: [{ key: 'group-revenue', label: 'Group Revenue' }] },
+    { label: 'Requests', members: [{ key: 'requests', label: 'Requests', count: reqPending }] },
+    { label: 'Notify', members: [{ key: 'notify', label: 'Notify' }] },
+    { label: 'Backup', members: [{ key: 'backup', label: 'Backup' }] },
   ];
+  const activeGroup = tabGroups.find(g => g.members.some(m => m.key === activeTab)) || tabGroups[0];
 
   return (
     <div className="fade-in">
@@ -1748,29 +1760,58 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {tabs.map(tab => {
-          const on = activeTab === tab.key;
+      {/* Top-level tab groups */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: activeGroup.members.length > 1 ? 10 : 18, flexWrap: 'wrap' }}>
+        {tabGroups.map(group => {
+          const on = group.members.some(m => m.key === activeTab);
+          const badge = group.members.length === 1 ? group.members[0].count : undefined;
           return (
             <button
-              key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setSearch(''); }}
+              key={group.label}
+              onClick={() => { if (!on) { setActiveTab(group.members[0].key); setSearch(''); } }}
               style={{
                 border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '8px 15px',
                 borderRadius: 9, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7,
                 background: on ? '#0F1F3D' : 'transparent', color: on ? '#fff' : '#6B7790',
               }}
             >
-              {tab.label}
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
-                background: on ? 'rgba(255,255,255,.16)' : '#EEF0F3', color: on ? '#fff' : '#93A0B5',
-              }}>{tab.count}</span>
+              {group.label}
+              {badge != null && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+                  background: on ? 'rgba(255,255,255,.16)' : '#EEF0F3', color: on ? '#fff' : '#93A0B5',
+                }}>{badge}</span>
+              )}
             </button>
           );
         })}
       </div>
+
+      {/* Sub-tabs for the active group (only when it has more than one) */}
+      {activeGroup.members.length > 1 && (
+        <div style={{ display: 'inline-flex', gap: 4, marginBottom: 18, background: '#F1F3F6', borderRadius: 9, padding: 3, flexWrap: 'wrap' }}>
+          {activeGroup.members.map(m => {
+            const on = activeTab === m.key;
+            return (
+              <button
+                key={m.key}
+                onClick={() => { setActiveTab(m.key); setSearch(''); }}
+                style={{
+                  border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, padding: '6px 13px',
+                  borderRadius: 7, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+                  background: on ? '#fff' : 'transparent', color: on ? '#0F1F3D' : '#6B7790',
+                  boxShadow: on ? '0 1px 2px rgba(15,31,61,.12)' : 'none',
+                }}
+              >
+                {m.label}
+                {m.count != null && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: on ? '#EEF0F3' : '#E4E7EC', color: '#93A0B5' }}>{m.count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
