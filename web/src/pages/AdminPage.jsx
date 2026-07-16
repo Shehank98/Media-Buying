@@ -28,7 +28,7 @@ function parseAccountingAmount(v) {
 
 const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Dice coefficient on character bigrams — a cheap fuzzy-name similarity (0..1).
+// Dice coefficient on character bigrams - a cheap fuzzy-name similarity (0..1).
 function diceSim(a, b) {
   a = normName(a); b = normName(b);
   if (!a || !b) return 0;
@@ -1131,7 +1131,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       const next = { ...prev };
       let changed = false;
       sumByHead.forEach((v, hid) => {
-        const val = String(round2(v.sum)); // 2dp — avoid float artifacts like 2,961,704.1399999997
+        const val = String(round2(v.sum)); // 2dp - avoid float artifacts like 2,961,704.1399999997
         if (next[hid] !== val) { next[hid] = val; changed = true; }
       });
       return changed ? next : prev;
@@ -1466,7 +1466,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     grClients.forEach(c => {
       const noHead = c.hasHead === false || !c.headName || c.headName === 'Unassigned';
       // Unassigned (no Hub head) clients are only listed when they actually carry
-      // a revenue figure (entered/imported) — otherwise the bucket would be full
+      // a revenue figure (entered/imported) - otherwise the bucket would be full
       // of clients nobody manages and has no data for.
       if (noHead) {
         const rev = grClientAmounts[c.clientId];
@@ -3306,7 +3306,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Database backup &amp; restore</div>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3 }}>
-                  A full, restorable dump of the whole database — every table, target, setting and number.
+                  A full, restorable dump of the whole database - every table, target, setting and number.
                   Download a copy locally, upload to Google Drive, or restore from a backup file.
                 </div>
               </div>
@@ -3426,7 +3426,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         const confirmCount = crImport.rows.filter(r => status(r) === 'confirm').length;
         const skipCount = crImport.rows.filter(r => status(r) === 'skip').length;
         const rosterSorted = [...grClients].sort((a, b) => a.name.localeCompare(b.name));
-        const fmtAmt = (n) => (n == null ? '—' : (n < 0 ? `(${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })));
+        const fmtAmt = (n) => (n == null ? '-' : (n < 0 ? `(${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })));
         const ST = {
           matched: { bg: '#ECF8F1', fg: '#15814B', dot: '#15814B', icon: 'check', label: 'Matched' },
           confirm: { bg: '#FCF4E2', fg: '#9A5B00', dot: '#E0A423', icon: 'alert', label: 'Confirm' },
@@ -3460,7 +3460,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               {confirmCount > 0 && <Chip n={confirmCount} s="confirm" />}
               {skipCount > 0 && <Chip n={skipCount} s="skip" />}
               <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--muted)', maxWidth: 320, lineHeight: 1.45, textAlign: 'right' }}>
-                Confirm the amber rows (pick the right client or Skip). Amounts like <b>(1,000)</b> import as negative. <b style={{ color: '#C5391F' }}>This replaces {MONTHS[grMonth - 1]} {grYear}</b> — clients not in the file are cleared.
+                Confirm the amber rows (pick the right client or Skip). Amounts like <b>(1,000)</b> import as negative. <b style={{ color: '#C5391F' }}>This replaces {MONTHS[grMonth - 1]} {grYear}</b> - clients not in the file are cleared.
               </div>
             </div>
 
@@ -3489,14 +3489,14 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span className="strong" title={r.rawClient}>{r.rawClient}</span>
                         {st === 'confirm' && <div style={{ fontSize: 11, color: '#9A5B00', marginTop: 2 }}>did you mean this client?</div>}
-                        {st === 'skip' && <div style={{ fontSize: 11, color: '#C5391F', marginTop: 2 }}>no match — will be skipped</div>}
+                        {st === 'skip' && <div style={{ fontSize: 11, color: '#C5391F', marginTop: 2 }}>no match - will be skipped</div>}
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: r.revenue < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.revenue)}</td>
                       <td className="mono" style={{ textAlign: 'right', color: r.finance < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.finance)}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <select className="select" value={r.matchId} onChange={e => setImportMatch(r.id, e.target.value === '' ? '' : Number(e.target.value))} style={{ flex: 1, minWidth: 0, borderColor: st === 'confirm' ? '#E0A423' : st === 'skip' ? '#E7A79A' : undefined }}>
-                            <option value="">— Skip this row —</option>
+                            <option value="">Skip this row</option>
                             {r.suggestions.length > 0 && (
                               <optgroup label="Suggested">
                                 {r.suggestions.map(s => (

@@ -107,7 +107,7 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const toggleExpand = (id) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // Month-wise breakdown: one row per month (total), expandable to the clients
-  // that make up that month's total — the inverse of the per-client breakdown.
+  // that make up that month's total - the inverse of the per-client breakdown.
   const r2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
   const monthBreakdown = useMemo(() => {
     const m = new Map(); // ym -> { month, total, clients: [] }

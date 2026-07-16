@@ -1582,7 +1582,7 @@ export default function DatabasePage() {
                       {importCheck.existingToReplace > 0 && importCheck.failed > 0 && ' · '}
                       {importCheck.failed > 0 && `${importCheck.failed} can't be imported (see below)`}
                       . How do you want to proceed?
-                      {importCheck.existingToReplace > 0 && <><br /><b style={{ color: '#C44A18' }}>Replacing 2025 (or any month)? Use “Replace”</b> — it removes the existing rows first so totals don't double.</>}
+                      {importCheck.existingToReplace > 0 && <><br /><b style={{ color: '#C44A18' }}>Replacing 2025 (or any month)? Use “Replace”</b> - it removes the existing rows first so totals don't double.</>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 12 }}>

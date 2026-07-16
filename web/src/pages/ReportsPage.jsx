@@ -933,7 +933,7 @@ export default function ReportsPage() {
 
 // ── Media Group Report ──────────────────────────────────────────────────────
 // Full spend breakdown for a media group: year-wise totals, per-channel (year-
-// wise), per-agency (year-wise), and the Agency × Channel matrix — all in one
+// wise), per-agency (year-wise), and the Agency × Channel matrix - all in one
 // place, with Excel (multi-sheet) + PDF export mirroring the on-screen preview.
 function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
   const [mediaGroup, setMediaGroup] = useState('');   // '' = all media groups
@@ -1101,7 +1101,7 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
           {/* Spend by Year */}
           {data.summary.byYear.length > 0 && (
             <PivotTable
-              title={`Spend by Year — ${label}`}
+              title={`Spend by Year - ${label}`}
               labelHeader="Year"
               rows={data.summary.byYear.map((y) => ({ label: y.year, byYear: { [y.year]: y.value }, value: y.value, vat: y.vat }))}
             />

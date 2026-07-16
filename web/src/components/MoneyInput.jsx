@@ -39,7 +39,7 @@ export function unformatMoney(display) {
 // A text input that shows LKR amounts with thousands separators while typing
 // and emits the raw numeric string via onValueChange (matching what a plain
 // type="number" input's onChange gave: '' or a numeric string). Drop-in for
-// currency fields — pass value (number|string) and onValueChange.
+// currency fields - pass value (number|string) and onValueChange.
 export default function MoneyInput({ value, onValueChange, className = 'input', ...rest }) {
   const [display, setDisplay] = useState(() => formatMoney(value));
 

@@ -212,6 +212,31 @@ export default function ChannelIntelligencePage() {
   };
   const toggleDetailClient = clientId => setExpandedDetailClients(p => ({ ...p, [clientId]: !p[clientId] }));
 
+  // Export the month drill-down (this month's schedule logs on this channel) to
+  // Excel: a By Client summary sheet + a per-log Detail sheet.
+  const exportMonthDetail = async () => {
+    if (!monthDetail || !monthDetail.clients?.length) return;
+    const XLSX = await import('xlsx');
+    const channelName = summary?.channel?.name || 'Channel';
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Channel', channelName],
+      ['Month', monthDetail.label],
+      ['Clients', monthDetail.clients.length],
+      ['Total Schedule Value', Number(monthDetail.total) || 0],
+      [],
+      ['Client', 'Agency', 'Schedule Value'],
+      ...monthDetail.clients.map(c => [c.clientName, c.agencyName || '', Number(c.value) || 0]),
+    ]), 'By Client');
+    const detail = [['Client', 'Agency', 'RO Number', 'Brand', 'Schedule Value', 'With VAT']];
+    monthDetail.clients.forEach(c => (c.logs || []).forEach(l => {
+      detail.push([c.clientName, c.agencyName || '', l.roNumber || '', l.brandName || '', Number(l.scheduleValue) || 0, Number(l.scheduleValueWithVat) || 0]);
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Detail');
+    const safe = (s) => String(s).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    XLSX.writeFile(wb, `channel-${safe(channelName)}-${safe(monthDetail.label)}.xlsx`);
+  };
+
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading channel intelligence…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
 
@@ -447,7 +472,14 @@ export default function ChannelIntelligencePage() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
             <div className="modal-head">
               <h2>{monthDetail.label}: Schedule Logs</h2>
-              <button className="act-btn" onClick={() => setMonthDetail(null)}><Icon name="x" size={18} /></button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {monthDetail.clients.length > 0 && (
+                  <button className="btn btn-ghost btn-sm" onClick={exportMonthDetail} title="Export to Excel" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="download" size={15} /> Export
+                  </button>
+                )}
+                <button className="act-btn" onClick={() => setMonthDetail(null)}><Icon name="x" size={18} /></button>
+              </div>
             </div>
             <div className="modal-body" style={{ overflow: 'auto', flex: 1 }}>
               {monthDetailLoading ? (
