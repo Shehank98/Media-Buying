@@ -72,7 +72,11 @@ function generateTempPassword() {
 }
 
 export default function AdminPage({ initialTab = 'users' }) {
-  const [activeTab, setActiveTab] = useState(initialTab === 'client-requests' || initialTab === 'channel-requests' ? 'requests' : initialTab);
+  const [activeTab, setActiveTab] = useState(
+    initialTab === 'client-requests' || initialTab === 'channel-requests' ? 'requests'
+      : initialTab === 'teams' ? 'users'   // Teams tab removed; fold into Users
+        : initialTab,
+  );
   const [requestSubTab, setRequestSubTab] = useState(initialTab === 'client-requests' ? 'client' : 'channel');
 
   /* ---- data ---- */
@@ -226,6 +230,8 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [ccLoading, setCcLoading] = useState(false);
   const [ccSavingId, setCcSavingId] = useState(null);
   const [ccSearch, setCcSearch] = useState('');
+  const [ccSubTab, setCcSubTab] = useState('channel'); // 'channel' | 'group'
+  const [ccMedium, setCcMedium] = useState(''); // active medium tab (single-channel view)
   // Deal groups: one target across several channels (combined achievement).
   const [cgGroups, setCgGroups] = useState([]);
   const [cgModalOpen, setCgModalOpen] = useState(false);
@@ -1710,10 +1716,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   // stays the LEAF key so every content block / effect below is unchanged.
   const reqPending = clientRequests.filter(r => r.status === 'pending').length + channelRequests.filter(r => r.status === 'pending').length;
   const tabGroups = [
-    { label: 'Users', members: [
-      { key: 'users', label: 'Users', count: users.length },
-      { key: 'teams', label: 'Teams', count: teams.length },
-    ] },
+    { label: 'Users', members: [{ key: 'users', label: 'Users', count: users.length }] },
     { label: 'Agencies & Clients', members: [
       { key: 'agencies', label: 'Agencies', count: agencies.length },
       { key: 'clients', label: 'Clients', count: allClients.length },
@@ -2421,8 +2424,47 @@ export default function AdminPage({ initialTab = 'users' }) {
       {/* ============ CHANNEL COMMITMENTS ============ */}
       {activeTab === 'channel-commitments' && (
         <div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end', marginBottom: 14 }}>
-            <div className="field" style={{ margin: 0, flex: 1, minWidth: 220, position: 'relative' }}>
+          {/* Single Channel / Deal Groups sub-tabs */}
+          <div style={{ display: 'inline-flex', gap: 4, marginBottom: 16, background: '#F1F3F6', borderRadius: 9, padding: 3 }}>
+            {[['channel', 'Single Channel'], ['group', `Deal Groups${cgGroups.length ? ` (${cgGroups.length})` : ''}`]].map(([k, lbl]) => {
+              const on = ccSubTab === k;
+              return (
+                <button key={k} onClick={() => setCcSubTab(k)}
+                  style={{ border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, padding: '6px 14px', borderRadius: 7, background: on ? '#fff' : 'transparent', color: on ? '#0F1F3D' : '#6B7790', boxShadow: on ? '0 1px 2px rgba(15,31,61,.12)' : 'none' }}>
+                  {lbl}
+                </button>
+              );
+            })}
+          </div>
+
+          {ccSubTab === 'channel' && (() => {
+            // Channels grouped by medium; a medium tab bar (TV / Radio / …) keeps
+            // each view short. The active medium falls back to the first present.
+            const mediumsPresent = MEDIUMS.filter(m => ccChannels.some(c => c.medium === m));
+            const others = [...new Set(ccChannels.map(c => c.medium).filter(m => m && !MEDIUMS.includes(m)))];
+            const mediumTabs = [...mediumsPresent, ...others];
+            const activeMed = mediumTabs.includes(ccMedium) ? ccMedium : (mediumTabs[0] || '');
+            const rowsForMedium = ccChannels
+              .filter(c => c.medium === activeMed)
+              .filter(c => !ccSearch || c.name.toLowerCase().includes(ccSearch.toLowerCase()) || (c.mediaGroup || '').toLowerCase().includes(ccSearch.toLowerCase()));
+            return (
+          <>
+          {ccLoading ? null : (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, borderBottom: '1px solid #EEF0F3', paddingBottom: 2 }}>
+              {mediumTabs.map(m => {
+                const on = m === activeMed;
+                return (
+                  <button key={m} onClick={() => setCcMedium(m)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: on ? '#0F1F3D' : '#6B7790', borderBottom: `2px solid ${on ? '#0F1F3D' : 'transparent'}`, marginBottom: -2 }}>
+                    <span className="medium-tag">{m}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#93A0B5' }}>{ccChannels.filter(c => c.medium === m).length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <div className="field" style={{ margin: 0, maxWidth: 320, position: 'relative' }}>
               <label>Search channel</label>
               <input className="input" type="text" value={ccSearch} onChange={e => setCcSearch(e.target.value)} placeholder="Filter channels…" />
             </div>
@@ -2441,7 +2483,6 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <thead>
                   <tr>
                     <th>Channel</th>
-                    <th>Medium</th>
                     <th>Type</th>
                     <th style={{ textAlign: 'right' }}>Amount (LKR)</th>
                     <th>Start</th>
@@ -2450,15 +2491,13 @@ export default function AdminPage({ initialTab = 'users' }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {ccChannels
-                    .filter(c => !ccSearch || c.name.toLowerCase().includes(ccSearch.toLowerCase()) || (c.mediaGroup || '').toLowerCase().includes(ccSearch.toLowerCase()))
+                  {rowsForMedium
                     .map(c => {
                       const row = ccRows[c.channelMasterId] || {};
                       const yrs = Array.from({ length: (new Date().getFullYear() + 2) - 2022 + 1 }, (_, i) => 2022 + i);
                       return (
                         <tr key={c.channelMasterId}>
                           <td className="strong">{c.name}{c.mediaGroup ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {c.mediaGroup}</span> : null}</td>
-                          <td><span className="medium-tag">{c.medium}</span></td>
                           <td>
                             <select className="select" style={{ minWidth: 130 }} value={row.type || 'MONTHLY'} onChange={e => setCcField(c.channelMasterId, 'type', e.target.value)}>
                               <option value="MONTHLY">Monthly commitment</option>
@@ -2507,9 +2546,12 @@ export default function AdminPage({ initialTab = 'users' }) {
               </table>
             </div>
           )}
+          </>
+          ); })()}
 
           {/* ── Deal groups: one target across several channels ── */}
-          <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
+          {ccSubTab === 'group' && (
+          <div style={{ paddingTop: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 740, color: 'var(--ink)' }}>Deal groups</div>
@@ -2556,6 +2598,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
