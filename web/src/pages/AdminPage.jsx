@@ -1464,6 +1464,15 @@ export default function AdminPage({ initialTab = 'users' }) {
     const map = new Map();
     grClients.forEach(c => {
       const noHead = c.hasHead === false || !c.headName || c.headName === 'Unassigned';
+      // Unassigned (no Hub head) clients are only listed when they actually carry
+      // a revenue figure (entered/imported) — otherwise the bucket would be full
+      // of clients nobody manages and has no data for.
+      if (noHead) {
+        const rev = grClientAmounts[c.clientId];
+        const fin = grClientFinanceAmounts[c.clientId];
+        const hasVal = (rev !== '' && rev != null) || (fin !== '' && fin != null);
+        if (!hasVal) return;
+      }
       const key = noHead ? 'Unassigned' : c.headName;
       if (!map.has(key)) map.set(key, { headName: key, noHead, clients: [], subtotal: 0, financeSubtotal: 0 });
       const g = map.get(key);
