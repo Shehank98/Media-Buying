@@ -72,7 +72,8 @@ function generateTempPassword() {
 }
 
 export default function AdminPage({ initialTab = 'users' }) {
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(initialTab === 'client-requests' || initialTab === 'channel-requests' ? 'requests' : initialTab);
+  const [requestSubTab, setRequestSubTab] = useState(initialTab === 'client-requests' ? 'client' : 'channel');
 
   /* ---- data ---- */
   const [agencies, setAgencies] = useState([]);
@@ -1717,8 +1718,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { key: 'channel-commitments', label: 'Channel Commitments' },
     { key: 'client-targets', label: 'Client Targets' },
     { key: 'group-revenue', label: 'Group Revenue' },
-    { key: 'client-requests', label: 'Client Requests', count: clientRequests.filter(r => r.status === 'pending').length },
-    { key: 'channel-requests', label: 'Channel Requests', count: channelRequests.filter(r => r.status === 'pending').length },
+    { key: 'requests', label: 'Requests', count: clientRequests.filter(r => r.status === 'pending').length + channelRequests.filter(r => r.status === 'pending').length },
     { key: 'notify', label: 'Notify' },
     { key: 'backup', label: 'Backup' },
   ];
@@ -3099,8 +3099,24 @@ export default function AdminPage({ initialTab = 'users' }) {
         </div>
       )}
 
+      {/* ============ REQUESTS (Channel / Client sub-tabs) ============ */}
+      {activeTab === 'requests' && (
+        <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+          {[
+            ['channel', 'Channel Request', channelRequests.filter(r => r.status === 'pending').length],
+            ['client', 'Client Request', clientRequests.filter(r => r.status === 'pending').length],
+          ].map(([k, lbl, cnt]) => (
+            <button key={k} onClick={() => setRequestSubTab(k)}
+              style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: requestSubTab === k ? '#0A1729' : '#fff', color: requestSubTab === k ? '#fff' : 'var(--ink-soft)', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              {lbl}
+              {cnt > 0 && <span style={{ fontSize: 11, fontWeight: 800, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, display: 'inline-grid', placeItems: 'center', background: requestSubTab === k ? '#E85D24' : '#FBE0DA', color: requestSubTab === k ? '#fff' : '#C5391F' }}>{cnt}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ============ CLIENT REQUESTS TABLE ============ */}
-      {activeTab === 'client-requests' && (
+      {activeTab === 'requests' && requestSubTab === 'client' && (
         <div className="tbl-wrap">
           <table className="tbl">
             <thead>
@@ -3131,7 +3147,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       )}
 
       {/* ============ CHANNEL REQUESTS TABLE ============ */}
-      {activeTab === 'channel-requests' && (
+      {activeTab === 'requests' && requestSubTab === 'channel' && (
         <div className="tbl-wrap">
           <table className="tbl">
             <thead>
