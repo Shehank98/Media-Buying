@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import api from '../lib/api';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+import BillingRevenueTab from './BillingRevenueTab';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Area, AreaChart, PieChart, Pie, LabelList,
@@ -46,6 +47,7 @@ const MIX_META = {
 };
 
 export default function ProfitPage() {
+  const [view, setView] = useState('schedule'); // 'schedule' | 'billing'
   const [year, setYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([]);
   const [agencyId, setAgencyId] = useState('');
@@ -238,16 +240,35 @@ export default function ProfitPage() {
 
   return (
     <div className="fade-in" style={{ maxWidth: 1320, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: 'var(--ink)' }}>Profit</h1>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>Agency commission on confirmed actual spend · by schedule (flight) month</div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.6px', margin: 0, color: 'var(--ink)' }}>Revenue</h1>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+            {view === 'schedule'
+              ? 'Agency commission on confirmed actual spend · by schedule (flight) month'
+              : 'Admin-entered billing revenue per client · by billing month'}
+          </div>
         </div>
-        <button className="btn btn-ghost" onClick={exportExcel} disabled={exporting || loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-          <Icon name="download" size={15} />{exporting ? 'Exporting…' : 'Export Excel'}
-        </button>
+        {view === 'schedule' && (
+          <button className="btn btn-ghost" onClick={exportExcel} disabled={exporting || loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <Icon name="download" size={15} />{exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+        )}
       </div>
 
+      {/* Tab switcher */}
+      <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
+        {[['schedule', 'Revenue by schedule value'], ['billing', 'Revenue by billing']].map(([k, lbl]) => (
+          <button key={k} onClick={() => setView(k)}
+            style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: view === k ? '#0A1729' : '#fff', color: view === k ? '#fff' : 'var(--ink-soft)' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {view === 'billing' && <BillingRevenueTab agencies={agencies} clients={clients} />}
+
+      {view === 'schedule' && (<>
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 18 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>
@@ -515,6 +536,7 @@ export default function ProfitPage() {
           </div>
         </>
       )}
+      </>)}
     </div>
   );
 }

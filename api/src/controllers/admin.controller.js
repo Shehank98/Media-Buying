@@ -1142,12 +1142,19 @@ export async function setGroupRevenue(req, res) {
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
     const headIds = new Set(heads.map((h) => h.id));
 
+    // Revenue figures may be NEGATIVE (e.g. a credit/adjustment) or 0 — those are
+    // real, stored values. Only a BLANK field clears the row. NaN → clear.
+    const keepNum = (v) => {
+      if (v === '' || v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     const ops = [];
     if (hasHeads) for (const [k, v] of Object.entries(amounts)) {
       const headUserId = parseInt(k);
       if (!headIds.has(headUserId)) continue;
-      const num = v === '' || v == null ? null : Number(v);
-      if (num == null || isNaN(num) || num <= 0) {
+      const num = keepNum(v);
+      if (num == null) {
         // clearing an entry removes the row
         ops.push(prisma.groupRevenue.deleteMany({ where: { year: y, month: m, headUserId } }));
       } else {
@@ -1167,8 +1174,8 @@ export async function setGroupRevenue(req, res) {
       for (const [k, v] of Object.entries(agencyAmounts)) {
         const agencyId = parseInt(k);
         if (!agencyIds.has(agencyId)) continue;
-        const num = v === '' || v == null ? null : Number(v);
-        if (num == null || isNaN(num) || num <= 0) {
+        const num = keepNum(v);
+        if (num == null) {
           ops.push(prisma.agencyRevenue.deleteMany({ where: { year: y, month: m, agencyId } }));
         } else {
           ops.push(prisma.agencyRevenue.upsert({
@@ -1191,7 +1198,7 @@ export async function setGroupRevenue(req, res) {
       const valid = new Set((await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c) => c.id));
       const existing = await prisma.clientRevenue.findMany({ where: { year: y, month: m, clientId: { in: ids } } });
       const existByClient = new Map(existing.map((r) => [r.clientId, r]));
-      const parse = (v) => (v === '' || v == null ? null : Number(v));
+      const parse = keepNum; // blank → clear; negative/0 kept as real values
       for (const clientId of ids) {
         if (!valid.has(clientId)) continue;
         // Only override a field that was actually sent in the request.
@@ -1202,8 +1209,8 @@ export async function setGroupRevenue(req, res) {
         const finance = Object.prototype.hasOwnProperty.call(cf, clientId) || Object.prototype.hasOwnProperty.call(cf, String(clientId))
           ? parse(cf[clientId] ?? cf[String(clientId)])
           : (prev && prev.revenueFromFinance != null ? Number(prev.revenueFromFinance) : null);
-        const cleanAmount = amount == null || isNaN(amount) || amount <= 0 ? null : amount;
-        const cleanFinance = finance == null || isNaN(finance) || finance <= 0 ? null : finance;
+        const cleanAmount = amount;   // may be negative or 0; null only when blank
+        const cleanFinance = finance;
 
         if (cleanAmount == null && cleanFinance == null) {
           if (prev) ops.push(prisma.clientRevenue.deleteMany({ where: { id: prev.id } }));
@@ -1239,9 +1246,12 @@ export async function setGroupRevenue(req, res) {
     // Recompute MonthlyBilling for the month from the agency total (post-write),
     // so a cleared/blank set removes the billing row too.
     if (hasAgencies) {
-      const agg = await prisma.agencyRevenue.aggregate({ where: { year: y, month: m }, _sum: { amount: true } });
+      const agg = await prisma.agencyRevenue.aggregate({ where: { year: y, month: m }, _sum: { amount: true }, _count: true });
       const total = Number(agg._sum.amount) || 0;
-      if (total > 0) {
+      // Keep the MonthlyBilling row whenever ANY agency figure exists for the
+      // month (the net total may legitimately be ≤ 0 once negatives/credits are
+      // included); only a fully-cleared month removes it.
+      if ((agg._count || 0) > 0) {
         await prisma.monthlyBilling.upsert({
           where: { year_month: { year: y, month: m } },
           update: { amount: total, createdById: req.user?.id ?? null },

@@ -12,9 +12,11 @@ export function formatMoney(raw) {
   if (raw === null || raw === undefined) return '';
   let s = String(raw).replace(/,/g, '');
   if (s === '') return '';
-  const neg = s.startsWith('-');
-  if (neg) s = s.slice(1);
-  // Keep only digits and dots, then collapse to a single decimal point.
+  // Negative if it starts with "-" OR is written in accounting parentheses,
+  // e.g. "(1200)" → -1200.
+  const neg = s.trim().startsWith('-') || s.includes('(');
+  // Keep only digits and dots (this also strips the sign, parens and spaces),
+  // then collapse to a single decimal point.
   s = s.replace(/[^0-9.]/g, '');
   const firstDot = s.indexOf('.');
   if (firstDot !== -1) {

@@ -17,7 +17,7 @@ const NAV = [
   { key: '/reports', label: 'Reports', icon: 'chart', roles: ['SUPER_ADMIN', 'MANAGER'] },
 ];
 const NAV_ADMIN = [
-  { key: '/profit', label: 'Profit', icon: 'trending-up', roles: ['SUPER_ADMIN'] },
+  { key: '/profit', label: 'Revenue', icon: 'trending-up', roles: ['SUPER_ADMIN'] },
   { key: '/media-buying', label: 'Media Buying', icon: 'sparkle', roles: ['SUPER_ADMIN'] },
   { key: '/packages', label: 'Media Packages', icon: 'mail', roles: ['SUPER_ADMIN'] },
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
@@ -41,7 +41,7 @@ function Breadcrumbs({ go }) {
   if (path.startsWith('/channels/')) return <>{home}{sep}<a onClick={() => go('/agencies')}>Agencies</a>{sep}<b>Channel</b></>;
   if (path.startsWith('/channel-masters/')) return <>{home}{sep}<b>Channel Intelligence</b></>;
   if (path === '/spend-analytics') return <>{home}{sep}<b>Spend Analytics</b></>;
-  if (path === '/profit') return <>{home}{sep}<b>Profit</b></>;
+  if (path === '/profit') return <>{home}{sep}<b>Revenue</b></>;
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/deep-dashboard') return <>{home}{sep}<b>Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;

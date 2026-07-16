@@ -1052,6 +1052,37 @@ export default function AdminPage({ initialTab = 'users' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, grYear, grMonth]);
 
+  // Auto-fill each Hub head's figure from the sum of their clients' Revenue as
+  // the admin fills the By-client grid. The Hub inputs stay editable (a manual
+  // override sticks until a client amount changes again). Negatives net in.
+  useEffect(() => {
+    if (!grClients.length || !grHeads.length) return;
+    const idByName = new Map(grHeads.map(h => [h.headName, h.headUserId]));
+    const sumByHead = new Map(); // headUserId -> { sum, count }
+    grClients.forEach(c => {
+      const hid = idByName.get(c.headName);
+      if (hid == null) return;
+      const raw = grClientAmounts[c.clientId];
+      if (raw === '' || raw == null) return;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return;
+      const cur = sumByHead.get(hid) || { sum: 0, count: 0 };
+      cur.sum += n; cur.count += 1;
+      sumByHead.set(hid, cur);
+    });
+    if (sumByHead.size === 0) return;
+    setGrAmounts(prev => {
+      const next = { ...prev };
+      let changed = false;
+      sumByHead.forEach((v, hid) => {
+        const val = String(v.sum);
+        if (next[hid] !== val) { next[hid] = val; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grClientAmounts, grClients, grHeads]);
+
   const saveGroupRevenue = async () => {
     setGrSaving(true);
     try {
