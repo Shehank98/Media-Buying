@@ -313,9 +313,11 @@ GET    /api/reports/media-group          (AUTH + SUPER_ADMIN|MANAGER)   mediaGro
        and the Agency x Channel matrix. JSON also carries availableMediaGroups + availableChannels +
        availableClients (scoped, biggest-first, for the pickers) and summary.clientCount. Excel sheet
        order = Summary (year-wise) -> By Agency -> By Channel -> By Client -> Agency x Channel ->
-       By Media Group (only when unfiltered); dynamic year columns. PDF = branded, grouped by
-       agency->channels. MANAGER agency-scoped. Surfaced as the "Media Groups" source on ReportsPage
-       with Media Group / Channel / Agency / Client (default all) / month-range filters + preview.
+       By Media Group (only when unfiltered); dynamic year columns. PDF = branded, one titled section
+       per breakdown in the SAME order (Spend by Year -> by Agency -> by Channel -> by Client ->
+       Agency x Channel [-> by Media Group when unfiltered]) with a grand total. MANAGER agency-scoped.
+       Surfaced as the "Media Groups" source on ReportsPage with Media Group / Channel / Agency /
+       Client (default all) / month-range filters + preview.
 
 ### Media Packages
 ```

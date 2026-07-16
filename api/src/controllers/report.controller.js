@@ -1278,54 +1278,56 @@ export async function mediaGroupReport(req, res) {
       return res.send(Buffer.from(buffer));
     }
 
-    // ── PDF export (branded, grouped by agency → channels) ───────────────────
+    // ── PDF export (branded, one section per breakdown, same order as Excel) ──
     if (format === 'pdf') {
       // Keep year columns only when few, so the table stays legible.
-      const showYears = years.length > 0 && years.length <= 4;
-      const yearCols = showYears ? years.map((y) => ({ key: y, label: y, align: 'right', w: 1.0 })) : [];
+      const showYears = years.length > 0 && years.length <= 5;
+      const yearCols = showYears ? years.map((y) => ({ key: y, label: y, align: 'right', w: 0.9 })) : [];
       const columns = [
-        { key: 'Channel', label: 'Channel', align: 'left', w: 2.0 },
+        { key: 'Name', label: 'Name', align: 'left', w: 2.4 },
         ...yearCols,
-        { key: 'Total', label: 'Total', align: 'right', w: 1.4 },
-        { key: 'With VAT', label: 'With VAT', align: 'right', w: 1.4 },
+        { key: 'Total', label: 'Total', align: 'right', w: 1.3 },
+        { key: 'With VAT', label: 'With VAT', align: 'right', w: 1.3 },
       ];
 
-      // Group by agency; rows = channels for that agency.
-      const byAgencyMap = {};
-      for (const r of report.byAgencyChannel) {
-        (byAgencyMap[r.agency] = byAgencyMap[r.agency] || []).push(r);
-      }
-      const groups = Object.keys(byAgencyMap).sort((a, b) => a.localeCompare(b)).map((agencyName) => {
-        const items = byAgencyMap[agencyName].sort((a, b) => b.value - a.value);
-        const subVal = items.reduce((s, r) => s + r.value, 0);
-        const subVat = items.reduce((s, r) => s + r.vat, 0);
-        const subYears = {};
-        if (showYears) years.forEach((y) => { subYears[y] = fmtNum(items.reduce((s, r) => s + (r.byYear[y] || 0), 0)); });
-        return {
-          name: agencyName,
-          rows: items.map((r) => {
-            const row = { Channel: r.channel, Total: fmtNum(r.value), 'With VAT': fmtNum(r.vat) };
-            if (showYears) years.forEach((y) => { row[y] = fmtNum(r.byYear[y] || 0); });
-            return row;
-          }),
-          subtotal: { Channel: `Subtotal · ${items.length} channel(s)`, ...subYears, Total: fmtNum(subVal), 'With VAT': fmtNum(subVat) },
-        };
+      // Turn a set of pivot rows ({label key, byYear, value, vat}) into PDF rows.
+      const pivotRows = (rows, labelKey) => rows.map((r) => {
+        const row = { Name: r[labelKey], Total: fmtNum(r.value), 'With VAT': fmtNum(r.vat) };
+        if (showYears) years.forEach((y) => { row[y] = r.byYear[y] ? fmtNum(r.byYear[y]) : ''; });
+        return row;
       });
 
-      const grandYears = {};
-      if (showYears) years.forEach((y) => { grandYears[y] = fmtNum(report.summary.byYear.find((b) => b.year === y)?.value || 0); });
+      // Order (as requested): year-wise total -> by agency -> by channel ->
+      // by client -> agency x channel (+ by media group when unfiltered).
+      const yearRows = report.summary.byYear.map((y) => ({ Name: y.year, Total: fmtNum(y.value), 'With VAT': fmtNum(y.vat) }));
+      const acRows = report.byAgencyChannel.map((r) => {
+        const row = { Name: `${r.agency} / ${r.channel}`, Total: fmtNum(r.value), 'With VAT': fmtNum(r.vat) };
+        if (showYears) years.forEach((y) => { row[y] = r.byYear[y] ? fmtNum(r.byYear[y]) : ''; });
+        return row;
+      });
+
+      const groups = [
+        { name: 'Spend by Year', rows: yearRows },
+        { name: 'Spend by Agency', rows: pivotRows(report.byAgency, 'agency') },
+        { name: 'Spend by Channel', rows: pivotRows(report.byChannel, 'channel') },
+        report.byClient.length ? { name: 'Spend by Client', rows: pivotRows(report.byClient, 'client') } : null,
+        acRows.length ? { name: 'Agency x Channel', rows: acRows } : null,
+        (!mediaGroup && report.byMediaGroup.length) ? { name: 'Spend by Media Group', rows: pivotRows(report.byMediaGroup, 'mediaGroup') } : null,
+      ].filter(Boolean);
+
       const totals = {
         _label: `${label} · ${years.length ? years.join(', ') : 'no data'} · ${fmtNum(totalValue)} total`,
-        Channel: 'GRAND TOTAL',
-        ...grandYears,
+        Name: 'GRAND TOTAL',
         Total: fmtNum(totalValue),
         'With VAT': fmtNum(totalVat),
       };
 
       const ftParts = [`Media Group: ${label}`];
+      if (channelIds.length) ftParts.push(`${channelIds.length} channel filter(s)`);
       if (agencyId) ftParts.push('Agency filter applied');
-      if (monthFrom || monthTo) ftParts.push(`Months: ${monthFrom || '…'} – ${monthTo || '…'}`);
-      ftParts.push(`Total spend across ${report.summary.channelCount} channel(s), ${report.summary.agencyCount} agency(ies)`);
+      if (clientIds.length) ftParts.push(`${clientIds.length} client filter(s)`);
+      if (monthFrom || monthTo) ftParts.push(`Months: ${monthFrom || 'start'} to ${monthTo || 'latest'}`);
+      ftParts.push(`${report.summary.agencyCount} agency(ies), ${report.summary.channelCount} channel(s), ${report.summary.clientCount} client(s)`);
       const filtersText = ftParts.join('   ·   ');
 
       const buffer = await generateGroupedTablePdf({ title: 'Media Group Report', filtersText, columns, groups, totals });
