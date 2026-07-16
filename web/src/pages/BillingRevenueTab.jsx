@@ -106,6 +106,27 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
 
   const toggleExpand = (id) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // Month-wise breakdown: one row per month (total), expandable to the clients
+  // that make up that month's total — the inverse of the per-client breakdown.
+  const r2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+  const monthBreakdown = useMemo(() => {
+    const m = new Map(); // ym -> { month, total, clients: [] }
+    breakdown.forEach((c) => {
+      (c.months || []).forEach((mo) => {
+        if (mo.revenue == null) return;
+        if (!m.has(mo.month)) m.set(mo.month, { month: mo.month, total: 0, clients: [] });
+        const g = m.get(mo.month);
+        g.total = r2(g.total + mo.revenue);
+        g.clients.push({ clientId: c.clientId, client: c.client, agency: c.agency, revenue: mo.revenue });
+      });
+    });
+    return [...m.values()]
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map((g) => ({ ...g, clients: g.clients.sort((a, b) => b.revenue - a.revenue) }));
+  }, [breakdown]);
+  const [expandedM, setExpandedM] = useState(() => new Set());
+  const toggleMonth = (ym) => setExpandedM((s) => { const n = new Set(s); n.has(ym) ? n.delete(ym) : n.add(ym); return n; });
+
   const exportExcel = async () => {
     setExporting(true);
     try {
@@ -265,6 +286,39 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
                         <td style={{ color: 'var(--muted)', fontSize: 12.5 }}>{c.agency}</td>
                         <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(c.revenue)}</td>
                       </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+
+          {/* Monthly breakdown - one row per month, expand for client-wise */}
+          <Panel title="Monthly Breakdown" note="one row per month · expand for client-wise">
+            {monthBreakdown.length === 0 ? <Empty /> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                  <thead>
+                    <tr><th style={{ width: 32 }} /><th>Month</th><th style={{ textAlign: 'right' }}>Clients</th><th style={{ textAlign: 'right' }}>Billing Revenue</th></tr>
+                  </thead>
+                  <tbody>
+                    {monthBreakdown.map((m) => (
+                      <Fragment key={m.month}>
+                        <tr onClick={() => toggleMonth(m.month)} style={{ cursor: 'pointer' }}>
+                          <td><Icon name={expandedM.has(m.month) ? 'chevD' : 'chevR'} size={14} /></td>
+                          <td className="strong">{fmtMonth(m.month)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{m.clients.length}</td>
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(m.total)}</td>
+                        </tr>
+                        {expandedM.has(m.month) && m.clients.map((c) => (
+                          <tr key={c.clientId} style={{ background: 'var(--bg-sunken)' }}>
+                            <td />
+                            <td style={{ paddingLeft: 22 }}>{c.client}<span style={{ color: 'var(--muted)', fontSize: 12, marginLeft: 6 }}>{c.agency}</span></td>
+                            <td />
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(c.revenue)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
