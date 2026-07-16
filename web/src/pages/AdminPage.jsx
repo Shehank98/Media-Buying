@@ -3374,71 +3374,114 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* ============ IMPORT REVENUE BY CLIENT MODAL ============ */}
       {crImport && (() => {
-        const matched = crImport.rows.filter(r => r.matchId !== '' && r.matchId != null).length;
-        const needsAttention = crImport.rows.filter(r => !r.exact).length;
+        const isMatched = (r) => r.matchId !== '' && r.matchId != null;
+        const status = (r) => (!isMatched(r) ? 'skip' : (r.exact ? 'matched' : 'confirm'));
+        const matched = crImport.rows.filter(isMatched).length;
+        const confirmCount = crImport.rows.filter(r => status(r) === 'confirm').length;
+        const skipCount = crImport.rows.filter(r => status(r) === 'skip').length;
         const rosterSorted = [...grClients].sort((a, b) => a.name.localeCompare(b.name));
-        const fmtAmt = (n) => (n == null ? '—' : (n < 0 ? `(${Math.abs(n).toLocaleString('en-US')})` : n.toLocaleString('en-US')));
+        const fmtAmt = (n) => (n == null ? '—' : (n < 0 ? `(${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })));
+        const ST = {
+          matched: { bg: '#ECF8F1', fg: '#15814B', dot: '#15814B', icon: 'check', label: 'Matched' },
+          confirm: { bg: '#FCF4E2', fg: '#9A5B00', dot: '#E0A423', icon: 'alert', label: 'Confirm' },
+          skip: { bg: '#FBE0DA', fg: '#C5391F', dot: '#C5391F', icon: 'x', label: 'Skipped' },
+        };
+        const Chip = ({ n, s }) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 12px', borderRadius: 9, background: ST[s].bg, minWidth: 118 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: ST[s].dot, flexShrink: 0 }} />
+            <span style={{ fontSize: 18, fontWeight: 800, color: ST[s].fg, lineHeight: 1 }}>{n}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: ST[s].fg, textTransform: 'uppercase', letterSpacing: '.03em' }}>{ST[s].label}</span>
+          </div>
+        );
         return (
         <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setCrImport(null); }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 860, width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#EDF3FD', color: '#1F5BB5', display: 'grid', placeItems: 'center' }}><Icon name="upload" size={15} /></div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 16, fontWeight: 750, color: 'var(--ink)' }}>Import Revenue by Client</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{crImport.fileName} · into {MONTHS[grMonth - 1]} {grYear}</div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 900, width: '100%', padding: 0, overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: '#EDF3FD', color: '#1F5BB5', display: 'grid', placeItems: 'center' }}><Icon name="upload" size={18} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 16.5, fontWeight: 750, color: 'var(--ink)' }}>Import Revenue by Client</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <Icon name="file" size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />{crImport.fileName} · into <b style={{ color: 'var(--ink-soft)' }}>{MONTHS[grMonth - 1]} {grYear}</b> · {crImport.rows.length} row(s)
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setCrImport(null)}><Icon name="x" size={16} /></button>
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>
-              {crImport.rows.length} row(s) · <b style={{ color: '#15814B' }}>{matched} matched</b>
-              {needsAttention > 0 && <> · <b style={{ color: '#9A5B00' }}>{needsAttention} need confirming</b> — pick the right client (or Skip). Amounts in parentheses like (1,000) import as negative.</>}
+
+            {/* Summary chips */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: '14px 22px', background: '#F8FAFC', borderBottom: '1px solid var(--border)' }}>
+              <Chip n={matched} s="matched" />
+              {confirmCount > 0 && <Chip n={confirmCount} s="confirm" />}
+              {skipCount > 0 && <Chip n={skipCount} s="skip" />}
+              <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--muted)', maxWidth: 300, lineHeight: 1.45, textAlign: 'right' }}>
+                Confirm the amber rows (pick the right client or Skip). Amounts in parentheses like <b>(1,000)</b> import as negative.
+              </div>
             </div>
-            <div className="tbl-wrap" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
-              <table className="tbl">
+
+            {/* Rows */}
+            <div style={{ maxHeight: '50vh', overflowY: 'auto', padding: '6px 12px 2px' }}>
+              <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 34 }} />
                     <th>Client in file</th>
-                    <th style={{ textAlign: 'right' }}>Revenue</th>
-                    <th style={{ textAlign: 'right' }}>Rev. finance</th>
-                    <th>Match to client</th>
+                    <th style={{ width: 130, textAlign: 'right' }}>Revenue</th>
+                    <th style={{ width: 130, textAlign: 'right' }}>Rev. finance</th>
+                    <th style={{ width: 260 }}>Match to client</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {crImport.rows.map(r => (
-                    <tr key={r.id} style={{ background: r.matchId === '' || r.matchId == null ? '#FDF3F1' : (r.exact ? 'transparent' : '#FCF7EC') }}>
-                      <td className="strong">
-                        {r.rawClient}
-                        {!r.exact && r.matchId !== '' && r.matchId != null && (
-                          <span style={{ marginLeft: 6, fontSize: 11, color: '#9A5B00' }}>· did you mean?</span>
-                        )}
+                  {crImport.rows.map(r => {
+                    const st = status(r); const S = ST[st];
+                    return (
+                    <tr key={r.id}>
+                      <td style={{ textAlign: 'center' }}>
+                        <span title={S.label} style={{ display: 'inline-grid', placeItems: 'center', width: 22, height: 22, borderRadius: '50%', background: S.bg, color: S.fg }}>
+                          <Icon name={S.icon} size={13} />
+                        </span>
+                      </td>
+                      <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span className="strong" title={r.rawClient}>{r.rawClient}</span>
+                        {st === 'confirm' && <div style={{ fontSize: 11, color: '#9A5B00', marginTop: 2 }}>did you mean this client?</div>}
+                        {st === 'skip' && <div style={{ fontSize: 11, color: '#C5391F', marginTop: 2 }}>no match — will be skipped</div>}
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: r.revenue < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.revenue)}</td>
                       <td className="mono" style={{ textAlign: 'right', color: r.finance < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.finance)}</td>
                       <td>
-                        <select className="select" value={r.matchId} onChange={e => setImportMatch(r.id, e.target.value === '' ? '' : Number(e.target.value))} style={{ minWidth: 220 }}>
-                          <option value="">— Skip this row —</option>
-                          {r.suggestions.length > 0 && (
-                            <optgroup label="Suggested">
-                              {r.suggestions.map(s => (
-                                <option key={s.clientId} value={s.clientId}>{s.name}{s.score < 1 ? ` (${Math.round(s.score * 100)}%)` : ''}</option>
-                              ))}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <select className="select" value={r.matchId} onChange={e => setImportMatch(r.id, e.target.value === '' ? '' : Number(e.target.value))} style={{ flex: 1, minWidth: 0, borderColor: st === 'confirm' ? '#E0A423' : st === 'skip' ? '#E7A79A' : undefined }}>
+                            <option value="">— Skip this row —</option>
+                            {r.suggestions.length > 0 && (
+                              <optgroup label="Suggested">
+                                {r.suggestions.map(s => (
+                                  <option key={s.clientId} value={s.clientId}>{s.name}{s.score < 1 ? ` (${Math.round(s.score * 100)}% match)` : ''}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <optgroup label="All clients">
+                              {rosterSorted.map(c => <option key={c.clientId} value={c.clientId}>{c.name}</option>)}
                             </optgroup>
-                          )}
-                          <optgroup label="All clients">
-                            {rosterSorted.map(c => <option key={c.clientId} value={c.clientId}>{c.name}</option>)}
-                          </optgroup>
-                        </select>
+                          </select>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-              <button className="btn btn-ghost" onClick={() => setCrImport(null)} disabled={crImporting}>Cancel</button>
-              <button className="btn btn-primary" onClick={applyImport} disabled={crImporting || matched === 0}>
-                {crImporting ? 'Importing…' : `Import ${matched} matched row(s)`}
-              </button>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 22px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                {matched === 0 ? 'Match at least one row to import.' : <>Ready to import <b style={{ color: '#15814B' }}>{matched}</b> client{matched === 1 ? '' : 's'}{skipCount > 0 ? ` · ${skipCount} skipped` : ''}.</>}
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={() => setCrImport(null)} disabled={crImporting}>Cancel</button>
+                <button className="btn btn-primary" onClick={applyImport} disabled={crImporting || matched === 0}>
+                  {crImporting ? 'Importing…' : `Import ${matched} row${matched === 1 ? '' : 's'}`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
