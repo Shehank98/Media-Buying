@@ -151,6 +151,10 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grClients, setGrClients] = useState([]);      // [{ clientId, name, agencyName, headName, amount }]
   const [grClientAmounts, setGrClientAmounts] = useState({}); // { clientId: '12345' }
   const [grClientFinanceAmounts, setGrClientFinanceAmounts] = useState({}); // { clientId: '12345' } Rev. from finance
+  const [crSave, setCrSave] = useState({}); // { clientId: 'saving' | 'saved' } auto-save mark
+  const crEditsRef = useRef({ amounts: {}, finance: {} }); // latest edits for debounced save
+  const crTimersRef = useRef({}); // { clientId: timeoutId }
+  const grCtxRef = useRef({ year: null, month: null });
   const [grRevMode, setGrRevMode] = useState('head'); // 'head' | 'client'
   const [grRevenueTarget, setGrRevenueTarget] = useState(''); // annual revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
@@ -1082,6 +1086,50 @@ export default function AdminPage({ initialTab = 'users' }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grClientAmounts, grClients, grHeads]);
+
+  // Keep refs of the latest edits + month/year so the debounced auto-save reads
+  // fresh values (setTimeout closures would otherwise capture stale state).
+  useEffect(() => { crEditsRef.current.amounts = grClientAmounts; }, [grClientAmounts]);
+  useEffect(() => { crEditsRef.current.finance = grClientFinanceAmounts; }, [grClientFinanceAmounts]);
+  useEffect(() => { grCtxRef.current = { year: grYear, month: grMonth }; }, [grYear, grMonth]);
+
+  // Auto-save a single client's Revenue + Rev. from finance (used by the by-client
+  // grid). Posts only that client so it's cheap; the response refreshes the row's
+  // verification status. Shows a per-row saving/saved mark.
+  const autoSaveClient = async (clientId) => {
+    const { year, month } = grCtxRef.current;
+    const revRaw = crEditsRef.current.amounts[clientId];
+    const finRaw = crEditsRef.current.finance[clientId];
+    const toVal = (v) => (v === '' || v == null ? null : Number(v));
+    setCrSave(s => ({ ...s, [clientId]: 'saving' }));
+    try {
+      const { data } = await api.post('/admin/group-revenue', {
+        year, month,
+        clientAmounts: { [clientId]: toVal(revRaw) },
+        clientFinanceAmounts: { [clientId]: toVal(finRaw) },
+      });
+      // Refresh row metadata (verification badge, head) without touching the
+      // inputs the admin is still editing.
+      if (Array.isArray(data.clients)) setGrClients(data.clients);
+      setCrSave(s => ({ ...s, [clientId]: 'saved' }));
+      setTimeout(() => setCrSave(s => {
+        if (s[clientId] !== 'saved') return s;
+        const n = { ...s }; delete n[clientId]; return n;
+      }), 2000);
+    } catch (err) {
+      setCrSave(s => { const n = { ...s }; delete n[clientId]; return n; });
+      setError(err.response?.data?.error || 'Failed to auto-save revenue.');
+    }
+  };
+
+  // Debounce a client's auto-save ~700ms after the last keystroke. `flush` (on
+  // blur) saves immediately.
+  const scheduleClientSave = (clientId, flush = false) => {
+    const timers = crTimersRef.current;
+    if (timers[clientId]) { clearTimeout(timers[clientId]); delete timers[clientId]; }
+    if (flush) { autoSaveClient(clientId); return; }
+    timers[clientId] = setTimeout(() => { delete timers[clientId]; autoSaveClient(clientId); }, 700);
+  };
 
   const saveGroupRevenue = async () => {
     setGrSaving(true);
@@ -2664,19 +2712,27 @@ export default function AdminPage({ initialTab = 'users' }) {
                                 <MoneyInput
                                   className="input"
                                   value={grClientAmounts[c.clientId] ?? ''}
-                                  onValueChange={v => { setGrSavedAt(null); setGrClientAmounts(a => ({ ...a, [c.clientId]: v })); }}
+                                  onValueChange={v => { setGrSavedAt(null); setGrClientAmounts(a => ({ ...a, [c.clientId]: v })); scheduleClientSave(c.clientId); }}
+                                  onBlur={() => scheduleClientSave(c.clientId, true)}
                                   placeholder="0"
                                   style={{ maxWidth: 160, textAlign: 'right' }}
                                 />
                               </td>
                               <td style={{ textAlign: 'right' }}>
-                                <MoneyInput
-                                  className="input"
-                                  value={grClientFinanceAmounts[c.clientId] ?? ''}
-                                  onValueChange={v => { setGrSavedAt(null); setGrClientFinanceAmounts(a => ({ ...a, [c.clientId]: v })); }}
-                                  placeholder="0"
-                                  style={{ maxWidth: 160, textAlign: 'right' }}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                  <MoneyInput
+                                    className="input"
+                                    value={grClientFinanceAmounts[c.clientId] ?? ''}
+                                    onValueChange={v => { setGrSavedAt(null); setGrClientFinanceAmounts(a => ({ ...a, [c.clientId]: v })); scheduleClientSave(c.clientId); }}
+                                    onBlur={() => scheduleClientSave(c.clientId, true)}
+                                    placeholder="0"
+                                    style={{ maxWidth: 160, textAlign: 'right' }}
+                                  />
+                                  <span style={{ width: 16, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title={crSave[c.clientId] === 'saving' ? 'Saving…' : crSave[c.clientId] === 'saved' ? 'Saved' : ''}>
+                                    {crSave[c.clientId] === 'saving' && <span style={{ width: 12, height: 12, border: '2px solid #C7D0DD', borderTopColor: '#15814B', borderRadius: '50%', display: 'inline-block', animation: 'ob-spin .7s linear infinite' }} />}
+                                    {crSave[c.clientId] === 'saved' && <Icon name="check" size={14} style={{ color: '#15814B' }} />}
+                                  </span>
+                                </div>
                               </td>
                               <td>
                                 <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: vb.bg, color: vb.fg }}>{vb.label}</span>
