@@ -316,7 +316,6 @@ export default function ProfitPage() {
             <Card label="Total Profit" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
             <Card label="Blended Commission" value={fmtPct(summary?.blendedCommissionPct)} sub="Profit ÷ revenue" accent={C.margin} />
             <Card label="Active Clients" value={String(summary?.clientCount ?? 0)} plain sub="With confirmed spend" />
-            <Card label="Avg Profit / Client" value={fmtLKRm(summary?.avgProfitPerClient)} title={fmtLKR(summary?.avgProfitPerClient)} sub="Mean across clients" />
             <Card label="Top Client" value={clientsRanked[0]?.client || '-'} valueSize={16} plain sub={clientsRanked[0] ? `${fmtLKRm(clientsRanked[0].profit)} profit` : 'No data'} />
           </div>
 
