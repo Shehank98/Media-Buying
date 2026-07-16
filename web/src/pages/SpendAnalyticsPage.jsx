@@ -70,6 +70,13 @@ export default function SpendAnalyticsPage() {
   const [cmpFrom, setCmpFrom] = useState('');
   const [cmpTo, setCmpTo] = useState('');
   const [revOpen, setRevOpen] = useState(false);
+  const [revPending, setRevPending] = useState(0);
+  const canVerify = user?.role === 'GROUP_HEAD' || user?.role === 'SUPER_ADMIN';
+  const refreshRevPending = () => {
+    if (!canVerify) return;
+    api.get('/revenue/verification/pending').then(r => setRevPending(r.data?.pending || 0)).catch(() => {});
+  };
+  useEffect(() => { refreshRevPending(); /* eslint-disable-next-line */ }, [canVerify]);
   const [cmpData, setCmpData] = useState(null);
 
   // Agency-wise Annual Achievement + this-year monthly spend (respects the agency
@@ -550,9 +557,12 @@ export default function SpendAnalyticsPage() {
               <button className="spa-btn" onClick={() => setCompare(c => !c)} style={compare ? { background: '#E85D24', borderColor: '#E85D24' } : undefined}>
                 <Icon name="activity" size={15} /> Compare
               </button>
-              {(user?.role === 'GROUP_HEAD' || user?.role === 'SUPER_ADMIN') && (
-                <button className="spa-btn" onClick={() => setRevOpen(true)}>
+              {canVerify && (
+                <button className="spa-btn" onClick={() => setRevOpen(true)} style={{ position: 'relative', ...(revPending > 0 ? { borderColor: '#E85D24' } : {}) }}>
                   <Icon name="check" size={15} /> Rev Verification
+                  {revPending > 0 && (
+                    <span title={`${revPending} to verify`} style={{ marginLeft: 2, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: '#E85D24', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-grid', placeItems: 'center' }}>{revPending}</span>
+                  )}
                 </button>
               )}
             </div>
@@ -1441,7 +1451,7 @@ export default function SpendAnalyticsPage() {
         </div>
       )}
 
-      {revOpen && <RevVerificationModal user={user} onClose={() => setRevOpen(false)} />}
+      {revOpen && <RevVerificationModal user={user} onClose={() => { setRevOpen(false); refreshRevPending(); }} />}
     </div>
   );
 }

@@ -84,6 +84,25 @@ export async function listRevenueVerification(req, res) {
   }
 }
 
+// Count of finance figures still awaiting this user's verification (all months),
+// for the "Rev Verification" button badge in Spend Analytics.
+export async function getPendingRevenueVerification(req, res) {
+  try {
+    const scope = await verifyScope(req.user);
+    const pending = await prisma.clientRevenue.count({
+      where: {
+        revenueFromFinance: { not: null },
+        verifyStatus: 'PENDING',
+        ...(scope ? { clientId: { in: scope } } : {}),
+      },
+    });
+    return res.json({ pending });
+  } catch (error) {
+    console.error('getPendingRevenueVerification error:', error);
+    return res.status(500).json({ error: 'Failed to load pending count', detail: error.message });
+  }
+}
+
 export async function submitRevenueVerification(req, res) {
   try {
     const year = parseInt(req.body.year);

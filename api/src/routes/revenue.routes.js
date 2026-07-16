@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { listRevenueVerification, submitRevenueVerification } from '../controllers/revenueVerification.controller.js';
+import { listRevenueVerification, submitRevenueVerification, getPendingRevenueVerification } from '../controllers/revenueVerification.controller.js';
 
 const router = Router();
 
@@ -8,6 +8,7 @@ const router = Router();
 // revenue figure; SUPER_ADMIN can see/verify across all clients.
 router.use(authenticate, requireRole('GROUP_HEAD', 'SUPER_ADMIN'));
 
+router.get('/verification/pending', getPendingRevenueVerification);
 router.get('/verification', listRevenueVerification);
 router.post('/verification', submitRevenueVerification);
 
