@@ -30,6 +30,7 @@ const fmtMonth = (ym) => {
 
 const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
 const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
+const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const YEAR_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#D9521C'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -60,6 +61,7 @@ export default function ClientDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [year, setYear] = useState(''); // '' until first load resolves the current year
+  const [channelSearch, setChannelSearch] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -135,6 +137,104 @@ export default function ClientDashboardPage() {
         return `Jan–${mLabel} ${yoy.throughMonth.slice(0, 4)} vs Jan–${mLabel} ${yoy.previousYear}`;
       })()
     : 'vs last year, same period';
+
+  // A single channel card (rep contact, latest deal, rate card).
+  const channelCard = (ch) => {
+    const medium = ch.channelMaster?.medium || ch.type;
+    const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
+    const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
+    const d = ch.latestDeal;
+    const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
+    return (
+      <div key={ch.id} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${mc}, ${mc}22 75%, transparent)` }} />
+        {/* Header: icon + name + medium */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, background: `${mc}18`, color: mc, display: 'grid', placeItems: 'center', flex: 'none' }}>
+            <Icon name={(medium || 'tv').toLowerCase()} size={18} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.name}>{ch.name}</div>
+            {medium && <span className="medium-tag" data-medium={medium} style={{ marginTop: 2 }}>{medium}</span>}
+          </div>
+        </div>
+
+        {/* Contact (ME) */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Contact · ME</div>
+          {hasContact ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#EEF1F6', color: '#3B4A63', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12, flex: 'none' }}>
+                {(ch.contactName || '?').trim()[0]?.toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
+                {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactName}>{ch.contactName}</div>}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: 'var(--muted)' }}>
+                  {ch.contactMobile && <span title={ch.contactMobile}><Icon name="phone" size={11} /> {ch.contactMobile}</span>}
+                  {ch.contactEmail && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170, whiteSpace: 'nowrap' }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</span>}
+                </div>
+              </div>
+            </div>
+          ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No contact recorded</div>}
+        </div>
+
+        {/* Latest deal */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Latest deal</div>
+          {d ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span className="badge" style={{ fontSize: 10.5 }}>{d.year}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#F2F5FA' }}>
+                <b className="mono" style={{ fontSize: 14, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}%</b>
+                <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>off</span>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#EAF7EF' }}>
+                <b className="mono" style={{ fontSize: 14, color: '#15814B' }}>{d.bonusPct.toFixed(1)}%</b>
+                <span style={{ fontSize: 10.5, color: '#15814B' }}>bonus</span>
+              </span>
+            </div>
+          ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No deal recorded</div>}
+        </div>
+
+        {/* Rate card */}
+        <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #EEF0F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          {cardKind ? (
+            <>
+              <span className="badge" style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 4, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>
+                <Icon name="file" size={10} /> {cardKind} rate card
+              </span>
+              <div style={{ display: 'inline-flex', gap: 6 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View"><Icon name="eye" size={13} /> View</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download"><Icon name="download" size={13} /></button>
+              </div>
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="file" size={12} /> No rate card</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Channel directory grouped by medium (TV / Radio / …) + name search.
+  const dirQuery = channelSearch.trim().toLowerCase();
+  const dirFiltered = channels.filter(ch =>
+    !dirQuery ||
+    (ch.name || '').toLowerCase().includes(dirQuery) ||
+    (ch.contactName || '').toLowerCase().includes(dirQuery),
+  );
+  const dirGroups = (() => {
+    const map = new Map();
+    dirFiltered.forEach(ch => {
+      const m = (ch.channelMaster?.medium || ch.type || 'Other').toUpperCase();
+      if (!map.has(m)) map.set(m, []);
+      map.get(m).push(ch);
+    });
+    return [...map.entries()].sort((a, b) => {
+      const ia = MEDIUM_ORDER.indexOf(a[0]); const ib = MEDIUM_ORDER.indexOf(b[0]);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a[0].localeCompare(b[0]);
+    }).map(([medium, list]) => ({ medium, list: list.sort((x, y) => (x.name || '').localeCompare(y.name || '')) }));
+  })();
 
   return (
     <div className="content-narrow fade-in">
@@ -328,93 +428,48 @@ export default function ClientDashboardPage() {
         </div>
       </div>
 
-      {/* Channel directory: rep contact (ME), latest deal, and rate card download */}
+      {/* Channel directory: grouped by medium, searchable by channel / contact name */}
       {channels.length > 0 && (
         <div style={{ marginTop: 28 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <div>
               <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>Channel Directory</h3>
-              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card, for each of this client's {channels.length} channels</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card, grouped by medium — {channels.length} channels</div>
+            </div>
+            <div style={{ position: 'relative', minWidth: 220 }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#93A0B5', pointerEvents: 'none', display: 'flex' }}><Icon name="search" size={15} /></span>
+              <input
+                className="input"
+                value={channelSearch}
+                onChange={e => setChannelSearch(e.target.value)}
+                placeholder="Search channel or contact…"
+                style={{ paddingLeft: 32, width: '100%' }}
+              />
+              {channelSearch && (
+                <button onClick={() => setChannelSearch('')} title="Clear" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#93A0B5', display: 'flex', padding: 4 }}><Icon name="x" size={14} /></button>
+              )}
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-            {channels.map(ch => {
-              const medium = ch.channelMaster?.medium || ch.type;
-              const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
-              const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
-              const d = ch.latestDeal;
-              const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
-              return (
-                <div key={ch.id} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${mc}, ${mc}22 75%, transparent)` }} />
-                  {/* Header: icon + name + medium */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 11, background: `${mc}18`, color: mc, display: 'grid', placeItems: 'center', flex: 'none' }}>
-                      <Icon name={(medium || 'tv').toLowerCase()} size={18} />
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.name}>{ch.name}</div>
-                      {medium && <span className="medium-tag" data-medium={medium} style={{ marginTop: 2 }}>{medium}</span>}
-                    </div>
-                  </div>
-
-                  {/* Contact (ME) */}
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Contact · ME</div>
-                    {hasContact ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#EEF1F6', color: '#3B4A63', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12, flex: 'none' }}>
-                          {(ch.contactName || '?').trim()[0]?.toUpperCase()}
-                        </div>
-                        <div style={{ minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
-                          {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactName}>{ch.contactName}</div>}
-                          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: 'var(--muted)' }}>
-                            {ch.contactMobile && <span title={ch.contactMobile}><Icon name="phone" size={11} /> {ch.contactMobile}</span>}
-                            {ch.contactEmail && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170, whiteSpace: 'nowrap' }} title={ch.contactEmail}><Icon name="mail" size={11} /> {ch.contactEmail}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No contact recorded</div>}
-                  </div>
-
-                  {/* Latest deal */}
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 5 }}>Latest deal</div>
-                    {d ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span className="badge" style={{ fontSize: 10.5 }}>{d.year}</span>
-                        <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#F2F5FA' }}>
-                          <b className="mono" style={{ fontSize: 14, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}%</b>
-                          <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>off</span>
-                        </span>
-                        <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '3px 9px', borderRadius: 7, background: '#EAF7EF' }}>
-                          <b className="mono" style={{ fontSize: 14, color: '#15814B' }}>{d.bonusPct.toFixed(1)}%</b>
-                          <span style={{ fontSize: 10.5, color: '#15814B' }}>bonus</span>
-                        </span>
-                      </div>
-                    ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>No deal recorded</div>}
-                  </div>
-
-                  {/* Rate card */}
-                  <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #EEF0F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    {cardKind ? (
-                      <>
-                        <span className="badge" style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 4, background: cardKind === 'Client' ? 'var(--coral-50,#FDEDE7)' : '#EEF0F3', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#6B7790' }}>
-                          <Icon name="file" size={10} /> {cardKind} rate card
-                        </span>
-                        <div style={{ display: 'inline-flex', gap: 6 }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View"><Icon name="eye" size={13} /> View</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download"><Icon name="download" size={13} /></button>
-                        </div>
-                      </>
-                    ) : (
-                      <span style={{ fontSize: 12, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="file" size={12} /> No rate card</span>
-                    )}
-                  </div>
+          {dirGroups.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)', fontSize: 13.5 }}>No channels match "{channelSearch}".</div>
+          ) : dirGroups.map(({ medium, list }) => {
+            const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
+            return (
+              <div key={medium} style={{ marginBottom: 22 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ width: 26, height: 26, borderRadius: 8, background: `${mc}18`, color: mc, display: 'grid', placeItems: 'center', flex: 'none' }}>
+                    <Icon name={(medium || 'tv').toLowerCase()} size={14} />
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 750, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{medium}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#93A0B5', background: '#EEF1F6', borderRadius: 20, padding: '1px 9px' }}>{list.length}</span>
+                  <span style={{ flex: 1, height: 1, background: '#EEF0F3' }} />
                 </div>
-              );
-            })}
-          </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                  {list.map(channelCard)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
