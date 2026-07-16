@@ -1885,8 +1885,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                     </td>
                     <td style={{ color: 'var(--muted)' }}>
                       {u.lastLoginAt
-                        ? new Date(u.lastLoginAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                        : '-'}
+                        ? new Date(u.lastLoginAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : <span title="Has not signed in since this was added">Never</span>}
                     </td>
                     <td style={{ position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-8px 0 8px -6px rgba(15,31,61,.12)' }}>
                       <div className="row-actions">

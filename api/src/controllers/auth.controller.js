@@ -49,10 +49,11 @@ export async function login(req, res) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Successful login clears any failure/lock state.
-    if (user.failedLogins || user.lockedUntil) {
-      await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
-    }
+    // Successful login: record the timestamp and clear any failure/lock state.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null },
+    });
 
     const { accessToken, refreshToken } = generateTokens(user);
 

@@ -110,6 +110,7 @@ export async function listUsers(req, res) {
         canExport: true,
         readOnly: true,
         createdAt: true,
+        lastLoginAt: true,
         agencyAccess: { include: { agency: { select: { id: true, name: true } } } },
         clientAccess: { include: { client: { select: { id: true, name: true } } } },
       },
