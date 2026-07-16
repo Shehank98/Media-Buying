@@ -1463,23 +1463,26 @@ export default function AdminPage({ initialTab = 'users' }) {
   const grClientsByHead = (() => {
     const map = new Map();
     grClients.forEach(c => {
-      const key = c.headName || 'Unassigned';
-      if (!map.has(key)) map.set(key, { headName: key, clients: [], subtotal: 0, financeSubtotal: 0 });
+      const noHead = c.hasHead === false || !c.headName || c.headName === 'Unassigned';
+      const key = noHead ? 'Unassigned' : c.headName;
+      if (!map.has(key)) map.set(key, { headName: key, noHead, clients: [], subtotal: 0, financeSubtotal: 0 });
       const g = map.get(key);
       g.clients.push(c);
       g.subtotal += Number(grClientAmounts[c.clientId] || 0);
       g.financeSubtotal += Number(grClientFinanceAmounts[c.clientId] || 0);
     });
-    return [...map.values()];
+    // Real Hub heads first (alphabetical), the "Unassigned" bucket always last.
+    return [...map.values()].sort((a, b) => (a.noHead ? 1 : 0) - (b.noHead ? 1 : 0) || a.headName.localeCompare(b.headName));
   })();
 
   // Export the by-client revenue worksheet (Revenue + Rev. from finance + head verification).
   const exportClientRevenue = () => {
     const wb = XLSX.utils.book_new();
     const rows = [
-      ['Group Head', 'Client', 'Agency', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Note', 'Verified By'],
+      ['Group Head', 'Client', 'Agency', 'Status', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Note', 'Verified By'],
       ...grClients.map(c => [
-        c.headName || 'Unassigned', c.name, c.agencyName,
+        (c.hasHead === false ? 'Unassigned' : (c.headName || 'Unassigned')), c.name, c.agencyName,
+        c.isActive === false ? 'Inactive' : 'Active',
         grClientAmounts[c.clientId] === '' || grClientAmounts[c.clientId] == null ? '' : Number(grClientAmounts[c.clientId]),
         grClientFinanceAmounts[c.clientId] === '' || grClientFinanceAmounts[c.clientId] == null ? '' : Number(grClientFinanceAmounts[c.clientId]),
         c.verifyStatus || 'PENDING',
@@ -2854,8 +2857,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <tbody>
                       {grClientsByHead.map(g => (
                         <Fragment key={g.headName}>
-                          <tr style={{ background: '#F6F8FA' }}>
-                            <td colSpan={2} style={{ fontWeight: 750, color: '#15814B' }}>{g.headName}</td>
+                          <tr style={{ background: g.noHead ? '#FBF2EF' : '#F6F8FA' }}>
+                            <td colSpan={2} style={{ fontWeight: 750, color: g.noHead ? '#C5391F' : '#15814B' }}>
+                              {g.noHead ? 'Unassigned' : g.headName}
+                              {g.noHead && <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 700, color: '#C5391F', background: '#FBE0DA', padding: '2px 7px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '.03em' }}>No Hub head</span>}
+                            </td>
                             <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(g.subtotal)}</td>
                             <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(g.financeSubtotal)}</td>
                             <td />
@@ -2864,7 +2870,10 @@ export default function AdminPage({ initialTab = 'users' }) {
                             const vb = { VERIFIED: { bg: '#ECF8F1', fg: '#15814B', label: 'Verified' }, DISPUTED: { bg: '#FBE0DA', fg: '#C5391F', label: 'Disputed' }, PENDING: { bg: '#F1F3F6', fg: '#6B7790', label: 'Pending' } }[c.verifyStatus] || { bg: '#F1F3F6', fg: '#6B7790', label: 'Pending' };
                             return (
                             <tr key={c.clientId}>
-                              <td className="strong" style={{ paddingLeft: 22 }}>{c.name}</td>
+                              <td className="strong" style={{ paddingLeft: 22 }}>
+                                {c.name}
+                                {c.isActive === false && <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 700, color: '#9A5B00', background: '#FCF4E2', padding: '2px 7px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '.03em' }}>Inactive</span>}
+                              </td>
                               <td style={{ color: 'var(--muted)', fontSize: 12 }}>{c.agencyName}</td>
                               <td style={{ textAlign: 'right' }}>
                                 <MoneyInput

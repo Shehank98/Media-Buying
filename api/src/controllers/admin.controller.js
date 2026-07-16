@@ -1075,10 +1075,12 @@ export async function listGroupRevenue(req, res) {
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
       prisma.yearRevenueTarget.findUnique({ where: { year } }),
-      // Hub-assigned clients (same roster as forecasting) for the by-client grid.
+      // EVERY client for the admin by-client revenue grid — including inactive
+      // ones (e.g. a paused account like Mobitel) and ones with no Hub head — so
+      // the admin can always enter revenue. Inactive/Unassigned are flagged in the
+      // response; Forecasting + Rev Verification stay active+assigned only.
       prisma.client.findMany({
-        where: { isActive: true, OR: GROUP_HEAD_CLIENT_OR },
-        select: { id: true, name: true, agency: { select: { name: true } } },
+        select: { id: true, name: true, isActive: true, agency: { select: { name: true } } },
         orderBy: [{ name: 'asc' }],
       }),
       prisma.clientRevenue.findMany({ where: { year, month }, include: { verifier: { select: { name: true } } } }),
@@ -1095,6 +1097,8 @@ export async function listGroupRevenue(req, res) {
           clientId: c.id,
           name: c.name,
           agencyName: c.agency?.name || '',
+          isActive: c.isActive !== false,
+          hasHead: headByClient.has(c.id),
           headName: headByClient.get(c.id) || 'Unassigned',
           amount: r && r.amount != null ? Number(r.amount) : null,
           revenueFromFinance: r && r.revenueFromFinance != null ? Number(r.revenueFromFinance) : null,
