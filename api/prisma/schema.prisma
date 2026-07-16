@@ -57,6 +57,12 @@ enum CommissionType {
   AOR
 }
 
+enum RevenueVerifyStatus {
+  PENDING
+  VERIFIED
+  DISPUTED
+}
+
 model User {
   id                        Int                  @id @default(autoincrement())
   email                     String               @unique
@@ -94,6 +100,7 @@ model User {
   packagesCreated           MediaPackage[]       @relation("PackageCreator")
   packageRecipients         PackageRecipient[]   @relation("PackageRecipientUser")
   groupRevenues             GroupRevenue[]       @relation("GroupRevenueHead")
+  clientRevenuesVerified    ClientRevenue[]      @relation("ClientRevenueVerifier")
 
   @@map("users")
 }
@@ -645,21 +652,32 @@ model GroupRevenue {
   @@map("group_revenues")
 }
 
-// Admin-entered revenue per CLIENT per month. A Hub head's revenue total = the
-// sum of their clients' entries here (when any exist), rolled up in the Executive
-// Dashboard Revenue Contribution donut; otherwise the direct GroupRevenue figure
-// for that head is used. Blank/0 clears the row.
+// Admin-entered revenue per CLIENT per month. `amount` = "Revenue (LKR)" (a Hub
+// head's revenue total = the sum of their clients' `amount` when any exist,
+// rolled up in the Executive Dashboard Revenue Contribution donut; otherwise the
+// direct GroupRevenue figure for that head is used). `revenueFromFinance` = the
+// figure Finance reports for that client/month; the client's group head then
+// VERIFIES it on the Spend Analytics → Rev Verification screen — confirming it
+// (verifyStatus=VERIFIED) or disputing it with a corrected amount + reason
+// (verifyStatus=DISPUTED). A row with both amounts blank is cleared.
 model ClientRevenue {
-  id          Int      @id @default(autoincrement())
-  year        Int
-  month       Int // 1=Jan
-  clientId    Int      @map("client_id")
-  amount      Decimal  @db.Decimal(16, 2)
-  createdById Int?     @map("created_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                 Int                 @id @default(autoincrement())
+  year               Int
+  month              Int // 1=Jan
+  clientId           Int                 @map("client_id")
+  amount             Decimal?            @db.Decimal(16, 2)
+  revenueFromFinance Decimal?            @map("revenue_from_finance") @db.Decimal(16, 2)
+  verifyStatus       RevenueVerifyStatus @default(PENDING) @map("verify_status")
+  verifiedAmount     Decimal?            @map("verified_amount") @db.Decimal(16, 2)
+  verifyReason       String?             @map("verify_reason")
+  verifiedById       Int?                @map("verified_by_id")
+  verifiedAt         DateTime?           @map("verified_at")
+  createdById        Int?                @map("created_by_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  verifier User?  @relation("ClientRevenueVerifier", fields: [verifiedById], references: [id])
 
   @@unique([year, month, clientId])
   @@index([year, month])

@@ -28,6 +28,7 @@ import forecastingRoutes from './routes/forecasting.routes.js';
 import forecastInsightsRoutes from './routes/forecastInsights.routes.js';
 import mediaBuyingRoutes from './routes/mediabuying.routes.js';
 import profitRoutes from './routes/profit.routes.js';
+import revenueRoutes from './routes/revenue.routes.js';
 import backupRoutes from './routes/backup.routes.js';
 import { startBackupScheduler } from './services/backup.service.js';
 
@@ -70,6 +71,7 @@ app.use('/api/forecasting', forecastingRoutes);
 app.use('/api/forecasting', forecastInsightsRoutes);
 app.use('/api/media-buying', mediaBuyingRoutes);
 app.use('/api/profit', profitRoutes);
+app.use('/api/revenue', revenueRoutes);
 app.use('/api/admin/backup', backupRoutes);
 
 // Health check

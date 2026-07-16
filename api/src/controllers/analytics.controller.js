@@ -2129,6 +2129,7 @@ export async function getGroupContribution(req, res) {
     if (clientRevRows.length) {
       const revHeadByClient = await accountManagerByClient(clientRevRows.map(r => r.clientId));
       for (const r of clientRevRows) {
+        if (r.amount == null) continue; // finance-only rows (revenueFromFinance set, no Revenue) don't roll up
         const head = revHeadByClient.get(r.clientId);
         if (!head) continue; // Hub-assigned heads only
         clientSumByHead[head] = (clientSumByHead[head] || 0) + (Number(r.amount) / 1e6);

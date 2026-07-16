@@ -150,6 +150,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
   const [grClients, setGrClients] = useState([]);      // [{ clientId, name, agencyName, headName, amount }]
   const [grClientAmounts, setGrClientAmounts] = useState({}); // { clientId: '12345' }
+  const [grClientFinanceAmounts, setGrClientFinanceAmounts] = useState({}); // { clientId: '12345' } Rev. from finance
   const [grRevMode, setGrRevMode] = useState('head'); // 'head' | 'client'
   const [grRevenueTarget, setGrRevenueTarget] = useState(''); // annual revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
@@ -1032,12 +1033,16 @@ export default function AdminPage({ initialTab = 'users' }) {
       setGrAgencyAmounts(aamts);
       const cls = data.clients || [];
       setGrClients(cls);
-      const camts = {};
-      cls.forEach(c => { camts[c.clientId] = c.amount == null ? '' : String(c.amount); });
+      const camts = {}; const cfamts = {};
+      cls.forEach(c => {
+        camts[c.clientId] = c.amount == null ? '' : String(c.amount);
+        cfamts[c.clientId] = c.revenueFromFinance == null ? '' : String(c.revenueFromFinance);
+      });
       setGrClientAmounts(camts);
+      setGrClientFinanceAmounts(cfamts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
     } catch {
-      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrClients([]); setGrClientAmounts({}); setGrRevenueTarget('');
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrClients([]); setGrClientAmounts({}); setGrClientFinanceAmounts({}); setGrRevenueTarget('');
     } finally {
       setGrLoading(false);
     }
@@ -1056,7 +1061,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
       const clientAmounts = {};
       Object.entries(grClientAmounts).forEach(([id, v]) => { clientAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, clientAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const clientFinanceAmounts = {};
+      Object.entries(grClientFinanceAmounts).forEach(([id, v]) => { clientFinanceAmounts[id] = v === '' ? null : Number(v); });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, clientAmounts, clientFinanceAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -1069,9 +1076,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       setGrAgencyAmounts(aamts);
       const cls = data.clients || [];
       setGrClients(cls);
-      const camts = {};
-      cls.forEach(c => { camts[c.clientId] = c.amount == null ? '' : String(c.amount); });
+      const camts = {}; const cfamts = {};
+      cls.forEach(c => {
+        camts[c.clientId] = c.amount == null ? '' : String(c.amount);
+        cfamts[c.clientId] = c.revenueFromFinance == null ? '' : String(c.revenueFromFinance);
+      });
       setGrClientAmounts(camts);
+      setGrClientFinanceAmounts(cfamts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
       setGrSavedAt(Date.now());
     } catch (err) {
@@ -1299,18 +1310,39 @@ export default function AdminPage({ initialTab = 'users' }) {
   const grTotal = Object.values(grAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   const grAgencyTotal = Object.values(grAgencyAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   const grClientTotal = Object.values(grClientAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
+  const grClientFinanceTotal = Object.values(grClientFinanceAmounts).reduce((s, v) => s + (Number(v) || 0), 0);
   // Clients grouped by Hub head (for the by-client entry grid), with per-head subtotals.
   const grClientsByHead = (() => {
     const map = new Map();
     grClients.forEach(c => {
       const key = c.headName || 'Unassigned';
-      if (!map.has(key)) map.set(key, { headName: key, clients: [], subtotal: 0 });
+      if (!map.has(key)) map.set(key, { headName: key, clients: [], subtotal: 0, financeSubtotal: 0 });
       const g = map.get(key);
       g.clients.push(c);
       g.subtotal += Number(grClientAmounts[c.clientId] || 0);
+      g.financeSubtotal += Number(grClientFinanceAmounts[c.clientId] || 0);
     });
     return [...map.values()];
   })();
+
+  // Export the by-client revenue worksheet (Revenue + Rev. from finance + head verification).
+  const exportClientRevenue = () => {
+    const wb = XLSX.utils.book_new();
+    const rows = [
+      ['Group Head', 'Client', 'Agency', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Reason', 'Verified By'],
+      ...grClients.map(c => [
+        c.headName || 'Unassigned', c.name, c.agencyName,
+        grClientAmounts[c.clientId] === '' || grClientAmounts[c.clientId] == null ? '' : Number(grClientAmounts[c.clientId]),
+        grClientFinanceAmounts[c.clientId] === '' || grClientFinanceAmounts[c.clientId] == null ? '' : Number(grClientFinanceAmounts[c.clientId]),
+        c.verifyStatus || 'PENDING',
+        c.verifiedAmount == null ? '' : Number(c.verifiedAmount),
+        c.verifyReason || '',
+        c.verifiedByName || '',
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Revenue by Client');
+    XLSX.writeFile(wb, `revenue-by-client-${grYear}-${String(grMonth).padStart(2, '0')}.xlsx`);
+  };
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -2553,6 +2585,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                   <button key={k} onClick={() => setGrRevMode(k)} style={{ border: 'none', padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: grRevMode === k ? '#15814B' : '#fff', color: grRevMode === k ? '#fff' : 'var(--ink-soft)' }}>{lbl}</button>
                 ))}
               </div>
+              {grRevMode === 'client' && (
+                <button className="btn btn-ghost btn-sm" onClick={exportClientRevenue} disabled={grLoading || grClients.length === 0}>
+                  <Icon name="download" size={14} /> Export
+                </button>
+              )}
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total</div>
                 <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#15814B' }}>{fmtLKR(grRevMode === 'client' ? grClientTotal : grTotal)}</div>
@@ -2572,7 +2609,9 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <tr>
                         <th>Client</th>
                         <th>Agency</th>
-                        <th style={{ textAlign: 'right', width: 210 }}>Revenue (LKR)</th>
+                        <th style={{ textAlign: 'right', width: 180 }}>Revenue (LKR)</th>
+                        <th style={{ textAlign: 'right', width: 180 }}>Rev. from finance (LKR)</th>
+                        <th style={{ width: 170 }}>Verification</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2581,8 +2620,12 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <tr style={{ background: '#F6F8FA' }}>
                             <td colSpan={2} style={{ fontWeight: 750, color: '#15814B' }}>{g.headName}</td>
                             <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(g.subtotal)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(g.financeSubtotal)}</td>
+                            <td />
                           </tr>
-                          {g.clients.map(c => (
+                          {g.clients.map(c => {
+                            const vb = { VERIFIED: { bg: '#ECF8F1', fg: '#15814B', label: 'Verified' }, DISPUTED: { bg: '#FBE0DA', fg: '#C5391F', label: 'Disputed' }, PENDING: { bg: '#F1F3F6', fg: '#6B7790', label: 'Pending' } }[c.verifyStatus] || { bg: '#F1F3F6', fg: '#6B7790', label: 'Pending' };
+                            return (
                             <tr key={c.clientId}>
                               <td className="strong" style={{ paddingLeft: 22 }}>{c.name}</td>
                               <td style={{ color: 'var(--muted)', fontSize: 12 }}>{c.agencyName}</td>
@@ -2592,16 +2635,39 @@ export default function AdminPage({ initialTab = 'users' }) {
                                   value={grClientAmounts[c.clientId] ?? ''}
                                   onValueChange={v => { setGrSavedAt(null); setGrClientAmounts(a => ({ ...a, [c.clientId]: v })); }}
                                   placeholder="0"
-                                  style={{ maxWidth: 190, textAlign: 'right' }}
+                                  style={{ maxWidth: 160, textAlign: 'right' }}
                                 />
                               </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <MoneyInput
+                                  className="input"
+                                  value={grClientFinanceAmounts[c.clientId] ?? ''}
+                                  onValueChange={v => { setGrSavedAt(null); setGrClientFinanceAmounts(a => ({ ...a, [c.clientId]: v })); }}
+                                  placeholder="0"
+                                  style={{ maxWidth: 160, textAlign: 'right' }}
+                                />
+                              </td>
+                              <td>
+                                <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: vb.bg, color: vb.fg }}>{vb.label}</span>
+                                {c.verifyStatus === 'DISPUTED' && (
+                                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }} title={c.verifyReason || ''}>
+                                    → {fmtLKR(c.verifiedAmount)}{c.verifiedByName ? ` · ${c.verifiedByName}` : ''}
+                                  </div>
+                                )}
+                                {c.verifyStatus === 'VERIFIED' && c.verifiedByName && (
+                                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{c.verifiedByName}</div>
+                                )}
+                              </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </Fragment>
                       ))}
                       <tr style={{ borderTop: '2px solid var(--border)' }}>
                         <td className="strong" colSpan={2}>Total</td>
                         <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grClientTotal)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 750 }} className="mono">{fmtLKR(grClientFinanceTotal)}</td>
+                        <td />
                       </tr>
                     </tbody>
                   </table>

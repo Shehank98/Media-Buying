@@ -69,6 +69,7 @@ export default function SpendAnalyticsPage() {
   const [compare, setCompare] = useState(false);
   const [cmpFrom, setCmpFrom] = useState('');
   const [cmpTo, setCmpTo] = useState('');
+  const [revOpen, setRevOpen] = useState(false);
   const [cmpData, setCmpData] = useState(null);
 
   // Agency-wise Annual Achievement + this-year monthly spend (respects the agency
@@ -549,6 +550,11 @@ export default function SpendAnalyticsPage() {
               <button className="spa-btn" onClick={() => setCompare(c => !c)} style={compare ? { background: '#E85D24', borderColor: '#E85D24' } : undefined}>
                 <Icon name="activity" size={15} /> Compare
               </button>
+              {(user?.role === 'GROUP_HEAD' || user?.role === 'SUPER_ADMIN') && (
+                <button className="spa-btn" onClick={() => setRevOpen(true)}>
+                  <Icon name="check" size={15} /> Rev Verification
+                </button>
+              )}
             </div>
           </div>
           {compare && (
@@ -1434,6 +1440,189 @@ export default function SpendAnalyticsPage() {
           <p style={{ margin: '6px 0 0', fontSize: 13 }}>Try adjusting the date range or filters</p>
         </div>
       )}
+
+      {revOpen && <RevVerificationModal user={user} onClose={() => setRevOpen(false)} />}
+    </div>
+  );
+}
+
+// ── Rev Verification modal ──────────────────────────────────────────────────
+// Group heads (own clients) and admin (all clients) review the finance revenue
+// figure per client for a month and either Confirm it or Dispute it with a
+// corrected amount + reason. Past months are selectable.
+const RV_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function rvFullLKR(v) {
+  if (v == null || v === '') return '-';
+  return 'LKR ' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function RevVerificationModal({ user, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [months, setMonths] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [err, setErr] = useState('');
+  const [drafts, setDrafts] = useState({});
+
+  const load = async (target) => {
+    setLoading(true);
+    setErr('');
+    try {
+      const params = target ? { year: target.year, month: target.month } : {};
+      const { data } = await api.get('/revenue/verification', { params });
+      setRows(data.clients || []);
+      setMonths(data.availableMonths || []);
+      setSel(data.year && data.month ? { year: data.year, month: data.month } : null);
+    } catch {
+      setErr('Failed to load revenue verification.');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(null); /* eslint-disable-next-line */ }, []);
+
+  const submit = async (clientId, action) => {
+    setBusyId(clientId);
+    setErr('');
+    try {
+      const body = { year: sel.year, month: sel.month, clientId, action };
+      if (action === 'dispute') {
+        const d = drafts[clientId] || {};
+        body.amount = d.amount === '' || d.amount == null ? null : Number(d.amount);
+        body.reason = (d.reason || '').trim();
+        if (body.amount == null) { setErr('Enter the amount you believe is correct.'); setBusyId(null); return; }
+        if (!body.reason) { setErr('Enter a reason for the dispute.'); setBusyId(null); return; }
+      }
+      const { data } = await api.post('/revenue/verification', body);
+      setRows(data.clients || []);
+      setDrafts(p => ({ ...p, [clientId]: { ...(p[clientId] || {}), open: false } }));
+    } catch (e) {
+      setErr(e.response?.data?.error || 'Failed to submit.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const badge = (s) => {
+    const map = {
+      VERIFIED: { bg: '#ECF8F1', fg: '#15814B', label: 'Verified' },
+      DISPUTED: { bg: '#FBE0DA', fg: '#C5391F', label: 'Disputed' },
+      PENDING: { bg: '#FCF4E2', fg: '#9A5B00', label: 'Needs review' },
+    };
+    const st = map[s] || map.PENDING;
+    return <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: st.bg, color: st.fg }}>{st.label}</span>;
+  };
+
+  const selKey = sel ? `${sel.year}-${sel.month}` : '';
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(10,23,41,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 940, boxShadow: '0 24px 60px rgba(10,23,41,.35)' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 750, color: 'var(--ink)' }}>Revenue Verification</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+              {user?.role === 'SUPER_ADMIN' ? 'Review the finance revenue figure for every client.' : 'Confirm or dispute the finance revenue figure for your clients.'}
+            </div>
+          </div>
+          <select
+            className="select"
+            value={selKey}
+            onChange={e => { const [y, m] = e.target.value.split('-').map(Number); load({ year: y, month: m }); }}
+            style={{ maxWidth: 190 }}
+            disabled={months.length === 0}
+          >
+            {months.length === 0 && <option value="">No months</option>}
+            {months.map(m => <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{RV_MONTHS[m.month - 1]} {m.year}</option>)}
+          </select>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="x" size={16} /></button>
+        </div>
+
+        {err && <div style={{ margin: '12px 22px 0', padding: '9px 12px', background: '#FBE0DA', color: '#C5391F', borderRadius: 8, fontSize: 13 }}>{err}</div>}
+
+        <div style={{ padding: 22, maxHeight: '65vh', overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: '40px 0' }}><OrbitLoader label="Loading…" /></div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
+              No finance revenue figures to verify{sel ? ` for ${RV_MONTHS[sel.month - 1]} ${sel.year}` : ''}. The admin enters these in Admin &rarr; Group Revenue &rarr; Revenue by Client.
+            </div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th style={{ textAlign: 'right' }}>Rev. from finance</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(c => {
+                    const d = drafts[c.clientId] || {};
+                    const disputing = d.open;
+                    return (
+                      <Fragment key={c.clientId}>
+                        <tr>
+                          <td className="strong">{c.clientName}<div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 400 }}>{c.agencyName}</div></td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{rvFullLKR(c.revenueFromFinance)}</td>
+                          <td>
+                            {badge(c.verifyStatus)}
+                            {c.verifyStatus === 'DISPUTED' && (
+                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>
+                                &rarr; {rvFullLKR(c.verifiedAmount)}{c.verifyReason ? ` · ${c.verifyReason}` : ''}
+                              </div>
+                            )}
+                            {c.verifyStatus === 'VERIFIED' && c.verifiedByName && (
+                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>by {c.verifiedByName}</div>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: 6 }}>
+                              <button className="btn btn-sm" onClick={() => submit(c.clientId, 'confirm')} disabled={busyId === c.clientId}
+                                style={{ background: '#ECF8F1', color: '#15814B', border: '1px solid #Bfe6cf' }}>
+                                <Icon name="check" size={13} /> Confirm
+                              </button>
+                              <button className="btn btn-sm btn-ghost" onClick={() => setDrafts(p => ({ ...p, [c.clientId]: { amount: d.amount ?? (c.verifiedAmount ?? ''), reason: d.reason ?? '', open: !disputing } }))} disabled={busyId === c.clientId}>
+                                Dispute
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {disputing && (
+                          <tr>
+                            <td colSpan={4} style={{ background: 'var(--bg-sunken)' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', padding: '6px 2px' }}>
+                                <div className="field" style={{ margin: 0 }}>
+                                  <label>Correct amount (LKR)</label>
+                                  <input className="input" type="number" min="0" step="1000" value={d.amount ?? ''} placeholder="0"
+                                    onChange={e => setDrafts(p => ({ ...p, [c.clientId]: { ...p[c.clientId], amount: e.target.value } }))}
+                                    style={{ maxWidth: 190, textAlign: 'right' }} />
+                                </div>
+                                <div className="field" style={{ margin: 0, flex: 1, minWidth: 220 }}>
+                                  <label>Reason</label>
+                                  <input className="input" value={d.reason ?? ''} placeholder="Why the finance figure is wrong…"
+                                    onChange={e => setDrafts(p => ({ ...p, [c.clientId]: { ...p[c.clientId], reason: e.target.value } }))} />
+                                </div>
+                                <button className="btn btn-primary btn-sm" onClick={() => submit(c.clientId, 'dispute')} disabled={busyId === c.clientId}>
+                                  {busyId === c.clientId ? 'Saving…' : 'Submit dispute'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

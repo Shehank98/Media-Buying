@@ -1081,21 +1081,30 @@ export async function listGroupRevenue(req, res) {
         select: { id: true, name: true, agency: { select: { name: true } } },
         orderBy: [{ name: 'asc' }],
       }),
-      prisma.clientRevenue.findMany({ where: { year, month } }),
+      prisma.clientRevenue.findMany({ where: { year, month }, include: { verifier: { select: { name: true } } } }),
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
-    // Per-client revenue for the by-client entry grid, tagged with the managing head.
-    const clientRevBy = new Map(clientRevRows.map((r) => [r.clientId, Number(r.amount)]));
+    // Per-client revenue row (Revenue + Rev. from finance + head verification).
+    const clientRevBy = new Map(clientRevRows.map((r) => [r.clientId, r]));
     const headByClient = await accountManagerByClient(rosterClients.map((c) => c.id));
     const clients = rosterClients
-      .map((c) => ({
-        clientId: c.id,
-        name: c.name,
-        agencyName: c.agency?.name || '',
-        headName: headByClient.get(c.id) || 'Unassigned',
-        amount: clientRevBy.has(c.id) ? clientRevBy.get(c.id) : null,
-      }))
+      .map((c) => {
+        const r = clientRevBy.get(c.id);
+        return {
+          clientId: c.id,
+          name: c.name,
+          agencyName: c.agency?.name || '',
+          headName: headByClient.get(c.id) || 'Unassigned',
+          amount: r && r.amount != null ? Number(r.amount) : null,
+          revenueFromFinance: r && r.revenueFromFinance != null ? Number(r.revenueFromFinance) : null,
+          verifyStatus: r ? r.verifyStatus : 'PENDING',
+          verifiedAmount: r && r.verifiedAmount != null ? Number(r.verifiedAmount) : null,
+          verifyReason: r ? (r.verifyReason || null) : null,
+          verifiedByName: r ? (r.verifier?.name || null) : null,
+          verifiedAt: r ? (r.verifiedAt || null) : null,
+        };
+      })
       .sort((a, b) => a.headName.localeCompare(b.headName) || a.name.localeCompare(b.name));
     return res.json({
       year,
@@ -1120,14 +1129,14 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts, clientAmounts, annualRevenueTarget } = req.body || {};
+    const { year, month, amounts, agencyAmounts, clientAmounts, clientFinanceAmounts, annualRevenueTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
-    const hasClients = clientAmounts && typeof clientAmounts === 'object';
+    const hasClients = (clientAmounts && typeof clientAmounts === 'object') || (clientFinanceAmounts && typeof clientFinanceAmounts === 'object');
     const hasTarget = annualRevenueTarget !== undefined;
     if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasClients && !hasTarget)) {
-      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId } and/or agencyAmounts { agencyId } and/or clientAmounts { clientId } and/or annualRevenueTarget are required' });
+      return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId } and/or agencyAmounts { agencyId } and/or clientAmounts { clientId } and/or clientFinanceAmounts { clientId } and/or annualRevenueTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
@@ -1170,24 +1179,45 @@ export async function setGroupRevenue(req, res) {
         }
       }
     }
-    // Per-client revenue: upsert/clear one row per client. A head's roll-up total
-    // is derived from these on read (getGroupContribution).
+    // Per-client revenue: one row per client carrying `amount` ("Revenue (LKR)")
+    // and `revenueFromFinance` ("Rev. from finance"). A head's roll-up total is
+    // derived from `amount` on read (getGroupContribution). Changing the finance
+    // figure resets that client's verification (the head must re-check it). A row
+    // whose both amounts become blank is deleted (verification goes with it).
     if (hasClients) {
-      const ids = Object.keys(clientAmounts).map((k) => parseInt(k)).filter(Boolean);
+      const ca = (clientAmounts && typeof clientAmounts === 'object') ? clientAmounts : {};
+      const cf = (clientFinanceAmounts && typeof clientFinanceAmounts === 'object') ? clientFinanceAmounts : {};
+      const ids = [...new Set([...Object.keys(ca), ...Object.keys(cf)].map((k) => parseInt(k)).filter(Boolean))];
       const valid = new Set((await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((c) => c.id));
-      for (const [k, v] of Object.entries(clientAmounts)) {
-        const clientId = parseInt(k);
+      const existing = await prisma.clientRevenue.findMany({ where: { year: y, month: m, clientId: { in: ids } } });
+      const existByClient = new Map(existing.map((r) => [r.clientId, r]));
+      const parse = (v) => (v === '' || v == null ? null : Number(v));
+      for (const clientId of ids) {
         if (!valid.has(clientId)) continue;
-        const num = v === '' || v == null ? null : Number(v);
-        if (num == null || isNaN(num) || num <= 0) {
-          ops.push(prisma.clientRevenue.deleteMany({ where: { year: y, month: m, clientId } }));
-        } else {
-          ops.push(prisma.clientRevenue.upsert({
-            where: { year_month_clientId: { year: y, month: m, clientId } },
-            update: { amount: num, createdById: req.user?.id ?? null },
-            create: { year: y, month: m, clientId, amount: num, createdById: req.user?.id ?? null },
-          }));
+        // Only override a field that was actually sent in the request.
+        const prev = existByClient.get(clientId);
+        const amount = Object.prototype.hasOwnProperty.call(ca, clientId) || Object.prototype.hasOwnProperty.call(ca, String(clientId))
+          ? parse(ca[clientId] ?? ca[String(clientId)])
+          : (prev && prev.amount != null ? Number(prev.amount) : null);
+        const finance = Object.prototype.hasOwnProperty.call(cf, clientId) || Object.prototype.hasOwnProperty.call(cf, String(clientId))
+          ? parse(cf[clientId] ?? cf[String(clientId)])
+          : (prev && prev.revenueFromFinance != null ? Number(prev.revenueFromFinance) : null);
+        const cleanAmount = amount == null || isNaN(amount) || amount <= 0 ? null : amount;
+        const cleanFinance = finance == null || isNaN(finance) || finance <= 0 ? null : finance;
+
+        if (cleanAmount == null && cleanFinance == null) {
+          if (prev) ops.push(prisma.clientRevenue.deleteMany({ where: { id: prev.id } }));
+          continue;
         }
+        const financeChanged = prev && Number(prev.revenueFromFinance ?? NaN) !== Number(cleanFinance ?? NaN);
+        const resetVerify = financeChanged
+          ? { verifyStatus: 'PENDING', verifiedAmount: null, verifyReason: null, verifiedById: null, verifiedAt: null }
+          : {};
+        ops.push(prisma.clientRevenue.upsert({
+          where: { year_month_clientId: { year: y, month: m, clientId } },
+          update: { amount: cleanAmount, revenueFromFinance: cleanFinance, ...resetVerify, createdById: req.user?.id ?? null },
+          create: { year: y, month: m, clientId, amount: cleanAmount, revenueFromFinance: cleanFinance, createdById: req.user?.id ?? null },
+        }));
       }
     }
     // Single ANNUAL revenue target for the WHOLE year (blank/0 clears it).
