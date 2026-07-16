@@ -10,6 +10,51 @@ const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
 const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 
+// Parse a money cell that may use accounting parentheses for negatives, e.g.
+// "(1,000)" → -1000, "-1000" → -1000, "1,000" → 1000, "" → null.
+function parseAccountingAmount(v) {
+  if (v == null) return null;
+  let s = String(v).trim();
+  if (s === '') return null;
+  const neg = (s.startsWith('(') && s.includes(')')) || s.trim().startsWith('-');
+  s = s.replace(/[^0-9.]/g, ''); // strip parens, commas, sign, currency, spaces
+  if (s === '') return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return neg ? -Math.abs(n) : n;
+}
+
+const normName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Dice coefficient on character bigrams — a cheap fuzzy-name similarity (0..1).
+function diceSim(a, b) {
+  a = normName(a); b = normName(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+  const bg = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+  const ma = bg(a), mb = bg(b);
+  let inter = 0;
+  ma.forEach((cnt, g) => { if (mb.has(g)) inter += Math.min(cnt, mb.get(g)); });
+  return (2 * inter) / ((a.length - 1) + (b.length - 1));
+}
+
+// Rank roster clients by name similarity to a raw imported name.
+function suggestClients(rawName, clients) {
+  const target = normName(rawName);
+  return clients
+    .map((c) => {
+      const n = normName(c.name);
+      let score = diceSim(rawName, c.name);
+      if (n === target) score = 1;
+      else if (target && (n.includes(target) || target.includes(n))) score = Math.max(score, 0.82);
+      return { clientId: c.clientId, name: c.name, score };
+    })
+    .filter((s) => s.score >= 0.34)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+}
+
 const ROLE_DESC = {
   SUPER_ADMIN: 'Full access; manages agencies, users & assignments',
   MANAGER: 'Read-only across assigned agencies; can export reports',
@@ -155,6 +200,10 @@ export default function AdminPage({ initialTab = 'users' }) {
   const crEditsRef = useRef({ amounts: {}, finance: {} }); // latest edits for debounced save
   const crTimersRef = useRef({}); // { clientId: timeoutId }
   const grCtxRef = useRef({ year: null, month: null });
+  // Excel import of Revenue by Client
+  const [crImport, setCrImport] = useState(null); // { fileName, rows: [{ id, rawClient, revenue, finance, matchId, suggestions }] }
+  const [crImporting, setCrImporting] = useState(false);
+  const crFileRef = useRef(null);
   const [grRevMode, setGrRevMode] = useState('head'); // 'head' | 'client'
   const [grRevenueTarget, setGrRevenueTarget] = useState(''); // annual revenue target (full LKR)
   const [grLoading, setGrLoading] = useState(false);
@@ -1422,6 +1471,85 @@ export default function AdminPage({ initialTab = 'users' }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Revenue by Client');
     XLSX.writeFile(wb, `revenue-by-client-${grYear}-${String(grMonth).padStart(2, '0')}.xlsx`);
   };
+
+  // Parse an uploaded Excel/CSV with columns: Client, Revenue, Rev. from finance.
+  // Auto-matches each client name to the Hub roster; unmatched rows get "did you
+  // mean?" suggestions the admin resolves before importing.
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (crFileRef.current) crFileRef.current.value = '';
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '' });
+      if (!aoa.length) { setError('The file appears to be empty.'); return; }
+      // Locate the header row + the three columns by keyword.
+      let headerIdx = 0, col = null;
+      for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+        const cells = aoa[i].map((c) => String(c).toLowerCase().trim());
+        const ci = cells.findIndex((c) => c.includes('client') || c.includes('account'));
+        const fi = cells.findIndex((c) => c.includes('finance'));
+        const ri = cells.findIndex((c) => (c.includes('revenue') || c === 'rev') && !c.includes('finance'));
+        if (ci !== -1 && (ri !== -1 || fi !== -1)) { headerIdx = i; col = { client: ci, revenue: ri, finance: fi }; break; }
+      }
+      if (!col) { setError('Could not find Client / Revenue / Rev. from finance columns in the file.'); return; }
+      const rows = [];
+      for (let i = headerIdx + 1; i < aoa.length; i++) {
+        const r = aoa[i];
+        const rawClient = String(r[col.client] ?? '').trim();
+        if (!rawClient) continue;
+        const revenue = col.revenue !== -1 ? parseAccountingAmount(r[col.revenue]) : null;
+        const finance = col.finance !== -1 ? parseAccountingAmount(r[col.finance]) : null;
+        if (revenue == null && finance == null) continue;
+        const suggestions = suggestClients(rawClient, grClients);
+        const exact = suggestions.find((s) => normName(s.name) === normName(rawClient));
+        rows.push({
+          id: `${i}`,
+          rawClient,
+          revenue,
+          finance,
+          suggestions,
+          matchId: exact ? exact.clientId : (suggestions[0] && suggestions[0].score >= 0.6 ? suggestions[0].clientId : ''),
+          exact: !!exact,
+        });
+      }
+      if (!rows.length) { setError('No client rows with amounts were found in the file.'); return; }
+      setError('');
+      setCrImport({ fileName: file.name, rows });
+    } catch (err) {
+      setError('Failed to read the file: ' + (err.message || 'unknown error'));
+    }
+  };
+
+  const setImportMatch = (rowId, clientId) => {
+    setCrImport((imp) => imp && ({ ...imp, rows: imp.rows.map((r) => (r.id === rowId ? { ...r, matchId: clientId } : r)) }));
+  };
+
+  const applyImport = async () => {
+    if (!crImport) return;
+    const resolved = crImport.rows.filter((r) => r.matchId !== '' && r.matchId != null);
+    if (!resolved.length) { setError('No rows are matched to a client. Pick a client (or Skip) for each row.'); return; }
+    const clientAmounts = {}; const clientFinanceAmounts = {};
+    for (const r of resolved) {
+      // Last row wins if the same client appears twice.
+      if (r.revenue != null) clientAmounts[r.matchId] = r.revenue;
+      if (r.finance != null) clientFinanceAmounts[r.matchId] = r.finance;
+    }
+    setCrImporting(true);
+    try {
+      await api.post('/admin/group-revenue', { year: grYear, month: grMonth, clientAmounts, clientFinanceAmounts });
+      await fetchGroupRevenue();
+      setCrImport(null);
+      setGrSavedAt(Date.now());
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to import revenue.');
+    } finally {
+      setCrImporting(false);
+    }
+  };
+
   const toggleArrayItem = (arr, id) =>
     arr.includes(id) ? arr.filter(i => i !== id) : [...arr, id];
 
@@ -2665,9 +2793,15 @@ export default function AdminPage({ initialTab = 'users' }) {
                 ))}
               </div>
               {grRevMode === 'client' && (
-                <button className="btn btn-ghost btn-sm" onClick={exportClientRevenue} disabled={grLoading || grClients.length === 0}>
-                  <Icon name="download" size={14} /> Export
-                </button>
+                <>
+                  <input ref={crFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onImportFile} style={{ display: 'none' }} />
+                  <button className="btn btn-ghost btn-sm" onClick={() => crFileRef.current?.click()} disabled={grLoading || grClients.length === 0} title="Import Client / Revenue / Rev. from finance from Excel">
+                    <Icon name="upload" size={14} /> Import
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={exportClientRevenue} disabled={grLoading || grClients.length === 0}>
+                    <Icon name="download" size={14} /> Export
+                  </button>
+                </>
               )}
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Total</div>
@@ -3213,6 +3347,79 @@ export default function AdminPage({ initialTab = 'users' }) {
           )}
         </div>
       )}
+
+      {/* ============ IMPORT REVENUE BY CLIENT MODAL ============ */}
+      {crImport && (() => {
+        const matched = crImport.rows.filter(r => r.matchId !== '' && r.matchId != null).length;
+        const needsAttention = crImport.rows.filter(r => !r.exact).length;
+        const rosterSorted = [...grClients].sort((a, b) => a.name.localeCompare(b.name));
+        const fmtAmt = (n) => (n == null ? '—' : (n < 0 ? `(${Math.abs(n).toLocaleString('en-US')})` : n.toLocaleString('en-US')));
+        return (
+        <div className="modal-scrim show" onClick={e => { if (e.target === e.currentTarget) setCrImport(null); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 860, width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#EDF3FD', color: '#1F5BB5', display: 'grid', placeItems: 'center' }}><Icon name="upload" size={15} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 750, color: 'var(--ink)' }}>Import Revenue by Client</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{crImport.fileName} · into {MONTHS[grMonth - 1]} {grYear}</div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setCrImport(null)}><Icon name="x" size={16} /></button>
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>
+              {crImport.rows.length} row(s) · <b style={{ color: '#15814B' }}>{matched} matched</b>
+              {needsAttention > 0 && <> · <b style={{ color: '#9A5B00' }}>{needsAttention} need confirming</b> — pick the right client (or Skip). Amounts in parentheses like (1,000) import as negative.</>}
+            </div>
+            <div className="tbl-wrap" style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Client in file</th>
+                    <th style={{ textAlign: 'right' }}>Revenue</th>
+                    <th style={{ textAlign: 'right' }}>Rev. finance</th>
+                    <th>Match to client</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crImport.rows.map(r => (
+                    <tr key={r.id} style={{ background: r.matchId === '' || r.matchId == null ? '#FDF3F1' : (r.exact ? 'transparent' : '#FCF7EC') }}>
+                      <td className="strong">
+                        {r.rawClient}
+                        {!r.exact && r.matchId !== '' && r.matchId != null && (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: '#9A5B00' }}>· did you mean?</span>
+                        )}
+                      </td>
+                      <td className="mono" style={{ textAlign: 'right', color: r.revenue < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.revenue)}</td>
+                      <td className="mono" style={{ textAlign: 'right', color: r.finance < 0 ? '#C5391F' : 'var(--ink)' }}>{fmtAmt(r.finance)}</td>
+                      <td>
+                        <select className="select" value={r.matchId} onChange={e => setImportMatch(r.id, e.target.value === '' ? '' : Number(e.target.value))} style={{ minWidth: 220 }}>
+                          <option value="">— Skip this row —</option>
+                          {r.suggestions.length > 0 && (
+                            <optgroup label="Suggested">
+                              {r.suggestions.map(s => (
+                                <option key={s.clientId} value={s.clientId}>{s.name}{s.score < 1 ? ` (${Math.round(s.score * 100)}%)` : ''}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="All clients">
+                            {rosterSorted.map(c => <option key={c.clientId} value={c.clientId}>{c.name}</option>)}
+                          </optgroup>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button className="btn btn-ghost" onClick={() => setCrImport(null)} disabled={crImporting}>Cancel</button>
+              <button className="btn btn-primary" onClick={applyImport} disabled={crImporting || matched === 0}>
+                {crImporting ? 'Importing…' : `Import ${matched} matched row(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {/* ============ USER MODAL ============ */}
       {showUserModal && (
