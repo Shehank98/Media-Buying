@@ -47,7 +47,7 @@ const MIX_META = {
 };
 
 export default function ProfitPage() {
-  const [view, setView] = useState('schedule'); // 'schedule' | 'billing'
+  const [view, setView] = useState('billing'); // 'schedule' | 'billing' (billing shown first)
   const [year, setYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([]);
   const [agencyId, setAgencyId] = useState('');
@@ -258,7 +258,7 @@ export default function ProfitPage() {
 
       {/* Tab switcher */}
       <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
-        {[['schedule', 'Revenue by schedule value'], ['billing', 'Revenue by billing']].map(([k, lbl]) => (
+        {[['billing', 'Revenue by billing'], ['schedule', 'Revenue by schedule value']].map(([k, lbl]) => (
           <button key={k} onClick={() => setView(k)}
             style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: view === k ? '#0A1729' : '#fff', color: view === k ? '#fff' : 'var(--ink-soft)' }}>
             {lbl}
