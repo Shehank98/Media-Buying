@@ -305,14 +305,17 @@ GET    /api/reports/properties           (AUTH + SUPER_ADMIN|MANAGER)
 GET    /api/reports/schedule-logs        (AUTH + SUPER_ADMIN|MANAGER)
        ?groupBy &agencyId &clientId &channelMasterId &medium &monthFrom &monthTo &format=json|excel|pdf
 GET    /api/reports/media-group          (AUTH + SUPER_ADMIN|MANAGER)   mediaGroupReport
-       ?mediaGroup &agencyId &monthFrom &monthTo &format=json|excel|pdf
+       ?mediaGroup &channelMasterId &agencyId &clientId &monthFrom &monthTo &format=json|excel|pdf
        Full spend breakdown for ONE media group (or ALL when mediaGroup omitted), from ScheduleLog
-       (isDeleted:false), year taken from scheduleMonth. Returns/exports: year-wise totals, per-CHANNEL
-       (year-wise), per-AGENCY (year-wise), and the Agency×Channel matrix (year-wise) — all in one report.
-       JSON also carries availableMediaGroups (scoped, for the picker). Excel = multi-sheet (Summary +
-       By Channel + By Agency + Agency×Channel, dynamic year columns, + By Media Group when unfiltered);
-       PDF = branded, grouped by agency→channels (year columns shown when ≤4 years). MANAGER agency-scoped.
-       Surfaced as the "Media Groups" source on ReportsPage (its own picker + preview + Excel/PDF export).
+       (isDeleted:false), year taken from scheduleMonth. Filters: channelMasterId + clientId are
+       comma-separated multi-select, applied in JS after a media-group-scoped fetch so the pickers stay
+       stable. Returns/exports: year-wise totals, per-AGENCY, per-CHANNEL, per-CLIENT (all year-wise),
+       and the Agency x Channel matrix. JSON also carries availableMediaGroups + availableChannels +
+       availableClients (scoped, biggest-first, for the pickers) and summary.clientCount. Excel sheet
+       order = Summary (year-wise) -> By Agency -> By Channel -> By Client -> Agency x Channel ->
+       By Media Group (only when unfiltered); dynamic year columns. PDF = branded, grouped by
+       agency->channels. MANAGER agency-scoped. Surfaced as the "Media Groups" source on ReportsPage
+       with Media Group / Channel / Agency / Client (default all) / month-range filters + preview.
 
 ### Media Packages
 ```

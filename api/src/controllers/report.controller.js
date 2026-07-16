@@ -976,7 +976,7 @@ export async function exportScheduleLogs(req, res) {
 // ═══════════════════════════════════════════════════════════════════════════
 export async function mediaGroupReport(req, res) {
   try {
-    const { mediaGroup, agencyId, monthFrom, monthTo, format = 'json' } = req.query;
+    const { mediaGroup, agencyId, clientId, channelMasterId, monthFrom, monthTo, format = 'json' } = req.query;
 
     // Base scope (role + optional agency + month range), WITHOUT the media-group
     // filter — used both for the main fetch and for the available-groups picker.
@@ -1017,17 +1017,43 @@ export async function mediaGroupReport(req, res) {
       .map((g) => ({ name: g.mediaGroup || 'Unknown', value: Number(g._sum.scheduleValue) || 0 }))
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 
-    // Main fetch — add the media-group filter if one was chosen.
-    const where = { ...scopeWhere };
-    if (mediaGroup) where.mediaGroup = mediaGroup;
+    // Media-group-scoped fetch (BEFORE channel/client filters) — used to build the
+    // channel + client filter pickers and then filtered in JS for the report body.
+    const mgWhere = { ...scopeWhere };
+    if (mediaGroup) mgWhere.mediaGroup = mediaGroup;
 
-    const logs = await prisma.scheduleLog.findMany({
-      where,
+    const allLogs = await prisma.scheduleLog.findMany({
+      where: mgWhere,
       include: {
         agency: { select: { name: true } },
-        channelMaster: { select: { name: true } },
+        channelMaster: { select: { id: true, name: true } },
+        client: { select: { id: true, name: true } },
       },
     });
+
+    // Filter pickers (channels + clients present in this media group), biggest first.
+    const chMap = new Map(); const clMap = new Map();
+    for (const l of allLogs) {
+      const sv = Number(l.scheduleValue) || 0;
+      if (l.channelMasterId != null) {
+        const e = chMap.get(l.channelMasterId) || { channelMasterId: l.channelMasterId, name: l.channelMaster?.name || 'Unknown', value: 0 };
+        e.value += sv; chMap.set(l.channelMasterId, e);
+      }
+      if (l.clientId != null) {
+        const e = clMap.get(l.clientId) || { clientId: l.clientId, name: l.client?.name || 'Unknown', value: 0 };
+        e.value += sv; clMap.set(l.clientId, e);
+      }
+    }
+    const availableChannels = [...chMap.values()].sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+    const availableClients = [...clMap.values()].sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+
+    // Apply the channel + client filters (both accept comma-separated multi-select).
+    const channelIds = channelMasterId ? String(channelMasterId).split(',').map((s) => parseInt(s)).filter(Number.isInteger) : [];
+    const clientIds = clientId ? String(clientId).split(',').map((s) => parseInt(s)).filter(Number.isInteger) : [];
+    const logs = allLogs.filter((l) =>
+      (!channelIds.length || channelIds.includes(l.channelMasterId)) &&
+      (!clientIds.length || clientIds.includes(l.clientId)),
+    );
 
     // ── Aggregate ──────────────────────────────────────────────────────────
     const yearOf = (m) => (m && m.length >= 4 ? m.slice(0, 4) : 'Unknown');
@@ -1035,6 +1061,7 @@ export async function mediaGroupReport(req, res) {
     const byYear = {};            // year -> {value, vat, entries}
     const byChannel = {};         // channel -> {value, vat, entries, byYear}
     const byAgency = {};          // agency -> {value, vat, entries, byYear}
+    const byClient = {};          // client -> {value, vat, entries, byYear}
     const byAgencyChannel = {};   // agency||channel -> {agency, channel, value, vat, byYear}
     const byMediaGroup = {};      // mg -> {value, vat, entries, byYear}  (only when not filtered)
 
@@ -1052,6 +1079,7 @@ export async function mediaGroupReport(req, res) {
       const vat = Number(log.scheduleValueWithVat) || 0;
       const channel = log.channelMaster?.name || 'Unknown';
       const agency = log.agency?.name || 'Unknown';
+      const clientName = log.client?.name || 'Unknown';
       const mg = log.mediaGroup || 'Unknown';
       yearsSet.add(year);
 
@@ -1060,6 +1088,7 @@ export async function mediaGroupReport(req, res) {
 
       bump(byChannel, channel, year, sv, vat, { channel });
       bump(byAgency, agency, year, sv, vat, { agency });
+      bump(byClient, clientName, year, sv, vat, { client: clientName });
       bump(byAgencyChannel, `${agency}||${channel}`, year, sv, vat, { agency, channel });
       if (!mediaGroup) bump(byMediaGroup, mg, year, sv, vat, { mediaGroup: mg });
     }
@@ -1076,6 +1105,10 @@ export async function mediaGroupReport(req, res) {
     const report = {
       mediaGroup: mediaGroup || null,
       availableMediaGroups,
+      availableChannels,
+      availableClients,
+      selectedChannelIds: channelIds,
+      selectedClientIds: clientIds,
       years,
       summary: {
         totalValue,
@@ -1083,10 +1116,12 @@ export async function mediaGroupReport(req, res) {
         entries: logs.length,
         channelCount: Object.keys(byChannel).length,
         agencyCount: Object.keys(byAgency).length,
+        clientCount: Object.keys(byClient).length,
         byYear: years.map((y) => ({ year: y, value: byYear[y]?.value || 0, vat: byYear[y]?.vat || 0, entries: byYear[y]?.entries || 0 })),
       },
-      byChannel: toSortedRows(byChannel, 'channel'),
       byAgency: toSortedRows(byAgency, 'agency'),
+      byChannel: toSortedRows(byChannel, 'channel'),
+      byClient: toSortedRows(byClient, 'client'),
       byAgencyChannel: Object.values(byAgencyChannel)
         .sort((a, b) => a.agency.localeCompare(b.agency) || b.value - a.value || a.channel.localeCompare(b.channel)),
       byMediaGroup: mediaGroup ? [] : toSortedRows(byMediaGroup, 'mediaGroup'),
@@ -1211,24 +1246,30 @@ export async function mediaGroupReport(req, res) {
       summary.getColumn(4).width = 12;
       summary.getColumn(5).width = 12;
 
-      // 2) By Media Group (only when covering all groups)
-      if (!mediaGroup && report.byMediaGroup.length) {
-        addPivotSheet('By Media Group', [{ header: 'Media Group', key: 'mediaGroup' }], report.byMediaGroup, (r) => [r.mediaGroup]);
-      }
+      // Order (as requested): year-wise total (Summary above) → By Agency →
+      // By Channel → By Client → Agency x Channel → By Media Group (all-groups).
+
+      // 2) By Agency (year-wise)
+      addPivotSheet('By Agency', [{ header: 'Agency', key: 'agency' }], report.byAgency, (r) => [r.agency]);
 
       // 3) By Channel (year-wise)
       addPivotSheet('By Channel', [{ header: 'Channel', key: 'channel' }], report.byChannel, (r) => [r.channel]);
 
-      // 4) By Agency (year-wise)
-      addPivotSheet('By Agency', [{ header: 'Agency', key: 'agency' }], report.byAgency, (r) => [r.agency]);
+      // 4) By Client (year-wise)
+      addPivotSheet('By Client', [{ header: 'Client', key: 'client' }], report.byClient, (r) => [r.client]);
 
-      // 5) Agency × Channel (year-wise)
+      // 5) Agency x Channel (year-wise)
       addPivotSheet(
         'Agency x Channel',
         [{ header: 'Agency', key: 'agency' }, { header: 'Channel', key: 'channel' }],
         report.byAgencyChannel,
         (r) => [r.agency, r.channel],
       );
+
+      // 6) By Media Group (only when covering all groups)
+      if (!mediaGroup && report.byMediaGroup.length) {
+        addPivotSheet('By Media Group', [{ header: 'Media Group', key: 'mediaGroup' }], report.byMediaGroup, (r) => [r.mediaGroup]);
+      }
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fnameGroup = (mediaGroup || 'all').replace(/[^a-z0-9]+/gi, '-').toLowerCase();

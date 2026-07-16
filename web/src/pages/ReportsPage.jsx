@@ -937,7 +937,9 @@ export default function ReportsPage() {
 // place, with Excel (multi-sheet) + PDF export mirroring the on-screen preview.
 function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
   const [mediaGroup, setMediaGroup] = useState('');   // '' = all media groups
+  const [channelId, setChannelId] = useState('');     // '' = all channels
   const [agencyId, setAgencyId] = useState('');
+  const [clientId, setClientId] = useState('');       // '' = all clients
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
   const [data, setData] = useState(null);
@@ -948,12 +950,14 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
   const buildQs = useCallback((format) => {
     const p = new URLSearchParams();
     if (mediaGroup) p.set('mediaGroup', mediaGroup);
+    if (channelId) p.set('channelMasterId', channelId);
     if (agencyId) p.set('agencyId', agencyId);
+    if (clientId) p.set('clientId', clientId);
     if (monthFrom) p.set('monthFrom', monthFrom);
     if (monthTo) p.set('monthTo', monthTo);
     if (format) p.set('format', format);
     return p.toString();
-  }, [mediaGroup, agencyId, monthFrom, monthTo]);
+  }, [mediaGroup, channelId, agencyId, clientId, monthFrom, monthTo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -993,6 +997,8 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
 
   const years = data?.years || [];
   const availGroups = data?.availableMediaGroups || [];
+  const availChannels = data?.availableChannels || [];
+  const availClients = data?.availableClients || [];
   const hasData = !!data && (data.summary?.entries || 0) > 0;
   const label = mediaGroup || 'All media groups';
 
@@ -1049,9 +1055,16 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
       <div className="filterbar">
         <div className="filter-field">
           <label>Media Group</label>
-          <select className="select" value={mediaGroup} onChange={(e) => setMediaGroup(e.target.value)}>
+          <select className="select" value={mediaGroup} onChange={(e) => { setMediaGroup(e.target.value); setChannelId(''); setClientId(''); }}>
             <option value="">All media groups</option>
             {availGroups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Channel</label>
+          <select className="select" value={channelId} onChange={(e) => setChannelId(e.target.value)}>
+            <option value="">All channels</option>
+            {availChannels.map((c) => <option key={c.channelMasterId} value={c.channelMasterId}>{c.name}</option>)}
           </select>
         </div>
         <div className="filter-field">
@@ -1059,6 +1072,13 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
           <select className="select" value={agencyId} onChange={(e) => setAgencyId(e.target.value)} disabled={agenciesLoading}>
             <option value="">All agencies</option>
             {agencies.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Client</label>
+          <select className="select" value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">All clients</option>
+            {availClients.map((c) => <option key={c.clientId} value={c.clientId}>{c.name}</option>)}
           </select>
         </div>
         <div className="filter-field">
@@ -1094,8 +1114,9 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 18, marginTop: 8 }}>
             {statCard('Total Spend', fmtLKR(data.summary.totalValue), 'var(--green-600)', 'bar-chart')}
             {statCard('With VAT', fmtLKR(data.summary.totalVat), 'var(--coral-600)', 'trending-up')}
-            {statCard('Channels', data.summary.channelCount.toLocaleString('en-US'), 'var(--blue-700)', 'tv')}
             {statCard('Agencies', data.summary.agencyCount.toLocaleString('en-US'), 'var(--purple-700)', 'building')}
+            {statCard('Channels', data.summary.channelCount.toLocaleString('en-US'), 'var(--blue-700)', 'tv')}
+            {statCard('Clients', (data.summary.clientCount ?? 0).toLocaleString('en-US'), 'var(--coral-600)', 'folder')}
           </div>
 
           {/* Spend by Year */}
@@ -1116,6 +1137,13 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
             />
           )}
 
+          {/* By Agency */}
+          <PivotTable
+            title="Spend by Agency (year-wise)"
+            labelHeader="Agency"
+            rows={data.byAgency.map((r) => ({ label: r.agency, byYear: r.byYear, value: r.value, vat: r.vat }))}
+          />
+
           {/* By Channel */}
           <PivotTable
             title="Spend by Channel (year-wise)"
@@ -1123,12 +1151,14 @@ function MediaGroupReport({ agencies, agenciesLoading, showToast, onError }) {
             rows={data.byChannel.map((r) => ({ label: r.channel, byYear: r.byYear, value: r.value, vat: r.vat }))}
           />
 
-          {/* By Agency */}
-          <PivotTable
-            title="Spend by Agency (year-wise)"
-            labelHeader="Agency"
-            rows={data.byAgency.map((r) => ({ label: r.agency, byYear: r.byYear, value: r.value, vat: r.vat }))}
-          />
+          {/* By Client */}
+          {(data.byClient || []).length > 0 && (
+            <PivotTable
+              title="Spend by Client (year-wise)"
+              labelHeader="Client"
+              rows={data.byClient.map((r) => ({ label: r.client, byYear: r.byYear, value: r.value, vat: r.vat }))}
+            />
+          )}
 
           {/* Agency × Channel (grouped, expandable) */}
           <div className="section-card" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
