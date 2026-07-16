@@ -351,34 +351,54 @@ async function main() {
     console.warn('Medium/media-group reconcile skipped:', e.message);
   }
 
-  // ── Deactivate zero-usage channels ───────────────────────────────────────────
-  // Any active ChannelMaster with 0 ScheduleLog rows ("0 logs" in Admin's Usage
-  // column) is deactivated on every deploy, which hides it from every isActive-
-  // filtered picker (Media Buying combobox, Add Channel forms, etc.) without
-  // deleting it. Admin's Channels tab still lists it (with an Inactive badge) and
-  // can re-toggle it active at any time. Bulk import resolves channels by name
-  // regardless of isActive, so this never blocks logging spend against it later.
-  // The Print/Cinema/OOH/Digital "category total" bucket channels (TOTAL_BUCKETS
-  // above) are deliberately never logged against via ScheduleLog — they only
-  // ever receive MonthlyForecast rows — so they're exempted by name here. Without
-  // this they'd get deactivated, and listForecastChannels' name-based bucket
-  // lookup would silently fall back to an unrelated active channel in that
-  // medium, mis-attributing the category-total forecast to the wrong channel.
+  // ── Remove zero-usage channels ───────────────────────────────────────────────
+  // Any ChannelMaster with no usage at all ("0 logs" in Admin's Usage column, and
+  // no client channels / upload rows / forecasts / deals) is DELETED on every
+  // deploy, so merged and never-used channels stay out of the Admin Channels list
+  // permanently — even though the seed re-upserts the master list above, this step
+  // runs afterward and removes the unused ones again, so they can never reappear.
+  // Bulk import still resolves a deleted (merged) channel by name because merge
+  // keeps the source name as an alias on its target. The Print/Cinema/OOH/Digital
+  // "category total" bucket channels (TOTAL_BUCKETS above) are deliberately never
+  // logged against via ScheduleLog — they only ever receive MonthlyForecast rows —
+  // so they are exempted by name (and by the forecasts guard) here; without this
+  // they'd be removed and listForecastChannels' name-based bucket lookup would
+  // silently fall back to an unrelated channel, mis-attributing category-total
+  // forecasts. A channel that ever held real spend keeps its (possibly soft-
+  // deleted) ScheduleLog rows, so it is preserved for history.
   try {
-    const exemptNames = TOTAL_BUCKETS.map(b => b.name);
-    const deactivated = await prisma.channelMaster.updateMany({
-      where: {
-        isActive: true,
-        name: { notIn: exemptNames },
-        scheduleLogs: { none: {} },
-        // Never deactivate a channel a group head has forecast against — it's in
-        // active use for forecasting even before any actual spend is logged.
-        // Deactivating it would hide it from the isActive-filtered entry grid.
-        forecasts: { none: {} },
-      },
-      data: { isActive: false },
-    });
-    console.log(`Zero-usage channel reconcile: ${deactivated.count} channel(s) deactivated`);
+    // Guard: only prune on an ESTABLISHED system (one that already has schedule
+    // data). On a brand-new / staging DB every seeded channel has 0 logs, so a
+    // blind delete would wipe the whole channel list on first boot — skip it there
+    // and keep all seeded channels available.
+    const totalLogs = await prisma.scheduleLog.count();
+    if (totalLogs === 0) {
+      console.log('Zero-usage channel reconcile: skipped (no schedule data yet — keeping all seeded channels)');
+    } else {
+      const exemptNames = TOTAL_BUCKETS.map(b => b.name);
+      // DELETE (not just deactivate) channel masters that have NO usage anywhere:
+      // no schedule logs (a channel that ever held real data keeps its row, even if
+      // soft-deleted, so it is preserved), no client channels, no upload rows, no
+      // forecasts and no recorded deals. The category-total buckets are exempt by
+      // name. This runs on EVERY deploy right after the seed re-upserts the master
+      // list, so merged / never-used channels are removed and can never reappear in
+      // the Admin Channels list. Safe by construction: the relation guards mean only
+      // truly-orphan masters match, so there is no FK violation (any ChannelCommitment
+      // rows cascade on delete). A merged channel's name already lives on as an alias
+      // of its target, so future imports by that name still resolve correctly.
+      const removed = await prisma.channelMaster.deleteMany({
+        where: {
+          name: { notIn: exemptNames },
+          scheduleLogs: { none: {} },
+          channels: { none: {} },
+          uploadBatchRows: { none: {} },
+          forecasts: { none: {} },
+          agencyDeals: { none: {} },
+          clientDeals: { none: {} },
+        },
+      });
+      console.log(`Zero-usage channel reconcile: ${removed.count} unused channel(s) deleted`);
+    }
   } catch (e) {
     console.warn('Zero-usage channel reconcile skipped:', e.message);
   }
