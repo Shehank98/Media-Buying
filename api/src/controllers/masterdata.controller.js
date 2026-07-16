@@ -229,10 +229,17 @@ export async function mergeChannelMasters(req, res) {
     if (!source) return res.status(404).json({ error: 'Source channel master not found' });
     if (!target) return res.status(404).json({ error: 'Target channel master not found' });
 
-    // Merge: re-point all schedule_logs from source → target, then deactivate source
+    // Merge: re-point EVERY reference from source → target, then DELETE the
+    // source channel master outright. Deactivating it was not enough — the seed
+    // re-upserts the master list by name on every deploy and would reactivate a
+    // merely-deactivated source, so the old channel kept reappearing in the
+    // Admin Channels list. Deleting it (with the source name preserved as an
+    // alias on the target so imports still resolve) means the only way it could
+    // return is the seed re-creating it, and the zero-usage reconcile in seed.js
+    // deletes it again the same boot because it now has NO references at all.
     await prisma.$transaction(async (tx) => {
-      // Update schedule logs - also refresh the denormalized medium/mediaGroup
-      // strings so spend breakdowns reflect the target channel immediately
+      // Schedule logs - also refresh the denormalized medium/mediaGroup strings
+      // so spend breakdowns reflect the target channel immediately.
       await tx.scheduleLog.updateMany({
         where: { channelMasterId: sid },
         data: {
@@ -242,13 +249,60 @@ export async function mergeChannelMasters(req, res) {
         },
       });
 
-      // Update upload batch rows
+      // Upload batch rows.
       await tx.uploadBatchRow.updateMany({
         where: { channelResolvedId: sid },
         data: { channelResolvedId: tid },
       });
 
-      // Merge aliases into target (de-duplicate)
+      // Client-specific channel records (Channel.channelMasterId). The unique
+      // constraint is [clientId, name], not on channelMasterId, so re-pointing
+      // never clashes. Without this the delete would SetNull them (orphaning the
+      // client channels) and the reconcile's `channels: { none: {} }` guard would
+      // block deletion of a re-created source.
+      await tx.channel.updateMany({
+        where: { channelMasterId: sid },
+        data: { channelMasterId: tid },
+      });
+
+      // Monthly forecasts. Unique is [year, month, clientId, channelMasterId], so
+      // re-pointing can collide with an existing target forecast for the same
+      // client/month — fold those by summing the amount, else just re-point.
+      const srcForecasts = await tx.monthlyForecast.findMany({ where: { channelMasterId: sid } });
+      if (srcForecasts.length) {
+        const tgtForecasts = await tx.monthlyForecast.findMany({
+          where: { channelMasterId: tid },
+          select: { id: true, year: true, month: true, clientId: true, amountMillions: true },
+        });
+        const tgtByKey = new Map(tgtForecasts.map((f) => [`${f.year}-${f.month}-${f.clientId}`, f]));
+        for (const f of srcForecasts) {
+          const key = `${f.year}-${f.month}-${f.clientId}`;
+          const clash = tgtByKey.get(key);
+          if (clash) {
+            await tx.monthlyForecast.update({
+              where: { id: clash.id },
+              data: { amountMillions: { increment: f.amountMillions } },
+            });
+            await tx.monthlyForecast.delete({ where: { id: f.id } });
+          } else {
+            await tx.monthlyForecast.update({ where: { id: f.id }, data: { channelMasterId: tid } });
+          }
+        }
+      }
+
+      // Commitment groups reference channels by a plain Int[] (not a FK), so swap
+      // the source id for the target id in every group's member list (de-duped).
+      const groups = await tx.channelCommitmentGroup.findMany({
+        where: { channelMasterIds: { has: sid } },
+        select: { id: true, channelMasterIds: true },
+      });
+      for (const g of groups) {
+        const next = Array.from(new Set(g.channelMasterIds.map((x) => (x === sid ? tid : x))));
+        await tx.channelCommitmentGroup.update({ where: { id: g.id }, data: { channelMasterIds: next } });
+      }
+
+      // Merge aliases into target (de-duplicate), keeping the source NAME so future
+      // imports by the old name still resolve to the target.
       const mergedAliases = Array.from(
         new Set([...target.aliases, ...source.aliases, source.name])
       );
@@ -257,11 +311,9 @@ export async function mergeChannelMasters(req, res) {
         data: { aliases: mergedAliases },
       });
 
-      // Deactivate source
-      await tx.channelMaster.update({
-        where: { id: sid },
-        data: { isActive: false },
-      });
+      // Delete the source. Its own agency/client deals and channel commitments
+      // cascade away (onDelete: Cascade); everything else was re-pointed above.
+      await tx.channelMaster.delete({ where: { id: sid } });
     });
 
     const updatedTarget = await prisma.channelMaster.findUnique({
