@@ -1549,7 +1549,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       }
       if (!rows.length) { setError('No client rows with amounts were found in the file.'); return; }
       setError('');
-      setCrImport({ fileName: file.name, rows });
+      setCrImport({ fileName: file.name, rows, hasRevenueCol: col.revenue !== -1, hasFinanceCol: col.finance !== -1 });
     } catch (err) {
       setError('Failed to read the file: ' + (err.message || 'unknown error'));
     }
@@ -1563,19 +1563,31 @@ export default function AdminPage({ initialTab = 'users' }) {
     if (!crImport) return;
     const resolved = crImport.rows.filter((r) => r.matchId !== '' && r.matchId != null);
     if (!resolved.length) { setError('No rows are matched to a client. Pick a client (or Skip) for each row.'); return; }
+    // The uploaded sheet is the WHOLE month for the columns it carries: import
+    // REPLACES the month. Every client gets its imported value, and any client
+    // NOT in the sheet has that column cleared (e.g. a previously-entered Maliban
+    // that's absent from the new sheet is removed). Only fields whose column
+    // exists in the file are touched.
+    const hasRevCol = crImport.hasRevenueCol !== false;
+    const hasFinCol = crImport.hasFinanceCol !== false;
+    const importByClient = new Map();
+    for (const r of resolved) importByClient.set(r.matchId, r); // last row wins
     const clientAmounts = {}; const clientFinanceAmounts = {};
-    for (const r of resolved) {
-      // Last row wins if the same client appears twice.
-      if (r.revenue != null) clientAmounts[r.matchId] = r.revenue;
-      if (r.finance != null) clientFinanceAmounts[r.matchId] = r.finance;
-    }
-    // Persist the By-Hub roll-up too, from existing + just-imported Revenue.
-    const mergedAmounts = { ...grClientAmounts };
-    Object.entries(clientAmounts).forEach(([id, v]) => { mergedAmounts[id] = String(v); });
-    const amounts = computeHubRollup(mergedAmounts);
+    grClients.forEach((c) => {
+      const imp = importByClient.get(c.clientId);
+      if (hasRevCol) clientAmounts[c.clientId] = imp && imp.revenue != null ? imp.revenue : null;
+      if (hasFinCol) clientFinanceAmounts[c.clientId] = imp && imp.finance != null ? imp.finance : null;
+    });
+    // Recompute the By-Hub roll-up from the resulting (post-replace) Revenue.
+    const amounts = hasRevCol ? computeHubRollup(clientAmounts) : undefined;
     setCrImporting(true);
     try {
-      await api.post('/admin/group-revenue', { year: grYear, month: grMonth, clientAmounts, clientFinanceAmounts, amounts });
+      await api.post('/admin/group-revenue', {
+        year: grYear, month: grMonth,
+        ...(hasRevCol ? { clientAmounts } : {}),
+        ...(hasFinCol ? { clientFinanceAmounts } : {}),
+        ...(amounts ? { amounts } : {}),
+      });
       await fetchGroupRevenue();
       setCrImport(null);
       setGrSavedAt(Date.now());
@@ -3431,8 +3443,8 @@ export default function AdminPage({ initialTab = 'users' }) {
               <Chip n={matched} s="matched" />
               {confirmCount > 0 && <Chip n={confirmCount} s="confirm" />}
               {skipCount > 0 && <Chip n={skipCount} s="skip" />}
-              <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--muted)', maxWidth: 300, lineHeight: 1.45, textAlign: 'right' }}>
-                Confirm the amber rows (pick the right client or Skip). Amounts in parentheses like <b>(1,000)</b> import as negative.
+              <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--muted)', maxWidth: 320, lineHeight: 1.45, textAlign: 'right' }}>
+                Confirm the amber rows (pick the right client or Skip). Amounts like <b>(1,000)</b> import as negative. <b style={{ color: '#C5391F' }}>This replaces {MONTHS[grMonth - 1]} {grYear}</b> — clients not in the file are cleared.
               </div>
             </div>
 
