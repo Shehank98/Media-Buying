@@ -19,53 +19,18 @@ const logIncludes = {
   deletedBy: { select: { id: true, name: true } },
 };
 
+// Whether `user` may see a specific client's schedule-log data. Uses the SAME
+// canonical resolver as the rest of the app (getAccessibleClientIds), so a Hub
+// (GROUP_HEAD) or Desk (PLANNER) sees exactly the clients assigned to them in
+// Admin → Users — team AND direct UserClientAccess assignments — and nothing
+// else. Changing a user's clients in the Users part applies here immediately.
+// Returns the client id when allowed, else null.
 async function resolveClientAccess(user, clientId) {
   const cid = parseInt(clientId);
-
-  switch (user.role) {
-    case 'SUPER_ADMIN':
-      return cid;
-
-    case 'MANAGER': {
-      const access = await prisma.userAgencyAccess.findMany({
-        where: { userId: user.id },
-        select: { agencyId: true },
-      });
-      const agencyIds = access.map(a => a.agencyId);
-      const client = await prisma.client.findFirst({
-        where: { id: cid, agencyId: { in: agencyIds } },
-        select: { id: true },
-      });
-      if (!client) return null;
-      return cid;
-    }
-
-    case 'GROUP_HEAD': {
-      const teams = await prisma.teamMember.findMany({
-        where: { userId: user.id },
-        select: { teamId: true },
-      });
-      const teamIds = teams.map(t => t.teamId);
-      const teamClient = await prisma.teamClient.findFirst({
-        where: { teamId: { in: teamIds }, clientId: cid },
-        select: { clientId: true },
-      });
-      if (!teamClient) return null;
-      return cid;
-    }
-
-    case 'PLANNER': {
-      const access = await prisma.userClientAccess.findFirst({
-        where: { userId: user.id, clientId: cid },
-        select: { clientId: true },
-      });
-      if (!access) return null;
-      return cid;
-    }
-
-    default:
-      return null;
-  }
+  if (Number.isNaN(cid)) return null;
+  if (user.role === 'SUPER_ADMIN') return cid;
+  const ids = await getAccessibleClientIds(user.id, user.role);
+  return ids.includes(cid) ? cid : null;
 }
 
 function computeInvoiceMonth(scheduleMonth) {
@@ -1523,15 +1488,8 @@ export async function updateScheduleLog(req, res) {
     }
 
     if (user.role === 'GROUP_HEAD') {
-      const teams = await prisma.teamMember.findMany({
-        where: { userId: user.id },
-        select: { teamId: true },
-      });
-      const teamIds = teams.map(t => t.teamId);
-      const teamClient = await prisma.teamClient.findFirst({
-        where: { teamId: { in: teamIds }, clientId: existing.clientId },
-      });
-      if (!teamClient) {
+      const access = await resolveClientAccess(user, existing.clientId);
+      if (access === null) {
         return res.status(403).json({ error: 'You do not have access to this schedule log' });
       }
     }
@@ -1640,15 +1598,8 @@ export async function deleteScheduleLog(req, res) {
     }
 
     if (user.role === 'GROUP_HEAD') {
-      const teams = await prisma.teamMember.findMany({
-        where: { userId: user.id },
-        select: { teamId: true },
-      });
-      const teamIds = teams.map(t => t.teamId);
-      const teamClient = await prisma.teamClient.findFirst({
-        where: { teamId: { in: teamIds }, clientId: existing.clientId },
-      });
-      if (!teamClient) {
+      const access = await resolveClientAccess(user, existing.clientId);
+      if (access === null) {
         return res.status(403).json({ error: 'You do not have access to this schedule log' });
       }
     }
