@@ -1,18 +1,114 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import {
+  isEvaluationConfigured, isAllowedEvaluation, mimeForEvaluation, extOf,
+  evaluationName, uploadEvaluation, downloadEvaluation, deleteEvaluation,
+} from '../services/evaluation.service.js';
 
 // Resolve a property -> its channel's client and confirm the caller can reach it.
 // Returns { status, property } where status is 200 / 403 / 404.
-async function resolvePropertyAccess(user, propertyId) {
+async function resolvePropertyAccess(user, propertyId, includeNames = false) {
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
-    include: { channel: { select: { clientId: true } } },
+    include: includeNames
+      ? { channel: { select: { clientId: true, name: true, client: { select: { name: true } } } } }
+      : { channel: { select: { clientId: true } } },
   });
   if (!property) return { status: 404 };
   if (user.role === 'SUPER_ADMIN') return { status: 200, property };
   const ids = await getAccessibleClientIds(user.id, user.role);
   if (!ids.includes(property.channel.clientId)) return { status: 403 };
   return { status: 200, property };
+}
+
+// POST /api/properties/:id/evaluation - upload/replace the evaluation document
+// (PDF or Excel, raw binary body). Header `x-file-name` carries the file name.
+export async function uploadPropertyEvaluation(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    if (!isEvaluationConfigured()) {
+      return res.status(400).json({ error: 'Evaluation storage is not configured. Set up the Google Drive connection first.' });
+    }
+    const fileName = String(req.headers['x-file-name'] || req.query.fileName || '').trim();
+    if (!fileName || !isAllowedEvaluation(fileName)) {
+      return res.status(400).json({ error: 'Only PDF or Excel (.pdf, .xls, .xlsx) files are allowed.' });
+    }
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      return res.status(400).json({ error: 'No file received.' });
+    }
+    const access = await resolvePropertyAccess(req.user, id, true);
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+    const p = access.property;
+
+    const ext = extOf(fileName);
+    const driveName = evaluationName(p.name, ext);
+    const uploaded = await uploadEvaluation(body, driveName, {
+      client: p.channel.client?.name || 'Client',
+      channel: p.channel.name || 'Channel',
+      mimeType: mimeForEvaluation(fileName),
+    });
+    // Replace any previous evaluation (best-effort delete of the old Drive file).
+    if (p.evaluationDriveId) deleteEvaluation(p.evaluationDriveId).catch(() => {});
+
+    const updated = await prisma.property.update({
+      where: { id },
+      data: {
+        evaluationDriveId: uploaded.id,
+        evaluationFileName: fileName,
+        evaluationMimeType: mimeForEvaluation(fileName),
+        evaluationSize: uploaded.size,
+        evaluationUploadedAt: new Date(),
+      },
+      include: { creator: { select: { id: true, name: true } } },
+    });
+    return res.json(updated);
+  } catch (error) {
+    console.error('uploadPropertyEvaluation error:', error);
+    return res.status(500).json({ error: 'Failed to upload evaluation', detail: error.message });
+  }
+}
+
+// GET /api/properties/:id/evaluation - stream the evaluation document to the browser.
+export async function downloadPropertyEvaluation(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const access = await resolvePropertyAccess(req.user, id);
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+    const p = access.property;
+    if (!p.evaluationDriveId) return res.status(404).json({ error: 'No evaluation document for this property' });
+    const buf = await downloadEvaluation(p.evaluationDriveId);
+    res.setHeader('Content-Type', p.evaluationMimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${(p.evaluationFileName || 'evaluation').replace(/"/g, '')}"`);
+    res.setHeader('Content-Length', String(buf.length));
+    return res.end(buf);
+  } catch (error) {
+    console.error('downloadPropertyEvaluation error:', error);
+    return res.status(500).json({ error: 'Failed to download evaluation', detail: error.message });
+  }
+}
+
+// DELETE /api/properties/:id/evaluation - remove the evaluation document.
+export async function deletePropertyEvaluation(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const access = await resolvePropertyAccess(req.user, id);
+    if (access.status === 404) return res.status(404).json({ error: 'Property not found' });
+    if (access.status === 403) return res.status(403).json({ error: 'You do not have access to this property' });
+    const p = access.property;
+    if (p.evaluationDriveId) deleteEvaluation(p.evaluationDriveId).catch(() => {});
+    const updated = await prisma.property.update({
+      where: { id },
+      data: { evaluationDriveId: null, evaluationFileName: null, evaluationMimeType: null, evaluationSize: null, evaluationUploadedAt: null },
+      include: { creator: { select: { id: true, name: true } } },
+    });
+    return res.json(updated);
+  } catch (error) {
+    console.error('deletePropertyEvaluation error:', error);
+    return res.status(500).json({ error: 'Failed to delete evaluation', detail: error.message });
+  }
 }
 
 export async function list(req, res) {

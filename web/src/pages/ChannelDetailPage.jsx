@@ -65,6 +65,9 @@ export default function ChannelDetailPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  // Evaluation document (PDF/Excel) selected in the property form, uploaded to Drive on save.
+  const [evaluationFile, setEvaluationFile] = useState(null);
+  const [evalDownloading, setEvalDownloading] = useState(null); // property id being downloaded
 
   // History panel
   const [panel, setPanel] = useState(null);
@@ -183,6 +186,7 @@ export default function ChannelDetailPage() {
   const openAddModal = () => {
     setEditingProperty(null);
     setPropertyForm(emptyPropForm());
+    setEvaluationFile(null);
     setFormError('');
     setShowModal(true);
   };
@@ -204,6 +208,7 @@ export default function ChannelDetailPage() {
       notes: property.notes || '',
       changeNote: '',
     });
+    setEvaluationFile(null);
     setFormError('');
     setShowModal(true);
   };
@@ -263,11 +268,29 @@ export default function ChannelDetailPage() {
         notes: propertyForm.notes,
       };
 
+      let propertyId;
       if (editingProperty) {
         payload.changeNote = propertyForm.changeNote;
         await api.put(`/properties/${editingProperty.id}`, payload);
+        propertyId = editingProperty.id;
       } else {
-        await api.post(`/channels/${channelId}/properties`, payload);
+        const { data } = await api.post(`/channels/${channelId}/properties`, payload);
+        propertyId = data.property?.id;
+      }
+
+      // Upload the evaluation document (if one was selected) to Google Drive.
+      if (evaluationFile && propertyId) {
+        try {
+          const buf = await evaluationFile.arrayBuffer();
+          await api.post(`/properties/${propertyId}/evaluation`, buf, {
+            headers: { 'Content-Type': 'application/octet-stream', 'x-file-name': evaluationFile.name },
+          });
+        } catch (err) {
+          setSubmitting(false);
+          setFormError(err.response?.data?.error || 'Property saved, but the evaluation upload failed. You can retry from the property.');
+          await fetchData();
+          return;
+        }
       }
 
       setShowModal(false);
@@ -276,6 +299,23 @@ export default function ChannelDetailPage() {
       setFormError(err.response?.data?.error || err.response?.data?.message || 'Failed to save property.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Download a property's evaluation document from Google Drive.
+  const downloadEvaluation = async (property) => {
+    setEvalDownloading(property.id);
+    try {
+      const res = await api.get(`/properties/${property.id}/evaluation`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = property.evaluationFileName || 'evaluation';
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      /* ignore - surfaced by the disabled state if unavailable */
+    } finally {
+      setEvalDownloading(null);
     }
   };
 
@@ -593,6 +633,23 @@ export default function ChannelDetailPage() {
                         {property.createdBy?.name || property.createdByName || '-'}
                       </span>
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ color: '#93A0B5', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="file" size={13} />Evaluation</span>
+                      {property.evaluationFileName ? (
+                        <button
+                          className="link-btn"
+                          onClick={() => downloadEvaluation(property)}
+                          disabled={evalDownloading === property.id}
+                          title={property.evaluationFileName}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--coral-700, #C44A18)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 150, overflow: 'hidden' }}
+                        >
+                          <Icon name="download" size={13} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{evalDownloading === property.id ? 'Downloading…' : 'Download'}</span>
+                        </button>
+                      ) : (
+                        <span style={{ color: '#B3BCCB', fontWeight: 500 }}>None</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -905,6 +962,29 @@ export default function ChannelDetailPage() {
                     value={propertyForm.notes}
                     onChange={(e) => setPropertyForm((prev) => ({ ...prev, notes: e.target.value }))}
                   />
+                </div>
+
+                <div className="field">
+                  <label className="field-label">Evaluation document <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(PDF or Excel, optional)</span></label>
+                  <input
+                    type="file"
+                    accept=".pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      if (f && !/\.(pdf|xls|xlsx)$/i.test(f.name)) { setFormError('Only PDF or Excel files are allowed.'); e.target.value = ''; setEvaluationFile(null); return; }
+                      setFormError('');
+                      setEvaluationFile(f);
+                    }}
+                    style={{ fontSize: 13 }}
+                  />
+                  {editingProperty?.evaluationFileName && !evaluationFile && (
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                      Current: <b style={{ color: 'var(--ink)' }}>{editingProperty.evaluationFileName}</b>. Choosing a new file replaces it.
+                    </div>
+                  )}
+                  {evaluationFile && (
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>Selected: {evaluationFile.name}</div>
+                  )}
                 </div>
 
                 {editingProperty && (

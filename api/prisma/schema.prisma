@@ -350,6 +350,13 @@ model Property {
   startDate          DateTime?         @map("start_date") @db.Date
   endDate            DateTime?         @map("end_date") @db.Date
   notes              String?
+  // Optional evaluation document (PDF/Excel) stored on Google Drive; only the
+  // Drive file id + metadata live in the DB (mirrors ChannelMaster.rateCard*).
+  evaluationDriveId    String?         @map("evaluation_drive_id")
+  evaluationFileName   String?         @map("evaluation_file_name")
+  evaluationMimeType   String?         @map("evaluation_mime_type")
+  evaluationSize       Int?            @map("evaluation_size")
+  evaluationUploadedAt DateTime?       @map("evaluation_uploaded_at")
   createdBy          Int               @map("created_by")
   createdAt          DateTime          @default(now()) @map("created_at")
   updatedAt          DateTime          @updatedAt @map("updated_at")
