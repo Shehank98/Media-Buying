@@ -1636,8 +1636,10 @@ function RevVerificationModal({ user, onClose }) {
                                 &rarr; {rvFullLKR(c.verifiedAmount)}{c.verifyReason ? ` · ${c.verifyReason}` : ''}
                               </div>
                             )}
-                            {c.verifyStatus === 'VERIFIED' && c.verifiedByName && (
-                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>by {c.verifiedByName}</div>
+                            {c.verifyStatus === 'VERIFIED' && (
+                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>
+                                {c.verifyReason || 'Confirmed with the finance'}{c.verifiedByName ? ` · by ${c.verifiedByName}` : ''}
+                              </div>
                             )}
                           </td>
                           <td style={{ textAlign: 'right' }}>
@@ -1649,6 +1651,12 @@ function RevVerificationModal({ user, onClose }) {
                               <button className="btn btn-sm btn-ghost" onClick={() => setDrafts(p => ({ ...p, [c.clientId]: { amount: d.amount ?? (c.verifiedAmount ?? ''), reason: d.reason ?? '', open: !disputing } }))} disabled={busyId === c.clientId}>
                                 Dispute
                               </button>
+                              {(c.verifyStatus === 'DISPUTED' || c.verifyStatus === 'VERIFIED') && (
+                                <button className="btn btn-sm btn-ghost" title="Undo — reset this row back to Pending" onClick={() => submit(c.clientId, 'reset')} disabled={busyId === c.clientId}
+                                  style={{ color: '#9A5B00' }}>
+                                  <Icon name="history" size={13} /> Reset
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

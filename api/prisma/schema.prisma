@@ -666,8 +666,12 @@ model GroupRevenue {
 // direct GroupRevenue figure for that head is used). `revenueFromFinance` = the
 // figure Finance reports for that client/month; the client's group head then
 // VERIFIES it on the Spend Analytics → Rev Verification screen — confirming it
-// (verifyStatus=VERIFIED) or disputing it with a corrected amount + reason
-// (verifyStatus=DISPUTED). A row with both amounts blank is cleared.
+// (verifyStatus=VERIFIED, verifyReason auto-set to "Confirmed with the finance")
+// or disputing it with a corrected amount + reason (verifyStatus=DISPUTED). A
+// wrongly-entered confirm/dispute can be RESET back to PENDING (clears
+// verifiedAmount/reason, keeps revenueFromFinance) by the group head on that
+// screen or by the admin from Group Revenue → Revenue by Client — both via the
+// `reset` action on POST /api/revenue/verification. A row with both amounts blank is cleared.
 model ClientRevenue {
   id                 Int                 @id @default(autoincrement())
   year               Int

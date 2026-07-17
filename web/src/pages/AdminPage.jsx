@@ -1251,6 +1251,20 @@ export default function AdminPage({ initialTab = 'users' }) {
     return sums;
   };
 
+  // Admin can undo a wrongly-entered dispute/confirmation on a client's finance
+  // figure → back to Pending (keeps the finance figure). Reuses the shared
+  // revenue-verification endpoint (SUPER_ADMIN is unrestricted there).
+  const resetVerification = async (clientId) => {
+    try {
+      await api.post('/revenue/verification', { year: grYear, month: grMonth, clientId, action: 'reset' });
+      setGrClients(prev => prev.map(c => c.clientId === clientId
+        ? { ...c, verifyStatus: 'PENDING', verifiedAmount: null, verifyReason: null, verifiedByName: null }
+        : c));
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to reset verification.');
+    }
+  };
+
   const autoSaveClient = async (clientId) => {
     const { year, month } = grCtxRef.current;
     const revRaw = crEditsRef.current.amounts[clientId];
@@ -3133,14 +3147,24 @@ export default function AdminPage({ initialTab = 'users' }) {
                                 </div>
                               </td>
                               <td>
-                                <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: vb.bg, color: vb.fg }}>{vb.label}</span>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: vb.bg, color: vb.fg }}>{vb.label}</span>
+                                  {(c.verifyStatus === 'DISPUTED' || c.verifyStatus === 'VERIFIED') && (
+                                    <button className="link-btn" title="Undo — reset back to Pending" onClick={() => resetVerification(c.clientId)}
+                                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#9A5B00', fontWeight: 600, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                      <Icon name="history" size={12} /> Reset
+                                    </button>
+                                  )}
+                                </div>
                                 {c.verifyStatus === 'DISPUTED' && (
                                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }} title={c.verifyReason || ''}>
                                     → {fmtLKR(c.verifiedAmount)}{c.verifiedByName ? ` · ${c.verifiedByName}` : ''}
                                   </div>
                                 )}
-                                {c.verifyStatus === 'VERIFIED' && c.verifiedByName && (
-                                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{c.verifiedByName}</div>
+                                {c.verifyStatus === 'VERIFIED' && (
+                                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }} title={c.verifyReason || ''}>
+                                    {c.verifyReason || 'Confirmed with the finance'}{c.verifiedByName ? ` · ${c.verifiedByName}` : ''}
+                                  </div>
                                 )}
                               </td>
                             </tr>

@@ -19,6 +19,18 @@ const fmtShort = (v) => {
 const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return `${MONTHS[+m - 1]} ${y}`; };
 const C = { revenue: '#1F5BB5', aor: '#E85D24', navy: '#0A1729' };
 
+// Total (billing + AVR) label centered above each monthly bar. A custom content
+// renderer (not position="top") so it renders even when the top AVR segment is
+// zero-height — i.e. the plain billing amount shows on months with no AVR.
+const TotalTopLabel = ({ x, y, width, value }) => {
+  if (!value || x == null) return null;
+  return (
+    <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#3B4A63">
+      {fmtShort(value)}
+    </text>
+  );
+};
+
 export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([]);
@@ -225,7 +237,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
                   <Legend verticalAlign="top" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44} />
                   <Bar dataKey="aor" name="AVR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
-                    <LabelList dataKey="total" position="top" formatter={(v) => (v ? fmtShort(v) : '')} style={{ fontSize: 10, fill: '#6B7790' }} />
+                    {/* Always show the month TOTAL on top (= billing + AVR; just the billing amount when there's no AVR). Custom renderer so it shows even when the AVR segment is zero-height. */}
+                    <LabelList dataKey="total" content={TotalTopLabel} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>

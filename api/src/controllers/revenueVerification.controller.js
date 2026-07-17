@@ -110,7 +110,7 @@ export async function submitRevenueVerification(req, res) {
     const clientId = parseInt(req.body.clientId);
     const action = req.body.action;
     if (!year || !month || !clientId) return res.status(400).json({ error: 'year, month and clientId are required' });
-    if (!['confirm', 'dispute'].includes(action)) return res.status(400).json({ error: "action must be 'confirm' or 'dispute'" });
+    if (!['confirm', 'dispute', 'reset'].includes(action)) return res.status(400).json({ error: "action must be 'confirm', 'dispute' or 'reset'" });
 
     const scope = await verifyScope(req.user);
     if (scope && !scope.includes(clientId)) return res.status(403).json({ error: 'Access denied to this client' });
@@ -122,7 +122,12 @@ export async function submitRevenueVerification(req, res) {
 
     let data;
     if (action === 'confirm') {
-      data = { verifyStatus: 'VERIFIED', verifiedAmount: row.revenueFromFinance, verifyReason: null, verifiedById: req.user.id, verifiedAt: new Date() };
+      // Confirming auto-notes "Confirmed with the finance" so the row shows why it was verified.
+      data = { verifyStatus: 'VERIFIED', verifiedAmount: row.revenueFromFinance, verifyReason: 'Confirmed with the finance', verifiedById: req.user.id, verifiedAt: new Date() };
+    } else if (action === 'reset') {
+      // Undo a wrongly-entered confirmation OR dispute → back to the original
+      // Pending state. Keeps the admin's finance figure so it can be re-checked.
+      data = { verifyStatus: 'PENDING', verifiedAmount: null, verifyReason: null, verifiedById: null, verifiedAt: null };
     } else {
       const amount = num(req.body.amount);
       const reason = (req.body.reason || '').trim();
