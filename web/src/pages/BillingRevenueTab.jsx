@@ -19,18 +19,6 @@ const fmtShort = (v) => {
 const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return `${MONTHS[+m - 1]} ${y}`; };
 const C = { revenue: '#1F5BB5', aor: '#E85D24', navy: '#0A1729' };
 
-// Total (billing + AVR) label centered above each monthly bar. A custom content
-// renderer (not position="top") so it renders even when the top AVR segment is
-// zero-height — i.e. the plain billing amount shows on months with no AVR.
-const TotalTopLabel = ({ x, y, width, value }) => {
-  if (!value || x == null) return null;
-  return (
-    <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#3B4A63">
-      {fmtShort(value)}
-    </text>
-  );
-};
-
 export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState([]);
@@ -236,12 +224,23 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
                   <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={(l) => `${l} ${year}`} />
                   <Legend verticalAlign="top" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44}>
-                    {/* When there's no AVR, the billing segment is the top of the bar - draw the total here. */}
-                    <LabelList dataKey="total" content={(p) => (monthlyData[p.index]?.aor > 0 ? null : <TotalTopLabel {...p} />)} />
+                    {/* Total label positioned from the BILLING segment's own scale (baseline = y+height),
+                        so it always shows the month total regardless of whether the AVR segment above it
+                        produces a label point. Covers every month that has a billing figure. */}
+                    <LabelList dataKey="total" content={(p) => {
+                      const row = monthlyData[p.index];
+                      if (!row || !(row.revenue > 0) || !row.total || p.y == null) return null;
+                      const topY = (p.y + p.height) - row.total * (p.height / row.revenue);
+                      return <text x={p.x + p.width / 2} y={topY - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#3B4A63">{fmtShort(row.total)}</text>;
+                    }} />
                   </Bar>
                   <Bar dataKey="aor" name="AVR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
-                    {/* When AVR exists, it's the top segment - draw the total (billing + AVR) here. */}
-                    <LabelList dataKey="total" content={(p) => (monthlyData[p.index]?.aor > 0 ? <TotalTopLabel {...p} /> : null)} />
+                    {/* Fallback only for a rare all-AVR month (no billing): the AVR segment is the whole bar. */}
+                    <LabelList dataKey="total" content={(p) => {
+                      const row = monthlyData[p.index];
+                      if (!row || row.revenue > 0 || !(row.aor > 0) || p.y == null) return null;
+                      return <text x={p.x + p.width / 2} y={p.y - 6} textAnchor="middle" fontSize={10} fontWeight={700} fill="#3B4A63">{fmtShort(row.total)}</text>;
+                    }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
