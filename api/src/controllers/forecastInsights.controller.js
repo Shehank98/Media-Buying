@@ -108,20 +108,29 @@ export async function accountManagerByClient(clientIds) {
     prisma.userClientAccess.findMany({
       where: { clientId: { in: clientIds }, user: { role: 'GROUP_HEAD' } },
       include: { user: { select: { name: true } } },
-      orderBy: { userId: 'asc' },
+      // Most-recently granted first (higher id = newer), so a fresh reassignment
+      // via a head's user account wins over an older direct assignment.
+      orderBy: { id: 'desc' },
     }),
   ]);
 
   const map = new Map();
+  // Direct UserClientAccess (the Users-tab "assign client to this head" action) is
+  // AUTHORITATIVE: assigning a client to a head via that head's user account makes
+  // them the account manager, overriding any legacy team assignment. This matches
+  // the current workflow (the Teams tab was removed) - the most recent direct
+  // assignment wins, so reassigning a client to a new head takes effect even if an
+  // older head's team/direct assignment is still on the record.
+  for (const ua of directAccess) {
+    if (!map.has(ua.clientId) && ua.user?.name) map.set(ua.clientId, ua.user.name);
+  }
+  // Fall back to team-derived head only when the client has no direct assignment.
   for (const tc of teamClients) {
     if (map.has(tc.clientId)) continue;
     const t = tc.team;
     if (t?.head?.name && t.head.role === 'GROUP_HEAD') { map.set(tc.clientId, t.head.name); continue; }
     const ghMember = t?.members?.[0]?.user;
     if (ghMember?.name) map.set(tc.clientId, ghMember.name);
-  }
-  for (const ua of directAccess) {
-    if (!map.has(ua.clientId) && ua.user?.name) map.set(ua.clientId, ua.user.name);
   }
   return map;
 }
