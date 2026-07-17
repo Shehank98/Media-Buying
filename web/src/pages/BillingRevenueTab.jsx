@@ -305,8 +305,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
             )}
           </Panel>
 
-          {/* Detailed breakdown - expandable per client */}
-          <Panel title="Detailed Breakdown" note="one row per client · expand for month-by-month">
+          {/* Detailed breakdown - collapsed by default; expand the section, then a client row for month-by-month */}
+          <Panel title="Detailed Breakdown" note="one row per client · expand for month-by-month" collapsible defaultOpen={false}>
             {breakdown.length === 0 ? <Empty /> : (
               <div style={{ overflowX: 'auto' }}>
                 <table className="tbl">
@@ -359,15 +359,23 @@ function Card({ label, value, title, sub, yoy, yoyLabel, accent, plain, valueSiz
   );
 }
 
-function Panel({ title, note, children }) {
+function Panel({ title, note, children, collapsible = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const showBody = !collapsible || open;
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: note ? 4 : 12 }}>
-        {title}
-        {note && <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}> · {note}</span>}
+      <div
+        onClick={collapsible ? () => setOpen((o) => !o) : undefined}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: showBody ? (note ? 4 : 12) : 0, cursor: collapsible ? 'pointer' : 'default', userSelect: 'none' }}
+      >
+        {collapsible && <Icon name={open ? 'chevD' : 'chevR'} size={15} style={{ color: 'var(--muted)' }} />}
+        <span>
+          {title}
+          {note && <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}> · {note}</span>}
+        </span>
       </div>
-      {note && <div style={{ height: 8 }} />}
-      {children}
+      {showBody && note && <div style={{ height: 8 }} />}
+      {showBody && children}
     </div>
   );
 }
