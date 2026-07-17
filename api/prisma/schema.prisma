@@ -287,6 +287,11 @@ model ChannelClientDeal {
   channelMasterId Int           @map("channel_master_id")
   clientId        Int           @map("client_id")
   year            Int
+  // How this deal's rate is expressed: DISCOUNT (discountPct, % off rate card),
+  // CPRP (rateValue = negotiated cost-per-rating-point, LKR) or FLAT (rateValue =
+  // flat rate, LKR). bonusPct always applies. discountPct stays 0 for CPRP/FLAT.
+  rateType        String        @default("DISCOUNT") @map("rate_type")
+  rateValue       Decimal?      @map("rate_value") @db.Decimal(14, 2)
   discountPct     Decimal       @map("discount_pct") @db.Decimal(5, 2)
   bonusPct        Decimal       @map("bonus_pct") @db.Decimal(5, 2)
   notes           String?

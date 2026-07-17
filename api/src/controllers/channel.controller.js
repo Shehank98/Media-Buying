@@ -132,6 +132,8 @@ export async function upsertChannelDeal(req, res) {
     if (!year || discountPct == null || bonusPct == null) {
       return res.status(400).json({ error: 'Year, discountPct and bonusPct are required' });
     }
+    const rateType = ['DISCOUNT', 'CPRP', 'FLAT'].includes(req.body.rateType) ? req.body.rateType : 'DISCOUNT';
+    const rateValue = rateType === 'DISCOUNT' ? null : (req.body.rateValue == null || req.body.rateValue === '' ? null : Number(req.body.rateValue));
 
     const channel = await prisma.channel.findUnique({
       where: { id: parseInt(req.params.channelId) },
@@ -150,13 +152,15 @@ export async function upsertChannelDeal(req, res) {
           year: parseInt(year),
         },
       },
-      update: { discountPct, bonusPct, notes: notes || null },
+      update: { discountPct, bonusPct, rateType, rateValue, notes: notes || null },
       create: {
         channelMasterId: channel.channelMasterId,
         clientId: channel.clientId,
         year: parseInt(year),
         discountPct,
         bonusPct,
+        rateType,
+        rateValue,
         notes: notes || null,
         createdById: req.user.id,
       },
@@ -176,10 +180,12 @@ export async function updateChannelDeal(req, res) {
     if (discountPct == null || bonusPct == null) {
       return res.status(400).json({ error: 'discountPct and bonusPct are required' });
     }
+    const rateType = ['DISCOUNT', 'CPRP', 'FLAT'].includes(req.body.rateType) ? req.body.rateType : 'DISCOUNT';
+    const rateValue = rateType === 'DISCOUNT' ? null : (req.body.rateValue == null || req.body.rateValue === '' ? null : Number(req.body.rateValue));
 
     const deal = await prisma.channelClientDeal.update({
       where: { id: parseInt(req.params.id) },
-      data: { discountPct, bonusPct, notes: notes || null },
+      data: { discountPct, bonusPct, rateType, rateValue, notes: notes || null },
       include: { createdBy: { select: { id: true, name: true } } },
     });
 

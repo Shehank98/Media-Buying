@@ -79,6 +79,8 @@ export async function getChannelIntelligence(req, res) {
         totalSpend,
         discountPct: deal ? safeNum(deal.discountPct) : null,
         bonusPct: deal ? safeNum(deal.bonusPct) : null,
+        rateType: deal?.rateType || 'DISCOUNT',
+        rateValue: deal && deal.rateValue != null ? safeNum(deal.rateValue) : null,
         dealYear: deal?.year ?? null,
         dealId: deal?.id || null,
         notes: deal?.notes || '',
@@ -124,6 +126,8 @@ export async function getClientChannelYearly(req, res) {
         spend: spendByYear.get(y) || 0,
         discountPct: deal ? safeNum(deal.discountPct) : null,
         bonusPct: deal ? safeNum(deal.bonusPct) : null,
+        rateType: deal?.rateType || 'DISCOUNT',
+        rateValue: deal && deal.rateValue != null ? safeNum(deal.rateValue) : null,
         notes: deal?.notes || '',
       };
     });
@@ -177,6 +181,8 @@ export async function upsertClientDeal(req, res) {
     if (!channelMasterId || !clientId || !year || discountPct == null || bonusPct == null) {
       return res.status(400).json({ error: 'channelMasterId, clientId, year, discountPct, bonusPct are required' });
     }
+    const rateType = ['DISCOUNT', 'CPRP', 'FLAT'].includes(req.body.rateType) ? req.body.rateType : 'DISCOUNT';
+    const rateValue = rateType === 'DISCOUNT' ? null : (req.body.rateValue == null || req.body.rateValue === '' ? null : Number(req.body.rateValue));
     const deal = await prisma.channelClientDeal.upsert({
       where: {
         channelMasterId_clientId_year: {
@@ -185,13 +191,15 @@ export async function upsertClientDeal(req, res) {
           year: parseInt(year),
         },
       },
-      update: { discountPct, bonusPct, notes: notes || null },
+      update: { discountPct, bonusPct, rateType, rateValue, notes: notes || null },
       create: {
         channelMasterId: parseInt(channelMasterId),
         clientId: parseInt(clientId),
         year: parseInt(year),
         discountPct,
         bonusPct,
+        rateType,
+        rateValue,
         notes: notes || null,
         createdById: req.user.id,
       },

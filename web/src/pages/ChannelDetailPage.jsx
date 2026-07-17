@@ -26,6 +26,13 @@ const PROP_TONE = {
 const canModify = (role) =>
   ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN'].includes(role);
 
+// A deal's rate shown by its type: a discount %, a CPRP rate (LKR) or a flat rate (LKR).
+const dealRateLabel = (deal) => {
+  if (deal?.rateType === 'CPRP') return `CPRP ${fmtLKR(deal.rateValue)}`;
+  if (deal?.rateType === 'FLAT') return `Flat ${fmtLKR(deal.rateValue)}`;
+  return `${Number(deal?.discountPct || 0).toFixed(1)}% discount`;
+};
+
 const fmtDate = (iso) => {
   if (!iso) return '-';
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -83,7 +90,7 @@ export default function ChannelDetailPage() {
   const [deals, setDeals] = useState([]);
   const [showDealModal, setShowDealModal] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
-  const [dealForm, setDealForm] = useState({ year: '', discountPct: '', bonusPct: '', notes: '' });
+  const [dealForm, setDealForm] = useState({ year: '', rateType: 'DISCOUNT', discountPct: '', rateValue: '', bonusPct: '', notes: '' });
   const [dealSubmitting, setDealSubmitting] = useState(false);
   const [dealFormError, setDealFormError] = useState('');
   const [showDealDeleteModal, setShowDealDeleteModal] = useState(false);
@@ -336,7 +343,7 @@ export default function ChannelDetailPage() {
 
   const openAddDealModal = () => {
     setEditingDeal(null);
-    setDealForm({ year: new Date().getFullYear().toString(), discountPct: '', bonusPct: '', notes: '' });
+    setDealForm({ year: new Date().getFullYear().toString(), rateType: 'DISCOUNT', discountPct: '', rateValue: '', bonusPct: '', notes: '' });
     setDealFormError('');
     setShowDealModal(true);
   };
@@ -345,7 +352,9 @@ export default function ChannelDetailPage() {
     setEditingDeal(deal);
     setDealForm({
       year: deal.year?.toString() || '',
+      rateType: deal.rateType || 'DISCOUNT',
       discountPct: deal.discountPct != null ? deal.discountPct.toString() : '',
+      rateValue: deal.rateValue != null ? deal.rateValue.toString() : '',
       bonusPct: deal.bonusPct != null ? deal.bonusPct.toString() : '',
       notes: deal.notes || '',
     });
@@ -361,8 +370,14 @@ export default function ChannelDetailPage() {
       setDealFormError('Please enter a valid year.');
       return;
     }
-    if (dealForm.discountPct === '' || isNaN(Number(dealForm.discountPct)) || Number(dealForm.discountPct) < 0) {
-      setDealFormError('Please enter a valid discount %.');
+    const rateType = dealForm.rateType || 'DISCOUNT';
+    if (rateType === 'DISCOUNT') {
+      if (dealForm.discountPct === '' || isNaN(Number(dealForm.discountPct)) || Number(dealForm.discountPct) < 0) {
+        setDealFormError('Please enter a valid discount %.');
+        return;
+      }
+    } else if (dealForm.rateValue === '' || isNaN(Number(dealForm.rateValue)) || Number(dealForm.rateValue) < 0) {
+      setDealFormError(`Please enter a valid ${rateType === 'CPRP' ? 'CPRP' : 'flat'} rate (LKR).`);
       return;
     }
     if (dealForm.bonusPct === '' || isNaN(Number(dealForm.bonusPct)) || Number(dealForm.bonusPct) < 0) {
@@ -373,7 +388,9 @@ export default function ChannelDetailPage() {
     setDealSubmitting(true);
     try {
       const payload = {
-        discountPct: Number(dealForm.discountPct),
+        rateType,
+        discountPct: rateType === 'DISCOUNT' ? Number(dealForm.discountPct) : 0,
+        rateValue: rateType === 'DISCOUNT' ? null : Number(dealForm.rateValue),
         bonusPct: Number(dealForm.bonusPct),
         notes: dealForm.notes,
       };
@@ -678,7 +695,7 @@ export default function ChannelDetailPage() {
               <thead>
                 <tr>
                   <th>Year</th>
-                  <th className="num">Discount %</th>
+                  <th>Rate</th>
                   <th className="num">Bonus %</th>
                   <th>Notes</th>
                   <th>Added by</th>
@@ -692,7 +709,7 @@ export default function ChannelDetailPage() {
                   return (
                     <tr key={deal.id}>
                       <td style={{ fontWeight: 700 }}>{deal.year}</td>
-                      <td className="num">{Number(deal.discountPct).toFixed(1)}%</td>
+                      <td>{dealRateLabel(deal)}</td>
                       <td className="num">{Number(deal.bonusPct).toFixed(1)}%</td>
                       <td style={{ color: 'var(--muted)' }}>{deal.notes || '-'}</td>
                       <td>{deal.createdByName || '-'}</td>
@@ -1095,20 +1112,40 @@ export default function ChannelDetailPage() {
                   )}
                 </div>
 
+                <div className="field">
+                  <label className="field-label">Rate type<span className="req">*</span></label>
+                  <select
+                    className="select"
+                    value={dealForm.rateType}
+                    onChange={(e) => setDealForm((prev) => ({ ...prev, rateType: e.target.value }))}
+                  >
+                    <option value="DISCOUNT">Discount %</option>
+                    <option value="CPRP">CPRP rate (LKR)</option>
+                    <option value="FLAT">Flat rate (LKR)</option>
+                  </select>
+                </div>
+
                 <div className="field-grid2">
                   <div className="field">
-                    <label className="field-label">
-                      Discount %<span className="req">*</span>
-                    </label>
-                    <input
-                      className="input"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      placeholder="0"
-                      value={dealForm.discountPct}
-                      onChange={(e) => setDealForm((prev) => ({ ...prev, discountPct: e.target.value }))}
-                    />
+                    {dealForm.rateType === 'DISCOUNT' ? (
+                      <>
+                        <label className="field-label">Discount %<span className="req">*</span></label>
+                        <input
+                          className="input" type="number" min="0" step="0.1" placeholder="0"
+                          value={dealForm.discountPct}
+                          onChange={(e) => setDealForm((prev) => ({ ...prev, discountPct: e.target.value }))}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <label className="field-label">{dealForm.rateType === 'CPRP' ? 'CPRP rate (LKR)' : 'Flat rate (LKR)'}<span className="req">*</span></label>
+                        <input
+                          className="input" type="number" min="0" step="1" placeholder="0"
+                          value={dealForm.rateValue}
+                          onChange={(e) => setDealForm((prev) => ({ ...prev, rateValue: e.target.value }))}
+                        />
+                      </>
+                    )}
                   </div>
                   <div className="field">
                     <label className="field-label">
