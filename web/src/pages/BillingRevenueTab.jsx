@@ -135,12 +135,12 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
         ['Revenue by Billing', `${year}`],
         ['Scope', scope],
-        ['Total Rev (Billing + AOR)', Number(totalRev || 0)],
+        ['Total Rev (Billing + AVR)', Number(totalRev || 0)],
         ['Total Billing Revenue', Number(summary?.revenue || 0)],
-        ['Total AOR Revenue', Number(aorTotal || 0)],
+        ['Total AVR Revenue', Number(aorTotal || 0)],
       ]), 'Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AOR Revenue': m.aor, 'Total Revenue': m.total })),
+        monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AVR Revenue': m.aor, 'Total Revenue': m.total })),
       ), 'Monthly');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
         byAgency.map((a) => ({ Agency: a.agency, 'Billing Revenue': a.revenue, Clients: a.clients })),
@@ -208,13 +208,13 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
         <>
           {/* KPI cards - Total Rev = Billing + AOR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14, marginBottom: 16 }}>
-            <Card label="Total Rev" value={fmtLKRm(totalRev)} title={fmtLKR(totalRev)} sub="Billing + AOR revenue" accent={C.navy} />
+            <Card label="Total Rev" value={fmtLKRm(totalRev)} title={fmtLKR(totalRev)} sub="Billing + AVR revenue" accent={C.navy} />
             <Card label="Total Billing Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Admin-entered client billing" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} accent={C.revenue} />
-            <Card label="Total AOR Revenue" value={fmtLKRm(aorTotal)} title={fmtLKR(aorTotal)} sub="Admin-entered AOR (company-wide)" accent={C.aor} />
+            <Card label="Total AVR Revenue" value={fmtLKRm(aorTotal)} title={fmtLKR(aorTotal)} sub="Admin-entered AVR (company-wide)" accent={C.aor} />
           </div>
 
           {/* Monthly Revenue - billing + AOR stacked (AOR on top, different color) */}
-          <Panel title="Monthly Billing Revenue" note={`${periodLabel} · billing + AOR per month`}>
+          <Panel title="Monthly Billing Revenue" note={`${periodLabel} · billing + AVR per month`}>
             {monthlyData.every((m) => !m.revenue && !m.aor) ? <Empty /> : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={monthlyData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
@@ -224,7 +224,7 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
                   <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={(l) => `${l} ${year}`} />
                   <Legend verticalAlign="top" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44} />
-                  <Bar dataKey="aor" name="AOR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
+                  <Bar dataKey="aor" name="AVR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
                     <LabelList dataKey="total" position="top" formatter={(v) => (v ? fmtShort(v) : '')} style={{ fontSize: 10, fill: '#6B7790' }} />
                   </Bar>
                 </BarChart>

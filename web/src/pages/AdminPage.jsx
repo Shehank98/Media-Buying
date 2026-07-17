@@ -1154,6 +1154,36 @@ export default function AdminPage({ initialTab = 'users' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grClientAmounts, grClients, grHeads]);
 
+  // Auto-fill the "Actual billing by agency" section from the sum of each client's
+  // Revenue, grouped by the client's CURRENT agency - so entering client numbers
+  // (or moving a client to another agency) flows straight into the agency totals.
+  // The agency inputs stay editable (a manual override sticks until a client
+  // amount changes again). Uses agencyId (fresh each fetch) so re-agencied clients
+  // roll up under the new agency.
+  useEffect(() => {
+    if (!grClients.length || !grAgencies.length) return;
+    const sumByAgency = new Map(); // agencyId -> sum
+    grClients.forEach(c => {
+      if (c.agencyId == null) return;
+      const raw = grClientAmounts[c.clientId];
+      if (raw === '' || raw == null) return;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return;
+      sumByAgency.set(c.agencyId, (sumByAgency.get(c.agencyId) || 0) + n);
+    });
+    if (sumByAgency.size === 0) return;
+    setGrAgencyAmounts(prev => {
+      const next = { ...prev };
+      let changed = false;
+      sumByAgency.forEach((sum, aid) => {
+        const val = String(round2(sum));
+        if (next[aid] !== val) { next[aid] = val; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grClientAmounts, grClients, grAgencies]);
+
   // Keep refs of the latest edits + month/year so the debounced auto-save reads
   // fresh values (setTimeout closures would otherwise capture stale state).
   useEffect(() => { crEditsRef.current.amounts = grClientAmounts; }, [grClientAmounts]);
@@ -1180,6 +1210,22 @@ export default function AdminPage({ initialTab = 'users' }) {
     return sums;
   };
 
+  // Agency roll-up (per-agency sum of their clients' Revenue) → persisted so the
+  // "Actual billing by agency" figures + agency Revenue donut save automatically
+  // alongside the by-client entries, grouped by each client's current agency.
+  const computeAgencyRollup = (clientAmounts) => {
+    const sums = {};
+    grClients.forEach(c => {
+      if (c.agencyId == null) return;
+      const raw = clientAmounts[c.clientId];
+      if (raw === '' || raw == null) return;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return;
+      sums[c.agencyId] = round2((sums[c.agencyId] || 0) + n);
+    });
+    return sums;
+  };
+
   const autoSaveClient = async (clientId) => {
     const { year, month } = grCtxRef.current;
     const revRaw = crEditsRef.current.amounts[clientId];
@@ -1192,6 +1238,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         clientAmounts: { [clientId]: toVal(revRaw) },
         clientFinanceAmounts: { [clientId]: toVal(finRaw) },
         amounts: computeHubRollup(crEditsRef.current.amounts),
+        agencyAmounts: computeAgencyRollup(crEditsRef.current.amounts),
       });
       // Refresh row metadata (verification badge, head) without touching the
       // inputs the admin is still editing.
@@ -1523,10 +1570,11 @@ export default function AdminPage({ initialTab = 'users' }) {
     const map = new Map();
     grClients.forEach(c => {
       const noHead = c.hasHead === false || !c.headName || c.headName === 'Unassigned';
-      // Unassigned (no Hub head) clients are only listed when they actually carry
-      // a revenue figure (entered/imported) - otherwise the bucket would be full
-      // of clients nobody manages and has no data for.
-      if (noHead) {
+      // Unassigned clients: always list ACTIVE ones (so a just-moved/reassigned
+      // client is visible for revenue entry even before its Hub head resolves).
+      // INACTIVE unassigned clients (e.g. a paused Mobitel) are only listed when
+      // they actually carry a revenue figure, so dead accounts don't clutter.
+      if (noHead && c.isActive === false) {
         const rev = grClientAmounts[c.clientId];
         const fin = grClientFinanceAmounts[c.clientId];
         const hasVal = (rev !== '' && rev != null) || (fin !== '' && fin != null);
@@ -1784,7 +1832,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     ] },
     { label: 'Channel Commitments', members: [{ key: 'channel-commitments', label: 'Channel Commitments' }] },
     { label: 'Group Revenue', members: [{ key: 'group-revenue', label: 'Group Revenue' }] },
-    { label: 'AOR', members: [{ key: 'aor', label: 'AOR' }] },
+    { label: 'AVR', members: [{ key: 'aor', label: 'AVR' }] },
     { label: 'Requests', members: [{ key: 'requests', label: 'Requests', count: reqPending }] },
     { label: 'Notify', members: [{ key: 'notify', label: 'Notify' }] },
     { label: 'Backup', members: [{ key: 'backup', label: 'Backup' }] },
@@ -3244,8 +3292,8 @@ export default function AdminPage({ initialTab = 'users' }) {
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#E85D24,#C44A18)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="money" size={20} /></div>
               <div>
-                <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>AOR Revenue</div>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Monthly AOR revenue by channel · stacked on the Revenue-by-billing chart</div>
+                <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>AVR Revenue</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Monthly AVR revenue by channel · stacked on the Revenue-by-billing chart</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -3295,10 +3343,10 @@ export default function AdminPage({ initialTab = 'users' }) {
             {/* Month entries */}
             <div style={{ padding: '4px 0' }}>
               {aorLoading ? (
-                <div style={{ padding: 20 }}><OrbitLoader label="Loading AOR…" /></div>
+                <div style={{ padding: 20 }}><OrbitLoader label="Loading AVR…" /></div>
               ) : (() => {
                 const rows = aorEntries.filter(e => e.month === aorMonth);
-                if (rows.length === 0) return <div style={{ padding: '18px 16px', fontSize: 12.5, color: 'var(--muted)' }}>No AOR entries for {MONTHS[aorMonth - 1]} {aorYear} yet.</div>;
+                if (rows.length === 0) return <div style={{ padding: '18px 16px', fontSize: 12.5, color: 'var(--muted)' }}>No AVR entries for {MONTHS[aorMonth - 1]} {aorYear} yet.</div>;
                 return (
                   <div style={{ overflowX: 'auto' }}>
                     <table className="tbl" style={{ margin: 0 }}>
@@ -3326,7 +3374,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
           {/* Year-at-a-glance month totals */}
           <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 10 }}>{aorYear} · AOR by month</div>
+            <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 10 }}>{aorYear} · AVR by month</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
               {MONTHS.map((m, i) => {
                 const t = aorMonthTotals[i + 1] || 0;

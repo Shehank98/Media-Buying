@@ -18,6 +18,18 @@ import {
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 
+// Total value at the right end of each Annual Achievement bar. A custom content
+// renderer (not position="right") so it renders even when the outer stacked
+// segment is zero-width (Budget/Target bars, or Actual with no forecast-fill).
+const AchTotalLabel = ({ x, y, width, height, value }) => {
+  if (value == null || x == null) return null;
+  return (
+    <text x={x + width + 8} y={y + height / 2} dominantBaseline="central" textAnchor="start" fontSize={11} fontWeight={700} fill="#16243C">
+      {`${Number(value).toFixed(1)}M`}
+    </text>
+  );
+};
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtMonth(ym) {
   if (!ym) return '';
@@ -757,7 +769,6 @@ export default function SpendAnalyticsPage() {
 
           {/* Agency-wise Annual Achievement + this-year monthly spend (per accessible agency) */}
           {canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
-            const fmtM = (v) => `${Number(v || 0).toFixed(1)}M`;
             const targetLabel = a.targetRangeLabel ? `${a.targetRangeLabel} Target` : `Upto ${a.uptoMonthLabel || '-'} Target`;
             const bars = [
               { name: 'Budget Forecast', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
@@ -777,8 +788,8 @@ export default function SpendAnalyticsPage() {
                     </p>
                   </div>
                   {a.hasTarget && a.achievementPct != null && (
-                    <span style={{ fontSize: 13, fontWeight: 700, color: pctColor, background: pctColor + '18', borderRadius: 8, padding: '5px 11px' }}>
-                      {a.achievementPct}% of {a.uptoMonthLabel} target
+                    <span style={{ fontSize: 13, fontWeight: 700, color: pctColor, background: pctColor + '18', borderRadius: 8, padding: '5px 11px' }} title={`Actual ${a.actualRangeLabel || ''} vs target through ${a.uptoMonthLabel || ''}`}>
+                      {a.achievementPct}% YTD
                     </span>
                   )}
                 </div>
@@ -791,11 +802,13 @@ export default function SpendAnalyticsPage() {
                           <XAxis type="number" tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
                           <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: '#3B4A63' }} axisLine={false} tickLine={false} />
                           <Tooltip formatter={(v, n) => [`LKR ${Number(v).toFixed(1)}M`, n === 'forecastPart' ? 'Forecast' : 'Actual']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                          <Bar dataKey="actualPart" stackId="a" maxBarSize={30}>
+                          <Bar dataKey="actualPart" stackId="a" radius={[0, 4, 4, 0]} maxBarSize={30}>
                             {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                            {/* Label on the actual segment only when there is no forecast-fill on top of it, so the total sits at the true bar end. */}
+                            <LabelList dataKey="total" content={(p) => (bars[p.index]?.forecastPart > 0 ? null : <AchTotalLabel {...p} />)} />
                           </Bar>
                           <Bar dataKey="forecastPart" stackId="a" fill="#F2A93B" radius={[0, 4, 4, 0]} maxBarSize={30}>
-                            <LabelList dataKey="total" position="right" formatter={v => fmtM(v)} style={{ fontSize: 11, fontWeight: 700, fill: '#16243C' }} />
+                            <LabelList dataKey="total" content={(p) => (bars[p.index]?.forecastPart > 0 ? <AchTotalLabel {...p} /> : null)} />
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>

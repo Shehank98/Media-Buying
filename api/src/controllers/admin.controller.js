@@ -1083,7 +1083,7 @@ export async function listGroupRevenue(req, res) {
       // the admin can always enter revenue. Inactive/Unassigned are flagged in the
       // response; Forecasting + Rev Verification stay active+assigned only.
       prisma.client.findMany({
-        select: { id: true, name: true, isActive: true, agency: { select: { name: true } } },
+        select: { id: true, name: true, isActive: true, agency: { select: { id: true, name: true } } },
         orderBy: [{ name: 'asc' }],
       }),
       prisma.clientRevenue.findMany({ where: { year, month }, include: { verifier: { select: { name: true } } } }),
@@ -1099,6 +1099,7 @@ export async function listGroupRevenue(req, res) {
         return {
           clientId: c.id,
           name: c.name,
+          agencyId: c.agency?.id ?? null,
           agencyName: c.agency?.name || '',
           isActive: c.isActive !== false,
           hasHead: headByClient.has(c.id),
