@@ -3624,9 +3624,9 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div>
                 <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Daily data export to Google Drive (Excel)</div>
                 <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 540 }}>
-                  Each revenue, master-data and target tab is auto-exported as its own dated Excel file, into
-                  <b> Data Exports / &lt;tab&gt; /</b> in Drive. Runs daily at 02:00 (Asia/Colombo); the newest {dataExport?.retention ?? 10} files
-                  per tab are kept and older ones removed.
+                  Every revenue, master-data and target tab is auto-exported as its own Excel file into a date-wise
+                  Drive tree <b>Data Exports / year / month / date /</b> (all that day's backup Excels in one date folder).
+                  Runs daily at 02:00 (Asia/Colombo); the newest {dataExport?.retention ?? 10} days are kept and older date folders removed.
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

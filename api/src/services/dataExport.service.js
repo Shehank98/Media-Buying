@@ -64,6 +64,8 @@ async function topFolder(token) {
 
 // Multipart upload of an xlsx buffer into a Drive folder.
 async function uploadXlsx(buffer, fileName, folderId, token) {
+  // Replace any same-name file in the date folder so re-runs don't stack dupes.
+  await deleteExistingByName(fileName, folderId, token);
   const metadata = { name: fileName, parents: [folderId] };
   const boundary = 'orbit_' + Date.now().toString(36);
   const pre = Buffer.from(
@@ -92,20 +94,50 @@ async function uploadXlsx(buffer, fileName, folderId, token) {
   return resp.json();
 }
 
-// Keep only the newest `retention` xlsx files in a folder; delete the rest.
-async function pruneFolder(folderId, token, retention) {
-  if (!(retention > 0)) return 0;
-  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime desc&pageSize=1000&fields=files(id,createdTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+// List the immediate subfolders of a Drive folder.
+async function listChildFolders(parentId, token) {
+  const q = encodeURIComponent(`'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=1000&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!resp.ok) return 0;
-  const { files = [] } = await resp.json();
+  if (!resp.ok) return [];
+  return (await resp.json()).files || [];
+}
+
+async function driveDelete(id, token) {
+  const d = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?supportsAllDrives=true`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+  });
+  return d.ok || d.status === 204;
+}
+
+// Delete any file already named `fileName` in `folderId` (so re-running the same
+// day replaces that day's file instead of stacking duplicates).
+async function deleteExistingByName(fileName, folderId, token) {
+  const safe = fileName.replace(/['\\]/g, ' ');
+  const q = encodeURIComponent(`'${folderId}' in parents and name = '${safe}' and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!resp.ok) return;
+  for (const f of (await resp.json()).files || []) await driveDelete(f.id, token);
+}
+
+// Keep only the newest `retention` DATE folders (YYYY-MM-DD) across the whole
+// Data Exports tree (year → month → date); delete older date folders and their
+// files. Scoped to this root so it never touches the DB-backup date folders.
+export async function pruneDateFolders(rootId, token, retention) {
+  if (!(retention > 0)) return 0;
+  const dateFolders = [];
+  for (const year of await listChildFolders(rootId, token)) {
+    for (const month of await listChildFolders(year.id, token)) {
+      for (const day of await listChildFolders(month.id, token)) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(day.name)) dateFolders.push(day);
+      }
+    }
+  }
+  dateFolders.sort((a, b) => b.name.localeCompare(a.name)); // newest first (name is sortable)
   let deleted = 0;
-  for (const f of files.slice(retention)) {
-    const d = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?supportsAllDrives=true`, {
-      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
-    });
-    if (d.ok || d.status === 204) deleted += 1;
+  for (const f of dateFolders.slice(retention)) {
+    if (await driveDelete(f.id, token)) deleted += 1;
   }
   return deleted;
 }
@@ -399,34 +431,42 @@ export async function runDataExport({ trigger = 'manual' } = {}) {
   running = true;
   const startedAt = Date.now();
   const retention = parseInt(process.env.EXPORT_RETENTION || '10', 10);
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);           // YYYY-MM-DD
+  const yearStr = String(now.getUTCFullYear());             // YYYY
+  const monthStr = String(now.getUTCMonth() + 1).padStart(2, '0'); // MM
   const results = [];
   try {
     const token = await getDriveAccessToken();
     const top = await topFolder(token);
+    // Date-wise tree: Data Exports / <year> / <month> / <date> / <Tab>.xlsx
     const root = await ensureFolder(ROOT_FOLDER, top, token);
+    const yearFolder = await ensureFolder(yearStr, root, token);
+    const monthFolder = await ensureFolder(monthStr, yearFolder, token);
+    const dateFolder = await ensureFolder(dateStr, monthFolder, token);
     for (const ds of DATASETS) {
-      const entry = { name: ds.folder, fileName: `${ds.slug}_${dateStr}.xlsx` };
+      const entry = { name: ds.folder, fileName: `${ds.slug}.xlsx` };
       try {
         const { sheets, rowCount } = await ds.build();
         const buf = await workbook(sheets);
-        const folder = await ensureFolder(ds.folder, root, token);
-        await uploadXlsx(buf, entry.fileName, folder, token);
-        let pruned = 0;
-        try { pruned = await pruneFolder(folder, token, retention); } catch { /* best-effort */ }
-        entry.rows = rowCount; entry.pruned = pruned;
+        await uploadXlsx(buf, entry.fileName, dateFolder, token);
+        entry.rows = rowCount;
       } catch (err) {
         entry.error = err.message;
         console.error(`[data-export] ${ds.folder} failed:`, err.message);
       }
       results.push(entry);
     }
+    // Keep only the newest `retention` date folders (days); remove older ones.
+    let prunedDays = 0;
+    try { prunedDays = await pruneDateFolders(root, token, retention); } catch { /* best-effort */ }
     const failed = results.filter((r) => r.error).length;
     lastRun = {
       status: failed === results.length ? 'failed' : (failed ? 'partial' : 'success'),
-      at: new Date().toISOString(), datasets: results, durationMs: Date.now() - startedAt, trigger,
+      at: new Date().toISOString(), folder: `${ROOT_FOLDER}/${yearStr}/${monthStr}/${dateStr}`,
+      datasets: results, prunedDays, durationMs: Date.now() - startedAt, trigger,
     };
-    console.log(`[data-export] ${results.length - failed}/${results.length} datasets uploaded (${dateStr})`);
+    console.log(`[data-export] ${results.length - failed}/${results.length} tabs → ${yearStr}/${monthStr}/${dateStr}, pruned ${prunedDays} old day(s)`);
     return lastRun;
   } catch (err) {
     lastRun = { status: 'failed', at: new Date().toISOString(), datasets: results, error: err.message, durationMs: Date.now() - startedAt, trigger };
