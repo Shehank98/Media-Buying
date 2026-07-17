@@ -5,6 +5,30 @@ import {
   runBackup, getBackupStatus, listBackups, isBackupConfigured,
   createDumpFile, restoreDatabase, downloadDriveFile, getDriveAccessToken,
 } from '../services/backup.service.js';
+import { runDataExport, getDataExportStatus } from '../services/dataExport.service.js';
+
+// GET /api/admin/backup/data-export/status - per-tab Excel export status + config.
+export async function dataExportStatus(req, res) {
+  try {
+    return res.json(getDataExportStatus());
+  } catch (error) {
+    console.error('dataExportStatus error:', error);
+    return res.status(500).json({ error: 'Failed to read data-export status', detail: error.message });
+  }
+}
+
+// POST /api/admin/backup/data-export/run - trigger the per-tab Excel export now.
+export async function triggerDataExport(req, res) {
+  if (!isBackupConfigured()) {
+    return res.status(400).json({ error: 'Data export needs the Google Drive backup to be configured first.' });
+  }
+  try {
+    const result = await runDataExport({ trigger: 'manual' });
+    return res.json({ message: 'Data export completed', result });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
 
 // GET /api/admin/backup/status - configuration + last run + recent backups.
 export async function backupStatus(req, res) {

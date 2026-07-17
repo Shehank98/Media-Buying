@@ -313,6 +313,31 @@ export default function AdminPage({ initialTab = 'users' }) {
     } finally { setBackupRunning(false); }
   };
 
+  // Per-tab Excel export (revenue / master data / targets) to Google Drive.
+  const [dataExport, setDataExport] = useState(null);
+  const [dataExportRunning, setDataExportRunning] = useState(false);
+  const [dataExportMsg, setDataExportMsg] = useState('');
+  const fetchDataExport = async () => {
+    try { const { data } = await api.get('/admin/backup/data-export/status'); setDataExport(data); }
+    catch { setDataExport(null); }
+  };
+  useEffect(() => {
+    if (activeTab === 'backup') fetchDataExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  const runDataExportNow = async () => {
+    setDataExportRunning(true); setDataExportMsg('');
+    try {
+      const { data } = await api.post('/admin/backup/data-export/run');
+      const r = data.result || {};
+      const okCount = (r.datasets || []).filter((d) => !d.error).length;
+      setDataExportMsg(`Exported ${okCount}/${(r.datasets || []).length} tabs to Google Drive.`);
+      await fetchDataExport();
+    } catch (err) {
+      setDataExportMsg(err.response?.data?.error || 'Data export failed.');
+    } finally { setDataExportRunning(false); }
+  };
+
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const restoreInputRef = useRef(null);
@@ -3589,6 +3614,47 @@ export default function AdminPage({ initialTab = 'users' }) {
             {slArchive && !slArchive.configured && (
               <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
                 Uses the same Google Drive connection as the database backup below. Configure that first (OAuth env vars, or a service account + folder id).
+              </div>
+            )}
+          </div>
+
+          {/* Daily per-tab Excel export (revenue / master data / targets) */}
+          <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Daily data export to Google Drive (Excel)</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 540 }}>
+                  Each revenue, master-data and target tab is auto-exported as its own dated Excel file, into
+                  <b> Data Exports / &lt;tab&gt; /</b> in Drive. Runs daily at 02:00 (Asia/Colombo); the newest {dataExport?.retention ?? 10} files
+                  per tab are kept and older ones removed.
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {dataExport && (
+                  <span className="badge" style={{ background: dataExport.configured ? '#ECF8F1' : '#FBE0DA', color: dataExport.configured ? '#15814B' : '#C5391F', fontWeight: 700 }}>
+                    Drive: {dataExport.configured ? 'Enabled' : 'Not configured'}
+                  </span>
+                )}
+                <button className="btn btn-primary" disabled={dataExportRunning || !dataExport?.configured} onClick={runDataExportNow}>
+                  {dataExportRunning ? 'Exporting…' : 'Export now'}
+                </button>
+              </div>
+            </div>
+            {dataExport?.lastRun && (
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)' }}>
+                Last run: <b style={{ color: 'var(--ink)' }}>{dataExport.lastRun.status}</b>
+                {dataExport.lastRun.at ? ` · ${new Date(dataExport.lastRun.at).toLocaleString()}` : ''}
+                {Array.isArray(dataExport.lastRun.datasets) ? ` · ${dataExport.lastRun.datasets.filter(d => !d.error).length}/${dataExport.lastRun.datasets.length} tabs` : ''}
+              </div>
+            )}
+            {dataExportMsg && (
+              <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: /fail|error|not configured/i.test(dataExportMsg) ? 'var(--red-600)' : 'var(--green-600)' }}>
+                {dataExportMsg}
+              </div>
+            )}
+            {dataExport && !dataExport.configured && (
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+                Uses the same Google Drive connection as the database backup below. Configure that first.
               </div>
             )}
           </div>

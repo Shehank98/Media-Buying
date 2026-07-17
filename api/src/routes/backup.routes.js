@@ -3,6 +3,7 @@ import express from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   backupStatus, triggerBackup, downloadBackup, restoreBackup, restoreFromDrive,
+  dataExportStatus, triggerDataExport,
 } from '../controllers/backup.controller.js';
 
 const router = Router();
@@ -22,5 +23,9 @@ router.post(
 );
 // Restore from a backup already in the Google Drive folder.
 router.post('/restore-drive', authenticate, requireRole('SUPER_ADMIN'), restoreFromDrive);
+
+// Daily per-tab Excel export to Google Drive (revenue / master data / targets).
+router.get('/data-export/status', authenticate, requireRole('SUPER_ADMIN'), dataExportStatus);
+router.post('/data-export/run', authenticate, requireRole('SUPER_ADMIN'), triggerDataExport);
 
 export default router;

@@ -132,6 +132,10 @@ A daily automated backup of the whole database to Google Drive, plus an on-deman
 - **API (SUPER_ADMIN only):** `GET /api/admin/backup/status` (config + last run + recent files in the folder), `POST /api/admin/backup/run` (immediate backup). Last-run status is in-memory (resets on deploy); history is read live from Drive.
 - **UI:** Admin (`/admin`) → **Backup** tab — status badge (Enabled/Not configured), schedule/retention/last-run cards, a **Back up now** button, the recent-backups table, and setup instructions when unconfigured.
 
+### Daily per-tab Excel export (Google Drive)
+
+Separate from the SQL dump above, `api/src/services/dataExport.service.js` auto-exports each **revenue / master-data / targets** tab as its **own dated `.xlsx` file** into **`<backup top>/Data Exports/<tab>/<Tab>_<YYYY-MM-DD>.xlsx`**, reusing the backup service's Drive auth + `ensureFolder` (no extra config). 13 datasets (registry `DATASETS`): Revenue (By Billing, By Schedule Value, AVR, Group Revenue), Master (Agencies, Clients, Channels, Media Groups), Targets (Annual, Agency, Client), Forecasts (Monthly), Commitments (Channel). Each build queries Prisma directly; **Revenue By Schedule Value** reuses `profit.service.js` `atomProfit` on `ScheduleLog` atoms (client×month schedule value + agency commission). Runs daily (`node-cron`, default `0 2 * * *` `Asia/Colombo`, env `EXPORT_CRON`/`EXPORT_TZ`); after uploading it prunes each tab folder to the newest `EXPORT_RETENTION` (default 10) files. Best-effort per dataset (one failure doesn't abort the rest). `startDataExportScheduler()` runs from `index.js` after `listen` (no-op unless the Drive backup is configured). **API (SUPER_ADMIN):** `GET/POST /api/admin/backup/data-export/{status,run}`. **UI:** a card in the Admin → Backup tab with an **Export now** button + last-run summary.
+
 ## Database Schema
 
 ### Enums

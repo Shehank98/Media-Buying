@@ -31,6 +31,7 @@ import profitRoutes from './routes/profit.routes.js';
 import revenueRoutes from './routes/revenue.routes.js';
 import backupRoutes from './routes/backup.routes.js';
 import { startBackupScheduler } from './services/backup.service.js';
+import { startDataExportScheduler } from './services/dataExport.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -107,6 +108,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   // Daily database backup to Google Drive (no-op unless configured via env).
   startBackupScheduler();
+  // Daily per-tab Excel export to Google Drive (no-op unless configured via env).
+  startDataExportScheduler();
 });
 
 export default app;
