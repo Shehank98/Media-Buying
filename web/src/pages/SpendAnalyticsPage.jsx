@@ -30,6 +30,34 @@ const AchTotalLabel = ({ x, y, width, height, value }) => {
   );
 };
 
+// Distinct color for the forecast-fill segment of the "Actual upto X" bar - not
+// the green "actual" color or any other bar's color, so the projected part reads
+// clearly as a forecast (matches the Executive Dashboard).
+const FORECAST_FILL_COLOR = '#F2A93B';
+
+// Path for a rect with only its RIGHT corners rounded (horizontal bar).
+const roundedRightRectPath = (x, y, w, h, r) => {
+  const rr = Math.max(0, Math.min(r, h / 2, w));
+  return `M${x},${y} h${w - rr} a${rr},${rr} 0 0 1 ${rr},${rr} v${h - 2 * rr} a${rr},${rr} 0 0 1 ${-rr},${rr} h${-(w - rr)} z`;
+};
+
+// Custom shapes so each stacked segment paints its OWN explicit fill (Recharts
+// can drop a Bar's `fill` when a sibling stacked Bar carries <Cell> children).
+// The actual segment rounds its right corners only when there's no forecast-fill
+// on top of it; the forecast-fill segment (amber) is always the outermost.
+const AchActualShape = (props) => {
+  const { x, y, width, height, payload } = props;
+  if (!(width > 0) || !(height > 0)) return null;
+  const round = !(payload?.forecastPart > 0);
+  const d = round ? roundedRightRectPath(x, y, width, height, 4) : `M${x},${y} h${width} v${height} h${-width} z`;
+  return <path d={d} fill={payload?.fill} />;
+};
+const AchForecastShape = (props) => {
+  const { x, y, width, height } = props;
+  if (!(width > 0) || !(height > 0)) return null;
+  return <path d={roundedRightRectPath(x, y, width, height, 4)} fill={FORECAST_FILL_COLOR} />;
+};
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function fmtMonth(ym) {
   if (!ym) return '';
@@ -802,16 +830,25 @@ export default function SpendAnalyticsPage() {
                           <XAxis type="number" tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
                           <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: '#3B4A63' }} axisLine={false} tickLine={false} />
                           <Tooltip formatter={(v, n) => [`LKR ${Number(v).toFixed(1)}M`, n === 'forecastPart' ? 'Forecast' : 'Actual']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                          <Bar dataKey="actualPart" stackId="a" radius={[0, 4, 4, 0]} maxBarSize={30}>
-                            {bars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+                          <Bar dataKey="actualPart" stackId="a" shape={<AchActualShape />} maxBarSize={30}>
                             {/* Label on the actual segment only when there is no forecast-fill on top of it, so the total sits at the true bar end. */}
                             <LabelList dataKey="total" content={(p) => (bars[p.index]?.forecastPart > 0 ? null : <AchTotalLabel {...p} />)} />
                           </Bar>
-                          <Bar dataKey="forecastPart" stackId="a" fill="#F2A93B" radius={[0, 4, 4, 0]} maxBarSize={30}>
+                          <Bar dataKey="forecastPart" stackId="a" shape={<AchForecastShape />} maxBarSize={30}>
                             <LabelList dataKey="total" content={(p) => (bars[p.index]?.forecastPart > 0 ? <AchTotalLabel {...p} /> : null)} />
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+                      {a.forecastFillMillions > 0 && (
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6, fontSize: 11.5, color: '#6B7790' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#15814B' }} />Actual {a.actualRangeLabel || ''}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: FORECAST_FILL_COLOR }} />Forecast {a.forecastFillLabel || ''}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                   <div>
