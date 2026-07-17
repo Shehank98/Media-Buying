@@ -235,10 +235,13 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
                   <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#6B7790' }} axisLine={false} tickLine={false} width={54} />
                   <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={(l) => `${l} ${year}`} />
                   <Legend verticalAlign="top" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44} />
+                  <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44}>
+                    {/* When there's no AVR, the billing segment is the top of the bar - draw the total here. */}
+                    <LabelList dataKey="total" content={(p) => (monthlyData[p.index]?.aor > 0 ? null : <TotalTopLabel {...p} />)} />
+                  </Bar>
                   <Bar dataKey="aor" name="AVR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
-                    {/* Always show the month TOTAL on top (= billing + AVR; just the billing amount when there's no AVR). Custom renderer so it shows even when the AVR segment is zero-height. */}
-                    <LabelList dataKey="total" content={TotalTopLabel} />
+                    {/* When AVR exists, it's the top segment - draw the total (billing + AVR) here. */}
+                    <LabelList dataKey="total" content={(p) => (monthlyData[p.index]?.aor > 0 ? <TotalTopLabel {...p} /> : null)} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
