@@ -326,6 +326,14 @@ export default function ChannelDetailPage() {
     }
   };
 
+  // Validate + set an evaluation file chosen via the upload box (click or drag-drop).
+  const pickEvaluationFile = (f) => {
+    if (!f) return;
+    if (!/\.(pdf|xls|xlsx)$/i.test(f.name)) { setFormError('Only PDF or Excel files are allowed.'); setEvaluationFile(null); return; }
+    setFormError('');
+    setEvaluationFile(f);
+  };
+
   const handleDelete = async () => {
     if (!deletingProperty) return;
     setDeleting(true);
@@ -983,24 +991,31 @@ export default function ChannelDetailPage() {
 
                 <div className="field">
                   <label className="field-label">Evaluation document <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(PDF or Excel, optional)</span></label>
-                  <input
-                    type="file"
-                    accept=".pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] || null;
-                      if (f && !/\.(pdf|xls|xlsx)$/i.test(f.name)) { setFormError('Only PDF or Excel files are allowed.'); e.target.value = ''; setEvaluationFile(null); return; }
-                      setFormError('');
-                      setEvaluationFile(f);
-                    }}
-                    style={{ fontSize: 13 }}
-                  />
+                  <label
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={(e) => { e.preventDefault(); pickEvaluationFile(e.dataTransfer.files?.[0]); }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '20px 14px', border: `1.5px dashed ${evaluationFile ? 'var(--coral-700,#C44A18)' : '#C7D0DD'}`, borderRadius: 11, background: evaluationFile ? '#FDF3EF' : '#F7F8FA', cursor: 'pointer', textAlign: 'center' }}
+                  >
+                    <input
+                      type="file"
+                      accept=".pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      onChange={(e) => { pickEvaluationFile(e.target.files?.[0]); e.target.value = ''; }}
+                      style={{ display: 'none' }}
+                    />
+                    <div style={{ width: 40, height: 40, borderRadius: 11, background: '#fff', border: '1px solid #E5E8ED', display: 'grid', placeItems: 'center', color: 'var(--coral-700,#C44A18)' }}>
+                      <Icon name={evaluationFile ? 'file' : 'upload'} size={20} />
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', wordBreak: 'break-word' }}>
+                      {evaluationFile ? evaluationFile.name : 'Click to upload or drag a file here'}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                      {evaluationFile ? 'Click to choose a different file' : 'PDF or Excel · .pdf, .xls, .xlsx'}
+                    </div>
+                  </label>
                   {editingProperty?.evaluationFileName && !evaluationFile && (
                     <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                      Current: <b style={{ color: 'var(--ink)' }}>{editingProperty.evaluationFileName}</b>. Choosing a new file replaces it.
+                      Current: <b style={{ color: 'var(--ink)' }}>{editingProperty.evaluationFileName}</b>. Uploading a new file replaces it.
                     </div>
-                  )}
-                  {evaluationFile && (
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>Selected: {evaluationFile.name}</div>
                   )}
                 </div>
 

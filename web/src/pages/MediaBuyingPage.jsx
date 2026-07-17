@@ -32,6 +32,22 @@ function NotSet() {
   return <span style={{ color: 'var(--muted-2)', fontSize: 12.5, fontStyle: 'italic' }}>Not set</span>;
 }
 
+// Full LKR with standard thousands separators (exact, no M/K abbreviation).
+const fmtLKRPlain = (v) => (v == null ? '-' : 'LKR ' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+
+// The "Rate" cell in the client breakdown: a CPRP/Flat badge + the LKR amount,
+// or "Not set" for a plain discount deal (its % shows in the Discount column).
+function rateCell(d) {
+  const t = d?.rateType || 'DISCOUNT';
+  if (t !== 'CPRP' && t !== 'FLAT') return <NotSet />;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+      <span className="badge" style={{ fontSize: 9.5, background: t === 'CPRP' ? '#EAF0FA' : '#FBF1DC', color: t === 'CPRP' ? '#1F5BB5' : '#9A5B00' }}>{t === 'CPRP' ? 'CPRP' : 'Flat'}</span>
+      <span className="mono">{fmtLKRPlain(d.rateValue)}</span>
+    </span>
+  );
+}
+
 function SectionTitle({ children, sub }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -162,7 +178,8 @@ function ChannelCombobox({ channels, value, onChange, placeholder = 'Select a ch
   );
 }
 
-function DealModal({ title, channelName, clientName, years, onToggleYear, discountPct, setDiscountPct, bonusPct, setBonusPct, notes, setNotes, onSubmit, onClose, submitting, error, channelSelect, clientSelect }) {
+function DealModal({ title, channelName, clientName, years, onToggleYear, discountPct, setDiscountPct, bonusPct, setBonusPct, notes, setNotes, onSubmit, onClose, submitting, error, channelSelect, clientSelect, rateType, setRateType, rateValue, setRateValue }) {
+  const hasRateType = typeof setRateType === 'function'; // client deals only
   return (
     <div className="modal-scrim show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -206,10 +223,29 @@ function DealModal({ title, channelName, clientName, years, onToggleYear, discou
                 Select every year these terms apply to. Saving applies the same discount/bonus to each selected year in one go.
               </p>
             </div>
+            {hasRateType && (
+              <div className="field">
+                <label className="field-label">Rate type <span className="req">*</span></label>
+                <select className="input" value={rateType} onChange={(e) => setRateType(e.target.value)}>
+                  <option value="DISCOUNT">Discount %</option>
+                  <option value="CPRP">CPRP rate (LKR)</option>
+                  <option value="FLAT">Flat rate (LKR)</option>
+                </select>
+              </div>
+            )}
             <div className="field-grid2">
               <div className="field">
-                <label className="field-label">Discount % <span className="req">*</span></label>
-                <input className="input" type="number" step="0.1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} placeholder="40" />
+                {(!hasRateType || rateType === 'DISCOUNT') ? (
+                  <>
+                    <label className="field-label">Discount % <span className="req">*</span></label>
+                    <input className="input" type="number" step="0.1" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} placeholder="40" />
+                  </>
+                ) : (
+                  <>
+                    <label className="field-label">{rateType === 'CPRP' ? 'CPRP rate (LKR)' : 'Flat rate (LKR)'} <span className="req">*</span></label>
+                    <input className="input" type="number" step="1" value={rateValue} onChange={(e) => setRateValue(e.target.value)} placeholder="0" />
+                  </>
+                )}
               </div>
               <div className="field">
                 <label className="field-label">Bonus % <span className="req">*</span></label>
@@ -275,6 +311,8 @@ export default function MediaBuyingPage() {
   const [clientModalClientId, setClientModalClientId] = useState('');
   const [clientModalClientName, setClientModalClientName] = useState('');
   const [clientYears, setClientYears] = useState([CURRENT_YEAR]);
+  const [clientRateType, setClientRateType] = useState('DISCOUNT');
+  const [clientRateValue, setClientRateValue] = useState('');
   const [clientDiscount, setClientDiscount] = useState('');
   const [clientBonus, setClientBonus] = useState('');
   const [clientNotes, setClientNotes] = useState('');
@@ -438,6 +476,8 @@ export default function MediaBuyingPage() {
     setClientModalClientId(client.clientId);
     setClientModalClientName(client.clientName);
     setClientYears([client.dealYear || CURRENT_YEAR]);
+    setClientRateType(client.rateType || 'DISCOUNT');
+    setClientRateValue(client.rateValue != null ? String(client.rateValue) : '');
     setClientDiscount(client.discountPct != null ? String(client.discountPct) : '');
     setClientBonus(client.bonusPct != null ? String(client.bonusPct) : '');
     setClientNotes(client.notes || '');
@@ -447,7 +487,9 @@ export default function MediaBuyingPage() {
 
   async function handleClientSubmit(e) {
     e.preventDefault();
-    if (clientYears.length === 0 || clientDiscount === '' || clientBonus === '') { setClientError('At least one year, discount %, and bonus % are required.'); return; }
+    const rt = clientRateType || 'DISCOUNT';
+    const rateOk = rt === 'DISCOUNT' ? clientDiscount !== '' : clientRateValue !== '';
+    if (clientYears.length === 0 || !rateOk || clientBonus === '') { setClientError(`At least one year, ${rt === 'DISCOUNT' ? 'discount %' : (rt === 'CPRP' ? 'CPRP rate' : 'flat rate')}, and bonus % are required.`); return; }
     setClientSubmitting(true);
     setClientError('');
     try {
@@ -455,7 +497,9 @@ export default function MediaBuyingPage() {
         channelMasterId: parseInt(channelMasterId),
         clientId: parseInt(clientModalClientId),
         year: y,
-        discountPct: parseFloat(clientDiscount),
+        rateType: rt,
+        discountPct: rt === 'DISCOUNT' ? parseFloat(clientDiscount) : 0,
+        rateValue: rt === 'DISCOUNT' ? null : parseFloat(clientRateValue),
         bonusPct: parseFloat(clientBonus),
         notes: clientNotes,
       })));
@@ -760,8 +804,9 @@ export default function MediaBuyingPage() {
                       <th style={{ width: 36 }}></th>
                       <th onClick={() => toggleSort('clientName')} style={{ cursor: 'pointer' }}>Client</th>
                       <th onClick={() => toggleSort('totalSpend')} className="num" style={{ cursor: 'pointer' }}>Total Spend</th>
-                      <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount % (latest)</th>
-                      <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus % (latest)</th>
+                      <th onClick={() => toggleSort('discountPct')} className="num" style={{ cursor: 'pointer' }}>Discount %</th>
+                      <th onClick={() => toggleSort('bonusPct')} className="num" style={{ cursor: 'pointer' }}>Bonus %</th>
+                      <th className="num">Rate</th>
                       <th onClick={() => toggleSort('dealYear')} className="num" style={{ cursor: 'pointer' }}>Deal Year</th>
                       <th className="num">Actions</th>
                     </tr>
@@ -783,8 +828,9 @@ export default function MediaBuyingPage() {
                             <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.agencyName}</div>
                           </td>
                           <td className="num strong">{fmtLKR(c.totalSpend)}</td>
-                          <td className="num">{c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
+                          <td className="num">{(c.rateType || 'DISCOUNT') === 'DISCOUNT' && c.discountPct != null ? fmtPct(c.discountPct) : <NotSet />}</td>
                           <td className="num">{c.bonusPct != null ? fmtPct(c.bonusPct) : <NotSet />}</td>
+                          <td className="num">{rateCell(c)}</td>
                           <td className="num">{c.dealYear ?? <NotSet />}</td>
                           <td>
                             <div className="row-actions">
@@ -794,7 +840,7 @@ export default function MediaBuyingPage() {
                         </tr>
                         {expandedClientId === c.clientId && (
                           <tr key={`${c.clientId}-expanded`}>
-                            <td colSpan={7} style={{ background: 'var(--bg)', padding: 14 }}>
+                            <td colSpan={8} style={{ background: 'var(--bg)', padding: 14 }}>
                               {yearlyLoading && !yearlyByClient[c.clientId] ? (
                                 <OrbitLoader size={24} label="Loading yearly breakdown…" />
                               ) : (
@@ -804,7 +850,7 @@ export default function MediaBuyingPage() {
                                   <div className="tbl-wrap" style={{ boxShadow: 'none', border: '1px solid var(--border)' }}>
                                     <table className="tbl">
                                       <thead>
-                                        <tr><th>Year</th><th className="num">Spend</th><th className="num">Avg Monthly Spend</th><th className="num">Discount %</th><th className="num">Bonus %</th><th>Notes</th></tr>
+                                        <tr><th>Year</th><th className="num">Spend</th><th className="num">Avg Monthly Spend</th><th className="num">Discount %</th><th className="num">Bonus %</th><th className="num">Rate</th><th>Notes</th></tr>
                                       </thead>
                                       <tbody>
                                         {(yearlyByClient[c.clientId] || []).map((y) => (
@@ -812,8 +858,9 @@ export default function MediaBuyingPage() {
                                             <td className="strong">{y.year}</td>
                                             <td className="num">{fmtLKR(y.spend)}</td>
                                             <td className="num">{fmtLKR(y.spend / 12)}</td>
-                                            <td className="num">{y.discountPct != null ? fmtPct(y.discountPct) : <NotSet />}</td>
+                                            <td className="num">{(y.rateType || 'DISCOUNT') === 'DISCOUNT' && y.discountPct != null ? fmtPct(y.discountPct) : <NotSet />}</td>
                                             <td className="num">{y.bonusPct != null ? fmtPct(y.bonusPct) : <NotSet />}</td>
+                                            <td className="num">{rateCell(y)}</td>
                                             <td>{y.notes ? y.notes : <NotSet />}</td>
                                           </tr>
                                         ))}
@@ -858,6 +905,8 @@ export default function MediaBuyingPage() {
           channelName={selectedChannel?.name}
           clientName={clientModalClientName}
           years={clientYears} onToggleYear={toggleYearIn(setClientYears)}
+          rateType={clientRateType} setRateType={setClientRateType}
+          rateValue={clientRateValue} setRateValue={setClientRateValue}
           discountPct={clientDiscount} setDiscountPct={setClientDiscount}
           bonusPct={clientBonus} setBonusPct={setClientBonus}
           notes={clientNotes} setNotes={setClientNotes}
