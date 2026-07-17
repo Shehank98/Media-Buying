@@ -385,40 +385,44 @@ function Card({ label, value, title, sub, yoy, yoyLabel, accent, plain, valueSiz
 function FinanceFlipCard({ total, aor, finance }) {
   const [flipped, setFlipped] = useState(false);
   const face = {
-    position: 'absolute', inset: 0, borderRadius: 12, padding: 16, boxSizing: 'border-box',
+    position: 'absolute', inset: 0, borderRadius: 12, padding: '14px 16px', boxSizing: 'border-box',
     display: 'flex', flexDirection: 'column', justifyContent: 'center',
-    backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+    backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', overflow: 'hidden',
     border: '1px solid #0E7490', boxShadow: '0 2px 10px rgba(14,116,144,.25)', color: '#fff',
   };
+  const H = 124; // roughly the flat cards' height; the stacked full-LKR breakdown fits without wrapping
+  // One stacked breakdown line: small label on top, full-LKR value below (never wraps).
+  const line = (label, value) => (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.7)', fontWeight: 600 }}>{label}</div>
+      <div className="mono" style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={fmtLKR(value)}>{fmtLKR(value)}</div>
+    </div>
+  );
   return (
     <div
       onClick={() => setFlipped((f) => !f)}
       title="Click to see the AVR / finance breakdown"
-      style={{ perspective: 1000, cursor: 'pointer', minHeight: 108 }}
+      style={{ perspective: 1000, cursor: 'pointer', minHeight: H }}
     >
-      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 108, transition: 'transform .5s', transformStyle: 'preserve-3d', transform: flipped ? 'rotateY(180deg)' : 'none' }}>
+      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: H, transition: 'transform .5s', transformStyle: 'preserve-3d', transform: flipped ? 'rotateY(180deg)' : 'none' }}>
         {/* Front */}
         <div style={{ ...face, background: 'linear-gradient(135deg,#0E7490,#134E5B)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'rgba(255,255,255,.85)' }}>Total Rev by Finance</span>
             <Icon name="history" size={13} style={{ color: 'rgba(255,255,255,.7)' }} />
           </div>
-          <div className="mono" style={{ fontSize: 24, fontWeight: 750, marginTop: 6, letterSpacing: '-.4px' }} title={fmtLKR(total)}>{fmtLKRm(total)}</div>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 4 }}>AVR + Rev. from finance · tap for breakdown</div>
+          <div className="mono" style={{ fontSize: 26, fontWeight: 750, marginTop: 8, letterSpacing: '-.4px' }} title={fmtLKR(total)}>{fmtLKRm(total)}</div>
+          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 6 }}>AVR + Rev. from finance · tap for breakdown</div>
         </div>
         {/* Back */}
-        <div style={{ ...face, transform: 'rotateY(180deg)', background: 'linear-gradient(135deg,#134E5B,#0B3540)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'rgba(255,255,255,.85)' }}>Total Rev by Finance</div>
-          <div className="mono" style={{ fontSize: 18, fontWeight: 750, marginTop: 2 }} title={fmtLKR(total)}>{fmtLKRm(total)}</div>
-          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ color: 'rgba(255,255,255,.75)' }}>AVR revenue</span>
-              <span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(aor)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ color: 'rgba(255,255,255,.75)' }}>Rev. from finance</span>
-              <span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(finance)}</span>
-            </div>
+        <div style={{ ...face, transform: 'rotateY(180deg)', justifyContent: 'flex-start', background: 'linear-gradient(135deg,#134E5B,#0B3540)' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'rgba(255,255,255,.85)' }}>Rev by Finance</span>
+            <span className="mono" style={{ fontSize: 14, fontWeight: 750 }} title={fmtLKR(total)}>{fmtLKRm(total)}</span>
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {line('AVR revenue', aor)}
+            {line('Rev. from finance', finance)}
           </div>
         </div>
       </div>
