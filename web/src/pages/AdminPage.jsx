@@ -223,6 +223,15 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [billingSaving, setBillingSaving] = useState(false);
   const [billingSavedAt, setBillingSavedAt] = useState(null);
 
+  /* ---- AOR revenue (monthly per-channel lines; company-wide) ---- */
+  const [aorYear, setAorYear] = useState(now.getFullYear());
+  const [aorMonth, setAorMonth] = useState(now.getMonth() + 1); // 1-12
+  const [aorEntries, setAorEntries] = useState([]);        // all rows for aorYear
+  const [aorMonthTotals, setAorMonthTotals] = useState({}); // { month: total }
+  const [aorLoading, setAorLoading] = useState(false);
+  const [aorSaving, setAorSaving] = useState(false);
+  const [aorForm, setAorForm] = useState({ channel: '', amount: '', reason: '' });
+
   /* ---- channel commitments (yearly target per channel) ---- */
   const [ccChannels, setCcChannels] = useState([]);   // [{ channelMasterId, name, medium, mediaGroup, monthlyAmount, start/end }]
   // per-channel commitment: { monthlyAmount, startMonth, startYear, endMonth, endYear }
@@ -1272,6 +1281,49 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- AOR revenue ---- */
+  const applyAorData = (data) => {
+    setAorEntries(data.entries || []);
+    setAorMonthTotals(data.monthTotals || {});
+  };
+  const fetchAorRevenue = async () => {
+    setAorLoading(true);
+    try {
+      const { data } = await api.get('/admin/aor-revenue', { params: { year: aorYear } });
+      applyAorData(data);
+    } catch { setAorEntries([]); setAorMonthTotals({}); } finally { setAorLoading(false); }
+  };
+  useEffect(() => {
+    if (activeTab === 'aor') fetchAorRevenue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, aorYear]);
+
+  const addAorEntry = async () => {
+    const channel = aorForm.channel.trim();
+    if (!channel) { setError('Channel is required.'); return; }
+    if (aorForm.amount === '' || isNaN(Number(aorForm.amount))) { setError('Enter a valid amount.'); return; }
+    setAorSaving(true);
+    try {
+      const { data } = await api.post('/admin/aor-revenue', {
+        year: aorYear, month: aorMonth, channel, amount: Number(aorForm.amount), reason: aorForm.reason.trim(),
+      });
+      applyAorData(data);
+      setAorForm({ channel: '', amount: '', reason: '' });
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to add AOR entry.');
+    } finally {
+      setAorSaving(false);
+    }
+  };
+  const deleteAorEntry = async (id) => {
+    try {
+      const { data } = await api.delete(`/admin/aor-revenue/${id}`);
+      applyAorData(data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete AOR entry.');
+    }
+  };
+
   /* ---- channel commitments ---- */
   const fetchChannelCommitments = async () => {
     setCcLoading(true);
@@ -1732,6 +1784,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     ] },
     { label: 'Channel Commitments', members: [{ key: 'channel-commitments', label: 'Channel Commitments' }] },
     { label: 'Group Revenue', members: [{ key: 'group-revenue', label: 'Group Revenue' }] },
+    { label: 'AOR', members: [{ key: 'aor', label: 'AOR' }] },
     { label: 'Requests', members: [{ key: 'requests', label: 'Requests', count: reqPending }] },
     { label: 'Notify', members: [{ key: 'notify', label: 'Notify' }] },
     { label: 'Backup', members: [{ key: 'backup', label: 'Backup' }] },
@@ -1818,7 +1871,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'channel-commitments', 'client-targets', 'backup', 'notify'].includes(activeTab) && (
+        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'backup', 'notify'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -3179,6 +3232,113 @@ export default function AdminPage({ initialTab = 'users' }) {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============ AOR REVENUE (monthly per-channel lines) ============ */}
+      {activeTab === 'aor' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Toolbar */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)', padding: '16px 18px', display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#E85D24,#C44A18)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="money" size={20} /></div>
+              <div>
+                <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>AOR Revenue</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Monthly AOR revenue by channel · stacked on the Revenue-by-billing chart</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Month</label>
+                <select className="select" value={aorMonth} onChange={e => setAorMonth(Number(e.target.value))}>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Year</label>
+                <select className="select" value={aorYear} onChange={e => setAorYear(Number(e.target.value))}>
+                  {Array.from({ length: (new Date().getFullYear() + 1) - 2022 + 1 }, (_, i) => 2022 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Add entry + month list */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)' }}>{MONTHS[aorMonth - 1]} {aorYear}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>one row per channel</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Month total</div>
+                <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: '#E85D24' }}>{fmtLKR(aorMonthTotals[aorMonth] || 0)}</div>
+              </div>
+            </div>
+            {/* Add row */}
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="field" style={{ margin: 0, flex: '2 1 180px' }}>
+                <label>Channel</label>
+                <input className="input" value={aorForm.channel} placeholder="e.g. Derana TV" onChange={e => setAorForm(f => ({ ...f, channel: e.target.value }))} />
+              </div>
+              <div className="field" style={{ margin: 0, flex: '1 1 140px' }}>
+                <label>Amount (LKR)</label>
+                <MoneyInput className="input" value={aorForm.amount} onValueChange={v => setAorForm(f => ({ ...f, amount: v }))} placeholder="0" style={{ textAlign: 'right' }} />
+              </div>
+              <div className="field" style={{ margin: 0, flex: '2 1 200px' }}>
+                <label>Reason</label>
+                <input className="input" value={aorForm.reason} placeholder="optional" onChange={e => setAorForm(f => ({ ...f, reason: e.target.value }))} />
+              </div>
+              <button className="btn btn-primary" onClick={addAorEntry} disabled={aorSaving}>{aorSaving ? 'Adding…' : 'Add'}</button>
+            </div>
+            {/* Month entries */}
+            <div style={{ padding: '4px 0' }}>
+              {aorLoading ? (
+                <div style={{ padding: 20 }}><OrbitLoader label="Loading AOR…" /></div>
+              ) : (() => {
+                const rows = aorEntries.filter(e => e.month === aorMonth);
+                if (rows.length === 0) return <div style={{ padding: '18px 16px', fontSize: 12.5, color: 'var(--muted)' }}>No AOR entries for {MONTHS[aorMonth - 1]} {aorYear} yet.</div>;
+                return (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="tbl" style={{ margin: 0 }}>
+                      <thead>
+                        <tr><th>Channel</th><th style={{ textAlign: 'right' }}>Amount</th><th>Reason</th><th style={{ width: 60 }} /></tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(e => (
+                          <tr key={e.id}>
+                            <td className="strong">{e.channel}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(e.amount)}</td>
+                            <td style={{ color: 'var(--muted)', fontSize: 12.5 }}>{e.reason || '—'}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button className="btn btn-ghost btn-sm" onClick={() => deleteAorEntry(e.id)} title="Delete"><Icon name="trash" size={14} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Year-at-a-glance month totals */}
+          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 10 }}>{aorYear} · AOR by month</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
+              {MONTHS.map((m, i) => {
+                const t = aorMonthTotals[i + 1] || 0;
+                const on = (i + 1) === aorMonth;
+                return (
+                  <button key={m} onClick={() => setAorMonth(i + 1)} style={{ textAlign: 'left', cursor: 'pointer', background: on ? '#FCEEE6' : '#F7F8FA', border: `1px solid ${on ? '#E85D24' : 'var(--border)'}`, borderRadius: 9, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>{m}</div>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: t ? 'var(--ink)' : 'var(--muted)' }}>{t ? fmtLKR(t) : '—'}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

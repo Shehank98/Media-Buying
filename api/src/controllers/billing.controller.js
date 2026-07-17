@@ -130,6 +130,25 @@ export async function getBillingByClient(req, res) {
   }
 }
 
+// GET /api/profit/billing/aor-monthly - company-wide AOR revenue per month for the
+// year (from admin-entered AorRevenue lines). Not client/agency scoped — AOR has no
+// client link — so only the year filter applies. Feeds the stacked AOR series on the
+// Monthly Revenue chart and the "Total AOR Revenue" card.
+export async function getAorMonthly(req, res) {
+  try {
+    const f = parseFilters(req);
+    const rows = await prisma.$queryRaw`
+      SELECT month AS m, SUM(amount) AS amount
+        FROM aor_revenues WHERE year = ${f.year} GROUP BY month ORDER BY month ASC`;
+    const months = rows.map((r) => ({ month: ymOf(f.year, Number(r.m)), amount: round2(num(r.amount)) }));
+    const total = round2(months.reduce((s, r) => s + r.amount, 0));
+    return res.json({ year: f.year, months, total });
+  } catch (error) {
+    console.error('getAorMonthly error:', error);
+    return res.status(500).json({ error: 'Failed to build AOR monthly', detail: error.message });
+  }
+}
+
 // GET /api/profit/billing/client-breakdown - one row per client (year total) with
 // a nested month-by-month revenue list.
 export async function getBillingClientBreakdown(req, res) {

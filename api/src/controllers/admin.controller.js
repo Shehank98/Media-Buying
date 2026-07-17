@@ -10,6 +10,8 @@ import ExcelJS from 'exceljs';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
+const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
+
 // ── shared include/map helpers ──
 
 const teamIncludes = {
@@ -1542,6 +1544,68 @@ export async function setMonthlyBilling(req, res) {
   } catch (error) {
     console.error('setMonthlyBilling error:', error);
     return res.status(500).json({ error: 'Failed to save monthly billing', detail: error.message });
+  }
+}
+
+// ── AOR revenue (monthly, per-channel lines; company-wide) ──
+
+// GET /api/admin/aor-revenue?year=&month=
+// Lists the AOR lines for a year (all months) plus a per-month total map, so the
+// admin tab can show the picked month's rows and a year-at-a-glance summary.
+export async function listAorRevenue(req, res) {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const rows = await prisma.aorRevenue.findMany({
+      where: { year },
+      orderBy: [{ month: 'asc' }, { createdAt: 'asc' }],
+    });
+    const monthTotals = {};
+    for (const r of rows) monthTotals[r.month] = round2((monthTotals[r.month] || 0) + Number(r.amount));
+    return res.json({
+      year,
+      entries: rows.map((r) => ({ id: r.id, year: r.year, month: r.month, channel: r.channel, amount: Number(r.amount), reason: r.reason || '' })),
+      monthTotals,
+      total: round2(rows.reduce((s, r) => s + Number(r.amount), 0)),
+    });
+  } catch (error) {
+    console.error('listAorRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to load AOR revenue', detail: error.message });
+  }
+}
+
+// POST /api/admin/aor-revenue  { year, month, channel, amount, reason }
+// Adds one AOR line. Amount may be negative (adjustment/credit); channel required.
+export async function createAorRevenue(req, res) {
+  try {
+    const { year, month, channel, amount, reason } = req.body || {};
+    const y = parseInt(year), m = parseInt(month);
+    if (!y || !m || m < 1 || m > 12) return res.status(400).json({ error: 'year and month (1-12) are required' });
+    const ch = String(channel || '').trim();
+    if (!ch) return res.status(400).json({ error: 'channel is required' });
+    const num = amount === '' || amount == null ? NaN : Number(amount);
+    if (isNaN(num)) return res.status(400).json({ error: 'amount must be a number' });
+    await prisma.aorRevenue.create({
+      data: { year: y, month: m, channel: ch, amount: num, reason: String(reason || '').trim() || null, createdById: req.user?.id ?? null },
+    });
+    return listAorRevenue({ query: { year: y } }, res);
+  } catch (error) {
+    console.error('createAorRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to add AOR revenue', detail: error.message });
+  }
+}
+
+// DELETE /api/admin/aor-revenue/:id
+export async function deleteAorRevenue(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid id' });
+    const row = await prisma.aorRevenue.findUnique({ where: { id } });
+    if (!row) return res.status(404).json({ error: 'not found' });
+    await prisma.aorRevenue.delete({ where: { id } });
+    return listAorRevenue({ query: { year: row.year } }, res);
+  } catch (error) {
+    console.error('deleteAorRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to delete AOR revenue', detail: error.message });
   }
 }
 

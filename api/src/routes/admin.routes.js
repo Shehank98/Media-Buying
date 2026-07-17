@@ -46,6 +46,9 @@ import {
   setClientTarget,
   listMonthlyBilling,
   setMonthlyBilling,
+  listAorRevenue,
+  createAorRevenue,
+  deleteAorRevenue,
   getScheduleArchiveInfo,
   archiveScheduleLogsToDrive,
   uploadChannelRateCardHandler,
@@ -126,6 +129,11 @@ router.post('/client-targets', setClientTarget);
 // Monthly actual billing (company-wide) → Executive Dashboard Revenue Achievement chart
 router.get('/monthly-billing', listMonthlyBilling);
 router.post('/monthly-billing', setMonthlyBilling);
+
+// AOR revenue (monthly per-channel lines) → stacked on the Revenue-by-billing chart
+router.get('/aor-revenue', listAorRevenue);
+router.post('/aor-revenue', createAorRevenue);
+router.delete('/aor-revenue/:id', deleteAorRevenue);
 
 // Schedule-log yearly archive to Google Drive (backup; rows stay in the DB)
 router.get('/schedule-logs/archive', getScheduleArchiveInfo);

@@ -15,6 +15,7 @@ import {
   getBillingByAgency,
   getBillingByClient,
   getBillingClientBreakdown,
+  getAorMonthly,
 } from '../controllers/billing.controller.js';
 
 const router = Router();
@@ -38,5 +39,6 @@ router.get('/billing/monthly', getBillingMonthly);
 router.get('/billing/by-agency', getBillingByAgency);
 router.get('/billing/by-client', getBillingByClient);
 router.get('/billing/client-breakdown', getBillingClientBreakdown);
+router.get('/billing/aor-monthly', getAorMonthly);
 
 export default router;

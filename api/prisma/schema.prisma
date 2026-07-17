@@ -793,6 +793,27 @@ model MonthlyBilling {
   @@map("monthly_billings")
 }
 
+// Admin-entered monthly AOR (Agency of Record) revenue lines. Each row is one
+// channel's AOR fee for a given month (channel name + amount + optional reason),
+// entered in Admin → AOR. They are summed per month and stacked on top of the
+// billing-revenue bars in Revenue → "Revenue by billing", so on that tab
+// Total Rev = Billing Revenue + AOR Revenue. Company-wide (no client/agency
+// link) — year/month scoped only. SUPER_ADMIN only.
+model AorRevenue {
+  id          Int      @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  channel     String
+  amount      Decimal  @db.Decimal(16, 2)
+  reason      String?
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([year, month])
+  @@map("aor_revenues")
+}
+
 // Admin-entered company-wide monthly REVENUE TARGET (full LKR), one per month
 // (Jan, Feb, ...). Their cumulative sum Jan→the latest billed month is the yellow
 // "Target" bar of the Executive Dashboard's Revenue Achievement chart. Entered in

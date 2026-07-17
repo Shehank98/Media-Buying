@@ -3,8 +3,7 @@ import api from '../lib/api';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  Area, AreaChart, LabelList,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
 } from 'recharts';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -18,7 +17,7 @@ const fmtShort = (v) => {
   return String(Math.round(n));
 };
 const fmtMonth = (ym) => { if (!ym) return ''; const [y, m] = ym.split('-'); return `${MONTHS[+m - 1]} ${y}`; };
-const C = { revenue: '#1F5BB5', navy: '#0A1729' };
+const C = { revenue: '#1F5BB5', aor: '#E85D24', navy: '#0A1729' };
 
 export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -30,6 +29,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
 
   const [summary, setSummary] = useState(null);
   const [monthly, setMonthly] = useState([]);
+  const [aorMonthly, setAorMonthly] = useState([]); // company-wide AOR revenue per month
+  const [aorTotal, setAorTotal] = useState(0);
   const [byAgency, setByAgency] = useState([]);
   const [byClient, setByClient] = useState([]);
   const [breakdown, setBreakdown] = useState([]);
@@ -63,12 +64,13 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
       if (agencyId) params.agencyId = agencyId;
       if (clientIds.length) params.clientId = clientIds.join(',');
       try {
-        const [s, m, a, c, b] = await Promise.all([
+        const [s, m, a, c, b, ao] = await Promise.all([
           api.get('/profit/billing/summary', { params }),
           api.get('/profit/billing/monthly', { params }),
           api.get('/profit/billing/by-agency', { params }),
           api.get('/profit/billing/by-client', { params }),
           api.get('/profit/billing/client-breakdown', { params }),
+          api.get('/profit/billing/aor-monthly', { params: { year } }),
         ]);
         if (cancelled) return;
         setSummary(s.data);
@@ -77,6 +79,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
         setByAgency(a.data.agencies || []);
         setByClient(c.data.clients || []);
         setBreakdown(b.data.clients || []);
+        setAorMonthly(ao.data.months || []);
+        setAorTotal(Number(ao.data.total || 0));
       } catch {
         if (!cancelled) setError('Failed to load billing revenue.');
       } finally {
@@ -86,23 +90,18 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
     return () => { cancelled = true; };
   }, [year, agencyId, clientIds]);
 
-  // Monthly series padded to a fixed Jan–Dec axis.
+  // Monthly series padded to a fixed Jan–Dec axis. `revenue` = billing revenue,
+  // `aor` = company-wide AOR revenue for that month, `total` = the two combined.
   const monthlyData = useMemo(() => {
     const byYm = new Map(monthly.map((r) => [r.month, r.revenue]));
+    const aorYm = new Map(aorMonthly.map((r) => [r.month, r.amount]));
     return MONTHS.map((_, i) => {
       const ym = `${year}-${String(i + 1).padStart(2, '0')}`;
-      return { month: ym, label: MONTHS[i], revenue: Number(byYm.get(ym) || 0) };
+      const revenue = Number(byYm.get(ym) || 0);
+      const aor = Number(aorYm.get(ym) || 0);
+      return { month: ym, label: MONTHS[i], revenue, aor, total: Math.round((revenue + aor + Number.EPSILON) * 100) / 100 };
     });
-  }, [monthly, year]);
-
-  const cumulative = useMemo(() => {
-    let run = 0;
-    const lastActive = monthlyData.reduce((acc, m, i) => (m.revenue ? i : acc), -1);
-    return monthlyData.map((m, i) => {
-      run += m.revenue;
-      return { ...m, cumulative: i <= lastActive ? run : null };
-    });
-  }, [monthlyData]);
+  }, [monthly, aorMonthly, year]);
 
   const toggleExpand = (id) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -136,12 +135,12 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
         ['Revenue by Billing', `${year}`],
         ['Scope', scope],
+        ['Total Rev (Billing + AOR)', Number(totalRev || 0)],
         ['Total Billing Revenue', Number(summary?.revenue || 0)],
-        ['Active Clients', Number(summary?.clientCount || 0)],
-        ['Avg Revenue / Client', Number(summary?.avgRevenuePerClient || 0)],
+        ['Total AOR Revenue', Number(aorTotal || 0)],
       ]), 'Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        monthlyData.filter((m) => m.revenue).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue })),
+        monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AOR Revenue': m.aor, 'Total Revenue': m.total })),
       ), 'Monthly');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
         byAgency.map((a) => ({ Agency: a.agency, 'Billing Revenue': a.revenue, Clients: a.clients })),
@@ -159,7 +158,7 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
     ? MONTHS[parseInt(summary.comparisonThroughMonth) - 1] : null;
   const yoyLabel = summary ? `vs ${summary.prevYear}${throughMonth ? ` (Jan–${throughMonth})` : ''}` : '';
   const periodLabel = throughMonth ? `Jan–${throughMonth} ${year}` : `${year}`;
-  const topClient = byClient[0];
+  const totalRev = Number(summary?.revenue || 0) + Number(aorTotal || 0);
 
   return (
     <div>
@@ -207,48 +206,28 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
 
       {loading && !summary ? <OrbitLoader label="Loading billing revenue…" /> : (
         <>
-          {/* KPI cards */}
+          {/* KPI cards - Total Rev = Billing + AOR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14, marginBottom: 16 }}>
+            <Card label="Total Rev" value={fmtLKRm(totalRev)} title={fmtLKR(totalRev)} sub="Billing + AOR revenue" accent={C.navy} />
             <Card label="Total Billing Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Admin-entered client billing" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} accent={C.revenue} />
-            <Card label="Active Clients" value={String(summary?.clientCount ?? 0)} plain sub="With billing entered" />
-            <Card label="Avg Revenue / Client" value={fmtLKRm(summary?.avgRevenuePerClient)} title={fmtLKR(summary?.avgRevenuePerClient)} sub="Mean across clients" />
-            <Card label="Top Client" value={topClient?.client || '-'} valueSize={16} plain sub={topClient ? `${fmtLKRm(topClient.revenue)} billed` : 'No data'} />
+            <Card label="Total AOR Revenue" value={fmtLKRm(aorTotal)} title={fmtLKR(aorTotal)} sub="Admin-entered AOR (company-wide)" accent={C.aor} />
           </div>
 
-          {/* Monthly Billing */}
-          <Panel title="Monthly Billing Revenue" note={`${periodLabel} · billing per month`}>
-            {monthlyData.every((m) => !m.revenue) ? <Empty /> : (
+          {/* Monthly Revenue - billing + AOR stacked (AOR on top, different color) */}
+          <Panel title="Monthly Billing Revenue" note={`${periodLabel} · billing + AOR per month`}>
+            {monthlyData.every((m) => !m.revenue && !m.aor) ? <Empty /> : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={monthlyData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF0F3" />
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7790' }} axisLine={false} tickLine={false} />
                   <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#6B7790' }} axisLine={false} tickLine={false} width={54} />
-                  <Tooltip formatter={(v) => fmtLKR(v)} labelFormatter={(l) => `${l} ${year}`} />
-                  <Bar dataKey="revenue" fill={C.revenue} radius={[5, 5, 0, 0]} maxBarSize={44}>
-                    <LabelList dataKey="revenue" position="top" formatter={(v) => (v ? fmtShort(v) : '')} style={{ fontSize: 10, fill: '#6B7790' }} />
+                  <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={(l) => `${l} ${year}`} />
+                  <Legend verticalAlign="top" height={28} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="revenue" name="Billing Revenue" stackId="rev" fill={C.revenue} maxBarSize={44} />
+                  <Bar dataKey="aor" name="AOR Revenue" stackId="rev" fill={C.aor} radius={[5, 5, 0, 0]} maxBarSize={44}>
+                    <LabelList dataKey="total" position="top" formatter={(v) => (v ? fmtShort(v) : '')} style={{ fontSize: 10, fill: '#6B7790' }} />
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
-            )}
-          </Panel>
-
-          {/* Cumulative Billing */}
-          <Panel title="Cumulative Billing Revenue" note={`${year} · running total`}>
-            {cumulative.every((m) => !m.revenue) ? <Empty /> : (
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={cumulative} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="billCum" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.revenue} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={C.revenue} stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF0F3" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7790' }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#6B7790' }} axisLine={false} tickLine={false} width={54} />
-                  <Tooltip formatter={(v) => fmtLKR(v)} labelFormatter={(l) => `${l} ${year}`} />
-                  <Area type="monotone" dataKey="cumulative" stroke={C.revenue} strokeWidth={2} fill="url(#billCum)" connectNulls={false} />
-                </AreaChart>
               </ResponsiveContainer>
             )}
           </Panel>
