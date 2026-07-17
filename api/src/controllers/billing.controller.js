@@ -52,11 +52,13 @@ export async function getBillingSummary(req, res) {
     const f = parseFilters(req);
     const rows = await prisma.$queryRaw`
       SELECT COALESCE(SUM(cr.amount), 0) AS revenue,
+             COALESCE(SUM(cr.revenue_from_finance), 0) AS finance_revenue,
              COUNT(DISTINCT cr.client_id) FILTER (WHERE cr.amount IS NOT NULL) AS clients,
              MAX(cr.month) AS max_m
         FROM client_revenues cr JOIN clients c ON c.id = cr.client_id
        WHERE ${whereFragment(f)}`;
     const revenue = round2(num(rows[0]?.revenue));
+    const financeRevenue = round2(num(rows[0]?.finance_revenue));
     const clientCount = Number(rows[0]?.clients) || 0;
     const maxM = rows[0]?.max_m ? Number(rows[0].max_m) : 12;
     const prevF = { ...f, year: f.year - 1 };
@@ -69,6 +71,7 @@ export async function getBillingSummary(req, res) {
     return res.json({
       year: f.year,
       revenue,
+      financeRevenue,
       clientCount,
       avgRevenuePerClient: clientCount ? round2(revenue / clientCount) : 0,
       prevYear: f.year - 1,

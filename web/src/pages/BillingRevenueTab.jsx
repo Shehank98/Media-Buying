@@ -138,6 +138,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
         ['Total Rev (Billing + AVR)', Number(totalRev || 0)],
         ['Total Billing Revenue', Number(summary?.revenue || 0)],
         ['Total AVR Revenue', Number(aorTotal || 0)],
+        ['Total Rev by Finance (AVR + Rev. from finance)', Number((Number(aorTotal || 0)) + Number(summary?.financeRevenue || 0))],
+        ['Rev. from finance', Number(summary?.financeRevenue || 0)],
       ]), 'Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
         monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AVR Revenue': m.aor, 'Total Revenue': m.total })),
@@ -159,6 +161,8 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const yoyLabel = summary ? `vs ${summary.prevYear}${throughMonth ? ` (Jan–${throughMonth})` : ''}` : '';
   const periodLabel = throughMonth ? `Jan–${throughMonth} ${year}` : `${year}`;
   const totalRev = Number(summary?.revenue || 0) + Number(aorTotal || 0);
+  const financeRevenue = Number(summary?.financeRevenue || 0);
+  const totalRevByFinance = Number(aorTotal || 0) + financeRevenue;
 
   return (
     <div>
@@ -211,6 +215,7 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
             <Card label="Total Rev" value={fmtLKRm(totalRev)} title={fmtLKR(totalRev)} sub="Billing + AVR revenue" accent={C.navy} />
             <Card label="Total Billing Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Admin-entered client billing" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} accent={C.revenue} />
             <Card label="Total AVR Revenue" value={fmtLKRm(aorTotal)} title={fmtLKR(aorTotal)} sub="Admin-entered AVR (company-wide)" accent={C.aor} />
+            <FinanceFlipCard total={totalRevByFinance} aor={Number(aorTotal || 0)} finance={financeRevenue} />
           </div>
 
           {/* Monthly Revenue - billing + AOR stacked (AOR on top, different color) */}
@@ -370,6 +375,53 @@ function Card({ label, value, title, sub, yoy, yoyLabel, accent, plain, valueSiz
         </div>
       )}
       {sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{sub}{hasYoy && yoyLabel ? ` · ${yoyLabel}` : ''}</div>}
+    </div>
+  );
+}
+
+// A distinct, finance-themed flip card: front shows the "Total Rev by Finance"
+// headline (AVR + Rev. from finance); click/tap flips it to reveal the two
+// component amounts underneath. Styled differently from the flat KPI cards.
+function FinanceFlipCard({ total, aor, finance }) {
+  const [flipped, setFlipped] = useState(false);
+  const face = {
+    position: 'absolute', inset: 0, borderRadius: 12, padding: 16, boxSizing: 'border-box',
+    display: 'flex', flexDirection: 'column', justifyContent: 'center',
+    backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden',
+    border: '1px solid #0E7490', boxShadow: '0 2px 10px rgba(14,116,144,.25)', color: '#fff',
+  };
+  return (
+    <div
+      onClick={() => setFlipped((f) => !f)}
+      title="Click to see the AVR / finance breakdown"
+      style={{ perspective: 1000, cursor: 'pointer', minHeight: 108 }}
+    >
+      <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 108, transition: 'transform .5s', transformStyle: 'preserve-3d', transform: flipped ? 'rotateY(180deg)' : 'none' }}>
+        {/* Front */}
+        <div style={{ ...face, background: 'linear-gradient(135deg,#0E7490,#134E5B)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'rgba(255,255,255,.85)' }}>Total Rev by Finance</span>
+            <Icon name="history" size={13} style={{ color: 'rgba(255,255,255,.7)' }} />
+          </div>
+          <div className="mono" style={{ fontSize: 24, fontWeight: 750, marginTop: 6, letterSpacing: '-.4px' }} title={fmtLKR(total)}>{fmtLKRm(total)}</div>
+          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', marginTop: 4 }}>AVR + Rev. from finance · tap for breakdown</div>
+        </div>
+        {/* Back */}
+        <div style={{ ...face, transform: 'rotateY(180deg)', background: 'linear-gradient(135deg,#134E5B,#0B3540)' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: 'rgba(255,255,255,.85)' }}>Total Rev by Finance</div>
+          <div className="mono" style={{ fontSize: 18, fontWeight: 750, marginTop: 2 }} title={fmtLKR(total)}>{fmtLKRm(total)}</div>
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ color: 'rgba(255,255,255,.75)' }}>AVR revenue</span>
+              <span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(aor)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ color: 'rgba(255,255,255,.75)' }}>Rev. from finance</span>
+              <span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(finance)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
