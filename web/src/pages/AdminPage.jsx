@@ -12,6 +12,10 @@ const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 
 const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 
+// Full LKR with thousands separators (no M/K abbreviation) — used where the
+// exact figure must be readable/re-enterable, e.g. a disputed revenue amount.
+const fmtLKRFull = (v) => (v == null || v === '' ? '-' : 'LKR ' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
 // Parse a money cell that may use accounting parentheses for negatives, e.g.
 // "(1,000)" → -1000, "-1000" → -1000, "1,000" → 1000, "" → null.
 function parseAccountingAmount(v) {
@@ -3158,7 +3162,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                                 </div>
                                 {c.verifyStatus === 'DISPUTED' && (
                                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }} title={c.verifyReason || ''}>
-                                    → {fmtLKR(c.verifiedAmount)}{c.verifiedByName ? ` · ${c.verifiedByName}` : ''}
+                                    → <span className="mono" style={{ fontWeight: 600 }}>{fmtLKRFull(c.verifiedAmount)}</span>{c.verifiedByName ? ` · ${c.verifiedByName}` : ''}
                                   </div>
                                 )}
                                 {c.verifyStatus === 'VERIFIED' && (
