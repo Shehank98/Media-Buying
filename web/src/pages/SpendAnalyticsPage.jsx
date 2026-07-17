@@ -1648,7 +1648,7 @@ function RevVerificationModal({ user, onClose }) {
                                 style={{ background: '#ECF8F1', color: '#15814B', border: '1px solid #Bfe6cf' }}>
                                 <Icon name="check" size={13} /> Confirm
                               </button>
-                              <button className="btn btn-sm btn-ghost" onClick={() => setDrafts(p => ({ ...p, [c.clientId]: { amount: d.amount ?? (c.verifiedAmount ?? ''), reason: d.reason ?? '', open: !disputing } }))} disabled={busyId === c.clientId}>
+                              <button className="btn btn-sm btn-ghost" onClick={() => setDrafts(p => ({ ...p, [c.clientId]: { amount: d.amount ?? (c.verifiedAmount ?? ''), reason: d.reason || 'Confirmed with the finance', open: !disputing } }))} disabled={busyId === c.clientId}>
                                 Dispute
                               </button>
                               {(c.verifyStatus === 'DISPUTED' || c.verifyStatus === 'VERIFIED') && (
