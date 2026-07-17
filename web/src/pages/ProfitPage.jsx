@@ -208,21 +208,20 @@ export default function ProfitPage() {
         ['Scope', scope],
         ['Clients', clientIds.length ? `${clientIds.length} selected` : 'All'],
         [],
-        ['Total Revenue', Number(summary?.revenue || 0)],
-        ['Total Profit', Number(summary?.profit || 0)],
+        ['Total Schedule Value', Number(summary?.revenue || 0)],
+        ['Total Rev by Agency Commission', Number(summary?.profit || 0)],
         ['Blended Commission %', Number(summary?.blendedCommissionPct || 0)],
         ['Active Clients', Number(summary?.clientCount || 0)],
-        ['Avg Profit / Client', Number(summary?.avgProfitPerClient || 0)],
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), 'Summary');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        monthlyData.filter((m) => m.revenue || m.profit).map((m) => ({ Month: fmtMonth(m.month), Revenue: m.revenue, Profit: m.profit, 'Margin %': m.marginPct ?? 0 })),
+        monthlyData.filter((m) => m.revenue || m.profit).map((m) => ({ Month: fmtMonth(m.month), 'Schedule Value': m.revenue, Commission: m.profit, 'Margin %': m.marginPct ?? 0 })),
       ), 'Monthly');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        byAgency.map((a) => ({ Agency: a.agency, Revenue: a.revenue, Profit: a.profit, 'Margin %': margin(a.profit, a.revenue) })),
+        byAgency.map((a) => ({ Agency: a.agency, 'Schedule Value': a.revenue, Commission: a.profit, 'Margin %': margin(a.profit, a.revenue) })),
       ), 'By Agency');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        breakdown.map((c) => ({ Client: c.client, Agency: c.agency, Commission: commissionLabel(c.commissionType, c.commissionValue), Revenue: c.revenue, Profit: c.profit, 'Margin %': margin(c.profit, c.revenue) })),
+        breakdown.map((c) => ({ Client: c.client, Agency: c.agency, 'Comm. Rate': commissionLabel(c.commissionType, c.commissionValue), 'Schedule Value': c.revenue, Commission: c.profit, 'Margin %': margin(c.profit, c.revenue) })),
       ), 'By Client');
       XLSX.writeFile(wb, `Profit_${year}${agencyId ? '_' + scope.replace(/\W+/g, '') : ''}.xlsx`);
     } catch { /* ignore */ } finally { setExporting(false); }
@@ -312,23 +311,23 @@ export default function ProfitPage() {
         <>
           {/* KPI cards - Revenue & Profit (in millions; full value on hover / in export) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 14, marginBottom: 16 }}>
-            <Card label="Total Revenue" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
-            <Card label="Total Profit" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
-            <Card label="Blended Commission" value={fmtPct(summary?.blendedCommissionPct)} sub="Profit ÷ revenue" accent={C.margin} />
+            <Card label="Total Schedule Value" value={fmtLKRm(summary?.revenue)} title={fmtLKR(summary?.revenue)} sub="Actual spend, ex-VAT" yoy={summary?.revenueYoYPct} yoyLabel={yoyLabel} />
+            <Card label="Total Rev by Agency Commission" value={fmtLKRm(summary?.profit)} title={fmtLKR(summary?.profit)} sub="Agency commission earned" yoy={summary?.profitYoYPct} yoyLabel={yoyLabel} accent={C.profit} />
+            <Card label="Blended Commission" value={fmtPct(summary?.blendedCommissionPct)} sub="Commission ÷ schedule value" accent={C.margin} />
             <Card label="Active Clients" value={String(summary?.clientCount ?? 0)} plain sub="With confirmed spend" />
-            <Card label="Top Client" value={clientsRanked[0]?.client || '-'} valueSize={16} plain sub={clientsRanked[0] ? `${fmtLKRm(clientsRanked[0].profit)} profit` : 'No data'} />
+            <Card label="Top Client" value={clientsRanked[0]?.client || '-'} valueSize={16} plain sub={clientsRanked[0] ? `${fmtLKRm(clientsRanked[0].profit)} commission` : 'No data'} />
           </div>
 
-          {/* Monthly Profit (per schedule month) */}
-          <Panel title="Monthly Profit" note={`${periodLabel} · profit per schedule month`}>
+          {/* Monthly Agency Commission (per schedule month) */}
+          <Panel title="Monthly Agency Commission" note={`${periodLabel} · agency commission per schedule month`}>
             {monthlyData.every((m) => !m.profit) ? <Empty /> : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={monthlyData} margin={{ top: 22, right: 12, left: 8, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtLKR(v), 'Profit']} labelStyle={{ fontWeight: 700 }} cursor={{ fill: 'rgba(21,129,75,0.06)' }} />
-                  <Bar dataKey="profit" name="Profit" fill={C.profit} radius={[4, 4, 0, 0]} maxBarSize={48}>
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtLKR(v), 'Commission']} labelStyle={{ fontWeight: 700 }} cursor={{ fill: 'rgba(21,129,75,0.06)' }} />
+                  <Bar dataKey="profit" name="Commission" fill={C.profit} radius={[4, 4, 0, 0]} maxBarSize={48}>
                     <LabelList dataKey="profit" position="top" formatter={(v) => (v > 0 ? fmtShort(v) : '')} style={{ fontSize: 10.5, fill: 'var(--ink)', fontWeight: 700 }} />
                   </Bar>
                 </BarChart>
@@ -337,29 +336,8 @@ export default function ProfitPage() {
           </Panel>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
-            {/* Cumulative profit */}
-            <Panel title="Cumulative Profit" note={`${year} · running total`} noMargin>
-              {monthlyData.every((m) => m.cumulative == null) ? <Empty /> : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <AreaChart data={monthlyData} margin={{ top: 10, right: 12, left: 8, bottom: 4 }}>
-                    <defs>
-                      <linearGradient id="cumFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={C.profit} stopOpacity={0.32} />
-                        <stop offset="100%" stopColor={C.profit} stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtLKR(v), 'Cumulative profit']} labelStyle={{ fontWeight: 700 }} />
-                    <Area type="monotone" dataKey="cumulative" stroke={C.profit} strokeWidth={2.4} fill="url(#cumFill)" connectNulls />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </Panel>
-
             {/* Commission mix */}
-            <Panel title="Commission Mix" note="Share of profit by commission type" noMargin>
+            <Panel title="Commission Mix" note="Share of commission by type" noMargin>
               {mixData.length === 0 ? <Empty /> : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <ResponsiveContainer width="55%" height={220} minWidth={180}>
@@ -385,26 +363,9 @@ export default function ProfitPage() {
                 </div>
               )}
             </Panel>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
-            {/* Profit Margin by Month */}
-            <Panel title="Profit Margin by Month" note="Profit ÷ revenue per month" noMargin>
-              {monthlyData.every((m) => m.marginPct == null) ? <Empty /> : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={monthlyData} margin={{ top: 12, right: 16, left: 8, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} width={44} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtPct(v), 'Margin']} labelStyle={{ fontWeight: 700 }} />
-                    <Line type="monotone" dataKey="marginPct" stroke={C.margin} strokeWidth={2.4} dot={{ r: 3, fill: C.margin, stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 5 }} connectNulls />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </Panel>
-
-            {/* Profit Contribution by Client */}
-            <Panel title="Profit Contribution by Client" note="Top 8 by profit share" noMargin>
+            {/* Commission Contribution by Client */}
+            <Panel title="Commission Contribution by Client" note="Top 8 by commission share" noMargin>
               {clientDonut.length === 0 ? <Empty /> : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <ResponsiveContainer width="55%" height={220} minWidth={180}>
@@ -430,8 +391,23 @@ export default function ProfitPage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16, marginBottom: 16 }}>
-            {/* Profit by Agency */}
-            <Panel title="Profit by Agency" note={periodLabel} noMargin>
+            {/* Margin by Month */}
+            <Panel title="Margin by Month" note="Commission ÷ schedule value per month" noMargin>
+              {monthlyData.every((m) => m.marginPct == null) ? <Empty /> : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={monthlyData} margin={{ top: 12, right: 16, left: 8, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} width={44} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v) => [fmtPct(v), 'Margin']} labelStyle={{ fontWeight: 700 }} />
+                    <Line type="monotone" dataKey="marginPct" stroke={C.margin} strokeWidth={2.4} dot={{ r: 3, fill: C.margin, stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 5 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </Panel>
+
+            {/* Agency Commission */}
+            <Panel title="Agency Commission" note={periodLabel} noMargin>
               {byAgency.length === 0 ? <Empty /> : (
                 <ResponsiveContainer width="100%" height={Math.max(170, byAgency.length * 48 + 30)}>
                   <BarChart data={byAgency} layout="vertical" margin={{ top: 4, right: 60, left: 8, bottom: 4 }}>
@@ -439,24 +415,25 @@ export default function ProfitPage() {
                     <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} tickFormatter={fmtShort} />
                     <YAxis type="category" dataKey="agency" tick={{ fontSize: 12, fill: 'var(--ink)' }} tickLine={false} axisLine={false} width={120} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [fmtLKR(v), n]} />
-                    <Bar dataKey="profit" name="Profit" radius={[0, 4, 4, 0]} maxBarSize={30} fill={C.profit}>
+                    <Bar dataKey="profit" name="Commission" radius={[0, 4, 4, 0]} maxBarSize={30} fill={C.profit}>
                       <LabelList dataKey="profit" position="right" formatter={fmtShort} style={{ fontSize: 11, fill: 'var(--ink)', fontWeight: 700 }} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </Panel>
+          </div>
 
-            {/* Profit by Client - every client, ranked by profit */}
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
+          {/* Commission by Client - every client, ranked */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
               <div style={{ padding: '16px 20px 10px' }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Profit by Client</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Commission by Client</span>
                 <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 12 }}> · {clientsRanked.length} client(s) · {periodLabel}</span>
               </div>
               {clientsRanked.length === 0 ? <div style={{ padding: 20 }}><Empty /></div> : (
                 <div style={{ maxHeight: 380, overflow: 'auto' }}>
                   <table className="tbl" style={{ margin: 0, fontSize: 12.5 }}>
-                    <thead><tr><th style={{ width: 34 }}>#</th><th>Client</th><th style={{ textAlign: 'right' }}>Revenue</th><th style={{ textAlign: 'right' }}>Profit</th></tr></thead>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th>Client</th><th style={{ textAlign: 'right' }}>Revenue</th><th style={{ textAlign: 'right' }}>Commission</th></tr></thead>
                     <tbody>
                       {clientsRanked.map((c, i) => (
                         <tr key={c.clientId}>
@@ -478,7 +455,6 @@ export default function ProfitPage() {
                   </table>
                 </div>
               )}
-            </div>
           </div>
 
           {/* Detailed Breakdown - per client (year totals), expand for months */}
@@ -495,9 +471,9 @@ export default function ProfitPage() {
                     <Th onClick={() => setSort('client')}>Client{sortArrow('client')}</Th>
                     <Th onClick={() => setSort('agency')}>Agency{sortArrow('agency')}</Th>
                     <Th onClick={() => setSort('revenue')} right>Revenue{sortArrow('revenue')}</Th>
-                    <Th onClick={() => setSort('commission')} right>Commission{sortArrow('commission')}</Th>
+                    <Th onClick={() => setSort('commission')} right>Comm. Rate{sortArrow('commission')}</Th>
                     <Th onClick={() => setSort('marginPct')} right>Margin{sortArrow('marginPct')}</Th>
-                    <Th onClick={() => setSort('profit')} right>Profit{sortArrow('profit')}</Th>
+                    <Th onClick={() => setSort('profit')} right>Commission{sortArrow('profit')}</Th>
                   </tr>
                 </thead>
                 <tbody>
