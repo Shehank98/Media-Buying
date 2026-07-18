@@ -297,11 +297,16 @@ export default function CommitmentPlanner() {
                     <Tooltip formatter={(x) => [`${x}% chance of passing`, 'Likelihood']} labelFormatter={(l) => `Commit ${Number(l).toFixed(0)}M`} />
                     <Area type="monotone" dataKey="probability" stroke={C.mid} strokeWidth={2.4} fill="url(#probFill)" />
                     <ReferenceLine y={confPct} stroke={C.safe} strokeDasharray="5 4" label={{ value: `${confPct}% safe`, position: 'insideTopLeft', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
-                    <ReferenceLine x={+(data.commitment / 1e6).toFixed(1)} stroke={C.safe} strokeWidth={1.8} label={{ value: 'Safe', position: 'top', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
-                    {a.isCustom && <ReferenceLine x={+(a.target / 1e6).toFixed(1)} stroke={C.warn} strokeWidth={2} label={{ value: `Target ${prob}%`, position: 'top', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />}
+                    <ReferenceLine x={+(data.commitment / 1e6).toFixed(1)} stroke={C.safe} strokeWidth={1.8} strokeDasharray="4 3" />
+                    {a.isCustom && <ReferenceLine x={+(a.target / 1e6).toFixed(1)} stroke={C.warn} strokeWidth={2} />}
                   </AreaChart>
                 </ResponsiveContainer>
-                <How>We simulate next year thousands of times from our year-over-year growth swings and from resampling the actual years we delivered. For every possible commitment amount, this shows the share of simulations that beat it. The green line marks your chosen {confPct}% confidence level. Where it crosses the curve is the safe commitment. Your target sits at <b style={{ color: prob >= confPct ? C.safe : prob >= 50 ? C.stretch : C.warn }}>{prob}%</b>.</How>
+                {/* vertical-line values shown below so they don't clip off the top of the plot */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 10, paddingTop: 10, borderTop: '1px solid #F0F2F5' }}>
+                  <LineKey color={C.safe} dash label={`${confPct}%-safe commitment`} value={fmtFull(data.commitment)} />
+                  {a.isCustom && <LineKey color={C.warn} label={`Your target (${prob}% likely)`} value={fmtFull(a.target)} />}
+                </div>
+                <How>We simulate next year thousands of times from our year-over-year growth swings and from resampling the actual years we delivered. For every possible commitment amount, this shows the share of simulations that beat it. The green dashed line marks your chosen {confPct}% confidence level. Where it crosses the curve is the safe commitment. Your target sits at <b style={{ color: prob >= confPct ? C.safe : prob >= 50 ? C.stretch : C.warn }}>{prob}%</b>.</How>
               </Card>
 
               {/* NEW: confidence-vs-target trade-off */}
