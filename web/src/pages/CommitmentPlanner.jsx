@@ -308,7 +308,7 @@ export default function CommitmentPlanner() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
                       <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6B7790' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
                       <YAxis tickFormatter={(x) => (x / 1e6).toFixed(0) + 'M'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={false} width={46} />
-                      <Tooltip formatter={(x, n) => [fmtFull(x), n === 'booked' ? 'Booked' : 'Forecast for rest of year']} />
+                      <Tooltip formatter={(x, n, p) => [fmtFull(x), p?.dataKey === 'booked' ? 'Booked' : 'Forecast for rest of year']} />
                       <Bar dataKey="booked" name="Booked" stackId="p" fill={C.safe} maxBarSize={90} />
                       <Bar dataKey="remaining" name="Forecast remaining" stackId="p" fill={C.band} maxBarSize={90} radius={[5, 5, 0, 0]} />
                       <ReferenceLine y={a.target} stroke={C.warn} strokeWidth={2} strokeDasharray="6 4" label={{ value: `Target ${(a.target / 1e6).toFixed(0)}M`, position: 'top', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />
@@ -328,7 +328,7 @@ export default function CommitmentPlanner() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
                         <YAxis tickFormatter={(x) => (x / 1e6).toFixed(0) + 'M'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={false} width={44} />
-                        <Tooltip formatter={(x, n) => [fmtFull(x), n === 'commitment' ? 'Would-be safe number' : 'Actual']} />
+                        <Tooltip formatter={(x, n, p) => [fmtFull(x), p?.dataKey === 'commitment' ? 'Would-be safe number' : 'Actual']} />
                         <Bar dataKey="commitment" name="Safe number" fill="#B7C3D6" maxBarSize={24} radius={[3, 3, 0, 0]} />
                         <Bar dataKey="actual" name="Actual" maxBarSize={24} radius={[3, 3, 0, 0]}>
                           {backtestRows.map((b, i) => <Cell key={i} fill={b.cleared ? C.safe : C.warn} />)}
