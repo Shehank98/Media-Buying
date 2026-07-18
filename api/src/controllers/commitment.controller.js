@@ -279,6 +279,22 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
   }
   const projection = { booked: ytd, remaining: round2(Math.max(0, projectedTotal - ytd)), projectedTotal };
 
+  // Target produced at each safety level (same forecast distribution) — the
+  // confidence-vs-target trade-off ("how safe vs how big").
+  const CONF_LEVELS = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
+  const confidenceCurve = forecast ? CONF_LEVELS.map((c) => ({ confidence: c, amount: commitAtConf(forecast, c) })) : [];
+
+  // Histogram of simulated next-year outcomes — the spread of where we could land.
+  let outcomeHistogram = [];
+  if (curveDist.length > 1) {
+    const lo = quantile(curveDist, 0.01), hi = quantile(curveDist, 0.99);
+    const bins = 20; const w = (hi - lo) / bins || 1;
+    const counts = Array(bins).fill(0);
+    for (const val of curveDist) { if (val < lo || val > hi) continue; let b = Math.floor((val - lo) / w); if (b >= bins) b = bins - 1; if (b < 0) b = 0; counts[b]++; }
+    const tot = curveDist.length;
+    outcomeHistogram = counts.map((c, i) => ({ mid: round2(lo + w * (i + 0.5)), from: round2(lo + w * i), to: round2(lo + w * (i + 1)), count: c, pct: round2((c / tot) * 100) }));
+  }
+
   // Walk-forward backtest: for each full year with ≥2 priors, what P10 would have been.
   const backtest = [];
   for (let i = 2; i < fullYears.length; i++) {
@@ -312,6 +328,8 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     projectedTotal,
     projection,
     probCurve,
+    confidenceCurve,
+    outcomeHistogram,
     assessment,
     monthlyPath,
     currentYear: { year: currentYear, ytd, monthsElapsed, monthly: curMonthly },

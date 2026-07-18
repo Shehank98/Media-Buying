@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  ResponsiveContainer, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, BarChart, Bar, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   Cell, ReferenceLine,
 } from 'recharts';
 import Icon from '../components/Icon';
@@ -99,6 +99,10 @@ export default function CommitmentPlanner() {
   // 3. Projected finish = booked + forecast remaining, vs target
   const projRows = data?.projection ? [{ label: String(data.scope.year), booked: data.projection.booked, remaining: data.projection.remaining }] : [];
   const backtestRows = (data?.backtest || []).map((b) => ({ label: String(b.year), commitment: b.commitment, actual: b.actual, cleared: b.cleared }));
+  // Confidence-vs-target trade-off + the spread of simulated outcomes
+  const confRows = (data?.confidenceCurve || []).map((c) => ({ conf: Math.round(c.confidence * 100), amount: c.amount }));
+  const histoRows = (data?.outcomeHistogram || []).map((b) => ({ m: +(b.mid / 1e6).toFixed(0), mid: b.mid, from: b.from, to: b.to, count: b.count, pct: b.pct }));
+  const histoTotal = histoRows.reduce((s, r) => s + r.count, 0) || 1;
 
   return (
     <div style={{ marginTop: 26 }}>
@@ -156,9 +160,9 @@ export default function CommitmentPlanner() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Confidence <span style={{ textTransform: 'none', fontWeight: 500, color: '#93A0B5' }}>(higher = safer, lower target)</span></div>
           <div style={{ display: 'inline-flex', border: '1px solid #E5E8ED', borderRadius: 9, overflow: 'hidden' }}>
-            {[0.75, 0.80, 0.85, 0.90, 0.95].map((c) => (
+            {[0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95].map((c) => (
               <button key={c} onClick={() => setConfidence(c)} title={c < 0.9 ? 'Higher target, closer to what you usually achieve' : c > 0.9 ? 'Safer, lower target' : 'Balanced'}
-                style={{ border: 'none', padding: '8px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: confidence === c ? '#15814B' : '#fff', color: confidence === c ? '#fff' : '#3B4A63' }}>{Math.round(c * 100)}%</button>
+                style={{ border: 'none', borderLeft: c === 0.50 ? 'none' : '1px solid #E5E8ED', padding: '8px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: confidence === c ? '#15814B' : '#fff', color: confidence === c ? '#fff' : '#3B4A63' }}>{Math.round(c * 100)}%</button>
             ))}
           </div>
         </div>
@@ -300,9 +304,42 @@ export default function CommitmentPlanner() {
                 <How>We simulate next year thousands of times from our year-over-year growth swings and from resampling the actual years we delivered. For every possible commitment amount, this shows the share of simulations that beat it. The green line marks your chosen {confPct}% confidence level. Where it crosses the curve is the safe commitment. Your target sits at <b style={{ color: prob >= confPct ? C.safe : prob >= 50 ? C.stretch : C.warn }}>{prob}%</b>.</How>
               </Card>
 
+              {/* NEW: confidence-vs-target trade-off */}
+              <Card title="3. How safe vs how big" sub="The target each safety level would give you. Pick the balance of reliability and ambition to close with.">
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={confRows} margin={{ top: 16, right: 16, left: 4, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="conf" tickFormatter={(x) => x + '%'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
+                    <YAxis tickFormatter={(x) => (x / 1e6).toFixed(0) + 'M'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={false} width={48} />
+                    <Tooltip formatter={(x) => [fmtFull(x), 'Safe target']} labelFormatter={(l) => `${l}% confidence`} />
+                    {data.lastYear && <ReferenceLine y={data.lastYear.total} stroke="#8A97AC" strokeDasharray="5 4" label={{ value: `Last year ${(data.lastYear.total / 1e6).toFixed(0)}M`, position: 'insideTopRight', fontSize: 10.5, fill: '#6B7790' }} />}
+                    <ReferenceLine x={confPct} stroke={C.safe} strokeWidth={1.6} strokeDasharray="4 4" label={{ value: 'You', position: 'top', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
+                    <Line type="monotone" dataKey="amount" name="Safe target" stroke={C.mid} strokeWidth={2.6} dot={(p) => <circle key={p.key ?? p.index} cx={p.cx} cy={p.cy} r={p.payload.conf === confPct ? 6 : 3.5} fill={p.payload.conf === confPct ? C.safe : C.mid} stroke="#fff" strokeWidth={1.5} />} />
+                  </LineChart>
+                </ResponsiveContainer>
+                <How>Higher confidence (right) means a safer, lower target; lower confidence (left) pushes it up toward the expected outcome. The grey line is what you delivered last year, so where the curve meets it is the confidence at which your target equals last year. Your current pick ({confPct}%) is the highlighted dot at <b>{fmtM(data.commitment)}</b>.</How>
+              </Card>
+
+              {/* NEW: distribution of simulated outcomes */}
+              <Card title="4. Range of likely outcomes" sub="Where next year could land across thousands of simulations. Green clears your target, amber falls short.">
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={histoRows} margin={{ top: 16, right: 16, left: 4, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                    <XAxis dataKey="m" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(x) => x + 'M'} tick={{ fontSize: 10.5, fill: '#6B7790' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
+                    <YAxis tickFormatter={(x) => Math.round((x / histoTotal) * 100) + '%'} tick={{ fontSize: 10.5, fill: '#6B7790' }} tickLine={false} axisLine={false} width={40} />
+                    <Tooltip formatter={(x, n, p) => [`${p?.payload?.pct}% of outcomes`, `${fmtFull(p?.payload?.from)} to ${fmtFull(p?.payload?.to)}`]} labelFormatter={() => ''} />
+                    <Bar dataKey="count" maxBarSize={26} radius={[3, 3, 0, 0]}>
+                      {histoRows.map((r, i) => <Cell key={i} fill={r.mid >= a.target ? C.safe : C.band} />)}
+                    </Bar>
+                    <ReferenceLine x={+(a.target / 1e6).toFixed(0)} stroke={C.warn} strokeWidth={2} label={{ value: `Target ${(a.target / 1e6).toFixed(0)}M`, position: 'top', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <How>Each bar is how often, out of thousands of simulated next-years, the total lands in that spend band. Green bars clear your target of {fmtM(a.target)}, amber ones miss it. The greener the chart, the safer the target: right now <b style={{ color: prob >= confPct ? C.safe : C.warn }}>{prob}%</b> of outcomes pass.</How>
+              </Card>
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
-                {/* PROOF 3: will the projected finish clear the target */}
-                <Card title="3. Where we finish vs the target" sub="Booked so far plus the forecast for the rest of the year, against the target line.">
+                {/* PROOF 5: will the projected finish clear the target */}
+                <Card title="5. Where we finish vs the target" sub="Booked so far plus the forecast for the rest of the year, against the target line.">
                   <ResponsiveContainer width="100%" height={240}>
                     <BarChart data={projRows} margin={{ top: 22, right: 12, left: 4, bottom: 4 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
@@ -319,7 +356,7 @@ export default function CommitmentPlanner() {
                 </Card>
 
                 {/* PROOF 4: has the method held before */}
-                <Card title="4. Would the safe number have held before" sub="A back-test: recompute the safe number for each past year using only earlier data.">
+                <Card title="6. Would the safe number have held before" sub="A back-test: recompute the safe number for each past year using only earlier data.">
                   {backtestRows.length === 0 ? (
                     <div style={{ padding: '24px 0', textAlign: 'center', color: '#6B7790', fontSize: 12.5 }}>Needs 3+ completed years to back-test.</div>
                   ) : (
@@ -342,7 +379,7 @@ export default function CommitmentPlanner() {
               </div>
 
               {data.children?.length > 0 && (
-                <Card title={`5. Safe commitment by ${data.childLevelLabel.toLowerCase()}`} sub={`Each one's own ${confPct}%-safe figure. Set per-line commitments from here so they add up to the whole.`}>
+                <Card title={`7. Safe commitment by ${data.childLevelLabel.toLowerCase()}`} sub={`Each one's own ${confPct}%-safe figure. Set per-line commitments from here so they add up to the whole.`}>
                   <div className="tbl-wrap">
                     <table className="tbl">
                       <thead><tr><th>{data.childLevelLabel}</th><th style={{ textAlign: 'right' }}>Lifetime spend</th><th style={{ textAlign: 'right' }}>{confPct}%-Safe</th><th style={{ textAlign: 'right' }}>Expected</th></tr></thead>
