@@ -51,22 +51,32 @@ function forecastAnnual(fullTotals, gap = 1, n = N_MAIN) {
   const base = fullTotals[fullTotals.length - 1];
   if (fullTotals.length === 1) {
     // No growth history — use a symmetric ±15% band around the single year.
-    return { p10: round2(base * 0.85), p50: round2(base), p90: round2(base * 1.15), method: 'single-year', growth: [] };
+    return { p10: round2(base * 0.85), p50: round2(base), p90: round2(base * 1.15), method: 'single-year', growth: [], sims: null };
   }
   const growth = [];
   for (let i = 1; i < fullTotals.length; i++) {
     if (fullTotals[i - 1] > 0) growth.push(fullTotals[i] / fullTotals[i - 1] - 1);
   }
-  if (!growth.length) return { p10: round2(base * 0.85), p50: round2(base), p90: round2(base * 1.15), method: 'flat', growth: [] };
+  if (!growth.length) return { p10: round2(base * 0.85), p50: round2(base), p90: round2(base * 1.15), method: 'flat', growth: [], sims: null };
   const gMean = growth.reduce((a, b) => a + b, 0) / growth.length;
   const gStd = Math.sqrt(growth.reduce((a, b) => a + (b - gMean) ** 2, 0) / growth.length) || 0.05;
   const noise = Math.max(gStd, 0.03); // floor the noise so a lucky-stable past doesn't over-promise
+  // 30% of simulations RESAMPLE an actual past-year total (with a little noise)
+  // instead of compounding a growth draw off the last year. This anchors the
+  // forecast to what really happened, so a steady 80M/yr track record can't
+  // produce a "safe" number far below every year we actually delivered.
+  const EMP_WEIGHT = 0.30;
   const sims = [];
   for (let s = 0; s < n; s++) {
-    let v = base;
-    for (let k = 0; k < gap; k++) {
-      const g = growth[Math.floor(Math.random() * growth.length)] + gaussian() * noise;
-      v *= (1 + g);
+    let v;
+    if (Math.random() < EMP_WEIGHT) {
+      v = fullTotals[Math.floor(Math.random() * fullTotals.length)] * (1 + gaussian() * 0.06);
+    } else {
+      v = base;
+      for (let k = 0; k < gap; k++) {
+        const g = growth[Math.floor(Math.random() * growth.length)] + gaussian() * noise;
+        v *= (1 + g);
+      }
     }
     sims.push(Math.max(0, v));
   }
@@ -75,7 +85,7 @@ function forecastAnnual(fullTotals, gap = 1, n = N_MAIN) {
     p10: round2(quantile(sims, 0.10)),
     p50: round2(quantile(sims, 0.50)),
     p90: round2(quantile(sims, 0.90)),
-    method: 'bootstrap-growth',
+    method: 'bootstrap+empirical',
     growth: growth.map((g) => round2(g * 100)),
     sims,
   };
@@ -100,12 +110,16 @@ const yearTotal = (byYm, y) => Object.values(byYm[y] || {}).reduce((a, b) => a +
 function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount = null) {
   const byYm = toByYearMonth(rows);
   const allYears = Object.keys(byYm).map(Number).sort((a, b) => a - b);
-  const fullYears = allYears.filter((y) => y < currentYear); // years before this one are complete
-  const fullTotals = fullYears.map((y) => yearTotal(byYm, y));
+  const pastYears = allYears.filter((y) => y < currentYear); // years before this one
+  const coverage = {};
+  pastYears.forEach((y) => { coverage[y] = Object.keys(byYm[y] || {}).length; });
+  const completeYears = pastYears.filter((y) => coverage[y] >= 11); // 11-12 months = a complete year
 
-  // Seasonal share (avg share of the year each month carries), from full years.
+  // Seasonal share (avg share of the year each month carries), from COMPLETE
+  // years only (fall back to any past year if none is complete yet).
+  const seasonalSource = completeYears.length ? completeYears : pastYears;
   const shareSum = Array(13).fill(0); let shareCount = 0;
-  for (const y of fullYears) {
+  for (const y of seasonalSource) {
     const t = yearTotal(byYm, y);
     if (t > 0) { shareCount++; for (let m = 1; m <= 12; m++) shareSum[m] += (byYm[y]?.[m] || 0) / t; }
   }
@@ -116,6 +130,32 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     const s = seasonal.reduce((a, b) => a + b, 0) || 1;
     seasonal = seasonal.map((x) => x / s);
   }
+
+  // Annualize an incomplete past year (data usually lags the calendar) so a
+  // half-uploaded recent year can't become the forecast base and halve a steady
+  // track record. covered = seasonal weight of the months present; scale the raw
+  // total up by 1/covered (capped 3x). Too little of the year present = skip it.
+  const annualizeYear = (y) => {
+    const raw = yearTotal(byYm, y);
+    if (coverage[y] >= 11) return raw;
+    let covered = 0;
+    for (let m = 1; m <= 12; m++) if (byYm[y]?.[m] != null) covered += seasonal[m - 1];
+    if (covered <= 0.15) return null;
+    return raw * Math.min(1 / covered, 3);
+  };
+
+  // Forecast series = each past year's (annualized) total, recent-most last.
+  const seriesYears = [];
+  const fullTotals = [];
+  for (const y of pastYears) {
+    const av = annualizeYear(y);
+    if (av != null && av > 0) { seriesYears.push(y); fullTotals.push(round2(av)); }
+  }
+  const fullYears = seriesYears; // alias: forecasting + backtest run on the annualized series
+
+  const historicalMin = fullTotals.length ? round2(Math.min(...fullTotals)) : 0;
+  const historicalMax = fullTotals.length ? round2(Math.max(...fullTotals)) : 0;
+  const historicalAvg = fullTotals.length ? round2(fullTotals.reduce((a, b) => a + b, 0) / fullTotals.length) : 0;
 
   const lastFull = fullYears.length ? fullYears[fullYears.length - 1] : null;
   const gap = lastFull ? Math.max(1, targetYear - lastFull) : 1;
@@ -211,6 +251,20 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     probability, verdict,
   };
 
+  // Probability of clearing any candidate target — powers the "how likely" curve.
+  const curveDist = finalSims.length ? finalSims : (forecast?.sims ? forecast.sims.slice().sort((a, b) => a - b) : []);
+  let probCurve = [];
+  if (curveDist.length > 1) {
+    const lo = Math.max(0, quantile(curveDist, 0.02));
+    const hi = quantile(curveDist, 0.98);
+    const span = hi - lo || 1; const steps = 28;
+    for (let i = 0; i <= steps; i++) {
+      const amt = lo + (span * i) / steps;
+      probCurve.push({ amount: round2(amt), probability: round2((curveDist.filter((v) => v >= amt).length / curveDist.length) * 100) });
+    }
+  }
+  const projection = { booked: ytd, remaining: round2(Math.max(0, projectedTotal - ytd)), projectedTotal };
+
   // Walk-forward backtest: for each full year with ≥2 priors, what P10 would have been.
   const backtest = [];
   for (let i = 2; i < fullYears.length; i++) {
@@ -226,11 +280,22 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
 
   return {
     hasData,
-    history: fullYears.map((y) => ({ year: y, total: round2(yearTotal(byYm, y)) })),
+    history: pastYears.map((y) => ({
+      year: y,
+      total: round2(yearTotal(byYm, y)),
+      annualized: round2(annualizeYear(y) ?? yearTotal(byYm, y)),
+      partial: coverage[y] < 11,
+      months: coverage[y],
+    })),
+    historicalMin,
+    historicalMax,
+    historicalAvg,
     seasonal: seasonal.map((x) => round2(x * 100)),
     forecast: forecast ? { p10: forecast.p10, p50: forecast.p50, p90: forecast.p90, method: forecast.method, growth: forecast.growth } : null,
     commitment,
     projectedTotal,
+    projection,
+    probCurve,
     assessment,
     monthlyPath,
     currentYear: { year: currentYear, ytd, monthsElapsed, monthly: curMonthly },
@@ -342,7 +407,11 @@ function childForecasts(crows, keyField, targetYear, currentYear, nameFn) {
     const lifetime = rows.reduce((a, r) => a + num(r._sum.scheduleValue), 0);
     const byYm = toByYearMonth(rows);
     const fullYears = Object.keys(byYm).map(Number).filter((y) => y < currentYear).sort((a, b) => a - b);
-    const fullTotals = fullYears.map((y) => yearTotal(byYm, y));
+    const fullTotals = fullYears.map((y) => {
+      const cov = Object.keys(byYm[y] || {}).length;
+      const raw = yearTotal(byYm, y);
+      return cov >= 11 || cov === 0 ? round2(raw) : round2(raw * Math.min(12 / cov, 3));
+    });
     const gap = fullYears.length ? Math.max(1, targetYear - fullYears[fullYears.length - 1]) : 1;
     const f = fullTotals.length ? forecastAnnual(fullTotals, gap, N_CHILD) : null;
     out.push({
