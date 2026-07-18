@@ -4,6 +4,7 @@ import api from '../lib/api';
 import Icon, { fmtLKR } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import OrbitLoader from '../components/OrbitLoader';
+import CommitmentPlanner from './CommitmentPlanner';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = [CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
@@ -283,6 +284,7 @@ function StatTile({ icon, color, bg, label, value, meta }) {
 }
 
 export default function MediaBuyingPage() {
+  const [tab, setTab] = useState('media-buying');
   const [channels, setChannels] = useState([]);
   const [channelMasterId, setChannelMasterId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -673,11 +675,24 @@ export default function MediaBuyingPage() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Media Buying</h1>
-          <p className="page-sub">Channel negotiation intelligence: discount &amp; bonus deal history, planning.</p>
+          <p className="page-sub">Channel negotiation intelligence and target planning.</p>
         </div>
-        <button className="btn btn-primary" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>
+        {tab === 'media-buying' && <button className="btn btn-primary" onClick={openQuickAddModal}><Icon name="plus" size={16} /> Add Deal</button>}
       </div>
 
+      {/* Tab switcher */}
+      <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
+        {[['media-buying', 'Media Buying'], ['target-planner', 'Target Planner']].map(([k, lbl]) => (
+          <button key={k} onClick={() => setTab(k)}
+            style={{ border: 'none', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: tab === k ? '#0A1729' : '#fff', color: tab === k ? '#fff' : 'var(--ink-soft)' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'target-planner' && <CommitmentPlanner />}
+
+      {tab === 'media-buying' && (<>
       <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between', padding: 18, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className="field" style={{ minWidth: 320, marginBottom: 0 }}>
@@ -1096,6 +1111,7 @@ export default function MediaBuyingPage() {
           )}
         </div>
       </div>
+      </>)}
     </div>
   );
 }

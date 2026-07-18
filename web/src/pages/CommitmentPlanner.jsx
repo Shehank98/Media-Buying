@@ -55,6 +55,7 @@ export default function CommitmentPlanner() {
   const [targetLkr, setTargetLkr] = useState(null);
   const [mediaGroups, setMediaGroups] = useState([]);
   const [channels, setChannels] = useState([]);
+  const [clients, setClients] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -63,6 +64,7 @@ export default function CommitmentPlanner() {
   useEffect(() => {
     api.get('/masterdata/media-groups').then((r) => setMediaGroups((r.data.mediaGroups || r.data || []).filter((g) => g.active !== false))).catch(() => {});
     api.get('/masterdata/channel-masters').then((r) => setChannels(r.data.channelMasters || r.data || [])).catch(() => {});
+    api.get('/admin/clients').then((r) => setClients((r.data || []).sort((x, y) => (x.name || '').localeCompare(y.name || '')))).catch(() => {});
   }, []);
 
   useEffect(() => { const t = setTimeout(() => setTargetLkr(targetM === '' || isNaN(Number(targetM)) ? null : Number(targetM) * 1e6), 400); return () => clearTimeout(t); }, [targetM]);
@@ -101,8 +103,8 @@ export default function CommitmentPlanner() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 6 }}>
         <div style={{ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(135deg,#15814B,#0E6B3D)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={19} /></div>
         <div>
-          <h2 style={{ fontSize: 19, fontWeight: 760, color: '#16243C', margin: 0, letterSpacing: '-.4px' }}>Commitment Planner</h2>
-          <div style={{ fontSize: 12.5, color: '#6B7790' }}>Will we pass the commitment, how likely, and how much do we still need?</div>
+          <h2 style={{ fontSize: 19, fontWeight: 760, color: '#16243C', margin: 0, letterSpacing: '-.4px' }}>Target Planner</h2>
+          <div style={{ fontSize: 12.5, color: '#6B7790' }}>Plan a safe target for an agency, media group, channel or client: will we pass it, how likely, and how much do we still need?</div>
         </div>
       </div>
 
@@ -111,7 +113,7 @@ export default function CommitmentPlanner() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Level</div>
           <div style={{ display: 'inline-flex', border: '1px solid #E5E8ED', borderRadius: 9, overflow: 'hidden' }}>
-            {[['overall', 'Overall'], ['media-group', 'Media Group'], ['channel', 'Channel']].map(([k, lbl]) => (
+            {[['overall', 'Overall'], ['media-group', 'Media Group'], ['channel', 'Channel'], ['client', 'Client']].map(([k, lbl]) => (
               <button key={k} onClick={() => changeLevel(k)} style={{ border: 'none', padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: level === k ? '#0A1729' : '#fff', color: level === k ? '#fff' : '#3B4A63' }}>{lbl}</button>
             ))}
           </div>
@@ -134,6 +136,15 @@ export default function CommitmentPlanner() {
             </select>
           </div>
         )}
+        {level === 'client' && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Client</div>
+            <select className="select" value={entity} onChange={(e) => setEntity(e.target.value)} style={{ minWidth: 230 }}>
+              <option value="">Select a client</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.agencyName ? ` · ${c.agencyName}` : ''}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Year</div>
           <select className="select" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ minWidth: 100 }}>
@@ -148,7 +159,7 @@ export default function CommitmentPlanner() {
       </div>
 
       {level !== 'overall' && !entity ? (
-        <div style={{ padding: '30px 20px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>Pick a {level === 'media-group' ? 'media group' : 'channel'} above.</div>
+        <div style={{ padding: '30px 20px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>Pick a {level === 'media-group' ? 'media group' : level === 'client' ? 'client' : 'channel'} above.</div>
       ) : loading ? (
         <div style={{ padding: 30 }}><OrbitLoader label="Working it out" /></div>
       ) : err ? (

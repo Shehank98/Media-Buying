@@ -13,7 +13,6 @@ import html2canvas from 'html2canvas';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
-import CommitmentPlanner from './CommitmentPlanner';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -489,8 +488,6 @@ export default function DeepDashboardPage() {
         </>
       )}
 
-      {/* Commitment Planner — self-contained (fetches its own data); does not touch the charts above. */}
-      <CommitmentPlanner />
     </div>
   );
 }

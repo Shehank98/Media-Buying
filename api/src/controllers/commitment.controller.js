@@ -313,7 +313,7 @@ export async function getCommitmentPlanner(req, res) {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
-    const level = ['overall', 'media-group', 'channel'].includes(req.query.level) ? req.query.level : 'overall';
+    const level = ['overall', 'media-group', 'channel', 'client'].includes(req.query.level) ? req.query.level : 'overall';
     const agencyId = req.query.agencyId ? parseInt(req.query.agencyId) : null;
     const entity = req.query.entity != null ? String(req.query.entity) : '';
     const targetYear = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : currentYear;
@@ -333,19 +333,36 @@ export async function getCommitmentPlanner(req, res) {
       where.channelMasterId = cmId;
       const cm = await prisma.channelMaster.findUnique({ where: { id: cmId }, select: { name: true } });
       entityName = cm?.name || `Channel #${cmId}`;
+    } else if (level === 'client') {
+      const clId = parseInt(entity);
+      if (!clId) return res.status(400).json({ error: 'entity (clientId) is required' });
+      where.clientId = clId;
+      const cl = await prisma.client.findUnique({ where: { id: clId }, select: { name: true } });
+      entityName = cl?.name || `Client #${clId}`;
     }
 
     const rows = await prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where, _sum: { scheduleValue: true } });
     const main = analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount);
 
-    // Client concentration (top single client's share of this scope, all-time).
+    // Concentration risk: the single biggest sub-entity's share of this scope,
+    // all-time. For a client scope "top client" is meaningless (it is one
+    // client), so measure the top media group instead.
     let topClient = null;
-    const clientAgg = await prisma.scheduleLog.groupBy({ by: ['clientId'], where, _sum: { scheduleValue: true } });
-    if (clientAgg.length) {
-      const total = clientAgg.reduce((a, r) => a + num(r._sum.scheduleValue), 0);
-      const top = clientAgg.reduce((a, r) => (num(r._sum.scheduleValue) > num(a._sum.scheduleValue) ? r : a));
-      const c = await prisma.client.findUnique({ where: { id: top.clientId }, select: { name: true } });
-      if (total > 0) topClient = { name: c?.name || 'Unknown', sharePct: round2((num(top._sum.scheduleValue) / total) * 100) };
+    if (level === 'client') {
+      const mgAgg = await prisma.scheduleLog.groupBy({ by: ['mediaGroup'], where, _sum: { scheduleValue: true } });
+      if (mgAgg.length) {
+        const total = mgAgg.reduce((a, r) => a + num(r._sum.scheduleValue), 0);
+        const top = mgAgg.reduce((a, r) => (num(r._sum.scheduleValue) > num(a._sum.scheduleValue) ? r : a));
+        if (total > 0) topClient = { name: top.mediaGroup || 'Ungrouped', sharePct: round2((num(top._sum.scheduleValue) / total) * 100) };
+      }
+    } else {
+      const clientAgg = await prisma.scheduleLog.groupBy({ by: ['clientId'], where, _sum: { scheduleValue: true } });
+      if (clientAgg.length) {
+        const total = clientAgg.reduce((a, r) => a + num(r._sum.scheduleValue), 0);
+        const top = clientAgg.reduce((a, r) => (num(r._sum.scheduleValue) > num(a._sum.scheduleValue) ? r : a));
+        const c = await prisma.client.findUnique({ where: { id: top.clientId }, select: { name: true } });
+        if (total > 0) topClient = { name: c?.name || 'Unknown', sharePct: round2((num(top._sum.scheduleValue) / total) * 100) };
+      }
     }
 
     // Children (sub-entities) — each with its own P10/P50 so commitments roll up.
@@ -362,13 +379,18 @@ export async function getCommitmentPlanner(req, res) {
       const cms = await prisma.channelMaster.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
       const nameById = new Map(cms.map((c) => [c.id, c.name]));
       children = childForecasts(crows, 'channelMasterId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`);
-    } else {
+    } else if (level === 'channel') {
       childLevelLabel = 'Client';
       const crows = await prisma.scheduleLog.groupBy({ by: ['clientId', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
       const ids = [...new Set(crows.map((r) => r.clientId))];
       const cls = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
       const nameById = new Map(cls.map((c) => [c.id, c.name]));
       children = childForecasts(crows, 'clientId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`);
+    } else {
+      // client scope → break the client's target down by media group
+      childLevelLabel = 'Media group';
+      const crows = await prisma.scheduleLog.groupBy({ by: ['mediaGroup', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
+      children = childForecasts(crows, 'mediaGroup', targetYear, currentYear, (k) => k || 'Ungrouped');
     }
 
     const availableYears = [];
