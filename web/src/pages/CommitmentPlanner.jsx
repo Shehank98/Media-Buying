@@ -53,6 +53,7 @@ export default function CommitmentPlanner() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [targetM, setTargetM] = useState('');   // user-typed target, in LKR millions ('' = evaluate the safe number)
   const [targetLkr, setTargetLkr] = useState(null);
+  const [confidence, setConfidence] = useState(0.90);   // how safe: higher = lower, safer target
   const [mediaGroups, setMediaGroups] = useState([]);
   const [channels, setChannels] = useState([]);
   const [clients, setClients] = useState([]);
@@ -73,15 +74,16 @@ export default function CommitmentPlanner() {
     if (level !== 'overall' && !entity) { setData(null); return; }
     let cancelled = false;
     setLoading(true); setErr('');
-    api.get('/analytics/commitment-planner', { params: { level, entity: level === 'overall' ? undefined : entity, year, target: targetLkr ?? undefined } })
+    api.get('/analytics/commitment-planner', { params: { level, entity: level === 'overall' ? undefined : entity, year, target: targetLkr ?? undefined, confidence } })
       .then((r) => { if (!cancelled) setData(r.data); })
       .catch((e) => { if (!cancelled) { setErr(e.response?.data?.error || 'Failed to load'); setData(null); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [level, entity, year, targetLkr]);
+  }, [level, entity, year, targetLkr, confidence]);
 
   const changeLevel = (lv) => { setLevel(lv); setEntity(''); setTargetM(''); };
 
+  const confPct = Math.round(confidence * 100);
   const a = data?.assessment;
   const v = VERDICT[a?.verdict || 'unknown'];
   const prob = a?.probability != null ? Math.round(a.probability * 100) : null;
@@ -152,9 +154,18 @@ export default function CommitmentPlanner() {
           </select>
         </div>
         <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Confidence <span style={{ textTransform: 'none', fontWeight: 500, color: '#93A0B5' }}>(higher = safer, lower target)</span></div>
+          <div style={{ display: 'inline-flex', border: '1px solid #E5E8ED', borderRadius: 9, overflow: 'hidden' }}>
+            {[0.75, 0.80, 0.85, 0.90, 0.95].map((c) => (
+              <button key={c} onClick={() => setConfidence(c)} title={c < 0.9 ? 'Higher target, closer to what you usually achieve' : c > 0.9 ? 'Safer, lower target' : 'Balanced'}
+                style={{ border: 'none', padding: '8px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: confidence === c ? '#15814B' : '#fff', color: confidence === c ? '#fff' : '#3B4A63' }}>{Math.round(c * 100)}%</button>
+            ))}
+          </div>
+        </div>
+        <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 5 }}>Target the media group asks (LKR millions)</div>
           <input className="input" type="number" min="0" step="1" value={targetM} onChange={(e) => setTargetM(e.target.value)}
-            placeholder={data?.hasData ? `${(data.commitment / 1e6).toFixed(0)} = the 90%-safe number` : 'e.g. 300'} style={{ minWidth: 230 }} />
+            placeholder={data?.hasData ? `${(data.commitment / 1e6).toFixed(0)} = the ${confPct}%-safe number` : 'e.g. 300'} style={{ minWidth: 230 }} />
         </div>
       </div>
 
@@ -176,7 +187,7 @@ export default function CommitmentPlanner() {
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', color: v.color }}>{v.label}</div>
                   <div style={{ fontSize: 13.5, color: '#3B4A63', marginTop: 2 }}>
-                    {a.isCustom ? 'Your target' : '90%-safe commitment'}: <b style={{ color: '#16243C' }}>{fmtM(a.target)}</b> for {data.scope.entityName} · {data.scope.year}
+                    {a.isCustom ? 'Your target' : `${confPct}%-safe commitment`}: <b style={{ color: '#16243C' }}>{fmtM(a.target)}</b> for {data.scope.entityName} · {data.scope.year}
                   </div>
                 </div>
               </div>
@@ -205,6 +216,8 @@ export default function CommitmentPlanner() {
             {/* plain-language rows */}
             <div style={{ padding: '6px 20px 16px' }}>
               <Row label="Target to hit" value={fmtFull(a.target)} strong />
+              {data.lastYear && <Row label={`Last year actual (${data.lastYear.year})`} value={fmtFull(data.lastYear.total)} hint="what we actually delivered" />}
+              <Row label="Expected next (most likely)" value={fmtFull(data.forecast.p50)} hint="the middle of the forecast, before any safety margin" valueColor={C.mid} />
               <Row label={`Booked so far (${a.monthsElapsed} month${a.monthsElapsed === 1 ? '' : 's'})`} value={fmtFull(a.ytd)} hint={`${a.pctBooked}% of the target`} />
               <Row label="Still needed" value={fmtFull(a.stillNeeded)} valueColor={a.stillNeeded > 0 ? C.stretch : C.safe} strong />
               <Row label="Months left" value={String(a.monthsRemaining)} />
@@ -217,10 +230,10 @@ export default function CommitmentPlanner() {
             {/* one-line recommendation */}
             <div style={{ padding: '13px 20px', borderTop: '1px solid #EEF0F3', background: '#FAFBFC', fontSize: 13, color: '#3B4A63', lineHeight: 1.5 }}>
               <b style={{ color: '#16243C' }}>Recommendation: </b>
-              {a.verdict === 'very-likely' && <>You'll comfortably pass this. {a.isCustom && data.commitment > a.target ? <>You could even commit up to <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b> and still be 90%-safe.</> : <>Safe to commit.</>}</>}
+              {a.verdict === 'very-likely' && <>You'll comfortably pass this. {a.isCustom && data.commitment > a.target ? <>You could even commit up to <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b> and still be {confPct}%-safe.</> : <>Safe to commit.</>}</>}
               {a.verdict === 'on-track' && <>You're on track. Keep the run-rate at <b>{fmtM(a.neededPerMonth)}/mo</b> or above and you'll clear it.</>}
-              {a.verdict === 'at-risk' && <>This is a stretch. You need <b>{fmtM(a.neededPerMonth)}/mo</b> vs your recent <b>{fmtM(a.recentRunRate)}/mo</b>. The 90%-safe number is <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b>, consider committing there instead.</>}
-              {a.verdict === 'unlikely' && <>This target is too high to promise. The most you can safely commit (90%) is <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b>.</>}
+              {a.verdict === 'at-risk' && <>This is a stretch. You need <b>{fmtM(a.neededPerMonth)}/mo</b> vs your recent <b>{fmtM(a.recentRunRate)}/mo</b>. The {confPct}%-safe number is <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b>, consider committing there instead.</>}
+              {a.verdict === 'unlikely' && <>This target is too high to promise. The most you can safely commit ({confPct}%) is <b style={{ color: C.safe }}>{fmtM(data.commitment)}</b>.</>}
             </div>
           </div>
 
@@ -249,12 +262,12 @@ export default function CommitmentPlanner() {
                     <Bar dataKey="value" name="Full-year spend" maxBarSize={64} radius={[5, 5, 0, 0]}>
                       {histRows.map((r, i) => <Cell key={i} fill={r.partial ? '#9FB4D6' : C.actual} />)}
                     </Bar>
-                    <ReferenceLine y={data.commitment} stroke={C.safe} strokeWidth={2} strokeDasharray="6 4" label={{ value: `Safe ${(data.commitment / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
+                    <ReferenceLine y={data.commitment} stroke={C.safe} strokeWidth={2} strokeDasharray="6 4" label={{ value: `${confPct}%-safe ${(data.commitment / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
                     <ReferenceLine y={data.forecast.p50} stroke={C.mid} strokeWidth={1.6} strokeDasharray="3 4" label={{ value: `Expected ${(data.forecast.p50 / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.mid }} />
                     {a.isCustom && <ReferenceLine y={a.target} stroke={C.warn} strokeWidth={2} label={{ value: `Target ${(a.target / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />}
                   </BarChart>
                 </ResponsiveContainer>
-                <How>Each bar is a full year we actually delivered on this scope (lowest {fmtM(data.historicalMin)}, average {fmtM(data.historicalAvg)}, highest {fmtM(data.historicalMax)}). The green line is the <b>90%-safe</b> commitment. It sits just under the years we have reliably delivered, so it is not a number we have never been near. The blue line is the expected (most-likely) outcome.</How>
+                <How>Each bar is a full year we actually delivered on this scope (lowest {fmtM(data.historicalMin)}, average {fmtM(data.historicalAvg)}, highest {fmtM(data.historicalMax)}). The green line is the <b>{confPct}%-safe</b> commitment (the amount cleared {confPct} times out of 100). Raise the confidence for a safer, lower number; lower it to push the target up toward the blue expected (most-likely) line.</How>
               </Card>
 
               {/* PROOF 2: the money chart: how likely is ANY target */}
@@ -272,12 +285,12 @@ export default function CommitmentPlanner() {
                     <YAxis domain={[0, 100]} tickFormatter={(x) => x + '%'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={false} width={40} />
                     <Tooltip formatter={(x) => [`${x}% chance of passing`, 'Likelihood']} labelFormatter={(l) => `Commit ${Number(l).toFixed(0)}M`} />
                     <Area type="monotone" dataKey="probability" stroke={C.mid} strokeWidth={2.4} fill="url(#probFill)" />
-                    <ReferenceLine y={90} stroke={C.safe} strokeDasharray="5 4" label={{ value: '90% safe', position: 'insideTopLeft', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
+                    <ReferenceLine y={confPct} stroke={C.safe} strokeDasharray="5 4" label={{ value: `${confPct}% safe`, position: 'insideTopLeft', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
                     <ReferenceLine x={+(data.commitment / 1e6).toFixed(1)} stroke={C.safe} strokeWidth={1.8} label={{ value: 'Safe', position: 'top', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
                     {a.isCustom && <ReferenceLine x={+(a.target / 1e6).toFixed(1)} stroke={C.warn} strokeWidth={2} label={{ value: `Target ${prob}%`, position: 'top', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />}
                   </AreaChart>
                 </ResponsiveContainer>
-                <How>We simulate next year thousands of times from our year-over-year growth swings and from resampling the actual years we delivered. For every possible commitment amount, this shows the share of simulations that beat it. The green line marks the 90% confidence level. Where it crosses the curve is the safe commitment. Your target sits at <b style={{ color: prob >= 90 ? C.safe : prob >= 50 ? C.stretch : C.warn }}>{prob}%</b>.</How>
+                <How>We simulate next year thousands of times from our year-over-year growth swings and from resampling the actual years we delivered. For every possible commitment amount, this shows the share of simulations that beat it. The green line marks your chosen {confPct}% confidence level. Where it crosses the curve is the safe commitment. Your target sits at <b style={{ color: prob >= confPct ? C.safe : prob >= 50 ? C.stretch : C.warn }}>{prob}%</b>.</How>
               </Card>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
@@ -322,10 +335,10 @@ export default function CommitmentPlanner() {
               </div>
 
               {data.children?.length > 0 && (
-                <Card title={`5. Safe commitment by ${data.childLevelLabel.toLowerCase()}`} sub="Each one's own 90%-safe figure. Set per-line commitments from here so they add up to the whole.">
+                <Card title={`5. Safe commitment by ${data.childLevelLabel.toLowerCase()}`} sub={`Each one's own ${confPct}%-safe figure. Set per-line commitments from here so they add up to the whole.`}>
                   <div className="tbl-wrap">
                     <table className="tbl">
-                      <thead><tr><th>{data.childLevelLabel}</th><th style={{ textAlign: 'right' }}>Lifetime spend</th><th style={{ textAlign: 'right' }}>90%-Safe</th><th style={{ textAlign: 'right' }}>Expected</th></tr></thead>
+                      <thead><tr><th>{data.childLevelLabel}</th><th style={{ textAlign: 'right' }}>Lifetime spend</th><th style={{ textAlign: 'right' }}>{confPct}%-Safe</th><th style={{ textAlign: 'right' }}>Expected</th></tr></thead>
                       <tbody>
                         {data.children.map((c) => (
                           <tr key={c.key}>

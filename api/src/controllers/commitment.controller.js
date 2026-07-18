@@ -91,6 +91,20 @@ function forecastAnnual(fullTotals, gap = 1, n = N_MAIN) {
   };
 }
 
+// Safe commitment at a chosen confidence: the amount cleared `conf` of the time
+// = the (1 − conf) quantile of the forecast distribution. Higher confidence →
+// a lower, safer number; lower confidence → a higher number closer to the
+// expected outcome. Clamped so it never rises above the median (P50).
+function commitAtConf(forecast, conf) {
+  if (!forecast) return 0;
+  const q = Math.min(0.5, Math.max(0.02, 1 - conf));
+  if (forecast.sims && forecast.sims.length) return round2(quantile(forecast.sims, q));
+  // No simulation set (single-year / flat history): interpolate off the P10/P50
+  // anchors (P10 sits at q=0.10, P50 at q=0.50).
+  const slope = (forecast.p50 - forecast.p10) / 0.40;
+  return round2(Math.max(0, forecast.p50 - slope * (0.50 - q)));
+}
+
 // Build { year: {1..12: total} } from grouped (scheduleMonth → sum) rows.
 function toByYearMonth(rows) {
   const byYm = {};
@@ -107,7 +121,7 @@ function toByYearMonth(rows) {
 const yearTotal = (byYm, y) => Object.values(byYm[y] || {}).reduce((a, b) => a + b, 0);
 
 // Full analysis for one scope's monthly rows.
-function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount = null) {
+function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount = null, confidence = 0.90) {
   const byYm = toByYearMonth(rows);
   const allYears = Object.keys(byYm).map(Number).sort((a, b) => a - b);
   const pastYears = allYears.filter((y) => y < currentYear); // years before this one
@@ -172,7 +186,7 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
   }
 
   const hasData = !!forecast;
-  const commitment = forecast ? forecast.p10 : 0;
+  const commitment = forecast ? commitAtConf(forecast, confidence) : 0;
 
   // Current-year actuals + monthly safe path. "monthsElapsed" = the last month
   // that actually HAS data in the target year (data usually lags the calendar),
@@ -272,7 +286,8 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     const f = forecastAnnual(prior, 1, 1500);
     if (!f) continue;
     const actual = fullTotals[i];
-    backtest.push({ year: fullYears[i], commitment: f.p10, actual: round2(actual), cleared: actual >= f.p10 });
+    const cAmt = commitAtConf(f, confidence);
+    backtest.push({ year: fullYears[i], commitment: cAmt, actual: round2(actual), cleared: actual >= cAmt });
   }
 
   // Volatility (band width relative to the mid) as a simple risk read.
@@ -290,6 +305,7 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     historicalMin,
     historicalMax,
     historicalAvg,
+    lastYear: lastFull ? { year: lastFull, total: fullTotals[fullTotals.length - 1] } : null,
     seasonal: seasonal.map((x) => round2(x * 100)),
     forecast: forecast ? { p10: forecast.p10, p50: forecast.p50, p90: forecast.p90, method: forecast.method, growth: forecast.growth } : null,
     commitment,
@@ -318,6 +334,7 @@ export async function getCommitmentPlanner(req, res) {
     const entity = req.query.entity != null ? String(req.query.entity) : '';
     const targetYear = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : currentYear;
     const targetAmount = req.query.target != null && req.query.target !== '' && !isNaN(Number(req.query.target)) ? Number(req.query.target) : null;
+    const confidence = req.query.confidence != null && !isNaN(Number(req.query.confidence)) ? Math.min(0.99, Math.max(0.5, Number(req.query.confidence))) : 0.90;
 
     // Scope where-clause.
     const where = { isDeleted: false };
@@ -342,7 +359,7 @@ export async function getCommitmentPlanner(req, res) {
     }
 
     const rows = await prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where, _sum: { scheduleValue: true } });
-    const main = analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount);
+    const main = analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount, confidence);
 
     // Concentration risk: the single biggest sub-entity's share of this scope,
     // all-time. For a client scope "top client" is meaningless (it is one
@@ -371,26 +388,26 @@ export async function getCommitmentPlanner(req, res) {
     if (level === 'overall') {
       childLevelLabel = 'Media group';
       const crows = await prisma.scheduleLog.groupBy({ by: ['mediaGroup', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
-      children = childForecasts(crows, 'mediaGroup', targetYear, currentYear, (k) => k || 'Ungrouped');
+      children = childForecasts(crows, 'mediaGroup', targetYear, currentYear, (k) => k || 'Ungrouped', confidence);
     } else if (level === 'media-group') {
       childLevelLabel = 'Channel';
       const crows = await prisma.scheduleLog.groupBy({ by: ['channelMasterId', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
       const ids = [...new Set(crows.map((r) => r.channelMasterId))];
       const cms = await prisma.channelMaster.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
       const nameById = new Map(cms.map((c) => [c.id, c.name]));
-      children = childForecasts(crows, 'channelMasterId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`);
+      children = childForecasts(crows, 'channelMasterId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`, confidence);
     } else if (level === 'channel') {
       childLevelLabel = 'Client';
       const crows = await prisma.scheduleLog.groupBy({ by: ['clientId', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
       const ids = [...new Set(crows.map((r) => r.clientId))];
       const cls = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
       const nameById = new Map(cls.map((c) => [c.id, c.name]));
-      children = childForecasts(crows, 'clientId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`);
+      children = childForecasts(crows, 'clientId', targetYear, currentYear, (k) => nameById.get(k) || `#${k}`, confidence);
     } else {
       // client scope → break the client's target down by media group
       childLevelLabel = 'Media group';
       const crows = await prisma.scheduleLog.groupBy({ by: ['mediaGroup', 'scheduleMonth'], where, _sum: { scheduleValue: true } });
-      children = childForecasts(crows, 'mediaGroup', targetYear, currentYear, (k) => k || 'Ungrouped');
+      children = childForecasts(crows, 'mediaGroup', targetYear, currentYear, (k) => k || 'Ungrouped', confidence);
     }
 
     const availableYears = [];
@@ -399,6 +416,7 @@ export async function getCommitmentPlanner(req, res) {
     return res.json({
       scope: { level, entity, entityName, agencyId, year: targetYear },
       currentYear, currentMonth,
+      confidence,
       availableYears,
       childLevelLabel,
       ...main,
@@ -417,7 +435,7 @@ export async function getCommitmentPlanner(req, res) {
 }
 
 // Per-child P10/P50 (top 15 by lifetime spend, so the table stays bounded).
-function childForecasts(crows, keyField, targetYear, currentYear, nameFn) {
+function childForecasts(crows, keyField, targetYear, currentYear, nameFn, confidence = 0.90) {
   const byKey = new Map();
   for (const r of crows) {
     const k = r[keyField];
@@ -440,7 +458,7 @@ function childForecasts(crows, keyField, targetYear, currentYear, nameFn) {
       key: String(k),
       name: nameFn(k),
       lifetimeSpend: round2(lifetime),
-      p10: f ? f.p10 : null,
+      p10: f ? commitAtConf(f, confidence) : null,
       p50: f ? f.p50 : null,
       historyYears: fullYears.length,
     });
