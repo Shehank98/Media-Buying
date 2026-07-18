@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { checkClientAccess } from '../middleware/access.js';
+import { getCommitmentPlanner } from '../controllers/commitment.controller.js';
 import {
   getChannelSummary,
   getChannelRateCard,
@@ -54,6 +55,8 @@ router.get('/dashboard/monthly-trend', authenticate, requireRole('SUPER_ADMIN', 
 router.get('/dashboard/activity-log', authenticate, requireRole('SUPER_ADMIN'), getActivityLog);
 router.get('/dashboard/recent-uploads', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRecentUploads);
 router.get('/deep-dashboard', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getDeepDashboard);
+// Commitment Planner (Deep Dashboard) — 90%-safe yearly commitment forecast
+router.get('/commitment-planner', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getCommitmentPlanner);
 
 // Forecasting dashboard
 router.get('/dashboard/achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAchievement);
