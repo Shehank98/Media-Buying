@@ -97,7 +97,7 @@ function toByYearMonth(rows) {
 const yearTotal = (byYm, y) => Object.values(byYm[y] || {}).reduce((a, b) => a + b, 0);
 
 // Full analysis for one scope's monthly rows.
-function analyzeScope(rows, targetYear, currentYear, currentMonth) {
+function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount = null) {
   const byYm = toByYearMonth(rows);
   const allYears = Object.keys(byYm).map(Number).sort((a, b) => a - b);
   const fullYears = allYears.filter((y) => y < currentYear); // years before this one are complete
@@ -161,26 +161,55 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth) {
   }
   const ytd = round2(cum);
 
-  // Probability of clearing the commitment.
-  let probabilityHit = null;
+  // Build the distribution of the FULL-YEAR total (given whatever is booked so
+  // far), then answer "will we clear amount X and how likely" for any target.
+  const remainingShare = seasonal.slice(monthsElapsed).reduce((a, b) => a + b, 0);
+  let finalSims = [];
   if (forecast) {
-    if (monthsElapsed >= 1 && monthsElapsed < 12) {
-      const remainingShare = seasonal.slice(monthsElapsed).reduce((a, b) => a + b, 0);
+    if (monthsElapsed >= 12) {
+      finalSims = [ytd];
+    } else if (monthsElapsed >= 1) {
       const sigma = Math.max((forecast.p90 - forecast.p10) / 2.563, forecast.p50 * 0.05); // p10..p90 ≈ ±1.2816σ
-      let hit = 0;
       for (let s = 0; s < N_MAIN; s++) {
         const remaining = Math.max(0, forecast.p50 * remainingShare + gaussian() * sigma * remainingShare);
-        if (ytd + remaining >= commitment) hit++;
+        finalSims.push(ytd + remaining);
       }
-      probabilityHit = round2(hit / N_MAIN);
-    } else if (monthsElapsed >= 12) {
-      probabilityHit = ytd >= commitment ? 1 : 0;
     } else if (forecast.sims) {
-      probabilityHit = round2(forecast.sims.filter((v) => v >= commitment).length / forecast.sims.length);
-    } else {
-      probabilityHit = 0.9;
+      finalSims = forecast.sims.slice();
     }
+    finalSims.sort((a, b) => a - b);
   }
+  const probOf = (t) => {
+    if (!forecast) return null;
+    if (finalSims.length) return round2(finalSims.filter((v) => v >= t).length / finalSims.length);
+    return t <= commitment ? 0.9 : 0.5;
+  };
+  const projectedTotal = finalSims.length ? round2(quantile(finalSims, 0.5)) : (forecast ? forecast.p50 : 0);
+  const probabilityHit = forecast ? probOf(commitment) : null;
+
+  // Plain-language assessment for a chosen target (defaults to the safe P10).
+  const target = targetAmount != null && targetAmount > 0 ? round2(targetAmount) : commitment;
+  const monthsRemaining = Math.max(0, 12 - monthsElapsed);
+  const recentSlice = curMonthly.slice(Math.max(0, monthsElapsed - 3), monthsElapsed).filter((v) => v > 0);
+  const recentRunRate = recentSlice.length ? round2(recentSlice.reduce((a, b) => a + b, 0) / recentSlice.length) : 0;
+  const stillNeeded = round2(Math.max(0, target - ytd));
+  const neededPerMonth = monthsRemaining > 0 ? round2(stillNeeded / monthsRemaining) : 0;
+  const probability = forecast ? probOf(target) : null;
+  const pctBooked = target > 0 ? round2((ytd / target) * 100) : 0;
+  let verdict = 'unknown';
+  if (probability != null) {
+    if (probability >= 0.9) verdict = 'very-likely';
+    else if (probability >= 0.75) verdict = 'on-track';
+    else if (probability >= 0.5) verdict = 'at-risk';
+    else verdict = 'unlikely';
+  }
+  const assessment = {
+    target, isCustom: targetAmount != null && targetAmount > 0,
+    ytd, pctBooked, monthsElapsed, monthsRemaining,
+    stillNeeded, neededPerMonth, recentRunRate, projectedTotal,
+    runRateClears: recentRunRate * monthsRemaining + ytd >= target,
+    probability, verdict,
+  };
 
   // Walk-forward backtest: for each full year with ≥2 priors, what P10 would have been.
   const backtest = [];
@@ -201,6 +230,8 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth) {
     seasonal: seasonal.map((x) => round2(x * 100)),
     forecast: forecast ? { p10: forecast.p10, p50: forecast.p50, p90: forecast.p90, method: forecast.method, growth: forecast.growth } : null,
     commitment,
+    projectedTotal,
+    assessment,
     monthlyPath,
     currentYear: { year: currentYear, ytd, monthsElapsed, monthly: curMonthly },
     probabilityHit,
@@ -221,6 +252,7 @@ export async function getCommitmentPlanner(req, res) {
     const agencyId = req.query.agencyId ? parseInt(req.query.agencyId) : null;
     const entity = req.query.entity != null ? String(req.query.entity) : '';
     const targetYear = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : currentYear;
+    const targetAmount = req.query.target != null && req.query.target !== '' && !isNaN(Number(req.query.target)) ? Number(req.query.target) : null;
 
     // Scope where-clause.
     const where = { isDeleted: false };
@@ -239,7 +271,7 @@ export async function getCommitmentPlanner(req, res) {
     }
 
     const rows = await prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where, _sum: { scheduleValue: true } });
-    const main = analyzeScope(rows, targetYear, currentYear, currentMonth);
+    const main = analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount);
 
     // Client concentration (top single client's share of this scope, all-time).
     let topClient = null;
