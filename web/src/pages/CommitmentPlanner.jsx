@@ -254,7 +254,7 @@ export default function CommitmentPlanner() {
               {/* PROOF 1: the track record the safe number is built on */}
               <Card title="1. Our proven track record" sub={`${data.scope.entityName} · full-year spend. A part-uploaded year (marked *) is scaled up to a full-year pace so it isn't understated.`}>
                 <ResponsiveContainer width="100%" height={270}>
-                  <BarChart data={histRows} margin={{ top: 22, right: 60, left: 4, bottom: 4 }}>
+                  <BarChart data={histRows} margin={{ top: 22, right: 12, left: 4, bottom: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11.5, fill: '#6B7790' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} />
                     <YAxis tickFormatter={(x) => (x / 1e6).toFixed(0) + 'M'} tick={{ fontSize: 11, fill: '#6B7790' }} tickLine={false} axisLine={false} width={48} />
@@ -262,11 +262,18 @@ export default function CommitmentPlanner() {
                     <Bar dataKey="value" name="Full-year spend" maxBarSize={64} radius={[5, 5, 0, 0]}>
                       {histRows.map((r, i) => <Cell key={i} fill={r.partial ? '#9FB4D6' : C.actual} />)}
                     </Bar>
-                    <ReferenceLine y={data.commitment} stroke={C.safe} strokeWidth={2} strokeDasharray="6 4" label={{ value: `${confPct}%-safe ${(data.commitment / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.safe, fontWeight: 700 }} />
-                    <ReferenceLine y={data.forecast.p50} stroke={C.mid} strokeWidth={1.6} strokeDasharray="3 4" label={{ value: `Expected ${(data.forecast.p50 / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.mid }} />
-                    {a.isCustom && <ReferenceLine y={a.target} stroke={C.warn} strokeWidth={2} label={{ value: `Target ${(a.target / 1e6).toFixed(0)}M`, position: 'right', fontSize: 10.5, fill: C.warn, fontWeight: 700 }} />}
+                    <ReferenceLine y={data.commitment} stroke={C.safe} strokeWidth={2} strokeDasharray="6 4" />
+                    <ReferenceLine y={data.forecast.p50} stroke={C.mid} strokeWidth={1.6} strokeDasharray="3 4" />
+                    {a.isCustom && <ReferenceLine y={a.target} stroke={C.warn} strokeWidth={2} />}
                   </BarChart>
                 </ResponsiveContainer>
+                {/* line values, shown below the chart so they never clip off the right edge */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 10, paddingTop: 10, borderTop: '1px solid #F0F2F5' }}>
+                  <LineKey color={C.safe} dash label={`${confPct}%-safe`} value={fmtFull(data.commitment)} />
+                  <LineKey color={C.mid} dash label="Expected (most likely)" value={fmtFull(data.forecast.p50)} />
+                  {a.isCustom && <LineKey color={C.warn} label="Your target" value={fmtFull(a.target)} />}
+                  {data.lastYear && <LineKey color="#B7C3D6" label={`Last year (${data.lastYear.year})`} value={fmtFull(data.lastYear.total)} />}
+                </div>
                 <How>Each bar is a full year we actually delivered on this scope (lowest {fmtM(data.historicalMin)}, average {fmtM(data.historicalAvg)}, highest {fmtM(data.historicalMax)}). The green line is the <b>{confPct}%-safe</b> commitment (the amount cleared {confPct} times out of 100). Raise the confidence for a safer, lower number; lower it to push the target up toward the blue expected (most-likely) line.</How>
               </Card>
 
@@ -357,6 +364,18 @@ export default function CommitmentPlanner() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// A colored line-swatch + label + value, used under the track-record chart so
+// the reference-line numbers aren't clipped at the right edge of the plot.
+function LineKey({ color, label, value, dash }) {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ display: 'inline-block', width: 18, height: 0, borderTop: `3px ${dash ? 'dashed' : 'solid'} ${color}` }} />
+      <span style={{ fontSize: 12, color: '#6B7790' }}>{label}</span>
+      <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: '#16243C' }}>{value}</span>
     </div>
   );
 }
