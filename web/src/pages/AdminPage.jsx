@@ -90,6 +90,8 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [allClients, setAllClients] = useState([]);
   const [mediaGroups, setMediaGroups] = useState([]);
   const [channelMasters, setChannelMasters] = useState([]);
+  const [deletedChannels, setDeletedChannels] = useState([]);
+  const [restoringId, setRestoringId] = useState(null);
   const [expandedGroup, setExpandedGroup] = useState(null); // media-group id whose channels are shown
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -481,6 +483,10 @@ export default function AdminPage({ initialTab = 'users' }) {
         const rawCh = channelsRes.value.data.channelMasters || channelsRes.value.data;
         setChannelMasters(Array.isArray(rawCh) ? rawCh : []);
       }
+      // Recently-deleted channels (for the restore panel) — best-effort.
+      api.get('/masterdata/channel-masters/deleted')
+        .then((r) => setDeletedChannels(Array.isArray(r.data.channelMasters) ? r.data.channelMasters : []))
+        .catch(() => {});
       if (catsRes.status === 'fulfilled') {
         const rawCats = catsRes.value.data.categories || catsRes.value.data;
         setPropertyCategories(Array.isArray(rawCats) ? rawCats : []);
@@ -780,6 +786,18 @@ export default function AdminPage({ initialTab = 'users' }) {
       setDeleteError(err.response?.data?.error || err.response?.data?.message || `Failed to delete ${deleteType.slice(0, -1)}.`);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const restoreChannel = async (ch) => {
+    setRestoringId(ch.id);
+    try {
+      await api.patch(`/masterdata/channel-masters/${ch.id}/restore`);
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to restore channel.');
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -2400,7 +2418,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       >
                         <Icon name={ch.isActive === false ? 'check' : 'eye'} size={15} />
                       </button>
-                      <button className="act-btn" onClick={() => confirmDelete(ch, 'channels')} title="Delete permanently" style={{ color: 'var(--red-600,#dc2626)' }}>
+                      <button className="act-btn" onClick={() => confirmDelete(ch, 'channels')} title="Delete (recoverable — moves to Recently deleted)" style={{ color: 'var(--red-600,#dc2626)' }}>
                         <Icon name="trash" size={15} />
                       </button>
                     </div>
@@ -2413,6 +2431,34 @@ export default function AdminPage({ initialTab = 'users' }) {
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
               <Icon name="tv" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
               <p>No channels found</p>
+            </div>
+          )}
+
+          {deletedChannels.length > 0 && (
+            <div style={{ marginTop: 22, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-sunken)', padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <Icon name="trash" size={15} style={{ color: 'var(--muted)' }} />
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>Recently deleted</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>({deletedChannels.length}) — restore any channel here</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {deletedChannels.map((ch) => (
+                  <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 12px' }}>
+                    <span className="medium-tag" style={{ flexShrink: 0 }}>{ch.medium}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{ch.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                        {ch.mediaGroup?.name || 'No media group'}
+                        {ch.deletedAt && ` · deleted ${new Date(ch.deletedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                        {ch.deletedByName && ` by ${ch.deletedByName}`}
+                      </div>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => restoreChannel(ch)} disabled={restoringId === ch.id} style={{ gap: 5, flexShrink: 0 }}>
+                      <Icon name={restoringId === ch.id ? 'history' : 'check'} size={13} /> {restoringId === ch.id ? 'Restoring…' : 'Restore'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -4583,7 +4629,9 @@ export default function AdminPage({ initialTab = 'users' }) {
               <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
                 Are you sure you want to delete{' '}
                 <strong style={{ color: 'var(--ink)' }}>{deleteTarget?.name || deleteTarget?.email}</strong>?
-                This action cannot be undone.
+                {deleteType === 'channels'
+                  ? ' It will move to “Recently deleted” at the bottom of the Channels tab, where you can restore it anytime.'
+                  : ' This action cannot be undone.'}
               </p>
             </div>
             <div className="modal-foot">

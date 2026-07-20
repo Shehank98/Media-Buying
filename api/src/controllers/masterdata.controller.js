@@ -93,7 +93,7 @@ export async function listChannelMasters(req, res) {
   try {
     const { search, includeInactive } = req.query;
 
-    const where = {};
+    const where = { isDeleted: false };
     if (includeInactive !== 'true') where.isActive = true;
     if (search) where.name = { contains: search, mode: 'insensitive' };
 
@@ -340,8 +340,8 @@ export async function deleteChannelMaster(req, res) {
   try {
     const id = parseInt(req.params.id);
 
-    const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true } });
-    if (!existing) return res.status(404).json({ error: 'Channel master not found' });
+    const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, isDeleted: true } });
+    if (!existing || existing.isDeleted) return res.status(404).json({ error: 'Channel master not found' });
 
     // Block only on LIVE usage — active (non-deleted) schedule logs and client
     // channels — matching the "logs" count shown in the admin list (which is
@@ -358,22 +358,59 @@ export async function deleteChannelMaster(req, res) {
       });
     }
 
-    // No live usage. Clear the internal-only references so the channel's Restrict
-    // foreign keys don't block the delete:
-    //  - soft-deleted schedule logs from deleted batches (their edits cascade;
-    //    upload rows keep a nullable link that is set null on delete),
-    //  - forward-looking forecast lines.
-    // (Agency/client deals cascade automatically.)
-    await prisma.$transaction([
-      prisma.scheduleLog.deleteMany({ where: { channelMasterId: id } }),
-      prisma.monthlyForecast.deleteMany({ where: { channelMasterId: id } }),
-      prisma.channelMaster.delete({ where: { id } }),
-    ]);
-    return res.json({ message: 'Channel master deleted' });
+    // Soft delete (recoverable) — the channel drops out of every picker/list but
+    // its record and any references stay put, so it can be restored from Admin →
+    // Channels → Recently deleted. Nothing is physically removed.
+    await prisma.channelMaster.update({
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date(), deletedById: req.user.id },
+    });
+    return res.json({ message: 'Channel moved to Recently deleted. You can restore it from Admin → Channels.' });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
     console.error('Delete channel master error:', error);
     return res.status(500).json({ error: 'Failed to delete channel master', detail: error.message });
+  }
+}
+
+// Recently-deleted (soft-deleted) channels, for the restore view.
+export async function listDeletedChannelMasters(req, res) {
+  try {
+    const channelMasters = await prisma.channelMaster.findMany({
+      where: { isDeleted: true },
+      orderBy: { deletedAt: 'desc' },
+      include: { mediaGroup: { select: { id: true, name: true } } },
+    });
+    const deleterIds = [...new Set(channelMasters.map((c) => c.deletedById).filter(Boolean))];
+    const deleters = deleterIds.length
+      ? await prisma.user.findMany({ where: { id: { in: deleterIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(deleters.map((u) => [u.id, u.name]));
+    return res.json({ channelMasters: channelMasters.map((c) => ({ ...c, deletedByName: c.deletedById ? nameById.get(c.deletedById) || null : null })) });
+  } catch (error) {
+    console.error('List deleted channel masters error:', error);
+    return res.status(500).json({ error: 'Failed to list deleted channels', detail: error.message });
+  }
+}
+
+// Restore a soft-deleted channel back into active use.
+export async function restoreChannelMaster(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, isDeleted: true } });
+    if (!existing) return res.status(404).json({ error: 'Channel master not found' });
+    if (!existing.isDeleted) return res.status(409).json({ error: 'This channel is not deleted.' });
+
+    const channelMaster = await prisma.channelMaster.update({
+      where: { id },
+      data: { isDeleted: false, deletedAt: null, deletedById: null },
+      include: { mediaGroup: { select: { id: true, name: true } }, _count: { select: { scheduleLogs: { where: { isDeleted: false } } } } },
+    });
+    return res.json({ channelMaster, message: 'Channel restored' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
+    console.error('Restore channel master error:', error);
+    return res.status(500).json({ error: 'Failed to restore channel', detail: error.message });
   }
 }
 

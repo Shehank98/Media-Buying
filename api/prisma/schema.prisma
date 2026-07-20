@@ -234,6 +234,9 @@ model ChannelMaster {
   medium             ChannelType
   aliases            String[]            @default([])
   isActive           Boolean             @default(true) @map("is_active")
+  isDeleted          Boolean             @default(false) @map("is_deleted")
+  deletedAt          DateTime?           @map("deleted_at")
+  deletedById        Int?                @map("deleted_by_id")
   sortOrder          Int?                @map("sort_order")
   // GENERAL channel rate card in Google Drive (General Rate Cards/<channel>/).
   // Any format (PDF/JPG/PNG/Excel/…); rateCardMimeType is used on download.

@@ -11,6 +11,8 @@ import {
   updateChannelMaster,
   toggleChannelMaster,
   deleteChannelMaster,
+  listDeletedChannelMasters,
+  restoreChannelMaster,
   mergeChannelMasters,
   listAllBrands,
   createBrand,
@@ -35,6 +37,8 @@ router.delete('/media-groups/:id', authenticate, requireRole('SUPER_ADMIN'), del
 
 // Channel Masters
 router.get('/channel-masters', authenticate, listChannelMasters);
+router.get('/channel-masters/deleted', authenticate, requireRole('SUPER_ADMIN'), listDeletedChannelMasters);
+router.patch('/channel-masters/:id/restore', authenticate, requireRole('SUPER_ADMIN'), restoreChannelMaster);
 router.post('/channel-masters', authenticate, requireRole('SUPER_ADMIN'), createChannelMaster);
 router.put('/channel-masters/:id', authenticate, requireRole('SUPER_ADMIN'), updateChannelMaster);
 router.patch('/channel-masters/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), toggleChannelMaster);

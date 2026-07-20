@@ -258,7 +258,7 @@ const totalInputLabel = (m) => `${m === 'TV' ? 'TV' : m === 'OOH' ? 'OOH' : m[0]
 export async function listForecastChannels(req, res) {
   try {
     const channels = await prisma.channelMaster.findMany({
-      where: { isActive: true },
+      where: { isActive: true, isDeleted: false },
       select: { id: true, name: true, medium: true, sortOrder: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
