@@ -355,7 +355,14 @@ export async function deleteChannelMaster(req, res) {
       });
     }
 
-    await prisma.channelMaster.delete({ where: { id } });
+    // No historical spend, but forward-looking forecast lines reference the
+    // channel with a Restrict FK (the agency/client deals already cascade).
+    // Remove those forecast lines together with the channel so the delete
+    // doesn't fail on a foreign-key violation.
+    await prisma.$transaction([
+      prisma.monthlyForecast.deleteMany({ where: { channelMasterId: id } }),
+      prisma.channelMaster.delete({ where: { id } }),
+    ]);
     return res.json({ message: 'Channel master deleted' });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ error: 'Channel master not found' });
