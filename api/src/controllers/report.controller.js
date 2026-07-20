@@ -647,7 +647,83 @@ export async function exportScheduleLogs(req, res) {
       if (monthTo) where.scheduleMonth.lte = monthTo;
     }
 
-    // Fetch logs with relations
+    // Grand totals via a SQL aggregate — fast and correct even for tens of
+    // thousands of rows (no need to pull every row into memory to sum them).
+    const agg = await prisma.scheduleLog.aggregate({
+      where, _count: true, _sum: { scheduleValue: true, scheduleValueWithVat: true },
+    });
+    const summary = {
+      totalScheduleValue: Number(agg._sum.scheduleValue || 0),
+      totalWithVat: Number(agg._sum.scheduleValueWithVat || 0),
+      totalEntries: agg._count,
+    };
+
+    const mapRow = (log) => ({
+      agencyName: log.agency?.name || '-',
+      clientName: log.client?.name || '-',
+      channelName: log.channelMaster?.name || '-',
+      medium: log.medium,
+      mediaGroup: log.mediaGroup,
+      roNumber: log.roNumber,
+      scheduleMonth: log.scheduleMonth,
+      invoiceMonth: log.invoiceMonth,
+      scheduleValue: Number(log.scheduleValue),
+      scheduleValueWithVat: Number(log.scheduleValueWithVat),
+      uploadedBy: log.uploader?.name || '-',
+    });
+
+    // ── On-screen view (JSON): never ship every row to the browser. ──
+    if (format !== 'excel' && format !== 'pdf') {
+      const detailInclude = {
+        agency: { select: { name: true } },
+        client: { select: { name: true } },
+        channelMaster: { select: { name: true } },
+        uploader: { select: { name: true } },
+      };
+      const detailOrder = [{ scheduleMonth: 'desc' }, { createdAt: 'desc' }];
+      const detail = req.query.detail === '1' || req.query.detail === 'true';
+
+      // 'all' has no grouping dimension, and any explicit detail request → a
+      // single paginated page of rows (default 200) instead of all 30k+.
+      if (detail || groupBy === 'all') {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const pageSize = Math.min(1000, Math.max(1, parseInt(req.query.pageSize) || 200));
+        const pageLogs = await prisma.scheduleLog.findMany({
+          where, include: detailInclude, orderBy: detailOrder,
+          skip: (page - 1) * pageSize, take: pageSize,
+        });
+        return res.json({
+          mode: 'detail',
+          rows: pageLogs.map(mapRow),
+          summary,
+          pagination: { page, pageSize, total: summary.totalEntries, totalPages: Math.max(1, Math.ceil(summary.totalEntries / pageSize)) },
+        });
+      }
+
+      // Grouped subtotals via SQL groupBy — one small row per agency/client/
+      // channel. The heavy row detail loads lazily when a group is expanded.
+      const dimField = groupBy === 'agency' ? 'agencyId' : groupBy === 'client' ? 'clientId' : 'channelMasterId';
+      const gr = await prisma.scheduleLog.groupBy({
+        by: [dimField], where, _count: true, _sum: { scheduleValue: true, scheduleValueWithVat: true },
+      });
+      const ids = [...new Set(gr.map((g) => g[dimField]).filter((v) => v != null))];
+      let nameMap = new Map();
+      if (ids.length) {
+        if (groupBy === 'agency') { const a = await prisma.agency.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }); nameMap = new Map(a.map((x) => [x.id, x.name])); }
+        else if (groupBy === 'client') { const c = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }); nameMap = new Map(c.map((x) => [x.id, x.name])); }
+        else { const c = await prisma.channelMaster.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }); nameMap = new Map(c.map((x) => [x.id, x.name])); }
+      }
+      const groups = gr.map((g) => ({
+        key: g[dimField],
+        name: g[dimField] == null ? 'Unassigned' : (nameMap.get(g[dimField]) || 'Unknown'),
+        count: g._count,
+        value: Number(g._sum.scheduleValue || 0),
+        vat: Number(g._sum.scheduleValueWithVat || 0),
+      })).sort((a, b) => b.value - a.value);
+      return res.json({ mode: 'groups', groupBy, groups, summary });
+    }
+
+    // ── Excel / PDF need every row. ──
     const logs = await prisma.scheduleLog.findMany({
       where,
       include: {
@@ -658,31 +734,6 @@ export async function exportScheduleLogs(req, res) {
       },
       orderBy: [{ scheduleMonth: 'desc' }, { createdAt: 'desc' }],
     });
-
-    // JSON response: camelCase keys for frontend
-    if (format !== 'excel' && format !== 'pdf') {
-      const rows = logs.map((log) => ({
-        agencyName: log.agency.name,
-        clientName: log.client.name,
-        channelName: log.channelMaster.name,
-        medium: log.medium,
-        mediaGroup: log.mediaGroup,
-        roNumber: log.roNumber,
-        scheduleMonth: log.scheduleMonth,
-        invoiceMonth: log.invoiceMonth,
-        scheduleValue: Number(log.scheduleValue),
-        scheduleValueWithVat: Number(log.scheduleValueWithVat),
-        uploadedBy: log.uploader.name,
-      }));
-
-      const summary = {
-        totalScheduleValue: rows.reduce((sum, r) => sum + r.scheduleValue, 0),
-        totalWithVat: rows.reduce((sum, r) => sum + r.scheduleValueWithVat, 0),
-        totalEntries: rows.length,
-      };
-
-      return res.json({ rows, summary });
-    }
 
     // ── PDF export (branded, grouped, with subtotals + grand total) ──
     if (format === 'pdf') {

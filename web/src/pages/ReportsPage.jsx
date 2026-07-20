@@ -88,6 +88,14 @@ export default function ReportsPage() {
   // Collapsed group names (only relevant when grouped)
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
 
+  // Schedule-log reports are served as SQL group subtotals (fast, no 30k rows);
+  // row detail loads lazily per group. Properties still load rows client-side.
+  const [slServerGroups, setSlServerGroups] = useState(null); // null = not a grouped SL view
+  const [groupDetail, setGroupDetail] = useState({});         // key -> { rows, page, totalPages, loading }
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set()); // expanded SL group keys
+  const [flatPage, setFlatPage] = useState(1);                // groupBy='all' pagination
+  const [flatTotalPages, setFlatTotalPages] = useState(1);
+
   useEffect(() => {
     (async () => {
       try {
@@ -151,7 +159,17 @@ export default function ReportsPage() {
         const qs = buildParams('json');
         const { data } = await api.get(`${endpoint}?${qs}`);
         if (cancelled) return;
-        setRows(Array.isArray(data.rows) ? data.rows : []);
+        // Schedule-log grouped view: server returns subtotals, not rows.
+        if (source === 'scheduleLogs' && data.mode === 'groups') {
+          setSlServerGroups(Array.isArray(data.groups) ? data.groups : []);
+          setGroupDetail({});
+          setRows([]);
+        } else {
+          // Flat/detail view (groupBy 'all', or the properties report).
+          setSlServerGroups(null);
+          setRows(Array.isArray(data.rows) ? data.rows : []);
+          if (data.pagination) { setFlatPage(data.pagination.page); setFlatTotalPages(data.pagination.totalPages); }
+        }
         setSummary(data.summary || {});
         if (Array.isArray(data.channels)) setChannels(data.channels);
       } catch {
@@ -229,13 +247,65 @@ export default function ReportsPage() {
     return next;
   });
 
-  const changeGroupBy = (g) => { setGroupBy(g); setCollapsedGroups(new Set()); };
+  const changeGroupBy = (g) => { setGroupBy(g); setCollapsedGroups(new Set()); setExpandedKeys(new Set()); setGroupDetail({}); };
+
+  // Lazy-load a schedule-log group's row detail (paginated), appending pages.
+  const loadGroupDetail = async (group, page = 1) => {
+    const key = String(group.key);
+    setGroupDetail((prev) => ({ ...prev, [key]: { ...(prev[key] || { rows: [] }), loading: true } }));
+    try {
+      const params = new URLSearchParams(buildParams('json'));
+      const dim = groupBy === 'agency' ? 'agencyId' : groupBy === 'client' ? 'clientId' : 'channelMasterId';
+      if (group.key != null) params.set(dim, group.key);
+      params.set('detail', '1');
+      params.set('page', String(page));
+      params.set('pageSize', '200');
+      const { data } = await api.get(`${endpoint}?${params.toString()}`);
+      setGroupDetail((prev) => {
+        const existing = prev[key]?.rows || [];
+        const rows = page === 1 ? (data.rows || []) : [...existing, ...(data.rows || [])];
+        return { ...prev, [key]: { rows, page: data.pagination?.page || page, totalPages: data.pagination?.totalPages || 1, loading: false } };
+      });
+    } catch {
+      setGroupDetail((prev) => ({ ...prev, [key]: { ...(prev[key] || { rows: [] }), loading: false } }));
+    }
+  };
+
+  const toggleServerGroup = (group) => {
+    const key = String(group.key);
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else { next.add(key); if (!groupDetail[key] && group.key != null) loadGroupDetail(group, 1); }
+      return next;
+    });
+  };
+
+  // groupBy='all' flat pagination (load more rows).
+  const loadFlatMore = async () => {
+    const nextPage = flatPage + 1;
+    try {
+      const params = new URLSearchParams(buildParams('json'));
+      params.set('detail', '1');
+      params.set('page', String(nextPage));
+      params.set('pageSize', '200');
+      const { data } = await api.get(`${endpoint}?${params.toString()}`);
+      setRows((prev) => [...prev, ...(data.rows || [])]);
+      if (data.pagination) { setFlatPage(data.pagination.page); setFlatTotalPages(data.pagination.totalPages); }
+    } catch { /* ignore */ }
+  };
 
   const groupSubtotal = (g) => (
     source === 'properties'
       ? `${g.entries} ${g.entries === 1 ? 'property' : 'properties'} · ${fmtLKR(g.cost)}`
       : `${g.entries} ${g.entries === 1 ? 'entry' : 'entries'} · ${fmtLKR(g.value)}`
   );
+
+  // Schedule-log grouped view has no client-side rows (server subtotals only),
+  // so "has data" must also look at the SQL summary / server groups.
+  const hasData = source === 'scheduleLogs'
+    ? ((summary.totalEntries || 0) > 0 || rows.length > 0 || (slServerGroups?.length || 0) > 0)
+    : rows.length > 0;
 
   const filtersActive = agencyId || clientId || medium || monthFrom || monthTo || channelType || propertyType;
 
@@ -445,15 +515,20 @@ export default function ReportsPage() {
 
   // Recently generated history derived from the active source/grouping -
   // wired to re-run the existing export handler.
-  const recent = !loading && rows.length > 0
-    ? grouped
+  const recent = !loading && hasData
+    ? slServerGroups
+      ? slServerGroups.slice(0, 5).map((g) => ({
+          name: `${g.name} - ${sourceLabel}`,
+          sub: `${g.count} ${g.count === 1 ? 'entry' : 'entries'} · ${fmtLKR(g.value)}`,
+        }))
+      : grouped
       ? grouped.slice(0, 5).map((g) => ({
           name: `${g.name} - ${sourceLabel}`,
           sub: `${groupSubtotal(g)}`,
         }))
       : [{
           name: `${sourceLabel} Report - All Data`,
-          sub: `${rows.length} ${rows.length === 1 ? 'row' : 'rows'} · ${fmtLKR(source === 'properties' ? computedTotals.cost : computedTotals.value)}`,
+          sub: `${(summary.totalEntries || rows.length).toLocaleString('en-US')} rows · ${fmtLKR(source === 'properties' ? computedTotals.cost : computedTotals.value)}`,
         }]
     : [];
 
@@ -470,7 +545,7 @@ export default function ReportsPage() {
             <button
               className="btn btn-ghost"
               onClick={() => handleExportPdf()}
-              disabled={loading || exporting || rows.length === 0}
+              disabled={loading || exporting || !hasData}
             >
               <Icon name="file" size={16} />
               PDF
@@ -478,7 +553,7 @@ export default function ReportsPage() {
             <button
               className="btn btn-primary"
               onClick={() => handleExportExcel()}
-              disabled={loading || exporting || rows.length === 0}
+              disabled={loading || exporting || !hasData}
             >
               <Icon name="download" size={16} />
               {exporting ? 'Exporting...' : 'Export Excel'}
@@ -693,7 +768,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Summary Stats */}
-      {!loading && rows.length > 0 && (
+      {!loading && hasData && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: source === 'properties' ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)',
@@ -761,7 +836,7 @@ export default function ReportsPage() {
       )}
 
       {/* Empty State */}
-      {!loading && rows.length === 0 && (
+      {!loading && !hasData && (
         <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--muted)' }}>
           <Icon name="file" size={36} style={{ opacity: 0.25, marginBottom: 12, display: 'inline-block' }} />
           <p style={{ margin: 0, fontSize: 14 }}>
@@ -780,6 +855,68 @@ export default function ReportsPage() {
           </span>
           <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set())}>Expand all</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setCollapsedGroups(new Set(grouped.map((g) => g.name)))}>Collapse all</button>
+        </div>
+      )}
+
+      {/* Schedule-log grouped view: SQL subtotals load instantly; row detail is
+          fetched lazily per group so 30k+ rows never hit the browser at once. */}
+      {!loading && slServerGroups && slServerGroups.length > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, fontSize: 12.5, color: 'var(--muted)' }}>
+            <span>{slServerGroups.length} {slServerGroups.length === 1 ? 'group' : 'groups'} · {(summary.totalEntries || 0).toLocaleString('en-US')} entries total</span>
+            <span style={{ marginLeft: 'auto' }}>Click a group to load its rows · export for the full detail</span>
+          </div>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>{columns.map((col) => <th key={col.key} style={{ textAlign: col.align || 'left' }}>{col.label}</th>)}</tr>
+              </thead>
+              {slServerGroups.map((g) => {
+                const key = String(g.key);
+                const expanded = expandedKeys.has(key);
+                const det = groupDetail[key];
+                return (
+                  <tbody key={key}>
+                    <tr className="report-group-row" onClick={() => toggleServerGroup(g)} style={{ cursor: g.key == null ? 'default' : 'pointer', background: 'var(--bg-sunken)' }}>
+                      <td colSpan={columns.length} style={{ fontWeight: 700 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {g.key != null && <Icon name={expanded ? 'chevD' : 'chevR'} size={15} />}
+                          <span style={{ color: 'var(--ink)' }}>{g.name}</span>
+                          <span style={{ marginLeft: 'auto', fontWeight: 600, color: 'var(--muted)', fontSize: 12.5 }}>
+                            {g.count} {g.count === 1 ? 'entry' : 'entries'} · {fmtLKR(g.value)} <span style={{ marginLeft: 8 }}>(VAT {fmtLKR(g.vat)})</span>
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && det?.rows?.map((row, idx) => (
+                      <tr key={idx}>
+                        {columns.map((col) => <td key={col.key} style={{ textAlign: col.align || 'left' }}>{renderCell(row, col)}</td>)}
+                      </tr>
+                    ))}
+                    {expanded && det?.loading && (
+                      <tr><td colSpan={columns.length} style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 12.5, padding: '10px 0' }}>Loading rows…</td></tr>
+                    )}
+                    {expanded && det && !det.loading && det.page < det.totalPages && (
+                      <tr><td colSpan={columns.length} style={{ textAlign: 'center', padding: '8px 0' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => loadGroupDetail(g, det.page + 1)}>
+                          Load more ({(det.rows.length).toLocaleString('en-US')} of {g.count})
+                        </button>
+                      </td></tr>
+                    )}
+                  </tbody>
+                );
+              })}
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* groupBy='all' flat detail — load more */}
+      {!loading && source === 'scheduleLogs' && !slServerGroups && rows.length > 0 && flatPage < flatTotalPages && (
+        <div style={{ textAlign: 'center', margin: '14px 0' }}>
+          <button className="btn btn-ghost btn-sm" onClick={loadFlatMore}>
+            Load more ({rows.length.toLocaleString('en-US')} of {(summary.totalEntries || 0).toLocaleString('en-US')})
+          </button>
         </div>
       )}
 
