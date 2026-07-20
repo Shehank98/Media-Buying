@@ -343,23 +343,29 @@ export async function deleteChannelMaster(req, res) {
     const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true } });
     if (!existing) return res.status(404).json({ error: 'Channel master not found' });
 
-    const [logCount, channelCount, rowCount] = await Promise.all([
-      prisma.scheduleLog.count({ where: { channelMasterId: id } }),
+    // Block only on LIVE usage — active (non-deleted) schedule logs and client
+    // channels — matching the "logs" count shown in the admin list (which is
+    // also non-deleted only). Soft-deleted logs (left behind by a deleted upload
+    // batch) still physically reference the channel but shouldn't stop a delete.
+    const [activeLogCount, channelCount] = await Promise.all([
+      prisma.scheduleLog.count({ where: { channelMasterId: id, isDeleted: false } }),
       prisma.channel.count({ where: { channelMasterId: id } }),
-      prisma.uploadBatchRow.count({ where: { channelResolvedId: id } }),
     ]);
 
-    if (logCount + channelCount + rowCount > 0) {
+    if (activeLogCount + channelCount > 0) {
       return res.status(409).json({
-        error: `This channel is used by ${logCount} schedule log(s) and ${channelCount} client channel(s). Deactivate it instead of deleting to keep historical data.`,
+        error: `This channel is used by ${activeLogCount} active schedule log(s) and ${channelCount} client channel(s). Deactivate it instead of deleting to keep historical data.`,
       });
     }
 
-    // No historical spend, but forward-looking forecast lines reference the
-    // channel with a Restrict FK (the agency/client deals already cascade).
-    // Remove those forecast lines together with the channel so the delete
-    // doesn't fail on a foreign-key violation.
+    // No live usage. Clear the internal-only references so the channel's Restrict
+    // foreign keys don't block the delete:
+    //  - soft-deleted schedule logs from deleted batches (their edits cascade;
+    //    upload rows keep a nullable link that is set null on delete),
+    //  - forward-looking forecast lines.
+    // (Agency/client deals cascade automatically.)
     await prisma.$transaction([
+      prisma.scheduleLog.deleteMany({ where: { channelMasterId: id } }),
       prisma.monthlyForecast.deleteMany({ where: { channelMasterId: id } }),
       prisma.channelMaster.delete({ where: { id } }),
     ]);
