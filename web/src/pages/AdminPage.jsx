@@ -2270,7 +2270,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                             title={owner ? `Currently on team "${owner.name}": assigning here will move it` : ''}
                           >
                             {c.name}{owner ? ` (on ${owner.name})` : ''}
-                            {active ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                            {active ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                           </button>
                         );
                       })}
@@ -3980,7 +3980,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                         return { ...p, agencyIds: newAgencyIds, clientIds: validClientIds };
                       })}>
                         {a.name}
-                        {userForm.agencyIds.includes(a.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                        {userForm.agencyIds.includes(a.id) ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                       </button>
                     ))}
                     {agencies.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No agencies available</span>}
@@ -4014,7 +4014,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <button key={c.id} type="button" className={'chip' + (userForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))}>
                             {c.name}
                             {userForm.agencyIds.length > 1 && c.agencyName && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>({c.agencyName})</span>}
-                            {userForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                            {userForm.clientIds.includes(c.id) ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                           </button>
                         ));
                       })()}
@@ -4034,7 +4034,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                         const on = userForm.pageAccess.includes(pg.key);
                         return (
                           <button key={pg.key} type="button" className={'chip' + (on ? ' active' : '')} onClick={() => setUserForm(p => ({ ...p, pageAccess: toggleArrayItem(p.pageAccess, pg.key) }))}>
-                            {pg.label}{on ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                            {pg.label}{on ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                           </button>
                         );
                       })}
@@ -4275,7 +4275,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                     {users.map(u => (
                       <button key={u.id} type="button" className={'chip' + (teamForm.memberIds.includes(u.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, memberIds: toggleArrayItem(p.memberIds, u.id) }))}>
                         {u.name}
-                        {teamForm.memberIds.includes(u.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                        {teamForm.memberIds.includes(u.id) ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                       </button>
                     ))}
                   </div>
@@ -4290,7 +4290,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                         return (
                           <button key={c.id} type="button" className={'chip' + (teamForm.clientIds.includes(c.id) ? ' active' : '')} onClick={() => setTeamForm(p => ({ ...p, clientIds: toggleArrayItem(p.clientIds, c.id) }))} title={owner ? `Currently on team "${owner.name}": adding here will move it` : ''}>
                             {c.name}{owner ? ` (on ${owner.name})` : ''}
-                            {teamForm.clientIds.includes(c.id) ? <Icon name="x" size={12} /> : <Icon name="plus" size={12} />}
+                            {teamForm.clientIds.includes(c.id) ? <Icon name="check" size={12} /> : <Icon name="plus" size={12} />}
                           </button>
                         );
                       })}

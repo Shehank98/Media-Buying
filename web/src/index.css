@@ -392,10 +392,21 @@ input, select, textarea { font-family: inherit; }
 
 /* multi-select chips */
 .chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; min-height: 44px; background: #fff; }
+/* Toggle chips (client / agency / member pickers): unselected reads as a light
+   "add me" outline, selected is a filled coral pill with a check — so it's
+   obvious at a glance which are picked. */
 .chip {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
-  padding: 4px 6px 4px 10px; border-radius: 7px; background: var(--navy-900); color: #fff;
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 4px 9px 4px 10px; border-radius: 7px;
+  background: #fff; color: var(--ink-soft); border: 1px solid var(--border-strong);
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
+.chip:hover { border-color: var(--coral-400); color: var(--coral-700); background: var(--coral-50); }
+.chip.active {
+  background: var(--coral-600); color: #fff; border-color: var(--coral-600);
+  box-shadow: 0 1px 2px rgba(196,74,24,.28);
+}
+.chip.active:hover { background: var(--coral-700); border-color: var(--coral-700); color: #fff; }
 .chip button { border: none; background: rgba(255,255,255,.18); color: #fff; width: 16px; height: 16px; border-radius: 5px; display: grid; place-items: center; font-size: 11px; line-height: 1; }
 .chip button:hover { background: rgba(255,255,255,.3); }
 .chip-add { font-size: 12px; font-weight: 600; color: var(--muted); border: 1px dashed var(--border-strong); background: var(--bg); padding: 4px 10px; border-radius: 7px; }

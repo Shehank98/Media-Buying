@@ -93,6 +93,9 @@ function buildScheduleWhere(filters) {
 // (UserClientAccess). Returns a Map of clientId -> group head name.
 export async function accountManagerByClient(clientIds) {
   if (!clientIds.length) return new Map();
+  const clients = await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, agencyId: true } });
+  const agencyByClient = new Map(clients.map((c) => [c.id, c.agencyId]));
+
   const [teamClients, directAccess] = await Promise.all([
     prisma.teamClient.findMany({
       where: { clientId: { in: clientIds } },
@@ -107,30 +110,51 @@ export async function accountManagerByClient(clientIds) {
     }),
     prisma.userClientAccess.findMany({
       where: { clientId: { in: clientIds }, user: { role: 'GROUP_HEAD' } },
-      include: { user: { select: { name: true } } },
+      include: { user: { select: { name: true, agencyAccess: { select: { agencyId: true } } } } },
       // Most-recently granted first (higher id = newer), so a fresh reassignment
       // via a head's user account wins over an older direct assignment.
       orderBy: { id: 'desc' },
     }),
   ]);
 
-  const map = new Map();
-  // Direct UserClientAccess (the Users-tab "assign client to this head" action) is
-  // AUTHORITATIVE: assigning a client to a head via that head's user account makes
-  // them the account manager, overriding any legacy team assignment. This matches
-  // the current workflow (the Teams tab was removed) - the most recent direct
-  // assignment wins, so reassigning a client to a new head takes effect even if an
-  // older head's team/direct assignment is still on the record.
+  // Direct assignments per client (most-recent first). Direct UserClientAccess
+  // (the Users-tab "assign client to this head" action) is authoritative in the
+  // current workflow, but only for a head who actually has access to the client's
+  // CURRENT agency — a stale assignment left over from the client's previous
+  // agency must not win, otherwise a reassigned client keeps showing under its old head.
+  const directByClient = new Map();
   for (const ua of directAccess) {
-    if (!map.has(ua.clientId) && ua.user?.name) map.set(ua.clientId, ua.user.name);
+    if (!ua.user?.name) continue;
+    if (!directByClient.has(ua.clientId)) directByClient.set(ua.clientId, []);
+    directByClient.get(ua.clientId).push(ua.user);
   }
-  // Fall back to team-derived head only when the client has no direct assignment.
+  // Team-derived head per client: prefer a team in the client's OWN agency; keep
+  // any team head as a last-resort fallback (a cross-agency team link is stale).
+  const teamHeadInAgency = new Map();
+  const teamHeadAny = new Map();
   for (const tc of teamClients) {
-    if (map.has(tc.clientId)) continue;
     const t = tc.team;
-    if (t?.head?.name && t.head.role === 'GROUP_HEAD') { map.set(tc.clientId, t.head.name); continue; }
-    const ghMember = t?.members?.[0]?.user;
-    if (ghMember?.name) map.set(tc.clientId, ghMember.name);
+    if (!t) continue;
+    let name = null;
+    if (t.head?.name && t.head.role === 'GROUP_HEAD') name = t.head.name;
+    else if (t.members?.[0]?.user?.name) name = t.members[0].user.name;
+    if (!name) continue;
+    if (!teamHeadAny.has(tc.clientId)) teamHeadAny.set(tc.clientId, name);
+    if (t.agencyId === agencyByClient.get(tc.clientId) && !teamHeadInAgency.has(tc.clientId)) teamHeadInAgency.set(tc.clientId, name);
+  }
+
+  const map = new Map();
+  for (const clientId of clientIds) {
+    const ag = agencyByClient.get(clientId);
+    const directs = directByClient.get(clientId) || [];
+    // 1. Most-recent direct assignment whose head has access to the current agency.
+    const directMatch = directs.find((h) => (h.agencyAccess || []).some((a) => a.agencyId === ag));
+    if (directMatch) { map.set(clientId, directMatch.name); continue; }
+    // 2. A team in the client's own agency.
+    if (teamHeadInAgency.has(clientId)) { map.set(clientId, teamHeadInAgency.get(clientId)); continue; }
+    // 3. Fallbacks: most-recent direct (agency unknown), then any team head.
+    if (directs.length) { map.set(clientId, directs[0].name); continue; }
+    if (teamHeadAny.has(clientId)) { map.set(clientId, teamHeadAny.get(clientId)); continue; }
   }
   return map;
 }

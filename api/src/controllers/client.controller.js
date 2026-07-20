@@ -63,6 +63,10 @@ export async function updateClient(req, res) {
     ];
     if (moving) {
       ops.push(prisma.scheduleLog.updateMany({ where: { clientId: cid }, data: { agencyId: newAgencyId } }));
+      // Teams are agency-scoped, so every existing team link is now stale (it
+      // points at the old agency's team). Detach them, otherwise the client
+      // keeps resolving to its old team head after the move.
+      ops.push(prisma.teamClient.deleteMany({ where: { clientId: cid } }));
     }
     const [client] = await prisma.$transaction(ops);
 
