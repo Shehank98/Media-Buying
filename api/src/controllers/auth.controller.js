@@ -8,6 +8,7 @@ import {
   generateResetToken,
 } from '../services/auth.service.js';
 import { sendEmail } from '../services/email.service.js';
+import { getAccessibleClientIds } from '../middleware/access.js';
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
@@ -246,7 +247,44 @@ export async function getProfile(req, res) {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    return res.json({ user });
+
+    // What this user can reach — assigned agencies, accessible clients, and teams.
+    const [agencyAccess, memberTeams, headedTeams] = await Promise.all([
+      prisma.userAgencyAccess.findMany({ where: { userId: user.id }, include: { agency: { select: { id: true, name: true } } } }),
+      prisma.teamMember.findMany({ where: { userId: user.id }, include: { team: { select: { id: true, name: true, headUserId: true, agency: { select: { name: true } } } } } }),
+      prisma.team.findMany({ where: { headUserId: user.id }, select: { id: true, name: true, agency: { select: { name: true } } } }),
+    ]);
+
+    const agencies = agencyAccess
+      .filter((a) => a.agency)
+      .map((a) => ({ id: a.agency.id, name: a.agency.name }))
+      .sort((x, y) => x.name.localeCompare(y.name));
+
+    const teamMap = new Map();
+    for (const t of headedTeams) teamMap.set(t.id, { id: t.id, name: t.name, agencyName: t.agency?.name || '', isHead: true });
+    for (const m of memberTeams) {
+      const t = m.team;
+      if (!t || teamMap.has(t.id)) continue;
+      teamMap.set(t.id, { id: t.id, name: t.name, agencyName: t.agency?.name || '', isHead: t.headUserId === user.id });
+    }
+    const teams = [...teamMap.values()].sort((x, y) => x.name.localeCompare(y.name));
+
+    // SUPER_ADMIN sees everything, so don't enumerate all clients (just flag it).
+    const allClients = user.role === 'SUPER_ADMIN';
+    let clients = [];
+    if (!allClients) {
+      const ids = await getAccessibleClientIds(user.id, user.role);
+      if (ids && ids.length) {
+        const cl = await prisma.client.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true, agency: { select: { name: true } } },
+          orderBy: { name: 'asc' },
+        });
+        clients = cl.map((c) => ({ id: c.id, name: c.name, agencyName: c.agency?.name || '' }));
+      }
+    }
+
+    return res.json({ user, access: { agencies, clients, teams, allClients } });
   } catch (error) {
     console.error('Get profile error:', error);
     return res.status(500).json({ error: 'Internal server error' });

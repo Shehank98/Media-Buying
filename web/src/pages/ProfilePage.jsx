@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge } from '../components/Icon';
+import api from '../lib/api';
 
 const CARD_STYLE = {
   background: '#fff',
@@ -43,6 +44,28 @@ const ROLE_LABELS = {
   PLANNER: 'Desk',
 };
 
+function Pill({ children }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12.5, fontWeight: 600, color: '#3B4A63', background: '#F1F4F8', border: '1px solid #E5E8ED', padding: '5px 11px', borderRadius: 8 }}>
+      {children}
+    </span>
+  );
+}
+
+function AccessBlock({ label, count, empty, children }) {
+  const hasItems = Array.isArray(children) ? children.length > 0 : !!children;
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7790', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 9 }}>
+        {label} {count > 0 && <span style={{ color: '#93A0B5' }}>({count})</span>}
+      </div>
+      {hasItems
+        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{children}</div>
+        : <div style={{ fontSize: 13, color: '#93A0B5', fontStyle: 'italic' }}>{empty || 'None'}</div>}
+    </div>
+  );
+}
+
 function initialsOf(name) {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return 'U';
@@ -59,6 +82,18 @@ export default function ProfilePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const [access, setAccess] = useState(null);
+  const [accessLoading, setAccessLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/auth/profile')
+      .then((r) => { if (!cancelled) setAccess(r.data.access || null); })
+      .catch(() => { if (!cancelled) setAccess(null); })
+      .finally(() => { if (!cancelled) setAccessLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -162,6 +197,51 @@ export default function ProfilePage() {
               {roleLabel}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Access & Assignments */}
+      <div style={{ ...CARD_STYLE, overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E8ED', display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ color: '#3B4A63', display: 'inline-flex' }}><Icon name="users" size={16} /></span>
+          <span style={{ fontSize: 14.5, fontWeight: 700, color: '#16243C' }}>Access &amp; Assignments</span>
+        </div>
+        <div style={{ padding: '20px 24px' }}>
+          {accessLoading ? (
+            <div style={{ fontSize: 13, color: '#93A0B5' }}>Loading your assignments…</div>
+          ) : access?.allClients ? (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13.5, color: '#3B4A63', lineHeight: 1.5 }}>
+              <span style={{ color: '#6B3FB5', flexShrink: 0, marginTop: 1 }}><Icon name="shield" size={16} /></span>
+              <div><b style={{ color: '#16243C' }}>Full access.</b> As {roleLabel}, you can see and manage every agency, client and team in the system.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <AccessBlock label="Agencies" count={access?.agencies?.length || 0} empty="No agencies assigned">
+                {(access?.agencies || []).map((a) => <Pill key={a.id}>{a.name}</Pill>)}
+              </AccessBlock>
+
+              {(access?.teams?.length || 0) > 0 && (
+                <AccessBlock label="Teams" count={access.teams.length}>
+                  {access.teams.map((t) => (
+                    <Pill key={t.id}>
+                      {t.name}
+                      {t.agencyName && <span style={{ opacity: 0.6, marginLeft: 5, fontSize: 11 }}>· {t.agencyName}</span>}
+                      {t.isHead && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, letterSpacing: '.3px', color: '#D9521C', background: '#FDF1EB', padding: '1px 6px', borderRadius: 20 }}>HEAD</span>}
+                    </Pill>
+                  ))}
+                </AccessBlock>
+              )}
+
+              <AccessBlock label="Clients" count={access?.clients?.length || 0} empty="No clients assigned yet">
+                {(access?.clients || []).map((c) => (
+                  <Pill key={c.id}>
+                    {c.name}
+                    {c.agencyName && <span style={{ opacity: 0.6, marginLeft: 5, fontSize: 11 }}>· {c.agencyName}</span>}
+                  </Pill>
+                ))}
+              </AccessBlock>
+            </div>
+          )}
         </div>
       </div>
 
