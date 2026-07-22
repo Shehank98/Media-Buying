@@ -10,12 +10,12 @@ export const TOGGLEABLE_PAGES = [
   { key: '/spend-analytics', label: 'Spend Analytics' },
   { key: '/executive-dashboard', label: 'Executive Dashboard' },
   { key: '/reports', label: 'Reports' },
+  { key: '/rate-cards', label: 'Rate Cards' },
   { key: '/my-packages', label: 'Media Packages' },
 ];
 
 // Paths every signed-in user can always reach.
-// Rate Cards is shared with everyone, so it is never gated by pageAccess.
-const ALWAYS = ['/profile', '/change-password', '/login', '/rate-cards'];
+const ALWAYS = ['/profile', '/change-password', '/login'];
 
 // Map any path to its top-level page key.
 export function pageKeyForPath(pathname) {
