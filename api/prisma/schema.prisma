@@ -64,44 +64,45 @@ enum RevenueVerifyStatus {
 }
 
 model User {
-  id                        Int                  @id @default(autoincrement())
-  email                     String               @unique
-  passwordHash              String               @map("password_hash")
+  id                        Int                      @id @default(autoincrement())
+  email                     String                   @unique
+  passwordHash              String                   @map("password_hash")
   name                      String
   role                      Role
-  mustChangePassword        Boolean              @default(true) @map("must_change_password")
-  pageAccess                String[]             @default([]) @map("page_access")
-  canExport                 Boolean              @default(true) @map("can_export")
-  readOnly                  Boolean              @default(false) @map("read_only")
-  failedLogins              Int                  @default(0) @map("failed_logins")
-  lockedUntil               DateTime?            @map("locked_until")
-  tokenVersion              Int                  @default(0) @map("token_version")
-  lastLoginAt               DateTime?            @map("last_login_at")
-  createdAt                 DateTime             @default(now()) @map("created_at")
-  updatedAt                 DateTime             @updatedAt @map("updated_at")
+  mustChangePassword        Boolean                  @default(true) @map("must_change_password")
+  pageAccess                String[]                 @default([]) @map("page_access")
+  canExport                 Boolean                  @default(true) @map("can_export")
+  readOnly                  Boolean                  @default(false) @map("read_only")
+  failedLogins              Int                      @default(0) @map("failed_logins")
+  lockedUntil               DateTime?                @map("locked_until")
+  tokenVersion              Int                      @default(0) @map("token_version")
+  lastLoginAt               DateTime?                @map("last_login_at")
+  createdAt                 DateTime                 @default(now()) @map("created_at")
+  updatedAt                 DateTime                 @updatedAt @map("updated_at")
   agencyAccess              UserAgencyAccess[]
   clientAccess              UserClientAccess[]
   teamMembers               TeamMember[]
-  teamsHeaded               Team[]               @relation("TeamHead")
-  channelAgencyDealsCreated ChannelAgencyDeal[]  @relation("ChannelAgencyDealCreator")
-  channelClientDealsCreated ChannelClientDeal[]  @relation("ChannelClientDealCreator")
-  properties                Property[]           @relation("CreatedBy")
-  propertyHistory           PropertyHistory[]    @relation("ChangedBy")
+  teamsHeaded               Team[]                   @relation("TeamHead")
+  channelAgencyDealsCreated ChannelAgencyDeal[]      @relation("ChannelAgencyDealCreator")
+  channelClientDealsCreated ChannelClientDeal[]      @relation("ChannelClientDealCreator")
+  properties                Property[]               @relation("CreatedBy")
+  propertyHistory           PropertyHistory[]        @relation("ChangedBy")
   passwordResetTokens       PasswordResetToken[]
   // Phase 3 relations
-  mediaGroups               MediaGroup[]         @relation("MediaGroupCreator")
-  channelMastersCreated     ChannelMaster[]      @relation("ChannelMasterCreator")
-  brandsCreated             Brand[]              @relation("BrandCreator")
-  campaignsCreated          Campaign[]           @relation("CampaignCreator")
-  scheduleLogs              ScheduleLog[]        @relation("ScheduleLogUploader")
-  deletedScheduleLogs       ScheduleLog[]        @relation("ScheduleLogDeleter")
-  uploadBatches             UploadBatch[]        @relation("UploadBatchUploader")
-  scheduleLogEdits          ScheduleLogEdit[]    @relation("ScheduleLogEditor")
+  mediaGroups               MediaGroup[]             @relation("MediaGroupCreator")
+  channelMastersCreated     ChannelMaster[]          @relation("ChannelMasterCreator")
+  brandsCreated             Brand[]                  @relation("BrandCreator")
+  campaignsCreated          Campaign[]               @relation("CampaignCreator")
+  scheduleLogs              ScheduleLog[]            @relation("ScheduleLogUploader")
+  deletedScheduleLogs       ScheduleLog[]            @relation("ScheduleLogDeleter")
+  uploadBatches             UploadBatch[]            @relation("UploadBatchUploader")
+  scheduleLogEdits          ScheduleLogEdit[]        @relation("ScheduleLogEditor")
   notifications             Notification[]
-  packagesCreated           MediaPackage[]       @relation("PackageCreator")
-  packageRecipients         PackageRecipient[]   @relation("PackageRecipientUser")
-  groupRevenues             GroupRevenue[]       @relation("GroupRevenueHead")
-  clientRevenuesVerified    ClientRevenue[]      @relation("ClientRevenueVerifier")
+  packagesCreated           MediaPackage[]           @relation("PackageCreator")
+  packageRecipients         PackageRecipient[]       @relation("PackageRecipientUser")
+  groupRevenues             GroupRevenue[]           @relation("GroupRevenueHead")
+  clientRevenuesVerified    ClientRevenue[]          @relation("ClientRevenueVerifier")
+  requisitions              MediaBuyingRequisition[] @relation("RequisitionRequester")
 
   @@map("users")
 }
@@ -134,20 +135,20 @@ model UserAgencyAccess {
 }
 
 model Client {
-  id              Int                 @id @default(autoincrement())
-  agencyId        Int                 @map("agency_id")
+  id              Int                      @id @default(autoincrement())
+  agencyId        Int                      @map("agency_id")
   name            String
   // Alternate spellings/variants learned from bulk-import reconciliation, so a
   // raw name mapped to this client once auto-matches on future imports (mirrors
   // ChannelMaster.aliases). Matched case-insensitively.
-  aliases         String[]            @default([])
-  isActive        Boolean             @default(true) @map("is_active")
+  aliases         String[]                 @default([])
+  isActive        Boolean                  @default(true) @map("is_active")
   // Agency remuneration for the Overall Budget tab: type = COMMISSION (value is
   // a %) or AOR (value is a fixed LKR fee). Both null = not set.
-  commissionType  CommissionType?     @map("commission_type")
-  commissionValue Decimal?            @map("commission_value") @db.Decimal(14, 2)
-  createdAt       DateTime            @default(now()) @map("created_at")
-  agency          Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  commissionType  CommissionType?          @map("commission_type")
+  commissionValue Decimal?                 @map("commission_value") @db.Decimal(14, 2)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  agency          Agency                   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   users           UserClientAccess[]
   channels        Channel[]
   teams           TeamClient[]
@@ -159,6 +160,7 @@ model Client {
   channelDeals    ChannelClientDeal[]
   targets         ClientTarget[]
   revenues        ClientRevenue[]
+  requisitions    MediaBuyingRequisition[]
 
   @@unique([agencyId, name])
   @@map("clients")
@@ -345,32 +347,32 @@ model Channel {
 // ─── Property (negotiated deal on a channel) ───────────────────────────────
 
 model Property {
-  id                 Int               @id @default(autoincrement())
-  channelId          Int               @map("channel_id")
-  category           String?
-  name               String
-  type               String?
-  cost               Decimal           @db.Decimal(12, 2)
-  bonusValue         Decimal           @default(0) @map("bonus_value") @db.Decimal(12, 2)
-  bonusCount         Int               @default(0) @map("bonus_count")
-  bonusPct           Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
-  sponsorshipDetails String?           @map("sponsorship_details")
-  startDate          DateTime?         @map("start_date") @db.Date
-  endDate            DateTime?         @map("end_date") @db.Date
-  notes              String?
+  id                   Int               @id @default(autoincrement())
+  channelId            Int               @map("channel_id")
+  category             String?
+  name                 String
+  type                 String?
+  cost                 Decimal           @db.Decimal(12, 2)
+  bonusValue           Decimal           @default(0) @map("bonus_value") @db.Decimal(12, 2)
+  bonusCount           Int               @default(0) @map("bonus_count")
+  bonusPct             Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
+  sponsorshipDetails   String?           @map("sponsorship_details")
+  startDate            DateTime?         @map("start_date") @db.Date
+  endDate              DateTime?         @map("end_date") @db.Date
+  notes                String?
   // Optional evaluation document (PDF/Excel) stored on Google Drive; only the
   // Drive file id + metadata live in the DB (mirrors ChannelMaster.rateCard*).
-  evaluationDriveId    String?         @map("evaluation_drive_id")
-  evaluationFileName   String?         @map("evaluation_file_name")
-  evaluationMimeType   String?         @map("evaluation_mime_type")
-  evaluationSize       Int?            @map("evaluation_size")
-  evaluationUploadedAt DateTime?       @map("evaluation_uploaded_at")
-  createdBy          Int               @map("created_by")
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
-  channel            Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  creator            User              @relation("CreatedBy", fields: [createdBy], references: [id])
-  history            PropertyHistory[]
+  evaluationDriveId    String?           @map("evaluation_drive_id")
+  evaluationFileName   String?           @map("evaluation_file_name")
+  evaluationMimeType   String?           @map("evaluation_mime_type")
+  evaluationSize       Int?              @map("evaluation_size")
+  evaluationUploadedAt DateTime?         @map("evaluation_uploaded_at")
+  createdBy            Int               @map("created_by")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  channel              Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  creator              User              @relation("CreatedBy", fields: [createdBy], references: [id])
+  history              PropertyHistory[]
 
   @@map("properties")
 }
@@ -950,6 +952,36 @@ model PasswordResetToken {
 }
 
 // ─── Media Packages ───────────────────────────────────────────────────────────
+
+// Media Buying Requisition (MBR) — a Desk/Hub request to the buying unit for a
+// media plan. Free-form per-medium detail is kept as JSON so the form can grow.
+model MediaBuyingRequisition {
+  id               Int       @id @default(autoincrement())
+  clientId         Int       @map("client_id")
+  requestedById    Int       @map("requested_by_id")
+  brandCampaign    String    @map("brand_campaign")
+  targetGroup      String?   @map("target_group")
+  campaignStart    DateTime? @map("campaign_start")
+  campaignEnd      DateTime? @map("campaign_end")
+  budgetPct        Int?      @map("budget_pct") // 100 or 85
+  mediums          String[]  @default([]) // ['TV','RADIO','PRINT',...]
+  stations         Json? // { TV: '...', RADIO: '...', PRINT: '...' }
+  buyingProperty   String?   @map("buying_property") // sponsorships / key integrations
+  deliverables     Json? // { TV, RADIO, PRINT: '...' }
+  daypartMandates  Json?     @map("daypart_mandates") // { TV, RADIO: '...' }
+  otherNotes       String?   @map("other_notes")
+  discussionPoints String?   @map("discussion_points")
+  deadlineType     String?   @map("deadline_type") // 'annual' | 'campaign-special' | 'new-client'
+  status           String    @default("SUBMITTED")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requester        User      @relation("RequisitionRequester", fields: [requestedById], references: [id])
+
+  @@index([clientId])
+  @@index([requestedById])
+  @@map("media_buying_requisitions")
+}
 
 model MediaPackage {
   id          Int                @id @default(autoincrement())

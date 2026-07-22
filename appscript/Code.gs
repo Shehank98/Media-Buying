@@ -44,6 +44,8 @@ function doPost(e) {
       sendReminderEmail(data);
     } else if (data.type === "package") {
       sendPackageEmail(data);
+    } else if (data.type === "requisition") {
+      sendRequisitionEmail(data);
     } else {
       throw new Error("Unknown email type: " + data.type);
     }
@@ -344,6 +346,48 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
       'Sign in with your agency credentials to view the full package.');
 
   return emailShell(packageName, inner);
+}
+
+// ─── Media Buying Requisition (MBR) ─────────────────────────────────────────
+// Payload: { type:"requisition", to, cc:[...], clientName, brandCampaign,
+//            requesterName, hubName, details:[{label,value}], link }
+function sendRequisitionEmail(data) {
+  var to      = data.to;
+  var cc      = (data.cc || []).filter(function (e) { return e && e !== to; });
+  var details = data.details || [];
+  var subject = "Media Buying Requisition: " + (data.clientName || "") +
+                (data.brandCampaign ? " — " + data.brandCampaign : "");
+
+  var rows = "";
+  for (var i = 0; i < details.length; i++) {
+    var d = details[i] || {};
+    rows +=
+      '<tr>' +
+        '<td style="padding:9px 16px;border-top:1px solid ' + C_LINE + ';color:' + C_MUTED + ';font-size:12px;font-weight:700;white-space:nowrap;vertical-align:top;">' + escHtml(d.label || "") + '</td>' +
+        '<td style="padding:9px 16px;border-top:1px solid ' + C_LINE + ';color:' + C_INK + ';font-size:13px;line-height:1.6;">' + escHtml(d.value || "") + '</td>' +
+      '</tr>';
+  }
+
+  var inner =
+    emailHeader('Media Buying Requisition', 'New requisition from ' + escHtml(data.requesterName || 'a team member')) +
+    bodyOpen() +
+      '<p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.7;">' +
+        'A Media Buying Requisition (MBR) has been raised' + (data.clientName ? ' for <strong>' + escHtml(data.clientName) + '</strong>' : '') + '. ' +
+        'The full details are below — open Ogilvy Orbit to review or export the sheet.' +
+      '</p>' +
+      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:26px;border-collapse:separate;overflow:hidden;">' +
+        rows +
+      '</table>' +
+      ctaButton(data.link || '#', 'Open in Ogilvy Orbit &rarr;') +
+    bodyClose() +
+    emailFooter(
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Raised via the Media Buying Requisition form.',
+      'Sign in with your agency credentials to view or export the requisition.');
+
+  var html    = emailShell('Media Buying Requisition', inner);
+  var options = { name: FROM_NAME, htmlBody: html };
+  if (cc.length) options.cc = cc.join(",");
+  GmailApp.sendEmail(to, subject, stripTags(html), options);
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
