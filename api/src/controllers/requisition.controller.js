@@ -139,6 +139,21 @@ export async function getRequisition(req, res) {
   }
 }
 
+// DELETE /requisitions/:id - SUPER_ADMIN removes a requisition request.
+export async function deleteRequisition(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.mediaBuyingRequisition.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return res.status(404).json({ error: 'Requisition not found' });
+    await prisma.mediaBuyingRequisition.delete({ where: { id } });
+    return res.json({ message: 'Requisition deleted' });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Requisition not found' });
+    console.error('deleteRequisition error:', error);
+    return res.status(500).json({ error: 'Failed to delete requisition' });
+  }
+}
+
 // POST /requisitions - Desk (PLANNER) or Hub (GROUP_HEAD) raises an MBR.
 export async function createRequisition(req, res) {
   try {

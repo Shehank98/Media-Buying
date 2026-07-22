@@ -91,6 +91,21 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
     try { await exportRequisitionPdf(r); } catch { /* ignore */ } finally { setExportingId(null); }
   };
 
+  const isAdmin = user?.role === 'SUPER_ADMIN';
+  const [deletingId, setDeletingId] = useState(null);
+  const del = async (r) => {
+    if (!window.confirm(`Delete this requisition for ${r.clientName} (${r.brandCampaign})? This cannot be undone.`)) return;
+    setDeletingId(r.id);
+    try {
+      await api.delete(`/requisitions/${r.id}`);
+      setList((prev) => prev.filter((x) => x.id !== r.id));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete requisition.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div>
       {/* sub-tabs */}
@@ -228,6 +243,11 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
                     <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); doExport(r); }} disabled={exportingId === r.id} style={{ flexShrink: 0, gap: 5 }}>
                       <Icon name={exportingId === r.id ? 'history' : 'download'} size={13} /> PDF
                     </button>
+                    {isAdmin && (
+                      <button className="act-btn" title="Delete requisition" onClick={(e) => { e.stopPropagation(); del(r); }} disabled={deletingId === r.id} style={{ flexShrink: 0, color: 'var(--red-600,#dc2626)' }}>
+                        <Icon name="trash" size={15} />
+                      </button>
+                    )}
                   </div>
                   {expanded === r.id && (
                     <div style={{ borderTop: '1px solid var(--border)', padding: '14px 16px', background: 'var(--bg-sunken)' }}>

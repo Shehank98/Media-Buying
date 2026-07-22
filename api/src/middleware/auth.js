@@ -43,10 +43,12 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    // Read-only accounts cannot perform any write operation (except auth itself).
+    // Read-only accounts cannot perform any write operation (except auth
+    // itself and raising a Media Buying Requisition, which everyone may submit).
     if (user.readOnly && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
-      const path = (req.originalUrl || '').split('?')[0];
-      if (!path.startsWith('/api/auth/')) {
+      const path = (req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
+      const allowed = path.startsWith('/api/auth/') || (req.method === 'POST' && path === '/api/requisitions');
+      if (!allowed) {
         return res.status(403).json({ error: 'Your account is read-only. Changes are not permitted.' });
       }
     }
