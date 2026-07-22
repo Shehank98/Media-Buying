@@ -951,6 +951,31 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+// ─── Error Logs ───────────────────────────────────────────────────────────────
+
+// A captured runtime error (backend 5xx or a frontend crash) surfaced to admins
+// in Admin → Errors. User is stored as a snapshot (id/email/role) rather than a
+// relation so the log survives even if the user is later deleted.
+model ErrorLog {
+  id         Int      @id @default(autoincrement())
+  source     String   @default("backend") // 'backend' | 'frontend'
+  message    String   @db.Text
+  stack      String?  @db.Text
+  url        String? // request path (backend) or page URL (frontend)
+  method     String? // HTTP method (backend only)
+  statusCode Int?     @map("status_code")
+  userId     Int?     @map("user_id")
+  userEmail  String?  @map("user_email")
+  userRole   String?  @map("user_role")
+  userAgent  String?  @map("user_agent") @db.Text
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
 // ─── Media Packages ───────────────────────────────────────────────────────────
 
 // Media Buying Requisition (MBR) — a Desk/Hub request to the buying unit for a

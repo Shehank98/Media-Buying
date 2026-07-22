@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { reportError } from './errorReporter';
 
 const api = axios.create({
   baseURL: '/api',
@@ -87,6 +88,20 @@ api.interceptors.response.use(
         isRefreshing = false;
       }
     }
+
+    // Report genuine failures the user hit. 5xx server errors are already
+    // captured on the backend, so here we only log true network failures
+    // (request never returned a response), not normal 4xx app responses.
+    try {
+      const cfg = error.config || {};
+      const urlp = cfg.url || '';
+      if (!error.response && !urlp.includes('/errors/client') && !urlp.includes('/auth/refresh')) {
+        reportError({
+          message: `Network request failed: ${cfg.method ? cfg.method.toUpperCase() + ' ' : ''}${urlp || 'unknown'}${error.message ? ` (${error.message})` : ''}`,
+          url: window.location.href,
+        });
+      }
+    } catch { /* never let reporting break the request flow */ }
 
     return Promise.reject(error);
   }

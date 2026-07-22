@@ -54,6 +54,12 @@ import {
   uploadChannelRateCardHandler,
   deleteChannelRateCardHandler,
 } from '../controllers/admin.controller.js';
+import {
+  listErrors,
+  resolveError,
+  deleteError,
+  clearErrors,
+} from '../controllers/errorlog.controller.js';
 
 const router = Router();
 
@@ -138,5 +144,11 @@ router.delete('/aor-revenue/:id', deleteAorRevenue);
 // Schedule-log yearly archive to Google Drive (backup; rows stay in the DB)
 router.get('/schedule-logs/archive', getScheduleArchiveInfo);
 router.post('/schedule-logs/archive', archiveScheduleLogsToDrive);
+
+// Error logs (captured backend 5xx + frontend crashes) → Admin → Errors tab
+router.get('/errors', listErrors);
+router.patch('/errors/:id/resolve', resolveError);
+router.delete('/errors', clearErrors);
+router.delete('/errors/:id', deleteError);
 
 export default router;
