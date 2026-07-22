@@ -1039,6 +1039,12 @@ export async function mediaGroupReport(req, res) {
         select: { agencyId: true },
       });
       scopeWhere.agencyId = { in: access.map((a) => a.agencyId) };
+    } else if (req.user.role === 'GROUP_HEAD' || req.user.role === 'PLANNER') {
+      // A GROUP_HEAD/PLANNER (e.g. granted the Reports page via pageAccess) is
+      // scoped to only the clients they can access, mirroring exportProperties /
+      // exportScheduleLogs. Empty scope becomes [-1] so they match nothing.
+      const scope = await accessibleClientScope(req.user);
+      if (scope) scopeWhere.clientId = { in: scope };
     }
 
     if (agencyId) {
