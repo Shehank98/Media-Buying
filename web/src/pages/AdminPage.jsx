@@ -97,6 +97,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
 
+  /* ---- error logs ---- */
+  const [errorLogs, setErrorLogs] = useState([]);
+  const [errLoading, setErrLoading] = useState(false);
+  const [errFilter, setErrFilter] = useState('unresolved'); // unresolved | all | frontend | backend
+  const [errUnresolved, setErrUnresolved] = useState(0);
+  const [errTotal, setErrTotal] = useState(0);
+  const [errExpanded, setErrExpanded] = useState(null); // id of the expanded row (stack)
+
   /* ---- agency modal ---- */
   const [showAgencyModal, setShowAgencyModal] = useState(false);
   const [editingAgency, setEditingAgency] = useState(null);
@@ -1406,6 +1414,55 @@ export default function AdminPage({ initialTab = 'users' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, aorYear]);
 
+  /* ---- error logs ---- */
+  const fetchErrorLogs = async () => {
+    setErrLoading(true);
+    try {
+      const params = { pageSize: 100 };
+      if (errFilter === 'unresolved') params.resolved = false;
+      else if (errFilter === 'frontend' || errFilter === 'backend') params.source = errFilter;
+      const { data } = await api.get('/admin/errors', { params });
+      setErrorLogs(Array.isArray(data.rows) ? data.rows : []);
+      setErrUnresolved(data.unresolved || 0);
+      setErrTotal(data.total || 0);
+    } catch {
+      setErrorLogs([]);
+    } finally {
+      setErrLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'errors') fetchErrorLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, errFilter]);
+
+  const resolveErrorLog = async (id, resolved) => {
+    try {
+      await api.patch(`/admin/errors/${id}/resolve`, { resolved });
+      fetchErrorLogs();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update error.');
+    }
+  };
+  const deleteErrorLog = async (id) => {
+    if (!window.confirm('Delete this error log entry?')) return;
+    try {
+      await api.delete(`/admin/errors/${id}`);
+      fetchErrorLogs();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete error.');
+    }
+  };
+  const clearErrorLogs = async (onlyResolved) => {
+    if (!window.confirm(onlyResolved ? 'Delete all RESOLVED error logs?' : 'Delete ALL error logs? This cannot be undone.')) return;
+    try {
+      await api.delete('/admin/errors', { params: onlyResolved ? { resolved: true } : {} });
+      fetchErrorLogs();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to clear errors.');
+    }
+  };
+
   const addAorEntry = async () => {
     const channel = aorForm.channel.trim();
     if (!channel) { setError('Channel is required.'); return; }
@@ -1897,6 +1954,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { label: 'Requests', members: [{ key: 'requests', label: 'Requests', count: reqPending }] },
     { label: 'Notify', members: [{ key: 'notify', label: 'Notify' }] },
     { label: 'Backup', members: [{ key: 'backup', label: 'Backup' }] },
+    { label: 'Errors', members: [{ key: 'errors', label: 'Errors', count: errUnresolved || undefined }] },
   ];
   const activeGroup = tabGroups.find(g => g.members.some(m => m.key === activeTab)) || tabGroups[0];
 
@@ -1980,7 +2038,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'backup', 'notify'].includes(activeTab) && (
+        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'backup', 'notify', 'errors'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -3845,6 +3903,109 @@ export default function AdminPage({ initialTab = 'users' }) {
               </table>
               {(backup.backups || []).length === 0 && <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}><p>No backups in the folder yet</p></div>}
               {backup.listError && <div style={{ padding: 12, color: 'var(--red-600)', fontSize: 12.5 }}>Could not list backups: {backup.listError}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============ ERRORS ============ */}
+      {activeTab === 'errors' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { k: 'unresolved', label: 'Unresolved' },
+                { k: 'all', label: 'All' },
+                { k: 'frontend', label: 'Frontend' },
+                { k: 'backend', label: 'Backend' },
+              ].map(f => {
+                const on = errFilter === f.k;
+                return (
+                  <button key={f.k} onClick={() => setErrFilter(f.k)} style={{
+                    border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: '7px 13px',
+                    borderRadius: 8, fontFamily: 'inherit', background: on ? '#0F1F3D' : '#EEF0F3', color: on ? '#fff' : '#6B7790',
+                  }}>{f.label}</button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                {errUnresolved} unresolved &middot; {errTotal} shown
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={fetchErrorLogs}>Refresh</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => clearErrorLogs(true)} title="Delete resolved entries">Clear resolved</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => clearErrorLogs(false)} title="Delete every entry" style={{ color: 'var(--red-600,#dc2626)' }}>Clear all</button>
+            </div>
+          </div>
+
+          {errLoading ? (
+            <OrbitLoader label="Loading errors…" />
+          ) : errorLogs.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>No errors logged</div>
+              <div style={{ fontSize: 12.5 }}>{errFilter === 'unresolved' ? 'Nothing unresolved right now.' : 'Nothing to show for this filter.'}</div>
+            </div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Source</th>
+                    <th>User</th>
+                    <th>Page / Route</th>
+                    <th>Message</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {errorLogs.map(row => (
+                    <Fragment key={row.id}>
+                      <tr style={{ opacity: row.resolved ? 0.55 : 1 }}>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{new Date(row.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td>
+                          <span className="badge" style={{ background: row.source === 'frontend' ? '#EAF1FC' : '#F3ECFB', color: row.source === 'frontend' ? '#1F5BB5' : '#6B34C0', fontWeight: 700, fontSize: 11 }}>
+                            {row.source}{row.statusCode ? ` ${row.statusCode}` : ''}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12 }}>
+                          {row.userEmail ? (
+                            <span title={row.userRole || ''}>{row.userEmail}</span>
+                          ) : <span style={{ color: 'var(--muted)' }}>anonymous</span>}
+                        </td>
+                        <td style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.url || ''}>
+                          {row.method ? <b style={{ color: 'var(--muted)' }}>{row.method} </b> : ''}{row.url || '-'}
+                        </td>
+                        <td style={{ fontSize: 12.5, maxWidth: 340 }}>
+                          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.message}>{row.message}</span>
+                          {row.stack && (
+                            <button onClick={() => setErrExpanded(errExpanded === row.id ? null : row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--coral-700,#C44A18)', fontWeight: 600, fontSize: 11.5, padding: 0, marginTop: 2 }}>
+                              {errExpanded === row.id ? 'Hide details' : 'Show details'}
+                            </button>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => resolveErrorLog(row.id, !row.resolved)} className="btn btn-ghost btn-sm" title={row.resolved ? 'Mark unresolved' : 'Mark resolved'}>
+                            {row.resolved ? 'Reopen' : 'Resolve'}
+                          </button>
+                          <button onClick={() => deleteErrorLog(row.id)} className="btn btn-ghost btn-sm" title="Delete" style={{ marginLeft: 6, color: 'var(--red-600,#dc2626)' }}>
+                            <Icon name="trash" size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                      {errExpanded === row.id && row.stack && (
+                        <tr>
+                          <td colSpan={6} style={{ background: '#0A1729', padding: 0 }}>
+                            <pre style={{ margin: 0, padding: '14px 18px', color: '#C7D2E0', fontSize: 11.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)', maxHeight: 320, overflow: 'auto' }}>
+                              {row.stack}
+                            </pre>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

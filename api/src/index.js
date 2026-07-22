@@ -31,6 +31,8 @@ import mediaBuyingRoutes from './routes/mediabuying.routes.js';
 import profitRoutes from './routes/profit.routes.js';
 import revenueRoutes from './routes/revenue.routes.js';
 import backupRoutes from './routes/backup.routes.js';
+import errorLogRoutes from './routes/errorlog.routes.js';
+import { logError } from './services/errorLog.service.js';
 import { startBackupScheduler } from './services/backup.service.js';
 import { startDataExportScheduler } from './services/dataExport.service.js';
 
@@ -52,6 +54,32 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
+
+// Capture any 5xx API response into the error log so admins can see failures
+// users hit (Admin → Errors). Wraps res.json to inspect the final status; the
+// controllers mostly handle their own errors and return 500 directly, so a
+// plain error-handling middleware alone would miss them. Skips the reporter
+// endpoints (no loops) and dedupes against the final error middleware below.
+app.use((req, res, next) => {
+  if (!req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/api/errors')) return next();
+  const origJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 500 && !res.locals.__errLogged) {
+      res.locals.__errLogged = true;
+      logError({
+        source: 'backend',
+        message: (body && body.error) || `HTTP ${res.statusCode}`,
+        url: req.originalUrl,
+        method: req.method,
+        statusCode: res.statusCode,
+        user: req.user,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+    return origJson(body);
+  };
+  next();
+});
 
 // API routes under /api prefix
 app.use('/api/auth', authRoutes);
@@ -76,6 +104,7 @@ app.use('/api/media-buying', mediaBuyingRoutes);
 app.use('/api/profit', profitRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/admin/backup', backupRoutes);
+app.use('/api/errors', errorLogRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -99,6 +128,19 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
+  // Log with the full stack, and flag so the res.json wrapper above doesn't
+  // also record it as a second (stackless) row.
+  res.locals.__errLogged = true;
+  logError({
+    source: 'backend',
+    message: err.message || 'Unhandled error',
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method,
+    statusCode: err.status || 500,
+    user: req.user,
+    userAgent: req.headers['user-agent'],
+  });
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production'
       ? 'Internal server error'
