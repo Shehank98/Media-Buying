@@ -32,7 +32,7 @@ function buildRows(r) {
     ['Brand / Campaign', r.brandCampaign || '-'],
     ['Target Group (TG)', r.targetGroup || '-'],
     ['Campaign Period', period],
-    ['Budget', r.budgetPct ? `${r.budgetPct}%` : '-'],
+    ['Budget', [r.budgetPct ? `${r.budgetPct}%` : '', r.budgetAmount ? 'LKR ' + Number(r.budgetAmount).toLocaleString('en-US', { maximumFractionDigits: 2 }) : ''].filter(Boolean).join('  -  ') || '-'],
     ['Medium', (r.mediums || []).join(', ') || '-'],
   ];
   const st = r.stations || {}, dl = r.deliverables || {}, dp = r.daypartMandates || {};

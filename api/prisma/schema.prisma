@@ -964,6 +964,7 @@ model MediaBuyingRequisition {
   campaignStart    DateTime? @map("campaign_start")
   campaignEnd      DateTime? @map("campaign_end")
   budgetPct        Int?      @map("budget_pct") // 100 or 85
+  budgetAmount     Decimal?  @map("budget_amount") @db.Decimal(16, 2)
   mediums          String[]  @default([]) // ['TV','RADIO','PRINT',...]
   stations         Json? // { TV: '...', RADIO: '...', PRINT: '...' }
   buyingProperty   String?   @map("buying_property") // sponsorships / key integrations

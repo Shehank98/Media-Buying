@@ -46,6 +46,14 @@ async function managingHeadForClient(clientId) {
 }
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
+const fmtLKR = (v) => (v == null ? '' : 'LKR ' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+// "100% - LKR 1,000,000" / "85%" / "LKR 1,000,000" / "-"
+function budgetLabel(s) {
+  const parts = [];
+  if (s.budgetPct) parts.push(`${s.budgetPct}%`);
+  if (s.budgetAmount) parts.push(fmtLKR(s.budgetAmount));
+  return parts.join(' - ') || '-';
+}
 
 // Clients the caller may raise a requisition for (their own clients).
 export async function listRequisitionClients(req, res) {
@@ -81,6 +89,7 @@ function shape(r) {
     campaignStart: r.campaignStart,
     campaignEnd: r.campaignEnd,
     budgetPct: r.budgetPct,
+    budgetAmount: r.budgetAmount == null ? null : Number(r.budgetAmount),
     mediums: r.mediums || [],
     stations: r.stations || {},
     buyingProperty: r.buyingProperty || '',
@@ -147,6 +156,7 @@ export async function createRequisition(req, res) {
 
     const mediums = Array.isArray(b.mediums) ? b.mediums.filter((m) => MEDIUMS.includes(m)) : [];
     const budgetPct = [100, 85].includes(parseInt(b.budgetPct)) ? parseInt(b.budgetPct) : null;
+    const budgetAmountNum = b.budgetAmount != null && b.budgetAmount !== '' && !isNaN(Number(b.budgetAmount)) && Number(b.budgetAmount) > 0 ? Number(b.budgetAmount) : null;
     const clean = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
     const created = await prisma.mediaBuyingRequisition.create({
@@ -158,6 +168,7 @@ export async function createRequisition(req, res) {
         campaignStart: b.campaignStart ? new Date(b.campaignStart) : null,
         campaignEnd: b.campaignEnd ? new Date(b.campaignEnd) : null,
         budgetPct,
+        budgetAmount: budgetAmountNum,
         mediums,
         stations: b.stations && typeof b.stations === 'object' ? b.stations : {},
         buyingProperty: clean(b.buyingProperty),
@@ -194,7 +205,7 @@ async function deliver(r) {
     ['Brand / Campaign', s.brandCampaign],
     ['Target Group', s.targetGroup || '-'],
     ['Campaign Period', period],
-    ['Budget', s.budgetPct ? `${s.budgetPct}%` : '-'],
+    ['Budget', budgetLabel(s)],
     ['Medium', s.mediums.join(', ') || '-'],
     ['Deadline', s.deadlineLabel ? `${s.deadlineLabel} (buying unit needs ${s.deadlineLead})` : '-'],
     ['Requested by', `${s.requesterName} (${s.requesterRole})`],

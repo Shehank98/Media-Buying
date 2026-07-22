@@ -2,8 +2,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from './Icon';
 import OrbitLoader from './OrbitLoader';
+import MoneyInput from './MoneyInput';
 import api from '../lib/api';
 import { exportRequisitionPdf } from '../lib/requisitionPdf';
+
+const fmtLKR = (v) => (v == null || v === '' ? '' : 'LKR ' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+const budgetLabel = (r) => [r.budgetPct ? `${r.budgetPct}%` : '', fmtLKR(r.budgetAmount)].filter(Boolean).join(' - ');
 
 const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 const DEADLINES = [
@@ -25,7 +29,7 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'nume
 
 const EMPTY = {
   clientId: '', brandCampaign: '', targetGroup: '', campaignStart: '', campaignEnd: '',
-  budgetPct: '', mediums: [], stations: {}, buyingProperty: '', deliverables: {}, daypartMandates: {},
+  budgetPct: '', budgetAmount: '', mediums: [], stations: {}, buyingProperty: '', deliverables: {}, daypartMandates: {},
   otherNotes: '', discussionPoints: '', deadlineType: '',
 };
 
@@ -117,10 +121,13 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
               <input className="input" value={form.targetGroup} onChange={(e) => set('targetGroup', e.target.value)} placeholder="e.g., Adults 18-45, SEC A/B" style={{ width: '100%' }} />
             </div>
             <div><Label>Budget</Label>
-              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
-                {['100', '85'].map((p) => (
-                  <button type="button" key={p} onClick={() => set('budgetPct', form.budgetPct === p ? '' : p)} style={{ border: 'none', padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: form.budgetPct === p ? 'var(--coral-600)' : '#fff', color: form.budgetPct === p ? '#fff' : 'var(--ink-soft)' }}>{p}%</button>
-                ))}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
+                  {['100', '85'].map((p) => (
+                    <button type="button" key={p} onClick={() => set('budgetPct', form.budgetPct === p ? '' : p)} style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: form.budgetPct === p ? 'var(--coral-600)' : '#fff', color: form.budgetPct === p ? '#fff' : 'var(--ink-soft)' }}>{p}%</button>
+                  ))}
+                </div>
+                <MoneyInput value={form.budgetAmount} onValueChange={(v) => set('budgetAmount', v)} placeholder="Budget amount, e.g. 1,000,000" style={{ flex: 1, minWidth: 160 }} />
               </div>
             </div>
             <div><Label>Campaign Period - start</Label>
@@ -253,7 +260,7 @@ function Detail({ r }) {
     <div>
       <Row label="Target Group (TG)" value={r.targetGroup} />
       <Row label="Campaign Period" value={period} />
-      <Row label="Budget" value={r.budgetPct ? `${r.budgetPct}%` : ''} />
+      <Row label="Budget" value={budgetLabel(r)} />
       <Row label="Medium" value={(r.mediums || []).join(', ')} />
       {(r.mediums || []).map((m) => (r.stations || {})[m] && <Row key={'s' + m} label={`${m} - Stations`} value={r.stations[m]} />)}
       <Row label="Buying Property / Sponsorships" value={r.buyingProperty} />
