@@ -6,6 +6,7 @@ import api from '../lib/api';
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const email = searchParams.get('email');
   const navigate = useNavigate();
 
   const [password, setPassword] = useState('');
@@ -22,7 +23,7 @@ export default function ResetPasswordPage() {
 
     setSubmitting(true);
     try {
-      await api.post('/auth/reset-password', { token, newPassword: password });
+      await api.post('/auth/reset-password', { token, email: email || undefined, newPassword: password });
       navigate('/login', { state: { message: 'Password reset successfully. Please sign in.' }, replace: true });
     } catch (err) {
       setError(err.response?.data?.error || err.response?.data?.message || 'Failed to reset password. The link may have expired.');

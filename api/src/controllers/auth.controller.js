@@ -191,8 +191,8 @@ export async function resetPassword(req, res) {
   try {
     const { token, email, newPassword } = req.body;
 
-    if (!token || !email || !newPassword) {
-      return res.status(400).json({ error: 'Token, email, and new password are required' });
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
     }
     if (String(newPassword).length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -200,14 +200,11 @@ export async function resetPassword(req, res) {
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
-    }
-
+    // Resolve the user from the token itself — the token hash is globally
+    // unique, so the email in the reset link is optional (kept only as an
+    // extra check when present).
     const resetToken = await prisma.passwordResetToken.findFirst({
       where: {
-        userId: user.id,
         tokenHash,
         used: false,
         expiresAt: { gt: new Date() },
@@ -215,6 +212,11 @@ export async function resetPassword(req, res) {
     });
 
     if (!resetToken) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: resetToken.userId } });
+    if (!user || (email && user.email.toLowerCase() !== String(email).toLowerCase())) {
       return res.status(400).json({ error: 'Invalid or expired reset token' });
     }
 
