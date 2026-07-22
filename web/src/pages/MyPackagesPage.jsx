@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Icon from '../components/Icon';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
+import RequisitionsPanel from '../components/RequisitionsPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -163,6 +165,9 @@ function PackageCard({ item, myClients, onResponded }) {
 }
 
 export default function MyPackagesPage() {
+  const { user } = useAuth();
+  const showMbr = ['PLANNER', 'GROUP_HEAD'].includes(user?.role);
+  const [tab, setTab] = useState('inbox');
   const [items, setItems] = useState([]);
   const [myClients, setMyClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +202,17 @@ export default function MyPackagesPage() {
         <div style={{ background: 'var(--red-50,#fef2f2)', border: '1px solid var(--red-200,#fecaca)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red-700,#b91c1c)', marginBottom: 16 }}>{error}</div>
       )}
 
-      {loading ? (
+      {showMbr && (
+        <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
+          {[['inbox', 'Shared with me'], ['mbr', 'Media Buying Requisition']].map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: tab === k ? '#0A1729' : '#fff', color: tab === k ? '#fff' : 'var(--ink-soft)' }}>{lbl}</button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'mbr' && showMbr ? (
+        <RequisitionsPanel mode="mine" />
+      ) : loading ? (
         <OrbitLoader fullHeight label="Loading packages…" />
       ) : items.length === 0 ? (
         <div className="empty-soft">

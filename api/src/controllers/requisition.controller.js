@@ -186,7 +186,8 @@ async function deliver(r) {
   const hub = await managingHeadForClient(r.clientId);
   const s = shape(r);
   const period = (s.campaignStart || s.campaignEnd) ? `${fmtDate(s.campaignStart)} – ${fmtDate(s.campaignEnd)}` : '—';
-  const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/requisitions`;
+  // Buying unit / admins review under Media Packages → Requisitions.
+  const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/packages`;
 
   const details = [
     ['Client', s.clientName + (s.agencyName ? ` (${s.agencyName})` : '')],
@@ -229,20 +230,20 @@ async function deliver(r) {
     console.error('MBR email failed:', e);
   }
 
-  // In-app notifications to all SUPER_ADMINs and the managing Hub.
+  // In-app notifications — admins land on the admin Packages → Requisitions tab,
+  // the Hub on their own Media Packages → Requisitions tab.
   const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
-  const targetIds = new Set(admins.map((a) => a.id));
-  if (hub?.id) targetIds.add(hub.id);
-  targetIds.delete(r.requestedById); // don't notify the requester
-  if (targetIds.size) {
-    await prisma.notification.createMany({
-      data: [...targetIds].map((uid) => ({
-        userId: uid,
-        type: 'REQUISITION',
-        title: 'New Media Buying Requisition',
-        message: `${s.requesterName} raised an MBR for ${s.clientName} — ${s.brandCampaign}`,
-        link: '/requisitions',
-      })),
-    });
+  const title = 'New Media Buying Requisition';
+  const message = `${s.requesterName} raised an MBR for ${s.clientName} — ${s.brandCampaign}`;
+  const notes = [];
+  const seen = new Set([r.requestedById]); // don't notify the requester
+  for (const a of admins) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    notes.push({ userId: a.id, type: 'REQUISITION', title, message, link: '/packages' });
   }
+  if (hub?.id && !seen.has(hub.id)) {
+    notes.push({ userId: hub.id, type: 'REQUISITION', title, message, link: '/my-packages' });
+  }
+  if (notes.length) await prisma.notification.createMany({ data: notes });
 }
