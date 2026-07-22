@@ -911,7 +911,7 @@ export default function ReportsPage() {
         </>
       )}
 
-      {/* groupBy='all' flat detail — load more */}
+      {/* groupBy='all' flat detail - load more */}
       {!loading && source === 'scheduleLogs' && !slServerGroups && rows.length > 0 && flatPage < flatTotalPages && (
         <div style={{ textAlign: 'center', margin: '14px 0' }}>
           <button className="btn btn-ghost btn-sm" onClick={loadFlatMore}>

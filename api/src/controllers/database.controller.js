@@ -22,7 +22,7 @@ const logIncludes = {
 // Whether `user` may see a specific client's schedule-log data. Uses the SAME
 // canonical resolver as the rest of the app (getAccessibleClientIds), so a Hub
 // (GROUP_HEAD) or Desk (PLANNER) sees exactly the clients assigned to them in
-// Admin → Users — team AND direct UserClientAccess assignments — and nothing
+// Admin → Users - team AND direct UserClientAccess assignments - and nothing
 // else. Changing a user's clients in the Users part applies here immediately.
 // Returns the client id when allowed, else null.
 async function resolveClientAccess(user, clientId) {
@@ -391,7 +391,7 @@ export async function getClientTargets(req, res) {
       clientWhere.id = { in: ids.length ? ids : [-1] };
     }
 
-    // Optional agency/client narrowing from the filter bar — intersected with
+    // Optional agency/client narrowing from the filter bar - intersected with
     // the role scope above (AND semantics) so it can only ever restrict, never
     // widen, what the user is allowed to see.
     const reqAgencyId = parseInt(req.query.agencyId) || null;

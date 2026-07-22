@@ -21,7 +21,7 @@ const DAYPART_HINT = {
   TV: 'e.g., 60% Prime Time, 40% Off-Prime', RADIO: 'e.g., Peak Drive times only (6am-10am / 3pm-7pm)',
   PRINT: '', DIGITAL: '', CINEMA: '', OOH: '',
 };
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
 
 const EMPTY = {
   clientId: '', brandCampaign: '', targetGroup: '', campaignStart: '', campaignEnd: '',
@@ -71,7 +71,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
         ...form,
         budgetPct: form.budgetPct ? Number(form.budgetPct) : null,
       });
-      setOkMsg('Requisition submitted — the buying unit has been emailed and notified.');
+      setOkMsg('Requisition submitted - the buying unit has been emailed and notified.');
       setForm(EMPTY);
       load();
       setTab('list');
@@ -123,10 +123,10 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
                 ))}
               </div>
             </div>
-            <div><Label>Campaign Period — start</Label>
+            <div><Label>Campaign Period - start</Label>
               <input className="input" type="date" value={form.campaignStart} onChange={(e) => set('campaignStart', e.target.value)} style={{ width: '100%' }} />
             </div>
-            <div><Label>Campaign Period — end</Label>
+            <div><Label>Campaign Period - end</Label>
               <input className="input" type="date" value={form.campaignEnd} onChange={(e) => set('campaignEnd', e.target.value)} style={{ width: '100%' }} />
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
             </div>
           </div>
 
-          {/* Per-medium detail — stations, deliverables, dayparts */}
+          {/* Per-medium detail - stations, deliverables, dayparts */}
           {form.mediums.map((m) => (
             <div key={m} style={{ border: '1px solid var(--border)', borderRadius: 11, padding: 14, marginBottom: 12, background: 'var(--bg-sunken)' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)', marginBottom: 10 }}>{m}</div>
@@ -163,7 +163,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
           ))}
 
           <div style={{ marginBottom: 14 }}>
-            <Label>Buying Property — Sponsorships / Key Integrations Required</Label>
+            <Label>Buying Property - Sponsorships / Key Integrations Required</Label>
             <textarea className="input" rows={3} value={form.buyingProperty} onChange={(e) => set('buyingProperty', e.target.value)}
               placeholder={'List all requirements, e.g.:\n• Morning Show weather segment sponsorship\n• Specific Prime Time drama program\n• Right-hand page facing editorial in Print'} style={{ width: '100%', resize: 'vertical' }} />
           </div>
@@ -203,7 +203,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
           {loading ? <OrbitLoader label="Loading requisitions…" /> : list.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--muted)' }}>
               <Icon name="file" size={30} style={{ opacity: 0.35, marginBottom: 8 }} />
-              <p style={{ margin: 0 }}>No requisitions {mode === 'all' ? 'have been raised yet.' : 'yet — raise one from the New Requisition tab.'}</p>
+              <p style={{ margin: 0 }}>No requisitions {mode === 'all' ? 'have been raised yet.' : 'yet - raise one from the New Requisition tab.'}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -255,13 +255,13 @@ function Detail({ r }) {
       <Row label="Campaign Period" value={period} />
       <Row label="Budget" value={r.budgetPct ? `${r.budgetPct}%` : ''} />
       <Row label="Medium" value={(r.mediums || []).join(', ')} />
-      {(r.mediums || []).map((m) => (r.stations || {})[m] && <Row key={'s' + m} label={`${m} — Stations`} value={r.stations[m]} />)}
+      {(r.mediums || []).map((m) => (r.stations || {})[m] && <Row key={'s' + m} label={`${m} - Stations`} value={r.stations[m]} />)}
       <Row label="Buying Property / Sponsorships" value={r.buyingProperty} />
-      {(r.mediums || []).map((m) => (r.deliverables || {})[m] && <Row key={'d' + m} label={`${m} — Deliverables`} value={r.deliverables[m]} />)}
-      {(r.mediums || []).map((m) => (r.daypartMandates || {})[m] && <Row key={'p' + m} label={`${m} — Daypart Mandates`} value={r.daypartMandates[m]} />)}
+      {(r.mediums || []).map((m) => (r.deliverables || {})[m] && <Row key={'d' + m} label={`${m} - Deliverables`} value={r.deliverables[m]} />)}
+      {(r.mediums || []).map((m) => (r.daypartMandates || {})[m] && <Row key={'p' + m} label={`${m} - Daypart Mandates`} value={r.daypartMandates[m]} />)}
       <Row label="Other" value={r.otherNotes} />
       <Row label="Discussion Points" value={r.discussionPoints} />
-      <Row label="Deadline" value={r.deadlineLabel ? `${r.deadlineLabel} — buying unit needs ${r.deadlineLead}` : ''} />
+      <Row label="Deadline" value={r.deadlineLabel ? `${r.deadlineLabel} - buying unit needs ${r.deadlineLead}` : ''} />
       <Row label="Requested by" value={`${r.requesterName}${r.requesterRole ? ` (${r.requesterRole})` : ''}`} />
     </div>
   );

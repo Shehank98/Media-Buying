@@ -418,7 +418,7 @@ export default function ClientDashboardPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <div>
               <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>Channel Directory</h3>
-              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card. Pick a medium tab — {channels.length} channels</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card. Pick a medium tab - {channels.length} channels</div>
             </div>
             <div style={{ position: 'relative', minWidth: 220 }}>
               <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#93A0B5', pointerEvents: 'none', display: 'flex' }}><Icon name="search" size={15} /></span>

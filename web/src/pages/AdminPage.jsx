@@ -12,7 +12,7 @@ const MEDIUMS = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 
 const round2 = (v) => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 
-// Full LKR with thousands separators (no M/K abbreviation) — used where the
+// Full LKR with thousands separators (no M/K abbreviation) - used where the
 // exact figure must be readable/re-enterable, e.g. a disputed revenue amount.
 const fmtLKRFull = (v) => (v == null || v === '' ? '-' : 'LKR ' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
@@ -483,7 +483,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         const rawCh = channelsRes.value.data.channelMasters || channelsRes.value.data;
         setChannelMasters(Array.isArray(rawCh) ? rawCh : []);
       }
-      // Recently-deleted channels (for the restore panel) — best-effort.
+      // Recently-deleted channels (for the restore panel) - best-effort.
       api.get('/masterdata/channel-masters/deleted')
         .then((r) => setDeletedChannels(Array.isArray(r.data.channelMasters) ? r.data.channelMasters : []))
         .catch(() => {});
@@ -2418,7 +2418,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       >
                         <Icon name={ch.isActive === false ? 'check' : 'eye'} size={15} />
                       </button>
-                      <button className="act-btn" onClick={() => confirmDelete(ch, 'channels')} title="Delete (recoverable — moves to Recently deleted)" style={{ color: 'var(--red-600,#dc2626)' }}>
+                      <button className="act-btn" onClick={() => confirmDelete(ch, 'channels')} title="Delete (recoverable - moves to Recently deleted)" style={{ color: 'var(--red-600,#dc2626)' }}>
                         <Icon name="trash" size={15} />
                       </button>
                     </div>
@@ -2439,7 +2439,7 @@ export default function AdminPage({ initialTab = 'users' }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <Icon name="trash" size={15} style={{ color: 'var(--muted)' }} />
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink)' }}>Recently deleted</span>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>({deletedChannels.length}) — restore any channel here</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>({deletedChannels.length}) - restore any channel here</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {deletedChannels.map((ch) => (
@@ -3200,7 +3200,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                   <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: vb.bg, color: vb.fg }}>{vb.label}</span>
                                   {(c.verifyStatus === 'DISPUTED' || c.verifyStatus === 'VERIFIED') && (
-                                    <button className="link-btn" title="Undo — reset back to Pending" onClick={() => resetVerification(c.clientId)}
+                                    <button className="link-btn" title="Undo - reset back to Pending" onClick={() => resetVerification(c.clientId)}
                                       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#9A5B00', fontWeight: 600, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                       <Icon name="history" size={12} /> Reset
                                     </button>
@@ -3457,7 +3457,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <tr key={e.id}>
                             <td className="strong">{e.channel}</td>
                             <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(e.amount)}</td>
-                            <td style={{ color: 'var(--muted)', fontSize: 12.5 }}>{e.reason || '—'}</td>
+                            <td style={{ color: 'var(--muted)', fontSize: 12.5 }}>{e.reason || '-'}</td>
                             <td style={{ textAlign: 'right' }}>
                               <button className="btn btn-ghost btn-sm" onClick={() => deleteAorEntry(e.id)} title="Delete"><Icon name="trash" size={14} /></button>
                             </td>
@@ -3481,7 +3481,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 return (
                   <button key={m} onClick={() => setAorMonth(i + 1)} style={{ textAlign: 'left', cursor: 'pointer', background: on ? '#FCEEE6' : '#F7F8FA', border: `1px solid ${on ? '#E85D24' : 'var(--border)'}`, borderRadius: 9, padding: '8px 10px' }}>
                     <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>{m}</div>
-                    <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: t ? 'var(--ink)' : 'var(--muted)' }}>{t ? fmtLKR(t) : '—'}</div>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: t ? 'var(--ink)' : 'var(--muted)' }}>{t ? fmtLKR(t) : '-'}</div>
                   </button>
                 );
               })}

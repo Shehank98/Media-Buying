@@ -1078,8 +1078,8 @@ export async function listGroupRevenue(req, res) {
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
       prisma.yearRevenueTarget.findUnique({ where: { year } }),
-      // EVERY client for the admin by-client revenue grid — including inactive
-      // ones (e.g. a paused account like Mobitel) and ones with no Hub head — so
+      // EVERY client for the admin by-client revenue grid - including inactive
+      // ones (e.g. a paused account like Mobitel) and ones with no Hub head - so
       // the admin can always enter revenue. Inactive/Unassigned are flagged in the
       // response; Forecasting + Rev Verification stay active+assigned only.
       prisma.client.findMany({
@@ -1150,7 +1150,7 @@ export async function setGroupRevenue(req, res) {
     const heads = await prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true } });
     const headIds = new Set(heads.map((h) => h.id));
 
-    // Revenue figures may be NEGATIVE (e.g. a credit/adjustment) or 0 — those are
+    // Revenue figures may be NEGATIVE (e.g. a credit/adjustment) or 0 - those are
     // real, stored values. Only a BLANK field clears the row. NaN → clear.
     const keepNum = (v) => {
       if (v === '' || v == null) return null;

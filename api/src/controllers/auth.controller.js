@@ -200,7 +200,7 @@ export async function resetPassword(req, res) {
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    // Resolve the user from the token itself — the token hash is globally
+    // Resolve the user from the token itself - the token hash is globally
     // unique, so the email in the reset link is optional (kept only as an
     // extra check when present).
     const resetToken = await prisma.passwordResetToken.findFirst({
@@ -250,7 +250,7 @@ export async function getProfile(req, res) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // What this user can reach — assigned agencies, accessible clients, and teams.
+    // What this user can reach - assigned agencies, accessible clients, and teams.
     const [agencyAccess, memberTeams, headedTeams] = await Promise.all([
       prisma.userAgencyAccess.findMany({ where: { userId: user.id }, include: { agency: { select: { id: true, name: true } } } }),
       prisma.teamMember.findMany({ where: { userId: user.id }, include: { team: { select: { id: true, name: true, headUserId: true, agency: { select: { name: true } } } } } }),

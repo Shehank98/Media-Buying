@@ -13,7 +13,7 @@ const DEADLINES = {
   'new-client': { label: 'New client', lead: 'one to two weeks' },
 };
 
-// The Group Head (Hub) who manages a client — agency-aware, mirroring
+// The Group Head (Hub) who manages a client - agency-aware, mirroring
 // accountManagerByClient but returning the user (id/name/email) so we can CC them.
 async function managingHeadForClient(clientId) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { agencyId: true } });
@@ -45,7 +45,7 @@ async function managingHeadForClient(clientId) {
   return direct[0]?.user || null;
 }
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
 
 // Clients the caller may raise a requisition for (their own clients).
 export async function listRequisitionClients(req, res) {
@@ -96,7 +96,7 @@ function shape(r) {
   };
 }
 
-// GET /requisitions — SUPER_ADMIN sees all; others see only their own.
+// GET /requisitions - SUPER_ADMIN sees all; others see only their own.
 export async function listRequisitions(req, res) {
   try {
     const user = req.user;
@@ -130,7 +130,7 @@ export async function getRequisition(req, res) {
   }
 }
 
-// POST /requisitions — Desk (PLANNER) or Hub (GROUP_HEAD) raises an MBR.
+// POST /requisitions - Desk (PLANNER) or Hub (GROUP_HEAD) raises an MBR.
 export async function createRequisition(req, res) {
   try {
     const user = req.user;
@@ -185,27 +185,27 @@ export async function createRequisition(req, res) {
 async function deliver(r) {
   const hub = await managingHeadForClient(r.clientId);
   const s = shape(r);
-  const period = (s.campaignStart || s.campaignEnd) ? `${fmtDate(s.campaignStart)} – ${fmtDate(s.campaignEnd)}` : '—';
+  const period = (s.campaignStart || s.campaignEnd) ? `${fmtDate(s.campaignStart)} – ${fmtDate(s.campaignEnd)}` : '-';
   // Buying unit / admins review under Media Packages → Requisitions.
   const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/packages`;
 
   const details = [
     ['Client', s.clientName + (s.agencyName ? ` (${s.agencyName})` : '')],
     ['Brand / Campaign', s.brandCampaign],
-    ['Target Group', s.targetGroup || '—'],
+    ['Target Group', s.targetGroup || '-'],
     ['Campaign Period', period],
-    ['Budget', s.budgetPct ? `${s.budgetPct}%` : '—'],
-    ['Medium', s.mediums.join(', ') || '—'],
-    ['Deadline', s.deadlineLabel ? `${s.deadlineLabel} (buying unit needs ${s.deadlineLead})` : '—'],
+    ['Budget', s.budgetPct ? `${s.budgetPct}%` : '-'],
+    ['Medium', s.mediums.join(', ') || '-'],
+    ['Deadline', s.deadlineLabel ? `${s.deadlineLabel} (buying unit needs ${s.deadlineLead})` : '-'],
     ['Requested by', `${s.requesterName} (${s.requesterRole})`],
   ];
   for (const m of s.mediums) {
-    if (s.stations[m]) details.push([`${m} — Channels/Stations`, s.stations[m]]);
+    if (s.stations[m]) details.push([`${m} - Channels/Stations`, s.stations[m]]);
   }
   if (s.buyingProperty) details.push(['Buying Property / Sponsorships', s.buyingProperty]);
   for (const m of s.mediums) {
-    if (s.deliverables[m]) details.push([`${m} — Deliverables`, s.deliverables[m]]);
-    if (s.daypartMandates[m]) details.push([`${m} — Daypart Mandates`, s.daypartMandates[m]]);
+    if (s.deliverables[m]) details.push([`${m} - Deliverables`, s.deliverables[m]]);
+    if (s.daypartMandates[m]) details.push([`${m} - Daypart Mandates`, s.daypartMandates[m]]);
   }
   if (s.otherNotes) details.push(['Other', s.otherNotes]);
   if (s.discussionPoints) details.push(['Discussion Points', s.discussionPoints]);
@@ -230,11 +230,11 @@ async function deliver(r) {
     console.error('MBR email failed:', e);
   }
 
-  // In-app notifications — admins land on the admin Packages → Requisitions tab,
+  // In-app notifications - admins land on the admin Packages → Requisitions tab,
   // the Hub on their own Media Packages → Requisitions tab.
   const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
   const title = 'New Media Buying Requisition';
-  const message = `${s.requesterName} raised an MBR for ${s.clientName} — ${s.brandCampaign}`;
+  const message = `${s.requesterName} raised an MBR for ${s.clientName} - ${s.brandCampaign}`;
   const notes = [];
   const seen = new Set([r.requestedById]); // don't notify the requester
   for (const a of admins) {

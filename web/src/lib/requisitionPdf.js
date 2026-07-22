@@ -1,7 +1,7 @@
 // Branded PDF export for a Media Buying Requisition (MBR).
 // Loads the Ogilvy Orbit logo from /orbit-logo.png for the header.
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
 
 async function loadLogo() {
   try {
@@ -25,26 +25,26 @@ const DEADLINES = {
 
 // Build the label/value rows shown in the PDF (mirrors the email details).
 function buildRows(r) {
-  const period = (r.campaignStart || r.campaignEnd) ? `${fmtDate(r.campaignStart)}  to  ${fmtDate(r.campaignEnd)}` : '—';
+  const period = (r.campaignStart || r.campaignEnd) ? `${fmtDate(r.campaignStart)}  to  ${fmtDate(r.campaignEnd)}` : '-';
   const rows = [
     ['Date', fmtDate(r.createdAt)],
     ['Client', r.clientName + (r.agencyName ? `  (${r.agencyName})` : '')],
-    ['Brand / Campaign', r.brandCampaign || '—'],
-    ['Target Group (TG)', r.targetGroup || '—'],
+    ['Brand / Campaign', r.brandCampaign || '-'],
+    ['Target Group (TG)', r.targetGroup || '-'],
     ['Campaign Period', period],
-    ['Budget', r.budgetPct ? `${r.budgetPct}%` : '—'],
-    ['Medium', (r.mediums || []).join(', ') || '—'],
+    ['Budget', r.budgetPct ? `${r.budgetPct}%` : '-'],
+    ['Medium', (r.mediums || []).join(', ') || '-'],
   ];
   const st = r.stations || {}, dl = r.deliverables || {}, dp = r.daypartMandates || {};
-  (r.mediums || []).forEach((m) => { if (st[m]) rows.push([`${m} — Channels / Stations / Publications`, st[m]]); });
+  (r.mediums || []).forEach((m) => { if (st[m]) rows.push([`${m} - Channels / Stations / Publications`, st[m]]); });
   if (r.buyingProperty) rows.push(['Buying Property / Sponsorships / Key Integrations', r.buyingProperty]);
-  (r.mediums || []).forEach((m) => { if (dl[m]) rows.push([`${m} — Deliverables & Specifications`, dl[m]]); });
-  (r.mediums || []).forEach((m) => { if (dp[m]) rows.push([`${m} — Daypart Mandates`, dp[m]]); });
+  (r.mediums || []).forEach((m) => { if (dl[m]) rows.push([`${m} - Deliverables & Specifications`, dl[m]]); });
+  (r.mediums || []).forEach((m) => { if (dp[m]) rows.push([`${m} - Daypart Mandates`, dp[m]]); });
   if (r.otherNotes) rows.push(['Other', r.otherNotes]);
   if (r.discussionPoints) rows.push(['Discussion Points & Special Instructions', r.discussionPoints]);
   const dead = DEADLINES[r.deadlineType];
-  rows.push(['Deadline', dead ? `${dead.label} — buying unit needs ${dead.lead}` : '—']);
-  rows.push(['Requested by', `${r.requesterName || '—'}${r.requesterRole ? ` (${r.requesterRole})` : ''}`]);
+  rows.push(['Deadline', dead ? `${dead.label} - buying unit needs ${dead.lead}` : '-']);
+  rows.push(['Requested by', `${r.requesterName || '-'}${r.requesterRole ? ` (${r.requesterRole})` : ''}`]);
   return rows;
 }
 

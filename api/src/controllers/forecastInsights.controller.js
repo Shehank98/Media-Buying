@@ -120,7 +120,7 @@ export async function accountManagerByClient(clientIds) {
   // Direct assignments per client (most-recent first). Direct UserClientAccess
   // (the Users-tab "assign client to this head" action) is authoritative in the
   // current workflow, but only for a head who actually has access to the client's
-  // CURRENT agency — a stale assignment left over from the client's previous
+  // CURRENT agency - a stale assignment left over from the client's previous
   // agency must not win, otherwise a reassigned client keeps showing under its old head.
   const directByClient = new Map();
   for (const ua of directAccess) {

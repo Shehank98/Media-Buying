@@ -4,7 +4,7 @@ import { listRevenueVerification, submitRevenueVerification, getPendingRevenueVe
 
 const router = Router();
 
-// Rev Verification (Spend Analytics) — group heads verify their clients' finance
+// Rev Verification (Spend Analytics) - group heads verify their clients' finance
 // revenue figure; SUPER_ADMIN can see/verify across all clients.
 router.use(authenticate, requireRole('GROUP_HEAD', 'SUPER_ADMIN'));
 

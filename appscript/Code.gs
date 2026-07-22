@@ -356,7 +356,7 @@ function sendRequisitionEmail(data) {
   var cc      = (data.cc || []).filter(function (e) { return e && e !== to; });
   var details = data.details || [];
   var subject = "Media Buying Requisition: " + (data.clientName || "") +
-                (data.brandCampaign ? " — " + data.brandCampaign : "");
+                (data.brandCampaign ? " - " + data.brandCampaign : "");
 
   var rows = "";
   for (var i = 0; i < details.length; i++) {
@@ -373,7 +373,7 @@ function sendRequisitionEmail(data) {
     bodyOpen() +
       '<p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.7;">' +
         'A Media Buying Requisition (MBR) has been raised' + (data.clientName ? ' for <strong>' + escHtml(data.clientName) + '</strong>' : '') + '. ' +
-        'The full details are below — open Ogilvy Orbit to review or export the sheet.' +
+        'The full details are below - open Ogilvy Orbit to review or export the sheet.' +
       '</p>' +
       '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:26px;border-collapse:separate;overflow:hidden;">' +
         rows +

@@ -393,7 +393,7 @@ input, select, textarea { font-family: inherit; }
 /* multi-select chips */
 .chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 9px; min-height: 44px; background: #fff; }
 /* Toggle chips (client / agency / member pickers): unselected reads as a light
-   "add me" outline, selected is a filled coral pill with a check — so it's
+   "add me" outline, selected is a filled coral pill with a check - so it's
    obvious at a glance which are picked. */
 .chip {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer;

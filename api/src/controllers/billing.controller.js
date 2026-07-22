@@ -6,11 +6,11 @@ import prisma from '../utils/prisma.js';
 //
 // The "Revenue by billing" tab of the Revenue page. Mirrors the schedule-value
 // Profit tab's layout, but every figure comes from admin-entered per-client
-// billing revenue — ClientRevenue.amount ("Revenue (LKR)" in Admin → Group
+// billing revenue - ClientRevenue.amount ("Revenue (LKR)" in Admin → Group
 // Revenue → By client). Revenue-only: no commission/profit/margin concept.
 //
 // Buckets are by ClientRevenue.month within a calendar year. Amounts may be
-// negative (credits/adjustments) or 0 — totals sum them NET. Agency attribution
+// negative (credits/adjustments) or 0 - totals sum them NET. Agency attribution
 // uses the client's CURRENT agency (billing is admin-entered, not snapshotted).
 // SUPER_ADMIN only (enforced on the route).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -134,8 +134,8 @@ export async function getBillingByClient(req, res) {
 }
 
 // GET /api/profit/billing/aor-monthly - company-wide AOR revenue per month for the
-// year (from admin-entered AorRevenue lines). Not client/agency scoped — AOR has no
-// client link — so only the year filter applies. Feeds the stacked AOR series on the
+// year (from admin-entered AorRevenue lines). Not client/agency scoped - AOR has no
+// client link - so only the year filter applies. Feeds the stacked AOR series on the
 // Monthly Revenue chart and the "Total AOR Revenue" card.
 export async function getAorMonthly(req, res) {
   try {

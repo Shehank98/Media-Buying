@@ -448,7 +448,7 @@ export async function getMediumSplit(req, res) {
     const lyStart = `${yr - 1}-01`;                               // last year Jan
     const lyEnd = `${yr - 1}-${String(mo).padStart(2, '0')}`;     // last year, same month
     const pYm = prevMonth(ym);                                    // previous month (for MoM)
-    // Prior months THIS year (Jan..month-1) — for the "vs Jan–May average" compare.
+    // Prior months THIS year (Jan..month-1) - for the "vs Jan–May average" compare.
     const priorMonthsCount = mo - 1;
     const priorEnd = priorMonthsCount > 0 ? `${yr}-${String(mo - 1).padStart(2, '0')}` : null;
 

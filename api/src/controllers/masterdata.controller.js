@@ -230,7 +230,7 @@ export async function mergeChannelMasters(req, res) {
     if (!target) return res.status(404).json({ error: 'Target channel master not found' });
 
     // Merge: re-point EVERY reference from source → target, then DELETE the
-    // source channel master outright. Deactivating it was not enough — the seed
+    // source channel master outright. Deactivating it was not enough - the seed
     // re-upserts the master list by name on every deploy and would reactivate a
     // merely-deactivated source, so the old channel kept reappearing in the
     // Admin Channels list. Deleting it (with the source name preserved as an
@@ -267,7 +267,7 @@ export async function mergeChannelMasters(req, res) {
 
       // Monthly forecasts. Unique is [year, month, clientId, channelMasterId], so
       // re-pointing can collide with an existing target forecast for the same
-      // client/month — fold those by summing the amount, else just re-point.
+      // client/month - fold those by summing the amount, else just re-point.
       const srcForecasts = await tx.monthlyForecast.findMany({ where: { channelMasterId: sid } });
       if (srcForecasts.length) {
         const tgtForecasts = await tx.monthlyForecast.findMany({
@@ -343,8 +343,8 @@ export async function deleteChannelMaster(req, res) {
     const existing = await prisma.channelMaster.findUnique({ where: { id }, select: { id: true, isDeleted: true } });
     if (!existing || existing.isDeleted) return res.status(404).json({ error: 'Channel master not found' });
 
-    // Block only on LIVE usage — active (non-deleted) schedule logs and client
-    // channels — matching the "logs" count shown in the admin list (which is
+    // Block only on LIVE usage - active (non-deleted) schedule logs and client
+    // channels - matching the "logs" count shown in the admin list (which is
     // also non-deleted only). Soft-deleted logs (left behind by a deleted upload
     // batch) still physically reference the channel but shouldn't stop a delete.
     const [activeLogCount, channelCount] = await Promise.all([
@@ -358,7 +358,7 @@ export async function deleteChannelMaster(req, res) {
       });
     }
 
-    // Soft delete (recoverable) — the channel drops out of every picker/list but
+    // Soft delete (recoverable) - the channel drops out of every picker/list but
     // its record and any references stay put, so it can be restored from Admin →
     // Channels → Recently deleted. Nothing is physically removed.
     await prisma.channelMaster.update({

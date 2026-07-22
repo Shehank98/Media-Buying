@@ -1652,7 +1652,7 @@ function RevVerificationModal({ user, onClose }) {
                                 Dispute
                               </button>
                               {(c.verifyStatus === 'DISPUTED' || c.verifyStatus === 'VERIFIED') && (
-                                <button className="btn btn-sm btn-ghost" title="Undo — reset this row back to Pending" onClick={() => submit(c.clientId, 'reset')} disabled={busyId === c.clientId}
+                                <button className="btn btn-sm btn-ghost" title="Undo - reset this row back to Pending" onClick={() => submit(c.clientId, 'reset')} disabled={busyId === c.clientId}
                                   style={{ color: '#9A5B00' }}>
                                   <Icon name="history" size={13} /> Reset
                                 </button>

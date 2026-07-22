@@ -647,7 +647,7 @@ export async function exportScheduleLogs(req, res) {
       if (monthTo) where.scheduleMonth.lte = monthTo;
     }
 
-    // Grand totals via a SQL aggregate — fast and correct even for tens of
+    // Grand totals via a SQL aggregate - fast and correct even for tens of
     // thousands of rows (no need to pull every row into memory to sum them).
     const agg = await prisma.scheduleLog.aggregate({
       where, _count: true, _sum: { scheduleValue: true, scheduleValueWithVat: true },
@@ -700,7 +700,7 @@ export async function exportScheduleLogs(req, res) {
         });
       }
 
-      // Grouped subtotals via SQL groupBy — one small row per agency/client/
+      // Grouped subtotals via SQL groupBy - one small row per agency/client/
       // channel. The heavy row detail loads lazily when a group is expanded.
       const dimField = groupBy === 'agency' ? 'agencyId' : groupBy === 'client' ? 'clientId' : 'channelMasterId';
       const gr = await prisma.scheduleLog.groupBy({
@@ -1030,7 +1030,7 @@ export async function mediaGroupReport(req, res) {
     const { mediaGroup, agencyId, clientId, channelMasterId, monthFrom, monthTo, format = 'json' } = req.query;
 
     // Base scope (role + optional agency + month range), WITHOUT the media-group
-    // filter — used both for the main fetch and for the available-groups picker.
+    // filter - used both for the main fetch and for the available-groups picker.
     const scopeWhere = { isDeleted: false };
 
     if (req.user.role === 'MANAGER') {
@@ -1068,7 +1068,7 @@ export async function mediaGroupReport(req, res) {
       .map((g) => ({ name: g.mediaGroup || 'Unknown', value: Number(g._sum.scheduleValue) || 0 }))
       .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 
-    // Media-group-scoped fetch (BEFORE channel/client filters) — used to build the
+    // Media-group-scoped fetch (BEFORE channel/client filters) - used to build the
     // channel + client filter pickers and then filtered in JS for the report body.
     const mgWhere = { ...scopeWhere };
     if (mediaGroup) mgWhere.mediaGroup = mediaGroup;
@@ -1262,7 +1262,7 @@ export async function mediaGroupReport(req, res) {
       // 1) Summary sheet
       const summary = workbook.addWorksheet('Summary');
       summary.mergeCells('A1:D1');
-      summary.getCell('A1').value = `Media Group Report — ${label}`;
+      summary.getCell('A1').value = `Media Group Report - ${label}`;
       summary.getCell('A1').font = { bold: true, size: 15, color: { argb: `FF${NAVY_BG}` } };
       const metaLines = [
         `Generated: ${dateStr}`,

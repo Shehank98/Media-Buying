@@ -5,7 +5,7 @@ import prisma from '../utils/prisma.js';
 //
 // Recommends the "90%-safe" yearly spend commitment for a media group / channel
 // / overall scope: the amount you'll clear ~90% of the time, so a missed-discount
-// penalty is very unlikely. Phase-1 method — pure statistics over ScheduleLog, no
+// penalty is very unlikely. Phase-1 method - pure statistics over ScheduleLog, no
 // external ML service:
 //   1. Build the monthly spend series per scope from ScheduleLog (2022→now).
 //   2. Take each PAST full year's total; derive year-over-year growth rates.
@@ -16,7 +16,7 @@ import prisma from '../utils/prisma.js';
 //   5. Seasonal profile (share of a year's spend per month) → a monthly "safe
 //      path" and a live probability of clearing the commitment given YTD.
 //   6. Walk-forward backtest: for each past year, what P10 WOULD have been
-//      (using only prior data) vs what actually happened — proves the 90% holds.
+//      (using only prior data) vs what actually happened - proves the 90% holds.
 //
 // Every number the dashboard shows is derived here so the UI can explain it.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,7 +50,7 @@ function forecastAnnual(fullTotals, gap = 1, n = N_MAIN) {
   if (!fullTotals.length) return null;
   const base = fullTotals[fullTotals.length - 1];
   if (fullTotals.length === 1) {
-    // No growth history — use a symmetric ±15% band around the single year.
+    // No growth history - use a symmetric ±15% band around the single year.
     return { p10: round2(base * 0.85), p50: round2(base), p90: round2(base * 1.15), method: 'single-year', growth: [], sims: null };
   }
   const growth = [];
@@ -190,7 +190,7 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
 
   // Current-year actuals + monthly safe path. "monthsElapsed" = the last month
   // that actually HAS data in the target year (data usually lags the calendar),
-  // capped at the current calendar month — so pacing isn't dragged down by a
+  // capped at the current calendar month - so pacing isn't dragged down by a
   // not-yet-uploaded month.
   let lastDataMonth = 0;
   if (byYm[targetYear]) for (let m = 1; m <= 12; m++) if (byYm[targetYear][m] != null) lastDataMonth = m;
@@ -265,7 +265,7 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
     probability, verdict,
   };
 
-  // Probability of clearing any candidate target — powers the "how likely" curve.
+  // Probability of clearing any candidate target - powers the "how likely" curve.
   const curveDist = finalSims.length ? finalSims : (forecast?.sims ? forecast.sims.slice().sort((a, b) => a - b) : []);
   let probCurve = [];
   if (curveDist.length > 1) {
@@ -279,12 +279,12 @@ function analyzeScope(rows, targetYear, currentYear, currentMonth, targetAmount 
   }
   const projection = { booked: ytd, remaining: round2(Math.max(0, projectedTotal - ytd)), projectedTotal };
 
-  // Target produced at each safety level (same forecast distribution) — the
+  // Target produced at each safety level (same forecast distribution) - the
   // confidence-vs-target trade-off ("how safe vs how big").
   const CONF_LEVELS = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
   const confidenceCurve = forecast ? CONF_LEVELS.map((c) => ({ confidence: c, amount: commitAtConf(forecast, c) })) : [];
 
-  // Histogram of simulated next-year outcomes — the spread of where we could land.
+  // Histogram of simulated next-year outcomes - the spread of where we could land.
   let outcomeHistogram = [];
   if (curveDist.length > 1) {
     const lo = quantile(curveDist, 0.01), hi = quantile(curveDist, 0.99);
@@ -400,7 +400,7 @@ export async function getCommitmentPlanner(req, res) {
       }
     }
 
-    // Children (sub-entities) — each with its own P10/P50 so commitments roll up.
+    // Children (sub-entities) - each with its own P10/P50 so commitments roll up.
     let children = [];
     let childLevelLabel = '';
     if (level === 'overall') {
