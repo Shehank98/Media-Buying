@@ -54,6 +54,14 @@ function budgetLabel(s) {
   if (s.budgetAmount) parts.push(fmtLKR(s.budgetAmount));
   return parts.join(' - ') || '-';
 }
+// "Annual buy - by 20 Aug 2026 (buying unit needs two weeks)"
+function deadlineText(s) {
+  const parts = [];
+  if (s.deadlineLabel) parts.push(s.deadlineLabel);
+  if (s.deadlineDate) parts.push(`by ${fmtDate(s.deadlineDate)}`);
+  const base = parts.join(' - ');
+  return base ? (s.deadlineLead ? `${base} (buying unit needs ${s.deadlineLead})` : base) : '-';
+}
 
 // Clients the caller may raise a requisition for (their own clients).
 export async function listRequisitionClients(req, res) {
@@ -95,11 +103,11 @@ function shape(r) {
     buyingProperty: r.buyingProperty || '',
     deliverables: r.deliverables || {},
     daypartMandates: r.daypartMandates || {},
-    otherNotes: r.otherNotes || '',
     discussionPoints: r.discussionPoints || '',
     deadlineType: r.deadlineType || '',
     deadlineLabel: DEADLINES[r.deadlineType]?.label || '',
     deadlineLead: DEADLINES[r.deadlineType]?.lead || '',
+    deadlineDate: r.deadlineDate,
     status: r.status,
     createdAt: r.createdAt,
   };
@@ -189,9 +197,9 @@ export async function createRequisition(req, res) {
         buyingProperty: clean(b.buyingProperty),
         deliverables: b.deliverables && typeof b.deliverables === 'object' ? b.deliverables : {},
         daypartMandates: b.daypartMandates && typeof b.daypartMandates === 'object' ? b.daypartMandates : {},
-        otherNotes: clean(b.otherNotes),
         discussionPoints: clean(b.discussionPoints),
         deadlineType: DEADLINES[b.deadlineType] ? b.deadlineType : null,
+        deadlineDate: b.deadlineDate ? new Date(b.deadlineDate) : null,
       },
       include: { client: { select: { name: true, agency: { select: { name: true } } } }, requester: { select: { name: true, role: true } } },
     });
@@ -222,7 +230,7 @@ async function deliver(r) {
     ['Campaign Period', period],
     ['Budget', budgetLabel(s)],
     ['Medium', s.mediums.join(', ') || '-'],
-    ['Deadline', s.deadlineLabel ? `${s.deadlineLabel} (buying unit needs ${s.deadlineLead})` : '-'],
+    ['Deadline', deadlineText(s)],
     ['Requested by', `${s.requesterName} (${s.requesterRole})`],
   ];
   for (const m of s.mediums) {
@@ -233,7 +241,6 @@ async function deliver(r) {
     if (s.deliverables[m]) details.push([`${m} - Deliverables`, s.deliverables[m]]);
     if (s.daypartMandates[m]) details.push([`${m} - Daypart Mandates`, s.daypartMandates[m]]);
   }
-  if (s.otherNotes) details.push(['Other', s.otherNotes]);
   if (s.discussionPoints) details.push(['Discussion Points', s.discussionPoints]);
 
   const cc = [MBR_CC];

@@ -40,10 +40,13 @@ function buildRows(r) {
   if (r.buyingProperty) rows.push(['Buying Property / Sponsorships / Key Integrations', r.buyingProperty]);
   (r.mediums || []).forEach((m) => { if (dl[m]) rows.push([`${m} - Deliverables & Specifications`, dl[m]]); });
   (r.mediums || []).forEach((m) => { if (dp[m]) rows.push([`${m} - Daypart Mandates`, dp[m]]); });
-  if (r.otherNotes) rows.push(['Other', r.otherNotes]);
   if (r.discussionPoints) rows.push(['Discussion Points & Special Instructions', r.discussionPoints]);
   const dead = DEADLINES[r.deadlineType];
-  rows.push(['Deadline', dead ? `${dead.label} - buying unit needs ${dead.lead}` : '-']);
+  const dParts = [];
+  if (dead) dParts.push(dead.label);
+  if (r.deadlineDate) dParts.push(`by ${fmtDate(r.deadlineDate)}`);
+  const dBase = dParts.join(' - ');
+  rows.push(['Deadline', dBase ? (dead ? `${dBase} (buying unit needs ${dead.lead})` : dBase) : '-']);
   rows.push(['Requested by', `${r.requesterName || '-'}${r.requesterRole ? ` (${r.requesterRole})` : ''}`]);
   return rows;
 }

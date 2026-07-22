@@ -26,11 +26,18 @@ const DAYPART_HINT = {
   PRINT: '', DIGITAL: '', CINEMA: '', OOH: '',
 };
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
+const deadlineText = (r) => {
+  const parts = [];
+  if (r.deadlineLabel) parts.push(r.deadlineLabel);
+  if (r.deadlineDate) parts.push(`by ${fmtDate(r.deadlineDate)}`);
+  const base = parts.join(' - ');
+  return base ? (r.deadlineLead ? `${base} (buying unit needs ${r.deadlineLead})` : base) : '';
+};
 
 const EMPTY = {
   clientId: '', brandCampaign: '', targetGroup: '', campaignStart: '', campaignEnd: '',
   budgetPct: '', budgetAmount: '', mediums: [], stations: {}, buyingProperty: '', deliverables: {}, daypartMandates: {},
-  otherNotes: '', discussionPoints: '', deadlineType: '',
+  discussionPoints: '', deadlineType: '', deadlineDate: '',
 };
 
 function Label({ children, req }) {
@@ -190,18 +197,14 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
               placeholder={'List all requirements, e.g.:\n• Morning Show weather segment sponsorship\n• Specific Prime Time drama program\n• Right-hand page facing editorial in Print'} style={{ width: '100%', resize: 'vertical' }} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div><Label>Other</Label>
-              <textarea className="input" rows={2} value={form.otherNotes} onChange={(e) => set('otherNotes', e.target.value)} placeholder="Any other buying requirement" style={{ width: '100%', resize: 'vertical' }} />
-            </div>
-            <div><Label>Discussion Points &amp; Special Instructions</Label>
-              <textarea className="input" rows={2} value={form.discussionPoints} onChange={(e) => set('discussionPoints', e.target.value)} placeholder="Notes for the buying unit" style={{ width: '100%', resize: 'vertical' }} />
-            </div>
+          <div style={{ marginBottom: 14 }}>
+            <Label>Discussion Points &amp; Special Instructions</Label>
+            <textarea className="input" rows={2} value={form.discussionPoints} onChange={(e) => set('discussionPoints', e.target.value)} placeholder="Notes for the buying unit" style={{ width: '100%', resize: 'vertical' }} />
           </div>
 
           <div style={{ marginBottom: 18 }}>
             <Label>Deadline</Label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'stretch' }}>
               {DEADLINES.map((d) => {
                 const on = form.deadlineType === d.key;
                 return (
@@ -212,6 +215,10 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
                   </button>
                 );
               })}
+              <div style={{ border: '1px solid var(--border-strong)', borderRadius: 10, padding: '8px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 190 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 4 }}>Deadline date</div>
+                <input className="input" type="date" value={form.deadlineDate} onChange={(e) => set('deadlineDate', e.target.value)} style={{ padding: '6px 8px' }} />
+              </div>
             </div>
           </div>
 
@@ -286,9 +293,8 @@ function Detail({ r }) {
       <Row label="Buying Property / Sponsorships" value={r.buyingProperty} />
       {(r.mediums || []).map((m) => (r.deliverables || {})[m] && <Row key={'d' + m} label={`${m} - Deliverables`} value={r.deliverables[m]} />)}
       {(r.mediums || []).map((m) => (r.daypartMandates || {})[m] && <Row key={'p' + m} label={`${m} - Daypart Mandates`} value={r.daypartMandates[m]} />)}
-      <Row label="Other" value={r.otherNotes} />
       <Row label="Discussion Points" value={r.discussionPoints} />
-      <Row label="Deadline" value={r.deadlineLabel ? `${r.deadlineLabel} - buying unit needs ${r.deadlineLead}` : ''} />
+      <Row label="Deadline" value={deadlineText(r)} />
       <Row label="Requested by" value={`${r.requesterName}${r.requesterRole ? ` (${r.requesterRole})` : ''}`} />
     </div>
   );

@@ -973,6 +973,7 @@ model MediaBuyingRequisition {
   otherNotes       String?   @map("other_notes")
   discussionPoints String?   @map("discussion_points")
   deadlineType     String?   @map("deadline_type") // 'annual' | 'campaign-special' | 'new-client'
+  deadlineDate     DateTime? @map("deadline_date")
   status           String    @default("SUBMITTED")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
