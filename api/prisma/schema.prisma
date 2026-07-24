@@ -119,6 +119,7 @@ model Agency {
   uploadBatches UploadBatch[]
   annualTargets AgencyAnnualTarget[]
   revenues      AgencyRevenue[]
+  clientGroups  ClientGroup[]
 
   @@map("agencies")
 }
@@ -147,8 +148,13 @@ model Client {
   // a %) or AOR (value is a fixed LKR fee). Both null = not set.
   commissionType  CommissionType?          @map("commission_type")
   commissionValue Decimal?                 @map("commission_value") @db.Decimal(14, 2)
+  // Optional parent company grouping (e.g. "Maliban Group" over Maliban, Maliban
+  // Milk, ...). Null = ungrouped, behaves exactly as before. Rollup + group
+  // target are an overlay only; per-client data/functions are unchanged.
+  clientGroupId   Int?                     @map("client_group_id")
   createdAt       DateTime                 @default(now()) @map("created_at")
   agency          Agency                   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  clientGroup     ClientGroup?             @relation(fields: [clientGroupId], references: [id], onDelete: SetNull)
   users           UserClientAccess[]
   channels        Channel[]
   teams           TeamClient[]
@@ -163,7 +169,42 @@ model Client {
   requisitions    MediaBuyingRequisition[]
 
   @@unique([agencyId, name])
+  @@index([clientGroupId])
   @@map("clients")
+}
+
+// A parent company grouping several clients within one agency. Sub-clients keep
+// forecasting/spend/targets individually; the group adds an annual target and a
+// rollup (summed sub-client spend) shown in the agency view.
+model ClientGroup {
+  id        Int                 @id @default(autoincrement())
+  agencyId  Int                 @map("agency_id")
+  name      String
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+  agency    Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  clients   Client[]
+  targets   ClientGroupTarget[]
+
+  @@unique([agencyId, name])
+  @@index([agencyId])
+  @@map("client_groups")
+}
+
+// Admin-set annual target (full LKR) for a parent company, per year.
+model ClientGroupTarget {
+  id          Int         @id @default(autoincrement())
+  groupId     Int         @map("group_id")
+  year        Int
+  amount      Decimal     @db.Decimal(16, 2)
+  createdById Int?        @map("created_by_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  group       ClientGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, year])
+  @@index([year])
+  @@map("client_group_targets")
 }
 
 model UserClientAccess {
