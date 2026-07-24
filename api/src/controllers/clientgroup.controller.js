@@ -242,14 +242,24 @@ export async function getClientGroupOverview(req, res) {
       },
     });
 
-    let total = 0, totalVat = 0;
+    // When ?year=YYYY is given, the breakdowns + totals are scoped to that year;
+    // with no year they stay all-time. availableYears is always derived from all
+    // data so the year picker lists every year with spend.
+    const yearParam = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : null;
+
+    let total = 0, totalVat = 0, scopedEntries = 0;
     const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
     const months = new Set();
+    const yearsSet = new Set();
     for (const l of logs) {
       const v = Number(l.scheduleValue) || 0;
-      total += v; totalVat += Number(l.scheduleValueWithVat) || 0;
       const m = l.scheduleMonth;
-      if (/^\d{4}-\d{2}$/.test(m)) { months.add(m); (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
+      const mm = /^(\d{4})-(\d{2})$/.exec(m);
+      const logYear = mm ? Number(mm[1]) : null;
+      if (logYear) yearsSet.add(logYear);
+      if (yearParam != null && logYear !== yearParam) continue; // outside the selected year
+      total += v; totalVat += Number(l.scheduleValueWithVat) || 0; scopedEntries += 1;
+      if (mm) { months.add(m); (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
       const ch = l.channelMaster?.name || 'Unknown';
       (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
       const med = l.medium || 'Unknown';
@@ -258,14 +268,18 @@ export async function getClientGroupOverview(req, res) {
       (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
     }
     const sortedMonths = [...months].sort();
+    const nowYear = new Date().getFullYear();
+    const availableYears = [...new Set([nowYear, ...yearsSet])].sort((a, b) => b - a);
 
     return res.json({
       group: { id: group.id, name: group.name, agencyId: group.agency?.id, agencyName: group.agency?.name },
       clients: visibleClients,
       filterClientId,
+      year: yearParam,
+      availableYears,
       totalValue: Math.round(total),
       totalWithVat: Math.round(totalVat),
-      totalEntries: logs.length,
+      totalEntries: scopedEntries,
       firstMonth: sortedMonths[0] || null,
       lastMonth: sortedMonths[sortedMonths.length - 1] || null,
       monthsActive: sortedMonths.length,

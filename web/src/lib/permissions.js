@@ -23,7 +23,7 @@ export function pageKeyForPath(pathname) {
   if (p === '/') return '/';
   if (p.startsWith('/database')) return '/database';
   if (p.startsWith('/forecasting')) return '/forecasting';
-  if (p.startsWith('/agencies') || p.startsWith('/clients') || p.startsWith('/channels') || p.startsWith('/channel-masters')) return '/agencies';
+  if (p.startsWith('/agencies') || p.startsWith('/clients') || p.startsWith('/client-groups') || p.startsWith('/channels') || p.startsWith('/channel-masters')) return '/agencies';
   if (p.startsWith('/spend-analytics')) return '/spend-analytics';
   if (p.startsWith('/executive-dashboard') || p.startsWith('/deep-dashboard')) return '/executive-dashboard';
   if (p.startsWith('/reports')) return '/reports';

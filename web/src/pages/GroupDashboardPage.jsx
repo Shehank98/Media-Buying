@@ -52,14 +52,18 @@ export default function GroupDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [clientFilter, setClientFilter] = useState(''); // '' = all clients in group
+  const [year, setYear] = useState('all'); // 'all' or a YYYY string
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/analytics/client-group/${groupId}/overview`, { params: clientFilter ? { clientId: clientFilter } : {} })
+    const params = {};
+    if (clientFilter) params.clientId = clientFilter;
+    if (/^\d{4}$/.test(year)) params.year = year;
+    api.get(`/analytics/client-group/${groupId}/overview`, { params })
       .then(({ data }) => setData(data))
       .catch(() => setError('Failed to load group dashboard.'))
       .finally(() => setLoading(false));
-  }, [groupId, clientFilter]);
+  }, [groupId, clientFilter, year]);
 
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading group dashboard…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
@@ -100,12 +104,21 @@ export default function GroupDashboardPage() {
           <h1 className="page-title">{g.name}</h1>
           <p className="page-sub">Group Dashboard{g.agencyName ? ` · ${g.agencyName}` : ''} · {members.length} compan{members.length === 1 ? 'y' : 'ies'}</p>
         </div>
-        <div className="field" style={{ margin: 0, minWidth: 200 }}>
-          <label style={{ fontSize: 11 }}>Filter by company</label>
-          <select className="select" value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
-            <option value="">All companies in group</option>
-            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label style={{ fontSize: 11 }}>Year</label>
+            <select className="select" value={year} onChange={e => setYear(e.target.value)}>
+              <option value="all">All time</option>
+              {(data.availableYears || []).map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ margin: 0, minWidth: 200 }}>
+            <label style={{ fontSize: 11 }}>Filter by company</label>
+            <select className="select" value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
+              <option value="">All companies in group</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
