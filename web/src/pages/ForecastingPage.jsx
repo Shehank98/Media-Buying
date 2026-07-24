@@ -900,7 +900,7 @@ function Empty({ text = 'No data for this selection.' }) {
 // Best & Billing-last-month + the client's commission. Same 15th-rollover month
 // as the entry grid (admins can target any month). GROUP_HEAD + SUPER_ADMIN.
 // ════════════════════════════════════════════════════════════════════════════
-function BudgetTab({ isAdmin }) {
+function BudgetTab({ isAdmin, canEdit = true }) {
   const [anchorMonth, setAnchorMonth] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null); // admin override
   const [agencyFilter, setAgencyFilter] = useState('');
@@ -1073,13 +1073,13 @@ function BudgetTab({ isAdmin }) {
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: r.actualAmount ? '#16243C' : '#93A0B5' }}>{r.actualAmount ? fmtAmt(r.actualAmount) : '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" value={fmtMoneyInput(d.best)} placeholder="0.00"
+                        <input className="input mono" inputMode="decimal" disabled={!canEdit} value={fmtMoneyInput(d.best)} placeholder={canEdit ? '0.00' : '-'}
                           onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], best: c } })); }}
                           onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
                       <td style={{ textAlign: 'center', color: cl ? '#16243C' : '#C7D0DD', fontWeight: 600 }}>{cl || '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" value={fmtMoneyInput(d.billing)} placeholder="0.00"
+                        <input className="input mono" inputMode="decimal" disabled={!canEdit} value={fmtMoneyInput(d.billing)} placeholder={canEdit ? '0.00' : '-'}
                           onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], billing: c } })); }}
                           onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
@@ -1107,6 +1107,9 @@ function BudgetTab({ isAdmin }) {
 export default function ForecastingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
+  const isManager = user?.role === 'MANAGER';
+  // MANAGER (Boardroom) has read-only visibility of their agency's forecasts.
+  const canEdit = isAdmin || user?.role === 'GROUP_HEAD';
 
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState({ year: null, month: null });
@@ -1424,7 +1427,8 @@ export default function ForecastingPage() {
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>
             {view === 'insights' ? 'Forecast accuracy, variance and spend insights'
               : view === 'budget' ? 'Best-case & last-month billing per client · Actual auto-fills from entered forecasts'
-              : `Enter the ${periodLabel} forecast for your clients`}
+              : canEdit ? `Enter the ${periodLabel} forecast for your clients`
+              : `${periodLabel} forecast across your agency clients (view only)`}
           </p>
         </div>
         {view === 'clients' && (
@@ -1447,7 +1451,7 @@ export default function ForecastingPage() {
                 ))}
               </select>
             )}
-            {isAdmin && agencies.length > 1 && (
+            {(isAdmin || isManager) && agencies.length > 1 && (
               <select className="select" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={{ maxWidth: 220 }}>
                 <option value="">All agencies</option>
                 {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -1457,8 +1461,8 @@ export default function ForecastingPage() {
               <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
               <input className="input" placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32, maxWidth: 240 }} />
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>
+            {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => openReq('client')}><Icon name="plus" size={14} /> Request client</button>}
+            {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => openReq('channel')}><Icon name="plus" size={14} /> Request channel</button>}
             {isAdmin && (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <select
@@ -1495,7 +1499,7 @@ export default function ForecastingPage() {
       {isAdmin && view === 'insights' ? (
         <InsightsTab />
       ) : view === 'budget' ? (
-        <BudgetTab isAdmin={isAdmin} />
+        <BudgetTab isAdmin={isAdmin} canEdit={canEdit} />
       ) : filtered.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>No clients available.</div>
       ) : (
@@ -1523,7 +1527,7 @@ export default function ForecastingPage() {
                       <span className="mono" style={{ marginLeft: 4, color: '#16243C', fontWeight: 700, whiteSpace: 'nowrap' }}>· LKR {fmtShortLKR(c.totalAmount)}</span>
                     )}
                   </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C', flex: 'none' }}>Enter <Icon name="chevR" size={14} /></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C', flex: 'none' }}>{canEdit ? 'Enter' : 'View'} <Icon name="chevR" size={14} /></span>
                 </div>
               </div>
             );
@@ -1538,10 +1542,10 @@ export default function ForecastingPage() {
             <div className="modal-head">
               <div>
                 <h2 style={{ margin: 0 }}>{active.name}</h2>
-                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{periodLabel} forecast · enter amounts in LKR</p>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{periodLabel} forecast · {canEdit ? 'enter amounts in LKR' : 'view only'}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {!entryLoading && (
+                {canEdit && !entryLoading && (
                   <button className="btn btn-ghost btn-sm" onClick={copyLast} disabled={copying}>
                     <Icon name="history" size={14} /> {copying ? 'Copying…' : 'Copy last month'}
                   </button>
@@ -1554,7 +1558,7 @@ export default function ForecastingPage() {
               {savedMsg && <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15814B', marginBottom: 14 }}>{savedMsg}</div>}
               {entryLoading ? <OrbitLoader label="Loading…" /> : (
                 <>
-                  {categories.length > 0 && (
+                  {canEdit && categories.length > 0 && (
                     <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 8, padding: '9px 13px', fontSize: 12.5, color: '#9A5B00', marginBottom: 14, lineHeight: 1.5 }}>
                       <Icon name="clock" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
                       Enter each channel where you can. If you don’t yet know the split for a medium, put the amount in its <strong>Unspecified</strong> row. It still counts toward that medium’s total. Please finalise the per-channel breakdown <strong>before the 15th</strong>.
@@ -1579,16 +1583,16 @@ export default function ForecastingPage() {
                                 {ch.unspecified && <span style={{ fontStyle: 'normal', fontSize: 10.5, color: '#93A0B5', marginLeft: 6 }}>· counts as {cat.category}</span>}
                               </td>
                               <td>
-                                <input className="input" type="text" inputMode="decimal" value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder="e.g. 100,000,000" style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="text" inputMode="decimal" disabled={!canEdit} value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder={canEdit ? 'e.g. 100,000,000' : '-'} style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                               <td>
-                                <input className="input" type="text" value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder="optional" style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="text" disabled={!canEdit} value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder={canEdit ? 'optional' : ''} style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {unspecifiedOverlap(cat) > 0 && (
+                      {canEdit && unspecifiedOverlap(cat) > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6, padding: '8px 11px', background: '#FEF6E7', border: '1px solid #F3D28B', borderRadius: 8, fontSize: 12, color: '#8A5A00' }}>
                           <Icon name="alert" size={14} style={{ color: '#B8860B', flexShrink: 0 }} />
                           <span style={{ flex: 1, minWidth: 180 }}>
@@ -1619,8 +1623,8 @@ export default function ForecastingPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost" onClick={closeEntry}>Cancel</button>
-                  <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>
+                  <button className="btn btn-ghost" onClick={closeEntry}>{canEdit ? 'Cancel' : 'Close'}</button>
+                  {canEdit && <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>}
                 </div>
               </div>
             </div>
