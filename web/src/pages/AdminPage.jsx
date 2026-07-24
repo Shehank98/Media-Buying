@@ -4,6 +4,7 @@ import Icon, { Avatar, RoleBadge, fmtLKR, roleLabel } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
+import ClientGroupsTab from '../components/ClientGroupsTab';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
@@ -1938,6 +1939,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     { label: 'Agencies & Clients', members: [
       { key: 'agencies', label: 'Agencies', count: agencies.length },
       { key: 'clients', label: 'Clients', count: allClients.length },
+      { key: 'client-groups', label: 'Client Groups' },
     ] },
     { label: 'Master Data', members: [
       { key: 'channels', label: 'Channels', count: channelMasters.length },
@@ -2038,7 +2040,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'backup', 'notify', 'errors'].includes(activeTab) && (
+        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'backup', 'notify', 'errors', 'client-groups'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -3906,6 +3908,11 @@ export default function AdminPage({ initialTab = 'users' }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* ============ CLIENT GROUPS ============ */}
+      {activeTab === 'client-groups' && (
+        <ClientGroupsTab agencies={agencies} allClients={allClients} />
       )}
 
       {/* ============ ERRORS ============ */}

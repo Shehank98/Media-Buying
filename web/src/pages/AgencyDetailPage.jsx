@@ -17,6 +17,11 @@ export default function AgencyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Parent-company (client group) rollup for this agency.
+  const [groupYear, setGroupYear] = useState(new Date().getFullYear());
+  const [groups, setGroups] = useState([]);
+  const [expandedGroup, setExpandedGroup] = useState(null);
+
   // Add / Edit client
   const [showModal, setShowModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -49,6 +54,12 @@ export default function AgencyDetailPage() {
   };
 
   useEffect(() => { fetchData(); }, [agencyId]);
+
+  useEffect(() => {
+    api.get(`/agencies/${agencyId}/groups`, { params: { year: groupYear } })
+      .then(r => setGroups(r.data.groups || []))
+      .catch(() => setGroups([]));
+  }, [agencyId, groupYear]);
 
   const openAdd = () => {
     setEditingClient(null);
@@ -131,6 +142,82 @@ export default function AgencyDetailPage() {
           </button>
         )}
       </div>
+
+      {groups.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 750, letterSpacing: '.3px', textTransform: 'uppercase', color: '#6B7790' }}>Client Groups</div>
+            <select className="select" value={groupYear} onChange={e => setGroupYear(Number(e.target.value))} style={{ maxWidth: 110, height: 32 }} title="Target / spend year">
+              {(() => { const y = new Date().getFullYear(); const out = []; for (let i = y + 1; i >= y - 5; i--) out.push(i); return out; })().map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {groups.map(g => {
+              const open = expandedGroup === g.id;
+              const pct = g.achievementPct;
+              const pctColor = pct == null ? '#93A0B5' : pct >= 100 ? '#15814B' : pct >= 60 ? '#9A5B00' : '#C5391F';
+              return (
+                <div key={g.id} style={{ background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, overflow: 'hidden' }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedGroup(open ? null : g.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 18px', cursor: 'pointer', flexWrap: 'wrap' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 200, flex: 1 }}>
+                      <Icon name={open ? 'chevDown' : 'chevR'} size={16} style={{ color: '#93A0B5', flex: 'none' }} />
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 750, color: '#16243C' }}>{g.name}</div>
+                        <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 1 }}>{g.clientCount} compan{g.clientCount === 1 ? 'y' : 'ies'}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 130 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5' }}>{groupYear} Target</div>
+                      <div className="mono" style={{ fontSize: 14.5, fontWeight: 700, color: g.target ? '#16243C' : '#C7D0DD', marginTop: 2 }}>{g.target ? fmtLKR(g.target) : 'Not set'}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 130 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5' }}>{groupYear} Spend</div>
+                      <div className="mono" style={{ fontSize: 14.5, fontWeight: 700, color: '#16243C', marginTop: 2 }}>{g.spend ? fmtLKR(g.spend) : '-'}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 74 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5' }}>Achieved</div>
+                      <div className="mono" style={{ fontSize: 15, fontWeight: 750, color: pctColor, marginTop: 2 }}>{pct == null ? '-' : `${pct}%`}</div>
+                    </div>
+                  </div>
+                  {g.target > 0 && (
+                    <div style={{ height: 4, background: '#EEF0F3' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, pct || 0)}%`, background: pctColor, transition: 'width .3s ease' }} />
+                    </div>
+                  )}
+                  {open && (
+                    <div style={{ borderTop: '1px solid #EEF0F3', padding: '4px 0' }}>
+                      {g.clients.length === 0 ? (
+                        <div style={{ padding: '14px 18px', fontSize: 12.5, color: 'var(--muted)' }}>No clients you can see in this group.</div>
+                      ) : g.clients.map(c => (
+                        <div
+                          key={c.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => navigate(`/clients/${c.id}/dashboard`)}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 18px 10px 44px', cursor: 'pointer', borderTop: '1px solid #F4F6F8' }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#F8FAFC'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#16243C' }}>{c.name}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                            <span className="mono" style={{ fontSize: 13, color: '#3B4A63' }}>{c.spend ? fmtLKR(c.spend) : '-'}</span>
+                            <Icon name="chevR" size={13} style={{ color: '#C7D0DD' }} />
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {clients.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>

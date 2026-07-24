@@ -146,7 +146,7 @@ export async function setGroupTarget(req, res) {
 // Parent-company rollup for an agency: each group with its annual target and the
 // summed actual spend (schedule value) of its sub-clients for the year, plus the
 // per-client breakdown. Scoped to the caller's accessible clients so a MANAGER
-// only ever sees their own agency's clients. Not forecast-related — spend only.
+// only ever sees their own agency's clients. Not forecast-related, spend only.
 export async function getAgencyGroups(req, res) {
   try {
     const agencyId = parseInt(req.params.agencyId);
@@ -163,7 +163,7 @@ export async function getAgencyGroups(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    // Year-scoped spend per client (Jan–Dec of `year`), so it lines up with the
+    // Year-scoped spend per client (Jan to Dec of `year`), so it lines up with the
     // annual target. scheduleMonth is a 'YYYY-MM' string.
     const clientIdsInGroups = [];
     for (const g of groups) for (const c of g.clients) if (accessSet.has(c.id)) clientIdsInGroups.push(c.id);
