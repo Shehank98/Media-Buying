@@ -17,6 +17,10 @@ export default function AgencyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Parent-company (client group) cards for this agency.
+  const [groupYear, setGroupYear] = useState(new Date().getFullYear());
+  const [groups, setGroups] = useState([]);
+
   // Add / Edit client
   const [showModal, setShowModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -49,6 +53,12 @@ export default function AgencyDetailPage() {
   };
 
   useEffect(() => { fetchData(); }, [agencyId]);
+
+  useEffect(() => {
+    api.get(`/agencies/${agencyId}/groups`, { params: { year: groupYear } })
+      .then(r => setGroups(r.data.groups || []))
+      .catch(() => setGroups([]));
+  }, [agencyId, groupYear]);
 
   const openAdd = () => {
     setEditingClient(null);
@@ -131,6 +141,78 @@ export default function AgencyDetailPage() {
           </button>
         )}
       </div>
+
+      {groups.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 750, letterSpacing: '.3px', textTransform: 'uppercase', color: '#6B7790' }}>Client Groups</div>
+            <select className="select" value={groupYear} onChange={e => setGroupYear(Number(e.target.value))} style={{ maxWidth: 110, height: 32 }} title="Target / spend year">
+              {(() => { const y = new Date().getFullYear(); const out = []; for (let i = y + 1; i >= y - 5; i--) out.push(i); return out; })().map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+            {groups.map(g => {
+              const pct = g.achievementPct;
+              const pctColor = pct == null ? '#93A0B5' : pct >= 100 ? '#3DDC97' : pct >= 60 ? '#F2C14E' : '#FF7A66';
+              return (
+                <div
+                  key={g.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/client-groups/${g.id}/dashboard`)}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 34px rgba(10,23,41,.28)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(10,23,41,.20)'; }}
+                  style={{
+                    position: 'relative', overflow: 'hidden', cursor: 'pointer', borderRadius: 16, padding: 20,
+                    background: 'linear-gradient(135deg, #14294B 0%, #0A1729 100%)',
+                    border: '1px solid #24344F', boxShadow: '0 6px 18px rgba(10,23,41,.20)',
+                    transition: 'transform .16s ease, box-shadow .16s ease',
+                  }}
+                >
+                  {/* coral corner glow so it reads as clearly different from client cards */}
+                  <span style={{ position: 'absolute', top: -40, right: -40, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,93,36,.35), transparent 70%)' }} />
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #E85D24, #C44A18)', display: 'grid', placeItems: 'center', flex: 'none', boxShadow: '0 2px 10px rgba(232,93,36,.5)' }}>
+                        <Icon name="building" size={20} style={{ color: '#fff' }} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 750, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.name}>{g.name}</div>
+                        <div style={{ fontSize: 11.5, color: '#93A9CC', marginTop: 2 }}>{g.clientCount} compan{g.clientCount === 1 ? 'y' : 'ies'}</div>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.6px', color: '#FFD9C7', background: 'rgba(232,93,36,.22)', border: '1px solid rgba(232,93,36,.4)', borderRadius: 20, padding: '3px 9px', flex: 'none' }}>GROUP</span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 18, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#7E93B4' }}>{groupYear} Spend</div>
+                      <div className="mono" style={{ fontSize: 18, fontWeight: 750, color: '#fff', marginTop: 3 }}>{g.spend ? fmtLKR(g.spend) : '-'}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#7E93B4' }}>{groupYear} Target</div>
+                      <div className="mono" style={{ fontSize: 18, fontWeight: 750, color: g.target ? '#C7D6EC' : '#5A6E8C', marginTop: 3 }}>{g.target ? fmtLKR(g.target) : 'Not set'}</div>
+                    </div>
+                  </div>
+
+                  {g.target > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ height: 6, background: 'rgba(255,255,255,.10)', borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min(100, pct || 0)}%`, background: pctColor, borderRadius: 6, transition: 'width .3s ease' }} />
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 11.5, fontWeight: 700, color: pctColor }}>{pct == null ? '-' : `${pct}% of target`}</div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, fontSize: 12.5, fontWeight: 600, color: '#FF9A73' }}>
+                    Open dashboard <Icon name="chevR" size={14} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {clients.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--muted)', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>

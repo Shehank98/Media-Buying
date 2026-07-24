@@ -60,6 +60,14 @@ import {
   deleteError,
   clearErrors,
 } from '../controllers/errorlog.controller.js';
+import {
+  listClientGroups,
+  createClientGroup,
+  updateClientGroup,
+  deleteClientGroup,
+  setGroupClients,
+  setGroupTarget,
+} from '../controllers/clientgroup.controller.js';
 
 const router = Router();
 
@@ -150,5 +158,13 @@ router.get('/errors', listErrors);
 router.patch('/errors/:id/resolve', resolveError);
 router.delete('/errors', clearErrors);
 router.delete('/errors/:id', deleteError);
+
+// Client groups (parent companies) + their annual targets
+router.get('/client-groups', listClientGroups);
+router.post('/client-groups', createClientGroup);
+router.put('/client-groups/:id', updateClientGroup);
+router.delete('/client-groups/:id', deleteClientGroup);
+router.post('/client-groups/:id/clients', setGroupClients);
+router.post('/client-groups/:id/target', setGroupTarget);
 
 export default router;

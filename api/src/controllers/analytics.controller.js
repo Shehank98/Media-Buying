@@ -1092,6 +1092,7 @@ export async function getClientOverview(req, res) {
 
     let total = 0, totalVat = 0;
     const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
+    const brandMonth = {}; // brand -> { 'YYYY-MM': value } (year-scoped), for the brand trend chart
     const months = new Set();
     const trend = {}; // year -> [12] monthly totals, for period-aligned YoY (all-time)
     for (const l of logs) {
@@ -1114,9 +1115,26 @@ export async function getClientOverview(req, res) {
         (byMedium[med] ||= { name: med, value: 0 }).value += v;
         const br = l.brandName || 'Unbranded';
         (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+        if (mm) { (brandMonth[br] ||= {})[m] = (brandMonth[br][m] || 0) + v; }
       }
     }
     const sortedMonths = [...months].sort();
+
+    // Brand spend over time (top 6 brands by scoped spend), one value per month in
+    // the current view, powering the expandable "Brand Performance Over Time" chart.
+    // Respects the year filter because it's built from the same year-scoped data.
+    const brandTrendKeys = Object.values(byBrand)
+      .filter((b) => b.name !== 'Unbranded')
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6)
+      .map((b) => b.name);
+    if (brandTrendKeys.length === 0 && byBrand['Unbranded']) brandTrendKeys.push('Unbranded');
+    const scopedTrendMonths = Object.keys(byMonth).sort();
+    const brandTrend = scopedTrendMonths.map((mo) => {
+      const row = { month: mo };
+      brandTrendKeys.forEach((bn) => { row[bn] = Math.round(brandMonth[bn]?.[mo] || 0); });
+      return row;
+    });
 
     // Period-aligned YoY: current year (through its latest month with data) vs the
     // SAME Jan→month window last year. currentYearSpend already stops at the latest
@@ -1176,6 +1194,8 @@ export async function getClientOverview(req, res) {
       byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
       byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
       byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+      brandTrend,
+      brandTrendKeys,
     });
   } catch (error) {
     console.error('getClientOverview error:', error);
