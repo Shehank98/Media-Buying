@@ -249,6 +249,7 @@ export async function getClientGroupOverview(req, res) {
 
     let total = 0, totalVat = 0, scopedEntries = 0;
     const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
+    const brandMonth = {}; // brand -> { 'YYYY-MM': value } (scoped), for the brand trend chart
     const months = new Set();
     const yearsSet = new Set();
     for (const l of logs) {
@@ -266,10 +267,24 @@ export async function getClientGroupOverview(req, res) {
       (byMedium[med] ||= { name: med, value: 0 }).value += v;
       const br = l.brandName || 'Unbranded';
       (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+      if (mm) { (brandMonth[br] ||= {})[m] = (brandMonth[br][m] || 0) + v; }
     }
     const sortedMonths = [...months].sort();
     const nowYear = new Date().getFullYear();
     const availableYears = [...new Set([nowYear, ...yearsSet])].sort((a, b) => b - a);
+
+    // Brand spend over time (top 6 by scoped spend), one value per month.
+    const brandTrendKeys = Object.values(byBrand)
+      .filter((b) => b.name !== 'Unbranded')
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6)
+      .map((b) => b.name);
+    if (brandTrendKeys.length === 0 && byBrand['Unbranded']) brandTrendKeys.push('Unbranded');
+    const brandTrend = sortedMonths.map((mo) => {
+      const row = { month: mo };
+      brandTrendKeys.forEach((bn) => { row[bn] = Math.round(brandMonth[bn]?.[mo] || 0); });
+      return row;
+    });
 
     return res.json({
       group: { id: group.id, name: group.name, agencyId: group.agency?.id, agencyName: group.agency?.name },
@@ -289,6 +304,8 @@ export async function getClientGroupOverview(req, res) {
       byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
       byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
       byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+      brandTrend,
+      brandTrendKeys,
     });
   } catch (error) {
     console.error('getClientGroupOverview error:', error);

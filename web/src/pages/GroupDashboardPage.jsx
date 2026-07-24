@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -22,9 +22,15 @@ const fmtShort = (v) => {
   if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
   return String(Math.round(n));
 };
+const fmtMonth = (ym) => {
+  if (!ym) return '-';
+  const [y, m] = String(ym).split('-');
+  return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
 
 const CARD = { background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14, boxShadow: '0 1px 2px rgba(15,31,61,.06)' };
 const MEDIUM_COLORS = { TV: '#1F5BB5', RADIO: '#E85D24', PRINT: '#15814B', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
+const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const YEAR_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#D9521C'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -53,6 +59,39 @@ export default function GroupDashboardPage() {
   const [error, setError] = useState('');
   const [clientFilter, setClientFilter] = useState(''); // '' = all clients in group
   const [year, setYear] = useState('all'); // 'all' or a YYYY string
+  const [chMedium, setChMedium] = useState(''); // Spend-by-Channel medium filter ('' = all)
+  const [showBrandTrend, setShowBrandTrend] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const trendRef = useRef(null);
+  const channelRef = useRef(null);
+  const mediumRef = useRef(null);
+  const brandRef = useRef(null);
+
+  const exportJpg = async (el, name) => {
+    if (!el) return;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false });
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/jpeg', 0.95);
+    a.download = `${name}.jpg`.replace(/[^a-z0-9.\-]+/gi, '_');
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  const exportAllCharts = async () => {
+    setExporting(true);
+    try {
+      const gn = data?.group?.name || 'group';
+      await exportJpg(trendRef.current, `${gn}-monthly-trend`);
+      await exportJpg(channelRef.current, `${gn}-spend-by-channel`);
+      await exportJpg(mediumRef.current, `${gn}-medium-split`);
+      if (showBrandTrend) await exportJpg(brandRef.current, `${gn}-brand-trend`);
+    } catch { setError('Could not export charts.'); } finally { setExporting(false); }
+  };
+  const jpgButton = (ref, name) => (
+    <button onClick={() => exportJpg(ref.current, name)} className="btn btn-ghost btn-sm" title="Download this chart as JPG" style={{ flex: 'none' }}>
+      <Icon name="download" size={13} /> JPG
+    </button>
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -88,8 +127,13 @@ export default function GroupDashboardPage() {
     return row;
   });
 
-  const topChannels = (data.byChannel || []).slice(0, 12);
+  const channelMediums = MEDIUM_ORDER.filter(md => (data.byChannel || []).some(ch => ch.medium === md));
+  const topChannels = (data.byChannel || [])
+    .filter(ch => !chMedium || ch.medium === chMedium)
+    .slice(0, 12);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
+  const brandTrend = data.brandTrend || [];
+  const brandTrendKeys = data.brandTrendKeys || [];
   const avgMonth = data.monthsActive ? data.totalValue / data.monthsActive : 0;
   const filterName = clientFilter ? (members.find(m => String(m.id) === String(clientFilter))?.name || 'Client') : 'All companies';
 
@@ -119,6 +163,9 @@ export default function GroupDashboardPage() {
               {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
+          <button className="btn btn-ghost" onClick={exportAllCharts} disabled={exporting} title="Download every chart on this page as JPG images" style={{ height: 38 }}>
+            <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Charts (JPG)'}
+          </button>
         </div>
       </div>
 
@@ -138,9 +185,14 @@ export default function GroupDashboardPage() {
       </div>
 
       {/* Monthly spend trend - one line per year */}
-      <div style={{ ...CARD, padding: 24, marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year</p>
+      <div ref={trendRef} style={{ ...CARD, padding: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year</p>
+          </div>
+          {jpgButton(trendRef, `${g.name}-monthly-trend`)}
+        </div>
         {trendYears.length === 0 ? (
           <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend recorded</div>
         ) : (
@@ -161,10 +213,27 @@ export default function GroupDashboardPage() {
 
       {/* Spend by channel + medium split */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div style={{ ...CARD, padding: 24 }}>
-          <h3 style={{ margin: '0 0 16px', fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel (Top 12)</h3>
+        <div ref={channelRef} style={{ ...CARD, padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel {chMedium ? `· ${chMedium}` : '(Top 12)'}</h3>
+            {jpgButton(channelRef, `${g.name}-spend-by-channel${chMedium ? '-' + chMedium : ''}`)}
+          </div>
+          {channelMediums.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+              {[['', 'All'], ...channelMediums.map(m => [m, m])].map(([k, label]) => {
+                const active = chMedium === k;
+                const mc = k ? (MEDIUM_COLORS[k] || '#1e3a5f') : '#16243C';
+                return (
+                  <button key={k || 'all'} onClick={() => setChMedium(k)}
+                    style={{ border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, fontFamily: 'inherit', background: active ? mc : '#EEF0F3', color: active ? '#fff' : '#6B7790' }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {topChannels.length === 0 ? (
-            <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data</div>
+            <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data{chMedium ? ` for ${chMedium}` : ''}</div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(200, topChannels.length * 30 + 20)}>
               <BarChart data={topChannels} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
@@ -180,8 +249,11 @@ export default function GroupDashboardPage() {
           )}
         </div>
 
-        <div style={{ ...CARD, padding: 24 }}>
-          <h3 style={{ margin: '0 0 16px', fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
+        <div ref={mediumRef} style={{ ...CARD, padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
+            {jpgButton(mediumRef, `${g.name}-medium-split`)}
+          </div>
           {mediumData.length === 0 ? (
             <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No data</div>
           ) : (
@@ -207,6 +279,38 @@ export default function GroupDashboardPage() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Brand Performance Over Time - hidden by default, expandable. */}
+      <div ref={brandRef} style={{ ...CARD, padding: 20, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowBrandTrend(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+            <Icon name={showBrandTrend ? 'chevDown' : 'chevR'} size={16} style={{ color: '#93A0B5' }} />
+            <span>
+              <span style={{ display: 'block', fontWeight: 700, color: 'var(--ink)', fontSize: 15 }}>Brand Performance Over Time</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>How the top brands trend month to month{year !== 'all' ? ` in ${year}` : ''}{clientFilter ? ` · ${filterName}` : ''} · click to {showBrandTrend ? 'hide' : 'expand'}</span>
+            </span>
+          </button>
+          {showBrandTrend && brandTrendKeys.length > 0 && jpgButton(brandRef, `${g.name}-brand-trend`)}
+        </div>
+        {showBrandTrend && (
+          brandTrendKeys.length === 0 || brandTrend.length === 0 ? (
+            <div style={{ height: 160, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No brand spend to chart{year !== 'all' ? ` for ${year}` : ''}.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={brandTrend} margin={{ top: 18, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="month" tickFormatter={fmtMonth} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
+                <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={fmtMonth} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {brandTrendKeys.map((b, i) => (
+                  <Line key={b} type="monotone" dataKey={b} name={b} stroke={COLORS[i % COLORS.length]} strokeWidth={2.2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )
+        )}
       </div>
 
       {/* Channel + brand tables */}
