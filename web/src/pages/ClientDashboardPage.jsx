@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -63,6 +63,42 @@ export default function ClientDashboardPage() {
   const [year, setYear] = useState(''); // '' until first load resolves the current year
   const [channelSearch, setChannelSearch] = useState('');
   const [dirMedium, setDirMedium] = useState(''); // active medium tab in the Channel Directory
+  const [chMedium, setChMedium] = useState(''); // Spend-by-Channel medium filter ('' = all)
+  const [showBrandTrend, setShowBrandTrend] = useState(false); // expandable brand-over-time chart
+  const [exporting, setExporting] = useState(false);
+
+  // Refs to each chart card, so they can be exported to JPG (html2canvas).
+  const trendRef = useRef(null);
+  const channelRef = useRef(null);
+  const mediumRef = useRef(null);
+  const brandRef = useRef(null);
+
+  // Capture a chart card element as a downloaded JPG.
+  const exportJpg = async (el, name) => {
+    if (!el) return;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false });
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/jpeg', 0.95);
+    a.download = `${name}.jpg`.replace(/[^a-z0-9.\-]+/gi, '_');
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  const exportAllCharts = async () => {
+    setExporting(true);
+    try {
+      const cn = data?.client?.name || 'client';
+      await exportJpg(trendRef.current, `${cn}-monthly-trend`);
+      await exportJpg(channelRef.current, `${cn}-spend-by-channel`);
+      await exportJpg(mediumRef.current, `${cn}-medium-split`);
+      if (showBrandTrend) await exportJpg(brandRef.current, `${cn}-brand-trend`);
+    } catch { setError('Could not export charts.'); } finally { setExporting(false); }
+  };
+  // Small per-chart "Download JPG" button.
+  const jpgButton = (ref, name) => (
+    <button onClick={() => exportJpg(ref.current, name)} className="btn btn-ghost btn-sm" title="Download this chart as JPG" style={{ flex: 'none' }}>
+      <Icon name="download" size={13} /> JPG
+    </button>
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -126,8 +162,15 @@ export default function ClientDashboardPage() {
     return row;
   });
 
-  const topChannels = (data.byChannel || []).slice(0, 12);
+  // Mediums present among this client's channels, in the canonical order, for the
+  // Spend-by-Channel medium tabs.
+  const channelMediums = MEDIUM_ORDER.filter(md => (data.byChannel || []).some(ch => ch.medium === md));
+  const topChannels = (data.byChannel || [])
+    .filter(ch => !chMedium || ch.medium === chMedium)
+    .slice(0, 12);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
+  const brandTrend = data.brandTrend || [];
+  const brandTrendKeys = data.brandTrendKeys || [];
   const avgMonth = data.monthsActive ? data.totalValue / data.monthsActive : 0;
   // Period-aligned YoY (current year Jan→latest month vs same window last year).
   const yoy = data.yoy || null;
@@ -239,6 +282,9 @@ export default function ClientDashboardPage() {
               {(data.availableYears || [data.yearBlock?.year]).filter(Boolean).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
+          <button className="btn btn-ghost" onClick={exportAllCharts} disabled={exporting} title="Download every chart on this page as JPG images">
+            <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Charts (JPG)'}
+          </button>
           <button className="btn btn-ghost" onClick={() => navigate(`/clients/${clientId}`)}>
             <Icon name="settings" size={15} /> Manage channels &amp; properties
           </button>
@@ -301,9 +347,14 @@ export default function ClientDashboardPage() {
       )}
 
       {/* Monthly spend trend - one line per year so peak months are comparable */}
-      <div style={{ ...CARD, padding: 24, marginBottom: 24 }}>
-        <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
-        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year · compare peak months across years</p>
+      <div ref={trendRef} style={{ ...CARD, padding: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontWeight: 700, color: 'var(--ink)' }}>Monthly Spend Trend</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--muted)' }}>Spend by calendar month, one line per year · compare peak months across years</p>
+          </div>
+          {jpgButton(trendRef, `${c.name}-monthly-trend`)}
+        </div>
         {trendYears.length === 0 ? (
           <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No spend recorded</div>
         ) : (
@@ -324,10 +375,27 @@ export default function ClientDashboardPage() {
 
       {/* Spend by channel + medium split */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div style={{ ...CARD, padding: 24 }}>
-          <h3 style={{ margin: '0 0 16px', fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel (Top 12)</h3>
+        <div ref={channelRef} style={{ ...CARD, padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel {chMedium ? `· ${chMedium}` : '(Top 12)'}</h3>
+            {jpgButton(channelRef, `${c.name}-spend-by-channel${chMedium ? '-' + chMedium : ''}`)}
+          </div>
+          {channelMediums.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+              {[['', 'All'], ...channelMediums.map(m => [m, m])].map(([k, label]) => {
+                const active = chMedium === k;
+                const mc = k ? (MEDIUM_COLORS[k] || '#1e3a5f') : '#16243C';
+                return (
+                  <button key={k || 'all'} onClick={() => setChMedium(k)}
+                    style={{ border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, fontFamily: 'inherit', background: active ? mc : '#EEF0F3', color: active ? '#fff' : '#6B7790' }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {topChannels.length === 0 ? (
-            <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data</div>
+            <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data{chMedium ? ` for ${chMedium}` : ''}</div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(200, topChannels.length * 30 + 20)}>
               <BarChart data={topChannels} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
@@ -343,8 +411,11 @@ export default function ClientDashboardPage() {
           )}
         </div>
 
-        <div style={{ ...CARD, padding: 24 }}>
-          <h3 style={{ margin: '0 0 16px', fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
+        <div ref={mediumRef} style={{ ...CARD, padding: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
+            {jpgButton(mediumRef, `${c.name}-medium-split`)}
+          </div>
           {mediumData.length === 0 ? (
             <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No data</div>
           ) : (
@@ -370,6 +441,39 @@ export default function ClientDashboardPage() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Brand Performance Over Time - hidden by default, expandable. Multi-line,
+          one line per top brand, respects the year filter. */}
+      <div ref={brandRef} style={{ ...CARD, padding: 20, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowBrandTrend(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+            <Icon name={showBrandTrend ? 'chevDown' : 'chevR'} size={16} style={{ color: '#93A0B5' }} />
+            <span>
+              <span style={{ display: 'block', fontWeight: 700, color: 'var(--ink)', fontSize: 15 }}>Brand Performance Over Time</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--muted)', marginTop: 1 }}>How the top brands trend month to month{year !== 'all' ? ` in ${year}` : ''} · click to {showBrandTrend ? 'hide' : 'expand'}</span>
+            </span>
+          </button>
+          {showBrandTrend && brandTrendKeys.length > 0 && jpgButton(brandRef, `${c.name}-brand-trend`)}
+        </div>
+        {showBrandTrend && (
+          brandTrendKeys.length === 0 || brandTrend.length === 0 ? (
+            <div style={{ height: 160, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No brand spend to chart{year !== 'all' ? ` for ${year}` : ''}.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={brandTrend} margin={{ top: 18, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="month" tickFormatter={fmtMonth} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
+                <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={48} />
+                <Tooltip formatter={(v, n) => [fmtLKR(v), n]} labelFormatter={fmtMonth} contentStyle={{ borderRadius: 9, border: '1px solid var(--border)', fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {brandTrendKeys.map((b, i) => (
+                  <Line key={b} type="monotone" dataKey={b} name={b} stroke={COLORS[i % COLORS.length]} strokeWidth={2.2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )
+        )}
       </div>
 
       {/* Channel + brand tables */}
