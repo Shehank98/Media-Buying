@@ -3,25 +3,12 @@ import api from '../lib/api';
 import Icon from './Icon';
 import OrbitLoader from './OrbitLoader';
 
-const nowYear = new Date().getFullYear();
-const fmtLKR = (v) => (v == null ? '-' : 'LKR ' + Math.round(Number(v)).toLocaleString('en-US'));
-// Comma-formatted money input helpers.
-const cleanMoney = (s) => { const c = String(s).replace(/[^0-9.]/g, ''); return c === '' ? '' : c; };
-const fmtMoneyInput = (s) => {
-  if (s === '' || s == null) return '';
-  const [i, d] = String(s).split('.');
-  const gi = i.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return d != null ? `${gi}.${d}` : gi;
-};
-
-// Admin management of parent-company client groups + their annual targets.
+// Admin management of parent-company client groups (create + assign clients).
+// Targets are set separately under Admin -> Targets -> Client Group Targets.
 export default function ClientGroupsTab({ agencies = [], allClients = [] }) {
-  const [year, setYear] = useState(nowYear);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [targetDrafts, setTargetDrafts] = useState({}); // groupId -> string
-  const [savingTarget, setSavingTarget] = useState(null);
 
   // create modal
   const [showCreate, setShowCreate] = useState(false);
@@ -35,26 +22,14 @@ export default function ClientGroupsTab({ agencies = [], allClients = [] }) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
 
-  const yearOptions = useMemo(() => {
-    const out = [];
-    for (let y = nowYear + 1; y >= nowYear - 5; y--) out.push(y);
-    return out;
-  }, []);
-
   const fetchGroups = () => {
     setLoading(true);
-    api.get('/admin/client-groups', { params: { year } })
-      .then(r => {
-        const g = r.data.groups || [];
-        setGroups(g);
-        const d = {};
-        g.forEach(x => { d[x.id] = x.target != null ? fmtMoneyInput(String(x.target)) : ''; });
-        setTargetDrafts(d);
-      })
+    api.get('/admin/client-groups')
+      .then(r => setGroups(r.data.groups || []))
       .catch(() => setError('Failed to load client groups.'))
       .finally(() => setLoading(false));
   };
-  useEffect(fetchGroups, [year]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(fetchGroups, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createGroup = async () => {
     if (!createForm.agencyId || !createForm.name.trim()) { setError('Pick an agency and enter a name.'); return; }
@@ -97,18 +72,6 @@ export default function ClientGroupsTab({ agencies = [], allClients = [] }) {
     }
   };
 
-  const saveTarget = async (g) => {
-    const raw = (targetDrafts[g.id] || '').replace(/,/g, '');
-    if (raw === (g.target != null ? String(g.target) : '')) return; // unchanged
-    setSavingTarget(g.id);
-    try {
-      await api.post(`/admin/client-groups/${g.id}/target`, { year, amount: raw === '' ? null : Number(raw) });
-      setGroups(prev => prev.map(x => x.id === g.id ? { ...x, target: raw === '' ? null : Number(raw) } : x));
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to save target.');
-    } finally { setSavingTarget(null); }
-  };
-
   // Clients selectable in the edit modal: the group's own agency, minus clients
   // already in a *different* group (so one client belongs to one group).
   const editableClients = useMemo(() => {
@@ -124,12 +87,9 @@ export default function ClientGroupsTab({ agencies = [], allClients = [] }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ fontSize: 12.5, color: 'var(--muted)', maxWidth: 560, lineHeight: 1.5 }}>
-          Group clients under a parent company (e.g. Maliban Group). Set an annual target on the group; the agency view rolls up each group&rsquo;s sub-client spend against it. Clients keep working individually.
+          Group clients under a parent company (e.g. Maliban Group). The agency view rolls up each group&rsquo;s sub-client spend. Clients keep working individually. Set the annual target under Targets &rarr; Client Group Targets.
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select className="select" value={year} onChange={e => setYear(Number(e.target.value))} style={{ maxWidth: 120 }} title="Target year">
-            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
           <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}><Icon name="plus" size={14} /> New group</button>
         </div>
       </div>
@@ -159,24 +119,9 @@ export default function ClientGroupsTab({ agencies = [], allClients = [] }) {
                     ))}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.4px', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 3 }}>{year} Target (LKR)</div>
-                    <input
-                      className="input mono"
-                      inputMode="decimal"
-                      value={targetDrafts[g.id] ?? ''}
-                      placeholder="0"
-                      onChange={e => { const c = cleanMoney(e.target.value); setTargetDrafts(p => ({ ...p, [g.id]: fmtMoneyInput(c) })); }}
-                      onBlur={() => saveTarget(g)}
-                      style={{ width: 170, height: 34, textAlign: 'right' }}
-                    />
-                    {savingTarget === g.id && <span style={{ fontSize: 10.5, color: '#93A0B5', marginLeft: 6 }}>Saving…</span>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => openEdit(g)}><Icon name="edit" size={13} /> Clients</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => deleteGroup(g)} style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={13} /></button>
-                  </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openEdit(g)}><Icon name="edit" size={13} /> Clients</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => deleteGroup(g)} style={{ color: 'var(--red-600,#dc2626)' }}><Icon name="trash" size={13} /></button>
                 </div>
               </div>
             </div>

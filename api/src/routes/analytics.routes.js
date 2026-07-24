@@ -30,6 +30,7 @@ import {
   getGroupContributionVariance,
   getMonthlyAvgByYear,
 } from '../controllers/analytics.controller.js';
+import { getClientGroupOverview } from '../controllers/clientgroup.controller.js';
 
 const router = Router();
 
@@ -44,6 +45,8 @@ router.get('/channel/:channelMasterId/property-history', authenticate, requireRo
 
 // Client dashboard / overview
 router.get('/client/:clientId/overview', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), checkClientAccess, getClientOverview);
+// Client-group (parent company) aggregated overview - access enforced inside.
+router.get('/client-group/:groupId/overview', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getClientGroupOverview);
 
 // Executive Dashboard
 router.get('/dashboard/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getDashboardSummary);

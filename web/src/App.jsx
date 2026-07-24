@@ -27,6 +27,7 @@ import ForecastingPage from './pages/ForecastingPage';
 import MediaBuyingPage from './pages/MediaBuyingPage';
 import ProfitPage from './pages/ProfitPage';
 import RateCardsPage from './pages/RateCardsPage';
+import GroupDashboardPage from './pages/GroupDashboardPage';
 
 // Home (/) lands on the Executive Dashboard for SUPER_ADMIN, the Deep Dashboard
 // for MANAGER, Database otherwise.
@@ -94,6 +95,7 @@ export default function App() {
             <Route path="/agencies/:agencyId" element={<AgencyDetailPage />} />
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/clients/:clientId/dashboard" element={<ClientDashboardPage />} />
+            <Route path="/client-groups/:groupId/dashboard" element={<GroupDashboardPage />} />
             <Route path="/clients/:clientId" element={<ClientDetailPage />} />
             <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
             <Route path="/rate-cards" element={<RateCardsPage />} />

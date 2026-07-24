@@ -203,3 +203,81 @@ export async function getAgencyGroups(req, res) {
     return res.status(500).json({ error: 'Failed to load agency client groups' });
   }
 }
+
+// Aggregated dashboard overview for a parent company: same shape as the client
+// overview (getClientOverview) but summed across the group's accessible clients,
+// with an optional ?clientId= to narrow to a single member. Returns the member
+// list for the dashboard's client filter. Access-scoped so a MANAGER only sees
+// their agency's clients.
+export async function getClientGroupOverview(req, res) {
+  try {
+    const groupId = parseInt(req.params.groupId);
+    const group = await prisma.clientGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        agency: { select: { id: true, name: true } },
+        clients: { select: { id: true, name: true }, orderBy: { name: 'asc' } },
+      },
+    });
+    if (!group) return res.status(404).json({ error: 'Client group not found' });
+
+    const accessibleIds = await getAccessibleClientIds(req.user.id, req.user.role);
+    const accessSet = new Set(accessibleIds);
+    const visibleClients = group.clients.filter((c) => accessSet.has(c.id));
+    if (visibleClients.length === 0) return res.status(403).json({ error: 'No access to this group' });
+
+    // Optional single-client filter (must be a member the caller can see).
+    const filterClientId = req.query.clientId ? parseInt(req.query.clientId) : null;
+    if (filterClientId && !visibleClients.some((c) => c.id === filterClientId)) {
+      return res.status(403).json({ error: 'No access to this client' });
+    }
+    const scopeIds = filterClientId ? [filterClientId] : visibleClients.map((c) => c.id);
+
+    const logs = await prisma.scheduleLog.findMany({
+      where: { clientId: { in: scopeIds }, isDeleted: false },
+      select: {
+        scheduleMonth: true, scheduleValue: true, scheduleValueWithVat: true,
+        medium: true, brandName: true,
+        channelMaster: { select: { id: true, name: true, medium: true } },
+      },
+    });
+
+    let total = 0, totalVat = 0;
+    const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
+    const months = new Set();
+    for (const l of logs) {
+      const v = Number(l.scheduleValue) || 0;
+      total += v; totalVat += Number(l.scheduleValueWithVat) || 0;
+      const m = l.scheduleMonth;
+      if (/^\d{4}-\d{2}$/.test(m)) { months.add(m); (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
+      const ch = l.channelMaster?.name || 'Unknown';
+      (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+      const med = l.medium || 'Unknown';
+      (byMedium[med] ||= { name: med, value: 0 }).value += v;
+      const br = l.brandName || 'Unbranded';
+      (byBrand[br] ||= { name: br, value: 0, count: 0 }).value += v; byBrand[br].count++;
+    }
+    const sortedMonths = [...months].sort();
+
+    return res.json({
+      group: { id: group.id, name: group.name, agencyId: group.agency?.id, agencyName: group.agency?.name },
+      clients: visibleClients,
+      filterClientId,
+      totalValue: Math.round(total),
+      totalWithVat: Math.round(totalVat),
+      totalEntries: logs.length,
+      firstMonth: sortedMonths[0] || null,
+      lastMonth: sortedMonths[sortedMonths.length - 1] || null,
+      monthsActive: sortedMonths.length,
+      channelCount: Object.keys(byChannel).length,
+      brandCount: Object.keys(byBrand).filter((b) => b !== 'Unbranded').length,
+      byMonth: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
+      byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
+      byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
+      byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
+    });
+  } catch (error) {
+    console.error('getClientGroupOverview error:', error);
+    return res.status(500).json({ error: 'Failed to load group overview' });
+  }
+}
