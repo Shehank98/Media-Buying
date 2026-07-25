@@ -116,6 +116,12 @@ concurrent requests exhaust Prisma's connection pool and the endpoint returns
 **0.40s**, with a one-time ~2s cost on the first request after a deploy or cache
 expiry. Verified identical output on all 60,008 rows — zero mismatches.
 
+Making the parser exception-safe (above) costs some of that back: dashboard
+**0.98s**, schedules **0.77s** on the same 60k rows. If that becomes a problem,
+the way out is to stop parsing per request — backfill the parsed dates into
+`financial_payment_records` and set `FINANCIAL_IMPORT_EXTRA_DATES=false`, which
+takes the dashboard to 0.22s.
+
 Consequence to know about: a new upload introducing a *new* header shape can take
 up to 10 minutes to be picked up. Restart the service to force it.
 
@@ -133,8 +139,27 @@ unrecognised becomes `NULL` rather than erroring:
 |---|---|
 | `45812` (Excel serial, 20000–80000) | `1899-12-30 + n days` |
 | `2026-07-14` / `2026-07-14T00:00:00.000Z` | `2026-07-14` |
-| `14/07/2026` or `14-07-2026` | day-first by default (`FINANCIAL_DATE_ORDER=MDY` to flip) |
-| `N/A`, `""`, anything else | `null` → `not_yet_invoiced` |
+| `14/07/2026` or `14-07-2026` | `2026-07-14` |
+| `8/29/2024` | `2024-08-29` — month > 12 can only be the day, so the format is detected per row |
+| `05/06/2026` (ambiguous) | day-first: `2026-06-05` (`FINANCIAL_DATE_ORDER=MDY` to flip) |
+| `31/11/2023`, `2023-02-30`, `29/02/2023` | `null` — well-formed but not real calendar dates |
+| `N/A`, `-`, `TBA`, `#VALUE!`, `""` | `null` → `not_yet_invoiced` |
+
+**The parser must never throw.** One bad cell aborts the entire query and 500s
+the endpoint, and the live data contains all of the above. `to_date()` is *not*
+lenient about out-of-range fields — it raises `22008` on both `8/29/2024` (read
+as month 29) and `31/11/2023` — and `'2023-02-30'::date` raises too. So nothing
+is cast until it has been proven safe: components are pulled out with a regex,
+the day/month order is resolved, calendar validity (including leap years) is
+checked with integer arithmetic, and only then is `make_date` called. Guards are
+**nested** `CASE`s, never `AND` — Postgres does not guarantee left-to-right
+evaluation of `AND`, so a flat guard still lets the unsafe call run.
+
+The `CROSS JOIN LATERAL` stages that resolve this carry `OFFSET 0`. That is an
+optimization fence, not decoration: without it Postgres pulls the subqueries up
+and substitutes each expression back into every reference — the date builder
+names its month three times and its year four — so the "compute once" structure
+fans back out and the query measured 3× slower.
 
 Once every date has been migrated into `financial_payment_records`, set
 **`FINANCIAL_IMPORT_EXTRA_DATES=false`**: it drops the jsonb lookups entirely
