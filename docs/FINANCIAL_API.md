@@ -77,13 +77,31 @@ An effective date is therefore resolved as:
 first write for a record the currently-effective invoice date is snapshotted into
 the side table, so recording a payment never discards the sheet's invoice date.
 
-**Key matching.** `import_extra` keys are matched with case-insensitive `ILIKE`
-patterns, overridable per environment:
+**Key matching.** The two headers in the client's workbook are confirmed:
 
-* invoice sent — default `%invoice%sent%`, `%date%invoice%client%`, `%billing%date%`
+```
+Invoices sent date to client (dd/mm/yyyy)
+Payment Received  Date (dd/mm/yyyy)          <- note the double space
+```
+
+They are matched with case-insensitive `ILIKE` patterns rather than compared
+literally, so neither the stray double space nor the `(dd/mm/yyyy)` suffix has to
+be reproduced exactly, and a future upload that tidies a header up still works.
+Defaults (overridable per environment):
+
+* invoice sent — `%invoice%sent%date%`, `%invoice%sent%`, `%date%invoice%client%`
   (`FINANCIAL_INVOICE_SENT_KEYS`)
-* payment received — default `%payment%receiv%`, `%received%payment%`, `%date%paid%`
+* payment received — `%payment%receiv%`, `%received%payment%`, `%date%paid%`
   (`FINANCIAL_PAYMENT_RECEIVED_KEYS`)
+
+> **Do not loosen the payment pattern to just `%receiv%`.** The same sheet
+> carries `TV/Radio Sation Invoice received date (dd/mm/yyyy)` — when the station
+> invoiced the *agency*, not when the client paid. Matching it would mark unpaid
+> receivables as collected. Requiring `payment` before `receiv` is what keeps
+> them apart.
+
+If several keys match, the alphabetically first wins — deterministic, but a
+reason to keep the patterns narrow.
 
 **Value parsing.** The importer parses workbooks without `cellDates`, so real
 date cells arrive as Excel serial numbers. All of these are handled, and anything
@@ -208,6 +226,7 @@ every id-ish one accepts **either an id or a name** (`client=1,Maliban` is valid
 | `scheduleMonthFrom`, `scheduleMonthTo` | `YYYY-MM` range |
 | `status` | one or more of the six statuses |
 | `roNumber` | substring match |
+| `invoiceNumber` | substring match against any invoice-number column (agency or station) |
 | `unpaidOnly` | `true` = exclude paid |
 | `page`, `pageSize` | default `1` / `100`, max `1000` |
 | `sortBy` | `scheduleMonth` (default), `invoiceMonth`, `client`, `agency`, `channel`, `value`, `status`, `invoiceSentDate`, `paymentReceivedDate`, `daysOutstanding` |
@@ -242,11 +261,35 @@ every id-ish one accepts **either an id or a name** (`client=1,Maliban` is valid
       "daysOutstanding": 10,        // null when not invoiced or already paid
       "hasPaymentRecord": false,    // false = dates still come from the sheet
       "note": null,
-      "paymentUpdatedAt": null
+      "paymentUpdatedAt": null,
+
+      // ── the rest of the finance columns, read out of import_extra ──
+      "invoiceNumber": "OGY-2026-103",        // Ogilvy/Geometry Invoice Number
+      "stationInvoiceNumber": "STN-003",
+      "invoiceValue": 1250000,
+      "invoiceValueWithVat": 1475000,         // the 18% column
+      "agencyInvoiceDate": "2026-06-05",      // when the agency raised it...
+      "stationInvoiceReceivedDate": "2026-06-07",
+      "group": "Maliban Group",
+      "discipline": "Media",
+      "aorPct": 2.5, "cagPct": 1.75,
+      "cagAgency": "Ogilvy", "cagAmount": 12500, "aorRevenue": 17500.5,
+
+      // every remaining sheet column, verbatim, keyed by its original header —
+      // render a column we haven't named without needing an API change
+      "sheet": { "Schedule value with 8% / 12% VAT": "1,350,000" }
     }
   ]
 }
 ```
+
+`agencyInvoiceDate` is when the agency *raised* its invoice; `invoiceSentDate` is
+when it went to the client. Only the latter drives `status`.
+
+These fields appear on `/schedules` and on the `PATCH` response only. The
+dashboard endpoint doesn't carry them — dragging a jsonb blob through a `GROUP
+BY` buys nothing. Any of them may be `null` if that column was blank or absent in
+the upload.
 
 Errors: `400` unknown `status` · `401` · `403`.
 
@@ -345,9 +388,14 @@ for the 12-month collections series.
    added on top follow existing app conventions rather than the spec: scope
    (a `hub` user can only patch its own clients' records) and `User.readOnly`.
    Both are one-line changes if payments should be `control_room`-only.
-3. **The exact `import_extra` header strings** in the client's workbooks. The
-   default ILIKE patterns are best guesses; confirm against real data
-   (`SELECT DISTINCT jsonb_object_keys(import_extra) FROM schedule_logs;`) and
-   set `FINANCIAL_INVOICE_SENT_KEYS` / `FINANCIAL_PAYMENT_RECEIVED_KEYS`.
+3. ~~The exact `import_extra` header strings~~ — **resolved.** Confirmed against
+   the Orbit export and covered by the default patterns; no env override needed.
+   Worth re-checking after any future change to the upload template.
 4. **`from`/`to` semantics** on the dashboard — currently the flight month.
    Switch the default to `dateBasis=invoice` if finance thinks in invoice dates.
+5. **Which amount is the receivable.** `status`, `totalOutstanding` and every
+   dashboard aggregate are computed on `scheduleValue`, per the original spec.
+   But the sheet also carries `Invoice Value` / `Invoice Value with 18% VAT`,
+   and what a client actually owes is the invoiced amount including VAT. Both
+   are returned per record so the UI can show either; say the word if the
+   aggregates should switch to invoice value.
