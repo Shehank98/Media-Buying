@@ -32,6 +32,8 @@ import profitRoutes from './routes/profit.routes.js';
 import revenueRoutes from './routes/revenue.routes.js';
 import backupRoutes from './routes/backup.routes.js';
 import errorLogRoutes from './routes/errorlog.routes.js';
+import financialRoutes from './routes/financial.routes.js';
+import { financialCors, financialCorsConfigured } from './middleware/financialCors.js';
 import { logError } from './services/errorLog.service.js';
 import { startBackupScheduler } from './services/backup.service.js';
 import { startDataExportScheduler } from './services/dataExport.service.js';
@@ -46,12 +48,24 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({
+
+// The external financial tracker (see routes/financial.routes.js) has its own
+// origin allow-list. It must be the ONLY CORS handler for /api/financial/* —
+// two handlers would both set Access-Control-Allow-Origin and browsers reject a
+// response carrying it twice — so the app's own CORS below skips that prefix.
+// Nothing about the existing frontend's CORS behaviour changes.
+const FINANCIAL_PREFIX = '/api/financial';
+app.use(FINANCIAL_PREFIX, financialCors);
+
+const appCors = cors({
   origin: process.env.FRONTEND_URL
     ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
     : '*',
   credentials: true,
-}));
+});
+app.use((req, res, next) => (
+  req.path.startsWith(FINANCIAL_PREFIX) ? next() : appCors(req, res, next)
+));
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 
@@ -105,6 +119,14 @@ app.use('/api/profit', profitRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/admin/backup', backupRoutes);
 app.use('/api/errors', errorLogRoutes);
+
+// Isolated financial-tracker API (feature-flagged; nothing above is affected).
+if (String(process.env.FINANCIAL_API_ENABLED || 'true') !== 'false') {
+  app.use(FINANCIAL_PREFIX, financialRoutes);
+  if (!financialCorsConfigured()) {
+    console.warn('[financial] ALLOWED_FINANCIAL_ORIGIN is not set — /api/financial is reachable server-to-server but blocked for browsers on other origins.');
+  }
+}
 
 // Health check
 app.get('/health', (req, res) => {

@@ -1099,3 +1099,25 @@ model PackageRecipient {
 
   @@map("package_recipients")
 }
+
+// ─── Financial API (isolated /api/financial module) ─────────────────────────
+
+// Invoice-sent / payment-received dates for the external financial payment
+// tracker. Deliberately a SIDE table keyed to schedule_logs.id rather than new
+// columns on schedule_logs, so the financial module never writes to a table the
+// existing app owns. Reads COALESCE this over the dates the bulk import kept in
+// ScheduleLog.importExtra (see financial.controller.js extraDateSql) — a row set
+// here always wins over the imported spreadsheet value.
+model FinancialPaymentRecord {
+  id                  Int       @id @default(autoincrement())
+  scheduleLogId       Int       @unique @map("schedule_log_id")
+  invoiceSentDate     DateTime? @map("invoice_sent_date") @db.Date
+  paymentReceivedDate DateTime? @map("payment_received_date") @db.Date
+  note                String?
+  updatedById         Int?      @map("updated_by_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([paymentReceivedDate])
+  @@map("financial_payment_records")
+}
