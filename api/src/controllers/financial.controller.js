@@ -123,27 +123,98 @@ function extraRawSql(keys) {
   return Prisma.sql`COALESCE(${Prisma.join(lookups, ', ')})`;
 }
 
-// Coerces one of those raw values to a date. Excel writes real date cells as
-// serial numbers (the importer parses sheets without cellDates), so numbers in
-// the plausible range are read as days since the 1900 epoch; ISO and d/m/Y
-// strings are also handled. Anything else — "N/A", "-", "TBA", a stray formula
-// error — yields NULL rather than erroring.
+// ── Turning a spreadsheet cell into a date, without ever throwing ────────────
 //
-// The numeric branch is a NESTED CASE, not `v ~ '...' AND v::numeric BETWEEN`:
-// Postgres does not guarantee left-to-right evaluation of AND, so the cast can
-// be applied to a non-numeric string and abort the whole query. Nesting makes
-// the guard a real guard.
-function coerceDateSql(rawCol) {
-  return Prisma.sql`CASE
-    WHEN ${rawCol} ~ '^[0-9]+([.][0-9]+)?$' THEN
+// Every cast/parse below has to be exception-safe, because ONE bad cell aborts
+// the whole query and 500s the endpoint. Real data from the client's sheets
+// broke three separate assumptions:
+//
+//   "8/29/2024"   mixed formats — this one is M/D/YYYY, while most rows are
+//                 d/m/Y. to_date(..,'DD/MM/YYYY') reads month 29 and throws.
+//   "31/11/2023"  a date that does not exist (November has 30 days). Valid
+//                 shape, impossible value; to_date throws.
+//   "2023-02-30"  same, via the ISO branch: '2023-02-30'::date throws.
+//
+// to_date is NOT lenient about out-of-range fields — it raises 22008. So no
+// cast is applied to anything that hasn't already been proven safe: the three
+// components are pulled out with a regex, the day/month order is resolved,
+// the calendar validity is checked, and only then is make_date called.
+// One regex for both shapes rather than two passes per cell: groups 1-3 are an
+// ISO prefix (yyyy-mm-dd, so year first), groups 4-6 a slash/dash d-m-y with the
+// 4-digit year last. The two alternatives are mutually exclusive.
+const DATE_RE = '^(?:([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})|([0-9]{1,2})[/-]([0-9]{1,2})[/-]([0-9]{4})$)';
+
+// Where a d/m/Y-shaped value is ambiguous (both parts <= 12) fall back to the
+// configured order; where one part is > 12 it can only be the day, so the
+// format is detected per row. That is what rescues "8/29/2024" sitting in a
+// column of "15/07/2026"s.
+// Slash/dash parts live in groups 4 (a) and 5 (b) of DATE_RE.
+function dmyPartsSql(p) {
+  const dayFirst = String(process.env.FINANCIAL_DATE_ORDER || 'DMY').toUpperCase() !== 'MDY';
+  const ambigMonth = Prisma.raw(dayFirst ? '5' : '4');
+  const ambigDay = Prisma.raw(dayFirst ? '4' : '5');
+  return {
+    month: Prisma.sql`CASE
+      WHEN ${p}[4]::int > 12 AND ${p}[5]::int <= 12 THEN ${p}[5]::int
+      WHEN ${p}[5]::int > 12 AND ${p}[4]::int <= 12 THEN ${p}[4]::int
+      ELSE ${p}[${ambigMonth}]::int END`,
+    day: Prisma.sql`CASE
+      WHEN ${p}[4]::int > 12 AND ${p}[5]::int <= 12 THEN ${p}[4]::int
+      WHEN ${p}[5]::int > 12 AND ${p}[4]::int <= 12 THEN ${p}[5]::int
+      ELSE ${p}[${ambigDay}]::int END`,
+  };
+}
+
+// make_date() also throws on an impossible day, so the day is range-checked
+// against the real length of that month first. Nested CASEs, not AND — Postgres
+// does not guarantee left-to-right evaluation of AND, so a flat guard can still
+// let the unsafe call run.
+//
+// Month length is plain integer arithmetic rather than
+// `EXTRACT(DAY FROM make_date(y,m,1) + INTERVAL '1 month' - INTERVAL '1 day')`:
+// the date→timestamp→interval round trip runs per row, twice, and measured as
+// the single most expensive part of the query.
+function makeDateSql(y, m, d) {
+  return Prisma.sql`CASE WHEN ${m} BETWEEN 1 AND 12 AND ${y} BETWEEN 1900 AND 2999 THEN
+      CASE WHEN ${d} BETWEEN 1 AND CASE ${m}
+             WHEN 2 THEN CASE WHEN (${y} % 4 = 0 AND ${y} % 100 <> 0) OR ${y} % 400 = 0 THEN 29 ELSE 28 END
+             WHEN 4 THEN 30 WHEN 6 THEN 30 WHEN 9 THEN 30 WHEN 11 THEN 30
+             ELSE 31 END
+           THEN make_date(${y}, ${m}, ${d}) END
+    END`;
+}
+
+// Excel writes real date cells as serial numbers (the importer parses sheets
+// without cellDates), so plausible-range numbers are days since the 1900 epoch.
+function serialDateSql(rawCol) {
+  return Prisma.sql`CASE WHEN ${rawCol} ~ '^[0-9]+([.][0-9]+)?$' THEN
       CASE WHEN ${rawCol}::numeric BETWEEN 20000 AND 80000
            THEN (DATE '1899-12-30' + floor(${rawCol}::numeric)::int) END
-    WHEN ${rawCol} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
-      THEN (substring(${rawCol} from 1 for 10))::date
-    WHEN ${rawCol} ~ '^[0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{4}$'
-      THEN to_date(replace(${rawCol}, '-', '/'), ${dateFormat()})
-    ELSE NULL
-  END`;
+    END`;
+}
+
+// Normalises one raw cell into (year, month, day) integers — ISO first, else the
+// order-resolved d/m/Y parts. Computed in its own LATERAL stage so each CASE is
+// evaluated ONCE: makeDateSql references its month argument three times and its
+// year four, and inlining the resolution expressions there made the query fan
+// out enough to cost more than the naive jsonb scan it replaced.
+function partsCols(prefix, m) {
+  const dmy = dmyPartsSql(m);
+  const p = (s) => Prisma.raw(`${prefix}_${s}`);
+  return Prisma.sql`
+    COALESCE(${m}[1]::int, ${m}[6]::int) AS ${p('y')},
+    CASE WHEN ${m}[1] IS NOT NULL THEN ${m}[2]::int ELSE ${dmy.month} END AS ${p('m')},
+    CASE WHEN ${m}[1] IS NOT NULL THEN ${m}[3]::int ELSE ${dmy.day} END AS ${p('d')}`;
+}
+
+// Anything unrecognised — "N/A", "-", "TBA", "#VALUE!", an impossible date —
+// yields NULL, which reads as "not yet invoiced" rather than breaking the page.
+function coerceDateSql(rawCol, prefix) {
+  const p = (s) => Prisma.raw(`${prefix}_${s}`);
+  return Prisma.sql`COALESCE(
+    ${serialDateSql(rawCol)},
+    ${makeDateSql(p('y'), p('m'), p('d'))}
+  )`;
 }
 
 // ── Status ───────────────────────────────────────────────────────────────────
@@ -287,9 +358,9 @@ function scoredCte(where, { withExtra = false, keys = { invoice: [], payment: []
              sl.schedule_value, sl.schedule_value_with_vat,
              (fpr.id IS NOT NULL) AS has_override,
              CASE WHEN fpr.id IS NOT NULL THEN fpr.invoice_sent_date
-                  ELSE ${coerceDateSql(Prisma.raw('x.inv_raw'))} END AS invoice_sent_date,
+                  ELSE ${coerceDateSql(Prisma.raw('p.inv_raw'), 'inv')} END AS invoice_sent_date,
              CASE WHEN fpr.id IS NOT NULL THEN fpr.payment_received_date
-                  ELSE ${coerceDateSql(Prisma.raw('x.pay_raw'))} END AS payment_received_date,
+                  ELSE ${coerceDateSql(Prisma.raw('p.pay_raw'), 'pay')} END AS payment_received_date,
              fpr.note, fpr.updated_at AS payment_updated_at
              ${withExtra ? Prisma.sql`, sl.import_extra AS sheet` : Prisma.empty}
         FROM schedule_logs sl
@@ -297,12 +368,30 @@ function scoredCte(where, { withExtra = false, keys = { invoice: [], payment: []
         JOIN clients c         ON c.id  = sl.client_id
         JOIN channel_masters cm ON cm.id = sl.channel_master_id
         LEFT JOIN financial_payment_records fpr ON fpr.schedule_log_id = sl.id
-        -- One lateral per row resolving both raw date cells, so the coercion
-        -- CASEs reference a plain column instead of repeating a subquery.
+        -- One lateral per row resolving both raw date cells and splitting them
+        -- into components, so the coercion CASEs reference plain columns rather
+        -- than repeating a subquery (or a regex) several times each.
         CROSS JOIN LATERAL (
           SELECT ${extraRawSql(keys.invoice)} AS inv_raw,
                  ${extraRawSql(keys.payment)} AS pay_raw
+        ) r
+        -- OFFSET 0 is an optimization fence. Without it Postgres pulls these
+        -- subqueries up and substitutes each expression back into EVERY place
+        -- the derived column is referenced — makeDateSql alone names its month
+        -- three times and its year four — so the "compute once" structure fans
+        -- back out and the query got 3x slower (4116ms vs 1282ms measured).
+        CROSS JOIN LATERAL (
+          SELECT r.inv_raw, r.pay_raw,
+                 regexp_match(r.inv_raw, ${DATE_RE}) AS inv_parts,
+                 regexp_match(r.pay_raw, ${DATE_RE}) AS pay_parts
+          OFFSET 0
         ) x
+        CROSS JOIN LATERAL (
+          SELECT x.inv_raw, x.pay_raw,
+                 ${partsCols('inv', Prisma.raw('x.inv_parts'))},
+                 ${partsCols('pay', Prisma.raw('x.pay_parts'))}
+          OFFSET 0
+        ) p
        WHERE ${where}
     ),
     scored AS (
