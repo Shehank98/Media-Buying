@@ -52,32 +52,98 @@ const dateFormat = () => (String(process.env.FINANCIAL_DATE_ORDER || 'DMY').toUp
 // queries and this removes it entirely.
 const useImportExtra = () => String(process.env.FINANCIAL_IMPORT_EXTRA_DATES || 'true') !== 'false';
 
-// Pulls the first import_extra value whose key matches one of `patterns` and
-// coerces it to a date. Excel writes real date cells as serial numbers (the
-// importer parses sheets without cellDates), so numbers in the plausible range
-// are read as days since the 1900 epoch; ISO and d/m/Y strings are also handled.
-// Anything else yields NULL rather than erroring.
-function extraDateSql(patterns) {
-  if (!useImportExtra()) return Prisma.sql`NULL::date`;
-  return Prisma.sql`(
-    SELECT CASE
-      WHEN x.v ~ '^[0-9]+([.][0-9]+)?$' AND x.v::numeric BETWEEN 20000 AND 80000
-        THEN (DATE '1899-12-30' + floor(x.v::numeric)::int)
-      WHEN x.v ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
-        THEN (substring(x.v from 1 for 10))::date
-      WHEN x.v ~ '^[0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{4}$'
-        THEN to_date(replace(x.v, '-', '/'), ${dateFormat()})
-      ELSE NULL
-    END
-    FROM (
-      SELECT btrim(e.value) AS v
-        FROM jsonb_each_text(COALESCE(sl.import_extra, '{}'::jsonb)) e
-       WHERE e.key ILIKE ANY (ARRAY[${Prisma.join(patterns)}]::text[])
-         AND btrim(e.value) <> ''
-       ORDER BY e.key
-       LIMIT 1
-    ) x
-  )`;
+// ── Resolving the patterns to concrete keys (do this ONCE, not per row) ──────
+//
+// The obvious implementation — expand every key of every row with
+// jsonb_each_text and ILIKE-match — costs ~2s per 60k rows, twice per row, and
+// dominates every query: the dashboard measured 15.0s with it versus 0.24s
+// without. At production volume that overruns Prisma's connection-pool timeout
+// and the endpoint 500s, which is exactly what it did.
+//
+// Instead the patterns are resolved to the ACTUAL key names once (~0.9s, cached
+// below), and the per-row extraction becomes a direct `import_extra ->> 'key'`
+// lookup — a binary search inside the row rather than a full key expansion.
+// Same 60k rows: 84ms instead of 2061ms.
+const KEY_CACHE_TTL_MS = 10 * 60 * 1000;
+let keyCache = { at: 0, invoice: [], payment: [] };
+let keyCacheInFlight = null;
+
+// SQL ILIKE pattern -> anchored, case-insensitive JS regex.
+function ilikeToRegex(p) {
+  const body = p.split('%').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+  return new RegExp(`^${body}$`, 'i');
+}
+
+// Classify by PATTERN order (most specific first) rather than by key order, so
+// precedence is what we declared and not an accident of how keys sort.
+function classify(keys, patterns) {
+  const out = [];
+  for (const p of patterns.map(ilikeToRegex)) {
+    for (const k of keys) if (p.test(k) && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+export async function resolveExtraKeys() {
+  if (!useImportExtra()) return { invoice: [], payment: [] };
+  if (Date.now() - keyCache.at < KEY_CACHE_TTL_MS) return keyCache;
+  // Collapse concurrent cold-start requests onto one discovery query.
+  if (keyCacheInFlight) return keyCacheInFlight;
+
+  const invPat = invoiceKeyPatterns();
+  const payPat = paymentKeyPatterns();
+  keyCacheInFlight = (async () => {
+    try {
+      const rows = await prisma.$queryRaw`
+        SELECT DISTINCT k FROM (
+          SELECT jsonb_object_keys(import_extra) AS k
+            FROM schedule_logs
+           WHERE import_extra IS NOT NULL AND is_deleted = false
+        ) t
+        WHERE k ILIKE ANY (ARRAY[${Prisma.join([...invPat, ...payPat])}]::text[])`;
+      const keys = rows.map((r) => r.k);
+      keyCache = { at: Date.now(), invoice: classify(keys, invPat), payment: classify(keys, payPat) };
+      console.log('[financial] import_extra date keys resolved:', JSON.stringify(keyCache.invoice), JSON.stringify(keyCache.payment));
+    } catch (e) {
+      // Never fail a request over this — keep serving with whatever we had.
+      console.error('[financial] import_extra key discovery failed:', e.message);
+      keyCache = { ...keyCache, at: Date.now() };
+    } finally {
+      keyCacheInFlight = null;
+    }
+    return keyCache;
+  })();
+  return keyCacheInFlight;
+}
+
+// First non-empty value among the resolved keys, as raw text.
+function extraRawSql(keys) {
+  if (!useImportExtra() || !keys.length) return Prisma.sql`NULL::text`;
+  const lookups = keys.map((k) => Prisma.sql`NULLIF(btrim(sl.import_extra ->> ${k}), '')`);
+  return Prisma.sql`COALESCE(${Prisma.join(lookups, ', ')})`;
+}
+
+// Coerces one of those raw values to a date. Excel writes real date cells as
+// serial numbers (the importer parses sheets without cellDates), so numbers in
+// the plausible range are read as days since the 1900 epoch; ISO and d/m/Y
+// strings are also handled. Anything else — "N/A", "-", "TBA", a stray formula
+// error — yields NULL rather than erroring.
+//
+// The numeric branch is a NESTED CASE, not `v ~ '...' AND v::numeric BETWEEN`:
+// Postgres does not guarantee left-to-right evaluation of AND, so the cast can
+// be applied to a non-numeric string and abort the whole query. Nesting makes
+// the guard a real guard.
+function coerceDateSql(rawCol) {
+  return Prisma.sql`CASE
+    WHEN ${rawCol} ~ '^[0-9]+([.][0-9]+)?$' THEN
+      CASE WHEN ${rawCol}::numeric BETWEEN 20000 AND 80000
+           THEN (DATE '1899-12-30' + floor(${rawCol}::numeric)::int) END
+    WHEN ${rawCol} ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
+      THEN (substring(${rawCol} from 1 for 10))::date
+    WHEN ${rawCol} ~ '^[0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{4}$'
+      THEN to_date(replace(${rawCol}, '-', '/'), ${dateFormat()})
+    ELSE NULL
+  END`;
 }
 
 // ── Status ───────────────────────────────────────────────────────────────────
@@ -208,7 +274,7 @@ const AND = (parts) => (parts.length ? Prisma.join(parts, ' AND ') : Prisma.sql`
 // can surface the rest of the finance columns (invoice numbers, invoice values,
 // CAG/AOR, ...). The aggregate endpoints leave it out — dragging a jsonb blob
 // through a GROUP BY buys nothing.
-function scoredCte(where, { withExtra = false } = {}) {
+function scoredCte(where, { withExtra = false, keys = { invoice: [], payment: [] } } = {}) {
   return Prisma.sql`
     base AS (
       SELECT sl.id,
@@ -220,8 +286,10 @@ function scoredCte(where, { withExtra = false } = {}) {
              sl.schedule_month, sl.invoice_month,
              sl.schedule_value, sl.schedule_value_with_vat,
              (fpr.id IS NOT NULL) AS has_override,
-             CASE WHEN fpr.id IS NOT NULL THEN fpr.invoice_sent_date     ELSE ${extraDateSql(invoiceKeyPatterns())} END AS invoice_sent_date,
-             CASE WHEN fpr.id IS NOT NULL THEN fpr.payment_received_date ELSE ${extraDateSql(paymentKeyPatterns())} END AS payment_received_date,
+             CASE WHEN fpr.id IS NOT NULL THEN fpr.invoice_sent_date
+                  ELSE ${coerceDateSql(Prisma.raw('x.inv_raw'))} END AS invoice_sent_date,
+             CASE WHEN fpr.id IS NOT NULL THEN fpr.payment_received_date
+                  ELSE ${coerceDateSql(Prisma.raw('x.pay_raw'))} END AS payment_received_date,
              fpr.note, fpr.updated_at AS payment_updated_at
              ${withExtra ? Prisma.sql`, sl.import_extra AS sheet` : Prisma.empty}
         FROM schedule_logs sl
@@ -229,6 +297,12 @@ function scoredCte(where, { withExtra = false } = {}) {
         JOIN clients c         ON c.id  = sl.client_id
         JOIN channel_masters cm ON cm.id = sl.channel_master_id
         LEFT JOIN financial_payment_records fpr ON fpr.schedule_log_id = sl.id
+        -- One lateral per row resolving both raw date cells, so the coercion
+        -- CASEs reference a plain column instead of repeating a subquery.
+        CROSS JOIN LATERAL (
+          SELECT ${extraRawSql(keys.invoice)} AS inv_raw,
+                 ${extraRawSql(keys.payment)} AS pay_raw
+        ) x
        WHERE ${where}
     ),
     scored AS (
@@ -255,6 +329,7 @@ const SORTS = {
 // ── GET /api/financial/schedules ─────────────────────────────────────────────
 export async function listSchedules(req, res) {
   try {
+    const keys = await resolveExtraKeys();
     const parts = await baseFilters(req);
     const { pre, post } = periodFragments(req);
     const where = AND([...parts, ...pre]);
@@ -278,12 +353,12 @@ export async function listSchedules(req, res) {
 
     const [rows, totals] = await Promise.all([
       prisma.$queryRaw`
-        WITH ${scoredCte(where, { withExtra: true })}
+        WITH ${scoredCte(where, { withExtra: true, keys })}
         ${filtered}
         ORDER BY ${Prisma.raw(sortCol)} ${Prisma.raw(sortDir)} NULLS LAST, id DESC
         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
       prisma.$queryRaw`
-        WITH ${scoredCte(where)}, f AS (${filtered})
+        WITH ${scoredCte(where, { keys })}, f AS (${filtered})
         SELECT COUNT(*)::int AS count,
                COALESCE(SUM(schedule_value), 0)::float8 AS value,
                COALESCE(SUM(schedule_value_with_vat), 0)::float8 AS value_with_vat
@@ -458,10 +533,11 @@ export async function updatePayment(req, res) {
     }
 
     // Existence + row-level access in one go: re-run the scoped query for this id.
+    const keys = await resolveExtraKeys();
     const scope = await scopeFragment(req.user);
     const where = AND([Prisma.sql`sl.id = ${id}`, Prisma.sql`sl.is_deleted = false`, ...(scope ? [scope] : [])]);
     const found = await prisma.$queryRaw`
-      WITH ${scoredCte(where)}
+      WITH ${scoredCte(where, { keys })}
       SELECT * FROM scored LIMIT 1`;
     if (!found.length) {
       // 404 either way — don't leak whether an out-of-scope record exists.
@@ -488,7 +564,7 @@ export async function updatePayment(req, res) {
     });
 
     const after = await prisma.$queryRaw`
-      WITH ${scoredCte(AND([Prisma.sql`sl.id = ${id}`]), { withExtra: true })}
+      WITH ${scoredCte(AND([Prisma.sql`sl.id = ${id}`]), { withExtra: true, keys })}
       SELECT * FROM scored LIMIT 1`;
 
     return res.json({
@@ -509,6 +585,7 @@ export async function updatePayment(req, res) {
 // the from/to period but still honours agency/client/channel filters).
 export async function dashboardSummary(req, res) {
   try {
+    const keys = await resolveExtraKeys();
     const parts = await baseFilters(req);
     const { basis, pre, post } = periodFragments(req);
     const where = AND([...parts, ...pre]);
@@ -519,7 +596,7 @@ export async function dashboardSummary(req, res) {
 
     const [agg, collected] = await Promise.all([
       prisma.$queryRaw`
-        WITH ${scoredCte(where)}, f AS (SELECT * FROM scored WHERE ${after})
+        WITH ${scoredCte(where, { keys })}, f AS (SELECT * FROM scored WHERE ${after})
         SELECT
           (SELECT COUNT(*)::int FROM f) AS record_count,
           (SELECT COALESCE(SUM(schedule_value), 0)::float8 FROM f) AS total_value,
@@ -549,7 +626,7 @@ export async function dashboardSummary(req, res) {
                 FROM f WHERE status NOT IN ('paid', 'not_yet_invoiced')
                GROUP BY client_id, client, agency) s) AS outstanding_by_client`,
       prisma.$queryRaw`
-        WITH ${scoredCte(AND(parts))},
+        WITH ${scoredCte(AND(parts), { keys })},
         months AS (
           SELECT to_char(d, 'YYYY-MM') AS month
             FROM generate_series(

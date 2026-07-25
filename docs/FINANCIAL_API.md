@@ -100,8 +100,30 @@ Defaults (overridable per environment):
 > receivables as collected. Requiring `payment` before `receiv` is what keeps
 > them apart.
 
-If several keys match, the alphabetically first wins — deterministic, but a
-reason to keep the patterns narrow.
+If several keys match, precedence follows the order the patterns are declared
+(most specific first), not the order the keys happen to sort in.
+
+**How this is applied matters for performance.** The patterns are resolved to the
+concrete key names **once** — a single `jsonb_object_keys` scan, cached in-process
+for 10 minutes — and the per-row extraction is then a direct
+`import_extra ->> 'exact key'` lookup.
+
+The obvious implementation (expand every key of every row with `jsonb_each_text`
+and ILIKE-match) is 20–60× slower and was shipped first. On 60k rows it made the
+dashboard take **15.0s** versus 0.24s with extraction off; at that latency
+concurrent requests exhaust Prisma's connection pool and the endpoint returns
+500. Measured after the fix, same 60k rows: dashboard **0.44s**, schedules
+**0.40s**, with a one-time ~2s cost on the first request after a deploy or cache
+expiry. Verified identical output on all 60,008 rows — zero mismatches.
+
+Consequence to know about: a new upload introducing a *new* header shape can take
+up to 10 minutes to be picked up. Restart the service to force it.
+
+The date-coercion `CASE` guards its numeric cast with a **nested** `CASE` rather
+than `v ~ '...' AND v::numeric BETWEEN ...`. Postgres does not guarantee
+left-to-right evaluation of `AND`, so the flat form can apply the cast to a
+non-numeric string ("N/A", "TBA", "#VALUE!") and abort the whole query. Do not
+flatten it back.
 
 **Value parsing.** The importer parses workbooks without `cellDates`, so real
 date cells arrive as Excel serial numbers. All of these are handled, and anything
@@ -115,8 +137,9 @@ unrecognised becomes `NULL` rather than erroring:
 | `N/A`, `""`, anything else | `null` → `not_yet_invoiced` |
 
 Once every date has been migrated into `financial_payment_records`, set
-**`FINANCIAL_IMPORT_EXTRA_DATES=false`**: it drops the per-row jsonb scan, which
-is the expensive part of these queries.
+**`FINANCIAL_IMPORT_EXTRA_DATES=false`**: it drops the jsonb lookups entirely
+(dashboard 0.22s, schedules 0.06s on the same 60k rows) and makes the side table
+the sole source of truth.
 
 ---
 
