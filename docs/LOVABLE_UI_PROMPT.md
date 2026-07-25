@@ -175,12 +175,28 @@ Then the **ageing rail**. Then:
 
 ### Receivables (the main working screen)
 Full-width table over `GET /schedules`, server-paginated.
-Columns: Status chip · Client · Agency · Channel · Medium tag · RO Number ·
-Schedule Month · Invoice Month · Schedule Value · With VAT · Invoice Sent ·
+
+Default columns: Status chip · Client · Agency · **Invoice No.** · Channel ·
+Medium tag · Schedule Month · **Invoice Value (with VAT)** · Invoice Sent ·
 Payment Received · Days Outstanding.
+
+Additional columns available behind a **"Columns" menu** (checkbox list,
+selection persisted to localStorage), off by default: RO Number, Station Invoice
+No., Invoice Month, Schedule Value, Schedule Value with VAT, Invoice Value
+(ex-VAT), Agency Invoice Date, Station Invoice Received Date, Media Group,
+Group, Discipline, AOR %, CAG %, CAG Agency, CAG Amount, AOR Revenue. Each record
+also carries a `sheet` object with every remaining spreadsheet column keyed by
+its original header — offer those at the bottom of the Columns menu too.
+
+Lead with **invoice number and invoice value including VAT**: chasing a payment
+means quoting an invoice number and an amount owed, so those are the working
+columns. Schedule value is what the API aggregates on, so show it in totals and
+charts, but it is not what you read to a client on the phone.
+
 * Filter bar above: agency, client, channel, medium, media group, schedule month
-  range, and status as multi-select chips in ageing order. A "Clear all" link.
-  Reflect every filter in the URL query string so a filtered view is shareable.
+  range, **invoice number search**, and status as multi-select chips in ageing
+  order. A "Clear all" link. Reflect every filter in the URL query string so a
+  filtered view is shareable.
 * Sort by clicking a header (map to `sortBy`/`sortDir`).
 * A sticky totals footer showing filtered count + `totalValue` — the API returns
   these for the whole filter, not just the page, so never sum the page client-side.
@@ -335,6 +351,10 @@ accounts are managed in Orbit.
   render the empty state.
 * Status is computed by the API. Display `record.status` as given; never derive
   it in the browser.
+* Several per-record fields come from the uploaded spreadsheet and may be `null`
+  on any given row (`invoiceNumber`, `invoiceValue`, `group`, ...). Render `—`.
+  Never hide a row, show `0`, or fall back to a different column because one of
+  them is missing.
 * All money is LKR. No currency selector, no conversion.
 * Totals come from the API's filtered totals, not from summing the visible page.
 * Every table scrolls inside its own card; the page body never scrolls

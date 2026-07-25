@@ -21,8 +21,19 @@ import { getAccessibleClientIds, getAccessibleAgencyIds } from '../middleware/ac
 
 // ILIKE patterns matched against import_extra keys. Overridable per environment
 // because the exact sheet headers vary between uploads.
+//
+// Confirmed headers in the client's workbook (note the DOUBLE space in the
+// payment one, and that these are matched as patterns precisely so that neither
+// stray whitespace nor the "(dd/mm/yyyy)" suffix has to be reproduced exactly):
+//   "Invoices sent date to client (dd/mm/yyyy)"
+//   "Payment Received  Date (dd/mm/yyyy)"
+//
+// The payment pattern must require "payment" BEFORE "receiv" — the same sheet
+// carries "TV/Radio Sation Invoice received date", which is when the STATION
+// invoiced the agency, not when the client paid. Treating that as a payment
+// would mark unpaid receivables as collected.
 const invoiceKeyPatterns = () => splitEnv(process.env.FINANCIAL_INVOICE_SENT_KEYS)
-  || ['%invoice%sent%', '%date%invoice%client%', '%billing%date%'];
+  || ['%invoice%sent%date%', '%invoice%sent%', '%date%invoice%client%'];
 const paymentKeyPatterns = () => splitEnv(process.env.FINANCIAL_PAYMENT_RECEIVED_KEYS)
   || ['%payment%receiv%', '%received%payment%', '%date%paid%'];
 
@@ -146,6 +157,14 @@ async function baseFilters(req) {
   if (q.scheduleMonth) add(textIn(q.scheduleMonth, Prisma.raw('sl.schedule_month')));
   if (q.invoiceMonth) add(textIn(q.invoiceMonth, Prisma.raw('sl.invoice_month')));
   if (q.roNumber) add(Prisma.sql`sl.ro_number ILIKE ${`%${String(q.roNumber).trim()}%`}`);
+  // Invoice numbers live in import_extra (agency + station variants), so match
+  // any key that looks like an invoice number rather than naming one column.
+  if (q.invoiceNumber) {
+    add(Prisma.sql`EXISTS (
+      SELECT 1 FROM jsonb_each_text(COALESCE(sl.import_extra, '{}'::jsonb)) e
+       WHERE e.key ILIKE '%invoice number%'
+         AND e.value ILIKE ${`%${String(q.invoiceNumber).trim()}%`})`);
+  }
 
   const from = toYearMonth(q.scheduleMonthFrom);
   const to = toYearMonth(q.scheduleMonthTo);
@@ -184,7 +203,12 @@ const AND = (parts) => (parts.length ? Prisma.join(parts, ' AND ') : Prisma.sql`
 
 // The one place row shape is defined. `scored` exposes the effective dates and
 // the derived status; every endpoint below reads from it.
-function scoredCte(where) {
+//
+// `withExtra` carries the whole import_extra jsonb through so per-row endpoints
+// can surface the rest of the finance columns (invoice numbers, invoice values,
+// CAG/AOR, ...). The aggregate endpoints leave it out — dragging a jsonb blob
+// through a GROUP BY buys nothing.
+function scoredCte(where, { withExtra = false } = {}) {
   return Prisma.sql`
     base AS (
       SELECT sl.id,
@@ -199,6 +223,7 @@ function scoredCte(where) {
              CASE WHEN fpr.id IS NOT NULL THEN fpr.invoice_sent_date     ELSE ${extraDateSql(invoiceKeyPatterns())} END AS invoice_sent_date,
              CASE WHEN fpr.id IS NOT NULL THEN fpr.payment_received_date ELSE ${extraDateSql(paymentKeyPatterns())} END AS payment_received_date,
              fpr.note, fpr.updated_at AS payment_updated_at
+             ${withExtra ? Prisma.sql`, sl.import_extra AS sheet` : Prisma.empty}
         FROM schedule_logs sl
         JOIN agencies a        ON a.id  = sl.agency_id
         JOIN clients c         ON c.id  = sl.client_id
@@ -253,7 +278,7 @@ export async function listSchedules(req, res) {
 
     const [rows, totals] = await Promise.all([
       prisma.$queryRaw`
-        WITH ${scoredCte(where)}
+        WITH ${scoredCte(where, { withExtra: true })}
         ${filtered}
         ORDER BY ${Prisma.raw(sortCol)} ${Prisma.raw(sortDir)} NULLS LAST, id DESC
         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
@@ -283,6 +308,89 @@ export async function listSchedules(req, res) {
 
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
+// ── The rest of the finance columns, read out of import_extra ────────────────
+// The bulk importer keys these by the original sheet header, which carries
+// typos ("Dicipline", "Sation"), inconsistent capitalisation and stray double
+// spaces. Keys are therefore normalised (lowercased, whitespace collapsed) and
+// matched with regexes rather than compared literally, so the API keeps working
+// when a future upload tidies a header up.
+const norm = (k) => String(k).toLowerCase().replace(/\s+/g, ' ').trim();
+
+const EXTRA_FIELDS = {
+  // "Ogilvy/Geometry Invoice Number" — the invoice the CLIENT is chasing.
+  invoiceNumber: [/(ogilvy|geometry|agency).*invoice number/],
+  // "Station Invoice Number" — what the TV/radio station billed the agency.
+  stationInvoiceNumber: [/station.*invoice number/],
+  invoiceValue: [/^invoice value$/],
+  invoiceValueWithVat: [/^invoice value with 18% vat$/, /^invoice value with \d+% vat$/],
+  // "Ogilvy/Geometry Invoice Date" — when the agency raised its invoice, which
+  // is NOT the same as when it was sent to the client (that drives the status).
+  agencyInvoiceDate: [/(ogilvy|geometry|agency).*invoice date/],
+  stationInvoiceReceivedDate: [/(tv|radio|station|sation).*invoice received date/],
+  group: [/^group$/],
+  discipline: [/^dicipline$/, /^discipline$/],
+  aorPct: [/^aor %$/],
+  cagPct: [/^cag %$/],
+  cagAgency: [/^cag agency$/],
+  cagAmount: [/^cag amount$/],
+  aorRevenue: [/^aor revenue$/],
+};
+
+const DATE_FIELDS = new Set(['agencyInvoiceDate', 'stationInvoiceReceivedDate']);
+const NUMBER_FIELDS = new Set(['invoiceValue', 'invoiceValueWithVat', 'aorPct', 'cagPct', 'cagAmount', 'aorRevenue']);
+
+// Iterates TESTS in the outer loop so precedence is the order they're declared
+// in, most specific first. Scanning keys in the outer loop instead would make
+// the winner depend on jsonb's key order — which is sorted by length, not
+// insertion — so "Invoice Value with 8% VAT" would beat the 18% column purely
+// because its name is one character shorter.
+function pickExtra(sheet, tests) {
+  const entries = Object.entries(sheet).filter(([, v]) => v !== null && v !== '' && v !== undefined);
+  for (const t of tests) {
+    const hit = entries.find(([k]) => t.test(norm(k)));
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
+// JS mirror of extraDateSql, for the passthrough dates that don't drive status.
+function parseSheetDate(v) {
+  const s = String(v).trim();
+  if (/^[0-9]+([.][0-9]+)?$/.test(s)) {
+    const n = Number(s);
+    if (n < 20000 || n > 80000) return null;
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000).toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (m) {
+    const mdy = String(process.env.FINANCIAL_DATE_ORDER || 'DMY').toUpperCase() === 'MDY';
+    const d = mdy ? m[2] : m[1];
+    const mo = mdy ? m[1] : m[2];
+    return `${m[3]}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+function parseSheetNumber(v) {
+  if (typeof v === 'number') return v;
+  const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function extraFields(sheet) {
+  if (!sheet || typeof sheet !== 'object') return {};
+  const out = {};
+  for (const [field, tests] of Object.entries(EXTRA_FIELDS)) {
+    const raw = pickExtra(sheet, tests);
+    if (raw == null) { out[field] = null; continue; }
+    out[field] = DATE_FIELDS.has(field) ? parseSheetDate(raw)
+      : NUMBER_FIELDS.has(field) ? parseSheetNumber(raw)
+        : String(raw).trim();
+  }
+  return out;
+}
+
 function serializeRow(r) {
   return {
     id: r.id,
@@ -309,6 +417,13 @@ function serializeRow(r) {
     hasPaymentRecord: !!r.has_override,
     note: r.note ?? null,
     paymentUpdatedAt: r.payment_updated_at || null,
+    // Present only on the per-row endpoints (see scoredCte withExtra).
+    ...(r.sheet === undefined ? {} : {
+      ...extraFields(r.sheet),
+      // Everything else from the uploaded sheet, verbatim, so the frontend can
+      // show a column we haven't named without an API change.
+      sheet: r.sheet || {},
+    }),
   };
 }
 
@@ -373,7 +488,7 @@ export async function updatePayment(req, res) {
     });
 
     const after = await prisma.$queryRaw`
-      WITH ${scoredCte(AND([Prisma.sql`sl.id = ${id}`]))}
+      WITH ${scoredCte(AND([Prisma.sql`sl.id = ${id}`]), { withExtra: true })}
       SELECT * FROM scored LIMIT 1`;
 
     return res.json({
