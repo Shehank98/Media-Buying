@@ -105,7 +105,17 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [errFilter, setErrFilter] = useState('unresolved'); // unresolved | all | frontend | backend
   const [errUnresolved, setErrUnresolved] = useState(0);
   const [errTotal, setErrTotal] = useState(0);
-  const [errExpanded, setErrExpanded] = useState(null); // id of the expanded row (stack)
+  const [errExpanded, setErrExpanded] = useState(null); // id of the expanded row (full message + stack)
+
+  /* ---- client records (Admin → Database) ---- */
+  const [recAgencyId, setRecAgencyId] = useState('');    // optional agency narrowing for the picker
+  const [recClientId, setRecClientId] = useState('');
+  const [recSummary, setRecSummary] = useState(null);
+  const [recLoading, setRecLoading] = useState(false);
+  const [recConfirmName, setRecConfirmName] = useState('');
+  const [recPurging, setRecPurging] = useState(false);
+  const [recResult, setRecResult] = useState('');
+  const [recError, setRecError] = useState('');
 
   /* ---- agency modal ---- */
   const [showAgencyModal, setShowAgencyModal] = useState(false);
@@ -1438,6 +1448,42 @@ export default function AdminPage({ initialTab = 'users' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, errFilter]);
 
+  /* ---- client records: inspect + purge one client's schedule logs ---- */
+  const fetchClientRecords = async (clientId) => {
+    if (!clientId) { setRecSummary(null); return; }
+    setRecLoading(true); setRecError(''); setRecResult('');
+    try {
+      const { data } = await api.get('/admin/client-records', { params: { clientId } });
+      setRecSummary(data);
+    } catch (err) {
+      setRecSummary(null);
+      setRecError(err.response?.data?.error || 'Failed to load this client\'s records.');
+    } finally {
+      setRecLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'client-records') { setRecConfirmName(''); fetchClientRecords(recClientId); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, recClientId]);
+
+  const purgeClientRecords = async () => {
+    if (!recSummary || !recClientId) return;
+    const name = recSummary.client?.name || '';
+    if (!window.confirm(`Delete all ${recSummary.rows} schedule records for ${name}?\n\nThey stop counting everywhere immediately and you can re-upload the client from scratch.`)) return;
+    setRecPurging(true); setRecError(''); setRecResult('');
+    try {
+      const { data } = await api.post('/admin/client-records/purge', { clientId: Number(recClientId), confirmName: recConfirmName });
+      setRecResult(`Removed ${data.deleted} record${data.deleted === 1 ? '' : 's'} for ${data.clientName}. You can re-upload this client now.`);
+      setRecConfirmName('');
+      fetchClientRecords(recClientId);
+    } catch (err) {
+      setRecError(err.response?.data?.error || 'Failed to delete the records.');
+    } finally {
+      setRecPurging(false);
+    }
+  };
+
   const resolveErrorLog = async (id, resolved) => {
     try {
       await api.patch(`/admin/errors/${id}/resolve`, { resolved });
@@ -1958,7 +2004,10 @@ export default function AdminPage({ initialTab = 'users' }) {
     { label: 'Requests', members: [{ key: 'requests', label: 'Requests', count: reqPending }] },
     { label: 'Notify', members: [{ key: 'notify', label: 'Notify' }] },
     { label: 'Backup', members: [{ key: 'backup', label: 'Backup' }] },
-    { label: 'Errors', members: [{ key: 'errors', label: 'Errors', count: errUnresolved || undefined }] },
+    { label: 'Database', members: [
+      { key: 'client-records', label: 'Client Records' },
+      { key: 'errors', label: 'Errors', count: errUnresolved || undefined },
+    ] },
   ];
   const activeGroup = tabGroups.find(g => g.members.some(m => m.key === activeTab)) || tabGroups[0];
 
@@ -2042,7 +2091,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'client-group-targets', 'backup', 'notify', 'errors', 'client-groups'].includes(activeTab) && (
+        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'client-group-targets', 'backup', 'notify', 'errors', 'client-records', 'client-groups'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -3923,6 +3972,141 @@ export default function AdminPage({ initialTab = 'users' }) {
       )}
 
       {/* ============ ERRORS ============ */}
+      {activeTab === 'client-records' && (() => {
+        const recClients = allClients
+          .filter(c => !recAgencyId || String(c.agencyId) === String(recAgencyId))
+          .slice()
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const s = recSummary;
+        const nameMatches = !!s && recConfirmName.trim().toLowerCase() === (s.client?.name || '').trim().toLowerCase();
+        const fmtM = (ym) => {
+          if (!ym) return '-';
+          const [y, m] = String(ym).split('-');
+          return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        };
+        return (
+          <div>
+            <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)', marginBottom: 4 }}>Client records</div>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 16, maxWidth: 760, lineHeight: 1.55 }}>
+                Wipe every schedule record for one client so you can re-upload it from scratch - for example after
+                the client renames or restructures its brands. Removed rows stop counting everywhere immediately
+                (dashboards, revenue, exports) and no longer block re-upload as duplicates. This is the same
+                reversible delete the batch delete uses, so the rows stay recoverable in the database.
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div className="field" style={{ margin: 0, minWidth: 200 }}>
+                  <label>Agency (optional)</label>
+                  <select className="select" value={recAgencyId} onChange={(e) => { setRecAgencyId(e.target.value); setRecClientId(''); }}>
+                    <option value="">All agencies</option>
+                    {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div className="field" style={{ margin: 0, minWidth: 260 }}>
+                  <label>Client</label>
+                  <select className="select" value={recClientId} onChange={(e) => { setRecClientId(e.target.value); setRecConfirmName(''); }}>
+                    <option value="">Select a client…</option>
+                    {recClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.isActive === false ? ' (inactive)' : ''}</option>)}
+                  </select>
+                </div>
+                {recClientId && (
+                  <button className="btn btn-ghost" onClick={() => fetchClientRecords(recClientId)} disabled={recLoading}>
+                    <Icon name="history" size={15} /> Refresh
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {recError && (
+              <div style={{ marginBottom: 14, padding: '10px 13px', borderRadius: 9, background: 'var(--red-100,#fef2f2)', color: 'var(--red-600,#b91c1c)', fontSize: 13, fontWeight: 600 }}>{recError}</div>
+            )}
+            {recResult && (
+              <div style={{ marginBottom: 14, padding: '10px 13px', borderRadius: 9, background: 'var(--green-100,#ecfdf5)', color: 'var(--green-600,#15814B)', fontSize: 13, fontWeight: 600 }}>{recResult}</div>
+            )}
+
+            {!recClientId ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--muted)' }}>
+                <Icon name="database" size={28} style={{ opacity: 0.35, marginBottom: 8 }} />
+                <div style={{ fontSize: 13.5 }}>Pick a client to see what is currently stored for it.</div>
+              </div>
+            ) : recLoading ? (
+              <OrbitLoader label="Loading client records…" />
+            ) : !s ? null : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 16 }}>
+                  {[
+                    ['Records', s.rows.toLocaleString('en-US'), 'live schedule rows'],
+                    ['Schedule value', fmtLKR(s.totalValue), 'total of those rows'],
+                    ['Period', s.firstMonth ? `${fmtM(s.firstMonth)} - ${fmtM(s.lastMonth)}` : '-', `${s.monthCount} month${s.monthCount === 1 ? '' : 's'}`],
+                    ['Uploads', String(s.batchCount), `${s.brandCount} brand${s.brandCount === 1 ? '' : 's'}`],
+                  ].map(([label, value, sub]) => (
+                    <div key={label} className="card" style={{ padding: '14px 16px' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 6 }}>{label}</div>
+                      <div className="mono" style={{ fontSize: 17, fontWeight: 750, color: 'var(--ink)', wordBreak: 'break-word' }}>{value}</div>
+                      <div style={{ fontSize: 11, color: '#93A0B5', marginTop: 3 }}>{sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {s.months.length > 0 && (
+                  <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+                    <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13.5 }}>
+                      What would be removed - {s.monthCount} month{s.monthCount === 1 ? '' : 's'}
+                    </div>
+                    <div className="tbl-wrap" style={{ maxHeight: 260, overflow: 'auto' }}>
+                      <table className="tbl" style={{ margin: 0 }}>
+                        <thead><tr><th>Month</th><th style={{ textAlign: 'right' }}>Records</th><th style={{ textAlign: 'right' }}>Schedule value</th></tr></thead>
+                        <tbody>
+                          {s.months.map(m => (
+                            <tr key={m.month}>
+                              <td className="strong">{fmtM(m.month)}</td>
+                              <td style={{ textAlign: 'right' }}>{m.rows}</td>
+                              <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(m.value)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="card" style={{ padding: 20, border: '1px solid var(--red-200,#fecaca)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 720, color: 'var(--red-600,#b91c1c)', marginBottom: 4 }}>Delete all records for this client</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.55 }}>
+                    {s.rows === 0
+                      ? <>There are no live records for <b>{s.client?.name}</b>{s.alreadyDeleted > 0 ? <> ({s.alreadyDeleted.toLocaleString('en-US')} already removed earlier)</> : ''} - nothing to delete. You can upload this client fresh from the Database page.</>
+                      : <>This removes all <b>{s.rows.toLocaleString('en-US')}</b> records for <b>{s.client?.name}</b>{s.client?.agencyName ? ` (${s.client.agencyName})` : ''}, across {fmtM(s.firstMonth)} - {fmtM(s.lastMonth)}. Type the client name to confirm.</>}
+                  </div>
+                  {s.rows > 0 && (
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input
+                        className="input"
+                        value={recConfirmName}
+                        onChange={(e) => setRecConfirmName(e.target.value)}
+                        placeholder={s.client?.name || 'Client name'}
+                        style={{ maxWidth: 300 }}
+                      />
+                      <button
+                        className="btn btn-primary"
+                        onClick={purgeClientRecords}
+                        disabled={!nameMatches || recPurging}
+                        style={{ background: nameMatches ? 'var(--red-600,#dc2626)' : undefined, borderColor: 'transparent' }}
+                      >
+                        <Icon name="trash" size={15} /> {recPurging ? 'Deleting…' : `Delete ${s.rows.toLocaleString('en-US')} records`}
+                      </button>
+                      {!nameMatches && recConfirmName && (
+                        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Name does not match yet.</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {activeTab === 'errors' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -3992,11 +4176,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                         </td>
                         <td style={{ fontSize: 12.5, maxWidth: 340 }}>
                           <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.message}>{row.message}</span>
-                          {row.stack && (
-                            <button onClick={() => setErrExpanded(errExpanded === row.id ? null : row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--coral-700,#C44A18)', fontWeight: 600, fontSize: 11.5, padding: 0, marginTop: 2 }}>
-                              {errExpanded === row.id ? 'Hide details' : 'Show details'}
-                            </button>
-                          )}
+                          {/* Always expandable - a long message is unreadable in the
+                              cell even when there is no stack to go with it. */}
+                          <button onClick={() => setErrExpanded(errExpanded === row.id ? null : row.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--coral-700,#C44A18)', fontWeight: 600, fontSize: 11.5, padding: 0, marginTop: 2 }}>
+                            {errExpanded === row.id ? 'Hide details' : 'Show details'}
+                          </button>
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <button onClick={() => resolveErrorLog(row.id, !row.resolved)} className="btn btn-ghost btn-sm" title={row.resolved ? 'Mark unresolved' : 'Mark resolved'}>
@@ -4007,12 +4191,29 @@ export default function AdminPage({ initialTab = 'users' }) {
                           </button>
                         </td>
                       </tr>
-                      {errExpanded === row.id && row.stack && (
+                      {errExpanded === row.id && (
                         <tr>
-                          <td colSpan={6} style={{ background: '#0A1729', padding: 0 }}>
-                            <pre style={{ margin: 0, padding: '14px 18px', color: '#C7D2E0', fontSize: 11.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)', maxHeight: 320, overflow: 'auto' }}>
-                              {row.stack}
+                          <td colSpan={6} style={{ background: '#0A1729', padding: '14px 18px' }}>
+                            {/* The full message the user was shown, then the technical
+                                context. The message is what support actually needs. */}
+                            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#7C8CA6', marginBottom: 5 }}>Message shown to the user</div>
+                            <pre style={{ margin: '0 0 14px', color: '#FFD9CC', fontSize: 12.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)' }}>
+                              {row.message}
                             </pre>
+                            <div style={{ fontSize: 11.5, color: '#8FA0B8', lineHeight: 1.7, marginBottom: row.stack ? 12 : 0 }}>
+                              <div><b style={{ color: '#C7D2E0' }}>When:</b> {new Date(row.createdAt).toLocaleString('en-GB')}</div>
+                              <div><b style={{ color: '#C7D2E0' }}>User:</b> {row.userEmail || 'anonymous'}{row.userRole ? ` · ${row.userRole}` : ''}</div>
+                              <div style={{ wordBreak: 'break-all' }}><b style={{ color: '#C7D2E0' }}>Where:</b> {row.method ? `${row.method} ` : ''}{row.url || '-'}{row.statusCode ? ` · HTTP ${row.statusCode}` : ''}</div>
+                              {row.userAgent && <div style={{ wordBreak: 'break-all' }}><b style={{ color: '#C7D2E0' }}>Browser:</b> {row.userAgent}</div>}
+                            </div>
+                            {row.stack && (
+                              <>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#7C8CA6', marginBottom: 5 }}>Stack trace</div>
+                                <pre style={{ margin: 0, color: '#C7D2E0', fontSize: 11.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)', maxHeight: 320, overflow: 'auto' }}>
+                                  {row.stack}
+                                </pre>
+                              </>
+                            )}
                           </td>
                         </tr>
                       )}
