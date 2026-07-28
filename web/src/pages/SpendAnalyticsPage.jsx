@@ -107,6 +107,7 @@ export default function SpendAnalyticsPage() {
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
   const [expandedGroups, setExpandedGroups] = useState(() => new Set()); // media groups expanded to show channel rows
+  const [showBreakdown, setShowBreakdown] = useState(false); // Spend Breakdown table - collapsed by default
   const [paretoMode, setParetoMode] = useState('channel'); // 'channel' | 'client'
   const [compare, setCompare] = useState(false);
   const [cmpFrom, setCmpFrom] = useState('');
@@ -1374,12 +1375,20 @@ export default function SpendAnalyticsPage() {
             )}
           </div>
 
-          {/* Grouped Breakdown: Media Group → Channels */}
+          {/* Grouped Breakdown: Media Group → Channels. The whole section is
+              collapsed by default - click the header to expand it. */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
-              Spend Breakdown - Media Group &amp; Channels
+            <div
+              onClick={() => setShowBreakdown(v => !v)}
+              style={{ padding: '14px 20px', borderBottom: showBreakdown ? '1px solid var(--border)' : 'none', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+            >
+              <Icon name={showBreakdown ? 'chevD' : 'chevR'} size={15} style={{ color: '#6B7790' }} />
+              <span>Spend Breakdown - Media Group &amp; Channels</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: '#93A0B5' }}>
+                {data.byMediaGroup.length} media group{data.byMediaGroup.length === 1 ? '' : 's'} · click to {showBreakdown ? 'hide' : 'expand'}
+              </span>
             </div>
-            <div style={{ overflow: 'auto' }}>
+            <div style={{ overflow: 'auto', display: showBreakdown ? 'block' : 'none' }}>
               <table className="tbl" style={{ margin: 0 }}>
                 <thead>
                   <tr>
