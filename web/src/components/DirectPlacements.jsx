@@ -81,7 +81,10 @@ export function ChannelBarTooltip({ active, payload, fmt }) {
       </div>
     );
   }
-  const total = row.value || 0;
+  // NOT row.value - toStackedChannelData zeroes it on the combined row (the
+  // spend lives in the per-member dp* series), so the total has to come from
+  // the members themselves.
+  const total = (row.members || []).reduce((s, m) => s + (m.value || 0), 0);
   return (
     <div style={{ ...box, minWidth: 210 }}>
       <div style={{ fontWeight: 700, color: '#16243C' }}>{DIRECT_PLACEMENT_LABEL}</div>
@@ -125,7 +128,11 @@ export function DirectPlacementLegend({ members, style }) {
 // bar against the same scale.
 export function ChannelRankBar({ row, max, color, fmt }) {
   const [hover, setHover] = useState(-1);
-  const total = row.value || 0;
+  // Derive the group total from its members for the same reason as the tooltip:
+  // a caller may hand us a row whose `value` was zeroed for stacking.
+  const total = row.isDirectGroup && row.members
+    ? row.members.reduce((s, m) => s + (m.value || 0), 0)
+    : (row.value || 0);
   const widthPct = Math.max(2, (total / (max || 1)) * 100);
   const track = { height: 6, borderRadius: 3, background: '#EEF0F3', overflow: 'hidden' };
 

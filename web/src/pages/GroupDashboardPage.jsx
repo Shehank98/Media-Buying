@@ -95,8 +95,8 @@ export default function GroupDashboardPage() {
       const gn = data?.group?.name || 'group';
       await exportJpg(trendRef.current, `${gn}-monthly-trend`);
       await exportJpg(channelRef.current, `${gn}-spend-by-channel`);
-      await exportJpg(mediumRef.current, `${gn}-medium-split`);
       if (!clientFilter) await exportJpg(companyRef.current, `${gn}-company-split`);
+      await exportJpg(mediumRef.current, `${gn}-medium-split`);
       if (showBrandTrend) await exportJpg(brandRef.current, `${gn}-brand-trend`);
     } catch { setError('Could not export charts.'); } finally { setExporting(false); }
   };
@@ -446,8 +446,11 @@ export default function GroupDashboardPage() {
           )}
         </div>
 
+        {/* Company Split sits ON TOP, Medium Split under it — the two cards are
+            ordered with flex `order` rather than by JSX position, so the Company
+            Split block below keeps its comment and refs where they were. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div ref={mediumRef} style={{ ...CARD, padding: 24 }}>
+        <div ref={mediumRef} style={{ ...CARD, padding: 24, order: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
             <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
             {jpgButton(mediumRef, `${g.name}-medium-split`)}
@@ -481,7 +484,7 @@ export default function GroupDashboardPage() {
         {/* Company Split - the same donut, but by member company instead of
             medium. Hidden when a single company is selected, where it would be
             one 100% slice. */}
-        <div ref={companyRef} style={{ ...CARD, padding: 24 }}>
+        <div ref={companyRef} style={{ ...CARD, padding: 24, order: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
             <div>
               <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Company Split</h3>
