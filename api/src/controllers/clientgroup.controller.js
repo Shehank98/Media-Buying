@@ -238,9 +238,11 @@ export async function getClientGroupOverview(req, res) {
       select: {
         scheduleMonth: true, scheduleValue: true, scheduleValueWithVat: true,
         medium: true, brandName: true,
-        channelMaster: { select: { id: true, name: true, medium: true } },
+        clientId: true,
+        channelMaster: { select: { id: true, name: true, medium: true, isDirectPlacement: true } },
       },
     });
+    const clientNameById = new Map(visibleClients.map((c) => [c.id, c.name]));
 
     // When ?year=YYYY is given, the breakdowns + totals are scoped to that year;
     // with no year they stay all-time. availableYears is always derived from all
@@ -248,7 +250,7 @@ export async function getClientGroupOverview(req, res) {
     const yearParam = /^\d{4}$/.test(String(req.query.year)) ? parseInt(req.query.year) : null;
 
     let total = 0, totalVat = 0, scopedEntries = 0;
-    const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {};
+    const byMonth = {}, byChannel = {}, byMedium = {}, byBrand = {}, byClient = {};
     const brandMonth = {}; // brand -> { 'YYYY-MM': value } (scoped), for the brand trend chart
     const months = new Set();
     const yearsSet = new Set();
@@ -264,7 +266,10 @@ export async function getClientGroupOverview(req, res) {
       total += v; totalVat += Number(l.scheduleValueWithVat) || 0; scopedEntries += 1;
       if (mm) { months.add(m); (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
       const ch = l.channelMaster?.name || 'Unknown';
-      (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+      (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, isDirectPlacement: l.channelMaster?.isDirectPlacement === true, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+      // Spend per member company, for the Company Split donut.
+      const cn = clientNameById.get(l.clientId) || 'Unknown';
+      (byClient[cn] ||= { id: l.clientId ?? null, name: cn, value: 0, count: 0 }).value += v; byClient[cn].count++;
       const med = l.medium || 'Unknown';
       (byMedium[med] ||= { name: med, value: 0 }).value += v;
       const br = l.brandName || 'Unbranded';
@@ -332,7 +337,6 @@ export async function getClientGroupOverview(req, res) {
     // Channel directory for the group's companies: rep contact, latest negotiated
     // deal and rate-card availability per client channel (same shape the client
     // dashboard's directory renders, plus the owning company's name).
-    const clientNameById = new Map(visibleClients.map((c) => [c.id, c.name]));
     const rawChannels = await prisma.channel.findMany({
       where: { clientId: { in: scopeIds } },
       include: { channelMaster: { select: { id: true, medium: true, rateCardDriveId: true, rateCardFileName: true } } },
@@ -396,6 +400,7 @@ export async function getClientGroupOverview(req, res) {
       byMonth: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
       byChannel: Object.values(byChannel).sort((a, b) => b.value - a.value),
       byMedium: Object.values(byMedium).sort((a, b) => b.value - a.value),
+      byClient: Object.values(byClient).sort((a, b) => b.value - a.value),
       byBrand: Object.values(byBrand).sort((a, b) => b.value - a.value),
       brandTrend,
       brandTrendKeys,
