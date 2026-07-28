@@ -34,6 +34,7 @@ const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const YEAR_COLORS = ['#E85D24', '#1F5BB5', '#15814B', '#6B3FB5', '#9A5B00', '#C5391F', '#0891b2', '#D9521C'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TOP_CHANNELS = 20; // rows shown in the Spend by Channel chart
 
 function Stat({ label, value, sub, tone, icon, accent }) {
   return (
@@ -156,9 +157,8 @@ export default function GroupDashboardPage() {
   });
 
   const channelMediums = MEDIUM_ORDER.filter(md => (data.byChannel || []).some(ch => ch.medium === md));
-  const topChannels = (data.byChannel || [])
-    .filter(ch => !chMedium || ch.medium === chMedium)
-    .slice(0, 12);
+  const channelsMatching = (data.byChannel || []).filter(ch => !chMedium || ch.medium === chMedium);
+  const topChannels = channelsMatching.slice(0, TOP_CHANNELS);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
   const brandTrend = data.brandTrend || [];
   const brandTrendKeys = data.brandTrendKeys || [];
@@ -391,7 +391,7 @@ export default function GroupDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24, marginBottom: 24 }}>
         <div ref={channelRef} style={{ ...CARD, padding: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel {chMedium ? `· ${chMedium}` : '(Top 12)'}</h3>
+            <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Spend by Channel {chMedium ? `· ${chMedium}` : ''} (Top {TOP_CHANNELS})</h3>
             {jpgButton(channelRef, `${g.name}-spend-by-channel${chMedium ? '-' + chMedium : ''}`)}
           </div>
           {channelMediums.length > 0 && (
@@ -422,6 +422,11 @@ export default function GroupDashboardPage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          )}
+          {channelsMatching.length > TOP_CHANNELS && (
+            <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 8 }}>
+              Showing the top {TOP_CHANNELS} of {channelsMatching.length} channels{chMedium ? ` in ${chMedium}` : ''} · the full list is in the All Channels table below
+            </div>
           )}
         </div>
 
