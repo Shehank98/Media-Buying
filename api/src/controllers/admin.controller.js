@@ -1801,3 +1801,82 @@ export async function archiveScheduleLogsToDrive(req, res) {
     return res.status(500).json({ error: 'Failed to archive schedule logs', detail: error.message });
   }
 }
+
+// ─── Client records (Admin → Database) ────────────────────────────────────────
+
+// What a purge would remove: every LIVE (non-deleted) schedule log for one
+// client, summarised so the admin can sanity-check the scope before running it.
+export async function getClientRecordSummary(req, res) {
+  try {
+    const clientId = parseInt(req.query.clientId);
+    if (!Number.isInteger(clientId)) return res.status(400).json({ error: 'clientId is required' });
+
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { id: true, name: true, isActive: true, agency: { select: { id: true, name: true } } },
+    });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const where = { clientId, isDeleted: false };
+    const [monthRows, batchRows, brandRows, deletedCount] = await Promise.all([
+      prisma.scheduleLog.groupBy({ by: ['scheduleMonth'], where, _count: { _all: true }, _sum: { scheduleValue: true } }),
+      prisma.scheduleLog.groupBy({ by: ['uploadBatchId'], where }),
+      prisma.scheduleLog.groupBy({ by: ['brandName'], where }),
+      prisma.scheduleLog.count({ where: { clientId, isDeleted: true } }),
+    ]);
+
+    const months = monthRows
+      .filter((m) => m.scheduleMonth)
+      .map((m) => ({ month: m.scheduleMonth, rows: m._count._all, value: Number(m._sum.scheduleValue) || 0 }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+    const rows = monthRows.reduce((s, m) => s + m._count._all, 0);
+    const totalValue = monthRows.reduce((s, m) => s + (Number(m._sum.scheduleValue) || 0), 0);
+
+    return res.json({
+      client: { id: client.id, name: client.name, isActive: client.isActive, agencyId: client.agency?.id, agencyName: client.agency?.name || '' },
+      rows,
+      totalValue: Math.round(totalValue),
+      firstMonth: months[0]?.month || null,
+      lastMonth: months[months.length - 1]?.month || null,
+      monthCount: months.length,
+      months,
+      batchCount: batchRows.filter((b) => b.uploadBatchId != null).length,
+      brandCount: brandRows.filter((b) => b.brandName).length,
+      alreadyDeleted: deletedCount,
+    });
+  } catch (error) {
+    console.error('getClientRecordSummary error:', error);
+    return res.status(500).json({ error: 'Failed to load client records' });
+  }
+}
+
+// Remove EVERY live schedule log for one client so its data can be re-uploaded
+// from scratch (e.g. after the client renames or restructures its brands).
+// This is a SOFT delete - the same mechanism batch-delete and replace-on-import
+// already use - so the rows stop counting everywhere (analytics, revenue,
+// dedupe on re-upload) but remain recoverable in the database.
+// Guarded by an exact client-name confirmation in the request body.
+export async function purgeClientRecords(req, res) {
+  try {
+    const clientId = parseInt(req.body?.clientId);
+    if (!Number.isInteger(clientId)) return res.status(400).json({ error: 'clientId is required' });
+
+    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, name: true } });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const typed = String(req.body?.confirmName ?? '').trim().toLowerCase();
+    if (typed !== client.name.trim().toLowerCase()) {
+      return res.status(400).json({ error: `Type the client name exactly ("${client.name}") to confirm` });
+    }
+
+    const result = await prisma.scheduleLog.updateMany({
+      where: { clientId, isDeleted: false },
+      data: { isDeleted: true, deletedById: req.user.id, deletedAt: new Date() },
+    });
+
+    return res.json({ ok: true, clientId, clientName: client.name, deleted: result.count });
+  } catch (error) {
+    console.error('purgeClientRecords error:', error);
+    return res.status(500).json({ error: 'Failed to delete client records' });
+  }
+}

@@ -89,16 +89,32 @@ api.interceptors.response.use(
       }
     }
 
-    // Report genuine failures the user hit. 5xx server errors are already
-    // captured on the backend, so here we only log true network failures
-    // (request never returned a response), not normal 4xx app responses.
+    // Report genuine failures the user hit, so Admin → Database → Errors shows
+    // what the user actually saw:
+    //  - network failures (the request never returned a response), and
+    //  - 4xx responses, whose `error` message is the exact text the UI puts in
+    //    front of the user. 401 is skipped (normal token churn, handled above)
+    //    and 5xx is skipped because the backend already logs those itself, so
+    //    logging here would duplicate them.
     try {
       const cfg = error.config || {};
       const urlp = cfg.url || '';
-      if (!error.response && !urlp.includes('/errors/client') && !urlp.includes('/auth/refresh')) {
+      const method = cfg.method ? cfg.method.toUpperCase() + ' ' : '';
+      const internal = urlp.includes('/errors/client') || urlp.includes('/auth/refresh');
+      const status = error.response?.status;
+      if (!error.response && !internal) {
         reportError({
-          message: `Network request failed: ${cfg.method ? cfg.method.toUpperCase() + ' ' : ''}${urlp || 'unknown'}${error.message ? ` (${error.message})` : ''}`,
+          message: `Network request failed: ${method}${urlp || 'unknown'}${error.message ? ` (${error.message})` : ''}`,
           url: window.location.href,
+        });
+      } else if (!internal && status >= 400 && status < 500 && status !== 401) {
+        const d = error.response.data;
+        const shown = (d && (d.error || d.message)) || error.message || 'Request failed';
+        reportError({
+          message: `${shown} — ${method}${urlp} (HTTP ${status})`,
+          stack: d && d.detail ? String(d.detail) : undefined,
+          url: window.location.href,
+          statusCode: status,
         });
       }
     } catch { /* never let reporting break the request flow */ }

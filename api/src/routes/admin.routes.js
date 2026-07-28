@@ -51,6 +51,8 @@ import {
   deleteAorRevenue,
   getScheduleArchiveInfo,
   archiveScheduleLogsToDrive,
+  getClientRecordSummary,
+  purgeClientRecords,
   uploadChannelRateCardHandler,
   deleteChannelRateCardHandler,
 } from '../controllers/admin.controller.js';
@@ -153,7 +155,12 @@ router.delete('/aor-revenue/:id', deleteAorRevenue);
 router.get('/schedule-logs/archive', getScheduleArchiveInfo);
 router.post('/schedule-logs/archive', archiveScheduleLogsToDrive);
 
-// Error logs (captured backend 5xx + frontend crashes) → Admin → Errors tab
+// Client records (Admin → Database): inspect and wipe one client's schedule
+// logs so its data can be re-uploaded from scratch.
+router.get('/client-records', getClientRecordSummary);
+router.post('/client-records/purge', purgeClientRecords);
+
+// Error logs (captured backend 5xx + frontend crashes) → Admin → Database → Errors
 router.get('/errors', listErrors);
 router.patch('/errors/:id/resolve', resolveError);
 router.delete('/errors', clearErrors);
