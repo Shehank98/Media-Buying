@@ -325,8 +325,6 @@ export default function GroupDashboardPage() {
                 accent={yoyUp ? '#15814B' : '#C5391F'}
               />
             )}
-            <Stat label="Channels" value={String(data.channelCount || 0)} sub={`${data.brandCount || 0} brands`} tone={['#EDF3FD', '#1F5BB5']} icon="tv" accent="#1F5BB5" />
-            <Stat label="Companies" value={String(members.length)} sub={clientFilter ? '1 in view' : 'in this group'} tone={['#F3ECFB', '#6B34C0']} icon="users" accent="#6B34C0" />
           </div>
         );
       })()}
