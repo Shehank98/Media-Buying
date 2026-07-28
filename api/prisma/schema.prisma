@@ -281,6 +281,11 @@ model ChannelMaster {
   deletedAt          DateTime?           @map("deleted_at")
   deletedById        Int?                @map("deleted_by_id")
   sortOrder          Int?                @map("sort_order")
+  // Digital channels bought as direct placements (Sirasa Digital, Swarnawahini
+  // Digital, …). Flagged channels roll up into one combined "Direct Placements"
+  // bar in the Spend by Channel charts; every other surface (tables, exports,
+  // Channel Intelligence, reports) still reports them individually.
+  isDirectPlacement  Boolean             @default(false) @map("is_direct_placement")
   // GENERAL channel rate card in Google Drive (General Rate Cards/<channel>/).
   // Any format (PDF/JPG/PNG/Excel/…); rateCardMimeType is used on download.
   // rateCard* = the LATEST version (for quick display/download); every upload is

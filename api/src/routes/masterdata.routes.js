@@ -24,6 +24,8 @@ import {
   createPropertyCategory,
   updatePropertyCategory,
   togglePropertyCategory,
+  listDirectPlacements,
+  setDirectPlacements,
 } from '../controllers/masterdata.controller.js';
 
 const router = Router();
@@ -60,5 +62,9 @@ router.get('/property-categories', authenticate, listPropertyCategories);
 router.post('/property-categories', authenticate, requireRole('SUPER_ADMIN'), createPropertyCategory);
 router.put('/property-categories/:id', authenticate, requireRole('SUPER_ADMIN'), updatePropertyCategory);
 router.patch('/property-categories/:id/toggle', authenticate, requireRole('SUPER_ADMIN'), togglePropertyCategory);
+
+// Direct Placements (the digital roll-up bucket)
+router.get('/direct-placements', authenticate, requireRole('SUPER_ADMIN'), listDirectPlacements);
+router.post('/direct-placements', authenticate, requireRole('SUPER_ADMIN'), setDirectPlacements);
 
 export default router;

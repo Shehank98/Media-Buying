@@ -6,6 +6,10 @@ import {
 } from 'recharts';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+import {
+  rollUpDirectPlacements, toStackedChannelData, ChannelBarTooltip,
+  DirectPlacementLegend, DP_COLORS,
+} from '../components/DirectPlacements';
 import api from '../lib/api';
 
 const fmtLKR = (v) => {
@@ -166,8 +170,12 @@ export default function ClientDashboardPage() {
   // Mediums present among this client's channels, in the canonical order, for the
   // Spend-by-Channel medium tabs.
   const channelMediums = MEDIUM_ORDER.filter(md => (data.byChannel || []).some(ch => ch.medium === md));
-  const channelsMatching = (data.byChannel || []).filter(ch => !chMedium || ch.medium === chMedium);
+  // Direct-placement digital channels collapse into one combined bar in this
+  // chart only; the All Channels table below still lists them individually.
+  const channelRows = rollUpDirectPlacements(data.byChannel || []);
+  const channelsMatching = channelRows.filter(ch => !chMedium || ch.medium === chMedium);
   const topChannels = channelsMatching.slice(0, TOP_CHANNELS);
+  const { data: channelChartData, members: dpMembers, memberKeys: dpKeys } = toStackedChannelData(topChannels);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
   const brandTrend = data.brandTrend || [];
   const brandTrendKeys = data.brandTrendKeys || [];
@@ -398,17 +406,24 @@ export default function ClientDashboardPage() {
             <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data{chMedium ? ` for ${chMedium}` : ''}</div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(200, topChannels.length * 30 + 20)}>
-              <BarChart data={topChannels} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
+              <BarChart data={channelChartData} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
                 <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
-                <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                  {topChannels.map((ch, i) => <Cell key={i} fill={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]} cursor="pointer" />)}
+                <Tooltip cursor={{ fill: '#F5F6F8' }} content={<ChannelBarTooltip fmt={fmtLKR} />} />
+                {/* Real channels. The combined Direct Placements row holds 0 here
+                    and draws its per-channel segments from the dp* series below. */}
+                <Bar dataKey="value" stackId="a" radius={[0, 6, 6, 0]}>
+                  {channelChartData.map((ch, i) => <Cell key={i} fill={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]} cursor="pointer" />)}
                 </Bar>
+                {dpKeys.map((k, i) => (
+                  <Bar key={k} dataKey={k} stackId="a" fill={DP_COLORS[i % DP_COLORS.length]}
+                    radius={i === dpKeys.length - 1 ? [0, 6, 6, 0] : 0} />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           )}
+          <DirectPlacementLegend members={dpMembers} style={{ marginTop: 10 }} />
           {channelsMatching.length > TOP_CHANNELS && (
             <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 8 }}>
               Showing the top {TOP_CHANNELS} of {channelsMatching.length} channels{chMedium ? ` in ${chMedium}` : ''} · the full list is in the All Channels table below
