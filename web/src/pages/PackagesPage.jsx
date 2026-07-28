@@ -3,7 +3,6 @@ import Icon, { roleLabel } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
-import RequisitionsPanel from '../components/RequisitionsPanel';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -36,7 +35,6 @@ function Detail({ label, value }) {
 }
 
 export default function PackagesPage() {
-  const [topTab, setTopTab] = useState('packages');
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -206,13 +204,7 @@ export default function PackagesPage() {
           <h1 className="page-title">Media Packages</h1>
           <p className="page-sub">Create packages, send them to any account, and track responses</p>
         </div>
-        {topTab === 'packages' && <button className="btn btn-primary" onClick={openCreate}><Icon name="plus" size={16} /> New package</button>}
-      </div>
-
-      <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
-        {[['packages', 'Packages'], ['requisitions', 'Media Buying Requisitions']].map(([k, lbl]) => (
-          <button key={k} onClick={() => setTopTab(k)} style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: topTab === k ? '#0A1729' : '#fff', color: topTab === k ? '#fff' : 'var(--ink-soft)' }}>{lbl}</button>
-        ))}
+        <button className="btn btn-primary" onClick={openCreate}><Icon name="plus" size={16} /> New package</button>
       </div>
 
       {error && (
@@ -222,9 +214,6 @@ export default function PackagesPage() {
         </div>
       )}
 
-      {topTab === 'requisitions' && <RequisitionsPanel mode="all" />}
-
-      {topTab === 'packages' && (<>
       {!loading && packages.length > 0 && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ position: 'relative' }}>
@@ -294,7 +283,6 @@ export default function PackagesPage() {
           })}
         </div>
       )}
-      </>)}
 
       {/* Create / Edit modal */}
       {showForm && (

@@ -10,6 +10,7 @@ const NAV = [
   { key: '/deep-dashboard', label: 'Dashboard', icon: 'bar-chart', roles: ['MANAGER'] },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/forecasting', label: 'Forecasting', icon: 'calendar', roles: ['SUPER_ADMIN', 'GROUP_HEAD', 'MANAGER'] },
+  { key: '/buying-requisition', label: 'Buying Requisition', icon: 'file', roles: ['SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/rate-cards', label: 'Rate Cards', icon: 'file' },
@@ -45,6 +46,7 @@ function Breadcrumbs({ go }) {
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/deep-dashboard') return <>{home}{sep}<b>Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
+  if (path === '/buying-requisition') return <>{home}{sep}<b>Buying Requisition</b></>;
   if (path === '/packages') return <>{home}{sep}<a>Control Room</a>{sep}<b>Media Packages</b></>;
   if (path === '/my-packages') return <>{home}{sep}<b>Media Packages</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Control Room</a>{sep}<b>User Management</b></>;
@@ -159,6 +161,7 @@ export default function Layout() {
       case 'CHANNEL_REQUEST': return '/admin';
       case 'CLIENT_REQUEST_RESULT':
       case 'CHANNEL_REQUEST_RESULT': return '/forecasting';
+      case 'REQUISITION': return '/buying-requisition';
       default: return null;
     }
   };

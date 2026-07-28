@@ -44,10 +44,15 @@ function Label({ children, req }) {
   return <label className="field-label" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#3B4A63', marginBottom: 5 }}>{children}{req && <span style={{ color: '#C5391F' }}> *</span>}</label>;
 }
 
-export default function RequisitionsPanel({ mode = 'mine' }) {
+// The Media Buying Requisition (MBR) workspace: raise a requisition and review
+// the ones already submitted. Every role that can reach the page gets the form -
+// SUPER_ADMIN additionally sees every requisition raised in the system, everyone
+// else only their own (enforced server-side by listRequisitions).
+export default function RequisitionsPanel() {
   const { user } = useAuth();
-  const canCreate = ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN'].includes(user?.role);
-  const [tab, setTab] = useState(mode === 'all' ? 'list' : 'new');
+  const isAdmin = user?.role === 'SUPER_ADMIN';
+  const canCreate = ['PLANNER', 'GROUP_HEAD', 'SUPER_ADMIN', 'MANAGER'].includes(user?.role);
+  const [tab, setTab] = useState(canCreate ? 'new' : 'list');
   const [clients, setClients] = useState([]);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +67,10 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
     setLoading(true);
     Promise.all([
       api.get('/requisitions').then((r) => setList(r.data.requisitions || [])).catch(() => setList([])),
-      mode !== 'all' ? api.get('/requisitions/clients').then((r) => setClients(r.data.clients || [])).catch(() => setClients([])) : Promise.resolve(),
+      api.get('/requisitions/clients').then((r) => setClients(r.data.clients || [])).catch(() => setClients([])),
     ]).finally(() => setLoading(false));
   };
-  useEffect(load, [mode]);
+  useEffect(load, []);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const setMap = (mapKey, m, v) => setForm((p) => ({ ...p, [mapKey]: { ...p[mapKey], [m]: v } }));
@@ -98,7 +103,6 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
     try { await exportRequisitionPdf(r); } catch { /* ignore */ } finally { setExportingId(null); }
   };
 
-  const isAdmin = user?.role === 'SUPER_ADMIN';
   const [deletingId, setDeletingId] = useState(null);
   const del = async (r) => {
     if (!window.confirm(`Delete this requisition for ${r.clientName} (${r.brandCampaign})? This cannot be undone.`)) return;
@@ -117,12 +121,15 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
     <div>
       {/* sub-tabs */}
       <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
-        {(canCreate && mode !== 'all' ? [['new', 'New Requisition'], ['list', `Submitted${list.length ? ` (${list.length})` : ''}`]] : [['list', mode === 'all' ? `All Requisitions${list.length ? ` (${list.length})` : ''}` : 'My Requisitions']]).map(([k, lbl]) => (
+        {(canCreate
+          ? [['new', 'New Requisition'], ['list', `${isAdmin ? 'All Requisitions' : 'Submitted'}${list.length ? ` (${list.length})` : ''}`]]
+          : [['list', `${isAdmin ? 'All Requisitions' : 'My Requisitions'}${list.length ? ` (${list.length})` : ''}`]]
+        ).map(([k, lbl]) => (
           <button key={k} onClick={() => setTab(k)} style={{ border: 'none', padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: tab === k ? '#0A1729' : '#fff', color: tab === k ? '#fff' : 'var(--ink-soft)' }}>{lbl}</button>
         ))}
       </div>
 
-      {tab === 'new' && canCreate && mode !== 'all' && (
+      {tab === 'new' && canCreate && (
         <form onSubmit={submit} className="card" style={{ padding: 22, maxWidth: 900 }}>
           <div style={{ fontSize: 16, fontWeight: 720, color: 'var(--ink)', marginBottom: 4 }}>Media Buying Requisition (MBR)</div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 18 }}>Date: {fmtDate(new Date())} · request a media plan from the buying unit.</div>
@@ -232,7 +239,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
           {loading ? <OrbitLoader label="Loading requisitions…" /> : list.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--muted)' }}>
               <Icon name="file" size={30} style={{ opacity: 0.35, marginBottom: 8 }} />
-              <p style={{ margin: 0 }}>No requisitions {mode === 'all' ? 'have been raised yet.' : 'yet - raise one from the New Requisition tab.'}</p>
+              <p style={{ margin: 0 }}>No requisitions {isAdmin ? 'have been raised yet.' : 'yet - raise one from the New Requisition tab.'}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -243,7 +250,7 @@ export default function RequisitionsPanel({ mode = 'mine' }) {
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{r.clientName} <span style={{ color: 'var(--muted)', fontWeight: 500 }}>· {r.brandCampaign}</span></div>
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                        MBR #{r.id} · {fmtDate(r.createdAt)} · {(r.mediums || []).join(', ') || 'no medium'}{mode === 'all' ? ` · by ${r.requesterName}` : ''}
+                        MBR #{r.id} · {fmtDate(r.createdAt)} · {(r.mediums || []).join(', ') || 'no medium'}{isAdmin ? ` · by ${r.requesterName}` : ''}
                       </div>
                     </div>
                     {r.deadlineLabel && <span className="badge" style={{ background: 'var(--amber-50)', color: 'var(--amber-700)', flexShrink: 0 }}>{r.deadlineLabel}</span>}
