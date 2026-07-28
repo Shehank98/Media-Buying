@@ -403,6 +403,11 @@ model Property {
   bonusCount           Int               @default(0) @map("bonus_count")
   bonusPct             Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
   sponsorshipDetails   String?           @map("sponsorship_details")
+  // What the deal actually delivers, as structured rows: [{ item, qty }] —
+  // e.g. [{item:'Trailers',qty:50},{item:'Mid intro',qty:20}]. Kept structured
+  // (rather than in the free-text sponsorshipDetails) so the Negotiation
+  // Planner can show what a given budget has historically bought on a channel.
+  benefits             Json?
   startDate            DateTime?         @map("start_date") @db.Date
   endDate              DateTime?         @map("end_date") @db.Date
   notes                String?

@@ -68,6 +68,7 @@ export default function ChannelDetailPage() {
     endDate: '',
     ongoing: false,
     notes: '',
+    benefits: [],
     changeNote: '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -186,7 +187,20 @@ export default function ChannelDetailPage() {
       .catch(() => setCategories([]));
   }, []);
 
-  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', bonusCount: '0', startDate: '', endDate: '', ongoing: false, notes: '', changeNote: '' });
+  const emptyPropForm = () => ({ category: '', customCategory: '', type: '', name: '', cost: '', bonusValue: '0', bonusCount: '0', startDate: '', endDate: '', ongoing: false, notes: '', benefits: [], changeNote: '' });
+
+  // "What this deal delivers" rows - free-text item + quantity (50 Trailers,
+  // 20 Mid intro). Kept as strings while editing so a half-typed number doesn't
+  // fight the input; normalised on submit.
+  const benefitRows = (property) => (Array.isArray(property?.benefits) ? property.benefits : [])
+    .filter((b) => b && b.item)
+    .map((b) => ({ item: String(b.item), qty: b.qty == null || b.qty === 0 ? '' : String(b.qty) }));
+  const addBenefit = () => setPropertyForm((p) => ({ ...p, benefits: [...p.benefits, { item: '', qty: '' }] }));
+  const removeBenefit = (i) => setPropertyForm((p) => ({ ...p, benefits: p.benefits.filter((_, x) => x !== i) }));
+  const setBenefit = (i, key, value) => setPropertyForm((p) => ({
+    ...p,
+    benefits: p.benefits.map((b, x) => (x === i ? { ...b, [key]: value } : b)),
+  }));
 
   const toDateInput = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : '');
 
@@ -213,6 +227,7 @@ export default function ChannelDetailPage() {
       endDate: toDateInput(property.endDate),
       ongoing: !property.endDate,
       notes: property.notes || '',
+      benefits: benefitRows(property),
       changeNote: '',
     });
     setEvaluationFile(null);
@@ -273,6 +288,11 @@ export default function ChannelDetailPage() {
         startDate: propertyForm.startDate,
         endDate: propertyForm.ongoing ? null : propertyForm.endDate,
         notes: propertyForm.notes,
+        // Blank-item rows are dropped; a benefit with no number still counts
+        // (it records that the item was part of the deal).
+        benefits: propertyForm.benefits
+          .filter((b) => b.item.trim())
+          .map((b) => ({ item: b.item.trim(), qty: b.qty === '' ? 0 : Number(b.qty) })),
       };
 
       let propertyId;
@@ -639,6 +659,20 @@ export default function ChannelDetailPage() {
                     )}
                   </div>
 
+                  {/* What the deal delivers, if it was recorded */}
+                  {Array.isArray(property.benefits) && property.benefits.length > 0 && (
+                    <div style={{ borderTop: '1px solid #EEF0F3', paddingTop: 11, marginBottom: 11 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', marginBottom: 6 }}>Includes</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {property.benefits.filter((b) => b && b.item).map((b, i) => (
+                          <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#1F5BB5', background: '#EDF3FD', borderRadius: 6, padding: '3px 8px' }}>
+                            {b.qty > 0 ? `${b.qty} × ` : ''}{b.item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ borderTop: '1px solid #EEF0F3', paddingTop: 11, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                       <span style={{ color: '#93A0B5', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="calendar" size={13} />Duration</span>
@@ -976,6 +1010,48 @@ export default function ChannelDetailPage() {
                   <label htmlFor="prop-ongoing" style={{ fontSize: 13, color: 'var(--ink-soft)', margin: 0 }}>
                     Ongoing - no end date (still running)
                   </label>
+                </div>
+
+                {/* What the deal actually delivers. Structured (not prose) so
+                    the Media Buying Negotiation Planner can show what a given
+                    budget has historically bought on this channel. */}
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: '#93A0B5', margin: '4px 0 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>What this deal delivers</span><span style={{ flex: 1, height: 1, background: '#EEF0F3' }} />
+                </div>
+
+                <div className="field">
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                    Everything included for this value — e.g. 50 Trailers, 20 Mid intros. Shown to the buying unit when planning a budget on this channel.
+                  </div>
+                  {propertyForm.benefits.length === 0 && (
+                    <div style={{ fontSize: 12.5, color: '#93A0B5', padding: '8px 0' }}>Nothing recorded yet.</div>
+                  )}
+                  {propertyForm.benefits.map((b, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                      <input
+                        className="input"
+                        placeholder="What (e.g. Trailers, Mid intro, Bumpers)"
+                        value={b.item}
+                        onChange={(e) => setBenefit(i, 'item', e.target.value)}
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        placeholder="Qty"
+                        value={b.qty}
+                        onChange={(e) => setBenefit(i, 'qty', e.target.value)}
+                        style={{ width: 96, flex: 'none' }}
+                      />
+                      <button type="button" className="act-btn" onClick={() => removeBenefit(i)} title="Remove" style={{ color: 'var(--red-600,#dc2626)', flex: 'none' }}>
+                        <Icon name="trash" size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={addBenefit} style={{ marginTop: 2 }}>
+                    <Icon name="plus" size={14} /> Add benefit
+                  </button>
                 </div>
 
                 <div className="field">

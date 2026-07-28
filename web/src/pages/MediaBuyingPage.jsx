@@ -662,6 +662,14 @@ export default function MediaBuyingPage() {
       ['Comparable Clients (' + plannerResult.spendTier + ' tier, averaged across all years)'],
       ['Client', 'Avg Yearly Spend (LKR)', 'Avg Monthly Spend (LKR)', 'Avg Discount %', 'Avg Bonus %', 'Years of Data'],
       ...plannerResult.comparableClients.map((c) => [c.clientName, fmtLKRFull(c.avgYearlySpend), fmtLKRFull(c.avgYearlySpend / 12), `${c.avgDiscountPct.toFixed(1)}%`, `${c.avgBonusPct.toFixed(1)}%`, c.yearsOfData]),
+      [],
+      ['What This Budget Can Get (deals on this channel costing up to the monthly budget)'],
+      ['Deal', 'Client', 'Category', 'Type', 'Cost (LKR)', 'Bonus %', 'Includes'],
+      ...(plannerResult.affordableProperties || []).map((p) => [
+        p.name, p.clientName, p.category || '', p.type || '', fmtLKRFull(p.cost),
+        `${(p.bonusPct || 0).toFixed(1)}%`,
+        p.benefitsSummary || p.sponsorshipDetails || '',
+      ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, 'Negotiation Plan');
@@ -1064,6 +1072,56 @@ export default function MediaBuyingPage() {
                     {plannerResult.suggestedBonusRange && (
                       <>, plus an estimated <strong>{fmtLKR(plannerBudget * ((plannerResult.suggestedBonusRange.min + plannerResult.suggestedBonusRange.max) / 200))}</strong> in bonus/added-value airtime per month.</>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* What this budget has actually bought on this channel: every
+                  recorded property costing no more than the typed budget, richest
+                  first, with what each one delivered. */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 4, color: 'var(--ink)' }}>
+                  <Icon name="sparkle" size={15} style={{ color: 'var(--coral-700,#C44A18)' }} />
+                  What this budget can get ({plannerResult.affordablePropertyCount ?? 0})
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 10px' }}>
+                  Deals already recorded on this channel costing up to {fmtLKR(plannerResult.monthlyBudget)} — closest to the budget first.
+                </p>
+                {(plannerResult.affordableProperties || []).length === 0 ? (
+                  <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                    No deals recorded on this channel at or below this budget. Deals are captured on a client&apos;s channel page under <b>Add property</b> — fill in &quot;What this deal delivers&quot; there and they show up here.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {plannerResult.affordableProperties.map((p) => (
+                      <div key={p.id} className="card" style={{ padding: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--ink)' }}>{p.name}</div>
+                            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                              {p.clientName}{p.category ? ` · ${p.category}` : ''}{p.type ? ` · ${p.type}` : ''}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', flex: 'none' }}>
+                            <div className="mono" style={{ fontWeight: 750, fontSize: 14, color: 'var(--ink)' }}>{fmtLKR(p.cost)}</div>
+                            {p.bonusPct > 0 && <div style={{ fontSize: 11.5, color: 'var(--green-600)', fontWeight: 600 }}>+{fmtPct(p.bonusPct)} bonus</div>}
+                          </div>
+                        </div>
+                        {p.benefits.length > 0 ? (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                            {p.benefits.map((b, i) => (
+                              <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: '#1F5BB5', background: '#EDF3FD', borderRadius: 6, padding: '3px 8px' }}>
+                                {b.qty > 0 ? `${b.qty} × ` : ''}{b.item}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 8 }}>
+                            Deliverables not recorded for this deal{p.sponsorshipDetails ? ` — ${p.sponsorshipDetails}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
