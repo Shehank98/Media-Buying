@@ -6,6 +6,7 @@
 export const TOGGLEABLE_PAGES = [
   { key: '/database', label: 'Database' },
   { key: '/forecasting', label: 'Forecasting' },
+  { key: '/buying-requisition', label: 'Buying Requisition' },
   { key: '/agencies', label: 'Agencies & Clients' },
   { key: '/spend-analytics', label: 'Spend Analytics' },
   { key: '/executive-dashboard', label: 'Executive Dashboard' },
@@ -23,6 +24,7 @@ export function pageKeyForPath(pathname) {
   if (p === '/') return '/';
   if (p.startsWith('/database')) return '/database';
   if (p.startsWith('/forecasting')) return '/forecasting';
+  if (p.startsWith('/buying-requisition')) return '/buying-requisition';
   if (p.startsWith('/agencies') || p.startsWith('/clients') || p.startsWith('/client-groups') || p.startsWith('/channels') || p.startsWith('/channel-masters')) return '/agencies';
   if (p.startsWith('/spend-analytics')) return '/spend-analytics';
   if (p.startsWith('/executive-dashboard') || p.startsWith('/deep-dashboard')) return '/executive-dashboard';

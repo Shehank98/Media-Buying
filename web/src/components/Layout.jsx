@@ -10,6 +10,7 @@ const NAV = [
   { key: '/deep-dashboard', label: 'Dashboard', icon: 'bar-chart', roles: ['MANAGER'] },
   { key: '/spend-analytics', label: 'Spend Analytics', icon: 'trending-up', roles: ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/forecasting', label: 'Forecasting', icon: 'calendar', roles: ['SUPER_ADMIN', 'GROUP_HEAD', 'MANAGER'] },
+  { key: '/buying-requisition', label: 'Buying Requisition', icon: 'file', roles: ['SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'] },
   { key: '/database', label: 'Database', icon: 'database' },
   { key: '/agencies', label: 'Agencies', icon: 'building' },
   { key: '/rate-cards', label: 'Rate Cards', icon: 'file' },
@@ -23,6 +24,12 @@ const NAV_ADMIN = [
   { key: '/admin', label: 'Admin', icon: 'shield', roles: ['SUPER_ADMIN'] },
   { key: '/profile', label: 'Profile', icon: 'user' },
 ];
+
+// Sidebar brand logo. Drop a file at web/public/brand-logo.png (preferred - a
+// transparent PNG sits best on the navy sidebar) or web/public/brand-logo.jpg
+// and it replaces the built-in orbit lockup. Each candidate is tried in turn;
+// when none loads, the orbit mark + "Ogilvy ORBIT" wordmark render as before.
+const BRAND_LOGOS = ['/brand-logo.png', '/brand-logo.jpg'];
 
 function Breadcrumbs({ go }) {
   const location = useLocation();
@@ -45,6 +52,7 @@ function Breadcrumbs({ go }) {
   if (path === '/executive-dashboard') return <>{home}{sep}<b>Executive Dashboard</b></>;
   if (path === '/deep-dashboard') return <>{home}{sep}<b>Dashboard</b></>;
   if (path === '/reports') return <>{home}{sep}<b>Buying Report</b></>;
+  if (path === '/buying-requisition') return <>{home}{sep}<b>Buying Requisition</b></>;
   if (path === '/packages') return <>{home}{sep}<a>Control Room</a>{sep}<b>Media Packages</b></>;
   if (path === '/my-packages') return <>{home}{sep}<b>Media Packages</b></>;
   if (path === '/admin') return <>{home}{sep}<a>Control Room</a>{sep}<b>User Management</b></>;
@@ -67,6 +75,11 @@ export default function Layout() {
 
   // Mobile: the sidebar collapses into a hamburger-triggered drawer.
   const [navOpen, setNavOpen] = useState(false);
+
+  // Which brand-logo candidate we're on; past the end = no logo file, use the
+  // built-in orbit lockup.
+  const [logoIdx, setLogoIdx] = useState(0);
+  const brandLogo = BRAND_LOGOS[logoIdx] || null;
 
   useEffect(() => {
     const q = searchQ.trim();
@@ -159,6 +172,7 @@ export default function Layout() {
       case 'CHANNEL_REQUEST': return '/admin';
       case 'CLIENT_REQUEST_RESULT':
       case 'CHANNEL_REQUEST_RESULT': return '/forecasting';
+      case 'REQUISITION': return '/buying-requisition';
       default: return null;
     }
   };
@@ -195,15 +209,28 @@ export default function Layout() {
       <div className={`sidebar-scrim${navOpen ? ' show' : ''}`} onClick={() => setNavOpen(false)} />
       <div className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="brand">
-          <div className="brand-orbit">
-            <span className="bo-ring" />
-            <span className="bo-track"><span className="bo-dot" /></span>
-            <span className="bo-core">O</span>
-          </div>
-          <div>
-            <div className="brand-name">Ogilvy</div>
-            <div className="brand-sub">ORBIT</div>
-          </div>
+          {brandLogo ? (
+            // Custom logo from web/public (see BRAND_LOGOS). Falls through to the
+            // orbit lockup below if none of the files exist.
+            <img
+              className="brand-logo"
+              src={brandLogo}
+              alt="Ogilvy Orbit"
+              onError={() => setLogoIdx((i) => i + 1)}
+            />
+          ) : (
+            <>
+              <div className="brand-orbit">
+                <span className="bo-ring" />
+                <span className="bo-track"><span className="bo-dot" /></span>
+                <span className="bo-core">O</span>
+              </div>
+              <div>
+                <div className="brand-name">Ogilvy</div>
+                <div className="brand-sub">ORBIT</div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="nav-group">

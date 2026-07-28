@@ -121,6 +121,10 @@ input, select, textarea { font-family: inherit; }
   color: #fff; font-weight: 800; font-size: 17px; letter-spacing: -.5px;
   box-shadow: 0 4px 12px rgba(232,93,36,.4);
 }
+/* Custom brand logo: drop brand-logo.png (preferred, transparent) or
+   brand-logo.jpg into web/public and it replaces the orbit lockup below.
+   Absent, the animated orbit mark + wordmark render instead. */
+.brand-logo { display: block; max-width: 100%; max-height: 44px; width: auto; object-fit: contain; border-radius: 6px; }
 .brand-name { font-weight: 700; font-size: 15.5px; letter-spacing: -.2px; line-height: 1.1; }
 .brand-sub { font-size: 11px; color: var(--navy-300); letter-spacing: .3px; margin-top: 2px; }
 

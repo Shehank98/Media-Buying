@@ -252,12 +252,14 @@ export async function getClientGroupOverview(req, res) {
     const brandMonth = {}; // brand -> { 'YYYY-MM': value } (scoped), for the brand trend chart
     const months = new Set();
     const yearsSet = new Set();
+    const trend = {}; // year -> [12] monthly totals (ALL-time), for YoY + the year block
     for (const l of logs) {
       const v = Number(l.scheduleValue) || 0;
       const m = l.scheduleMonth;
       const mm = /^(\d{4})-(\d{2})$/.exec(m);
       const logYear = mm ? Number(mm[1]) : null;
       if (logYear) yearsSet.add(logYear);
+      if (mm) (trend[logYear] ||= Array(12).fill(0))[Number(mm[2]) - 1] += v;
       if (yearParam != null && logYear !== yearParam) continue; // outside the selected year
       total += v; totalVat += Number(l.scheduleValueWithVat) || 0; scopedEntries += 1;
       if (mm) { months.add(m); (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
@@ -286,12 +288,103 @@ export async function getClientGroupOverview(req, res) {
       return row;
     });
 
+    // Period-aligned YoY (latest year through its last month with data vs the
+    // SAME Jan→month window a year earlier) - mirrors getClientOverview.
+    const trendYearsY = Object.keys(trend).map(Number).sort((a, b) => a - b);
+    const latestYear = trendYearsY.length ? trendYearsY[trendYearsY.length - 1] : null;
+    const previousYear = latestYear != null ? latestYear - 1 : null;
+    const curArr = latestYear != null ? (trend[latestYear] || []) : [];
+    let alignIdx = -1;
+    for (let i = 0; i < 12; i++) if ((curArr[i] || 0) > 0) alignIdx = i;
+    const currentYearSpend = curArr.reduce((s, v) => s + (v || 0), 0);
+    const prevArr = previousYear != null ? (trend[previousYear] || []) : [];
+    const previousYearSpendAligned = alignIdx >= 0 ? prevArr.slice(0, alignIdx + 1).reduce((s, v) => s + (v || 0), 0) : 0;
+    const yoyValue = currentYearSpend - previousYearSpendAligned;
+    const yoyPct = previousYearSpendAligned > 0 ? Math.round((yoyValue / previousYearSpendAligned) * 1000) / 10 : null;
+    const yoyThroughMonth = latestYear != null && alignIdx >= 0 ? `${latestYear}-${String(alignIdx + 1).padStart(2, '0')}` : null;
+
+    // Year-scoped block (spend vs the group's annual target) for the dashboard's
+    // year filter + target-progress card. The target is the GROUP target, and the
+    // achieved figure follows the active company filter so a single member's
+    // contribution can be read against it.
+    const selYear = yearParam != null ? yearParam : nowYear;
+    const yArr = trend[selYear] || [];
+    const yearSpend = yArr.reduce((s, v) => s + (v || 0), 0);
+    const yearMonthsWithData = yArr.filter((v) => v > 0).length;
+    let yearEntries = 0;
+    for (const mk in byMonth) if (mk.slice(0, 4) === String(selYear)) yearEntries += byMonth[mk].count;
+    const targetRow = await prisma.clientGroupTarget.findUnique({ where: { groupId_year: { groupId, year: selYear } } });
+    const targetAmt = targetRow ? Number(targetRow.amount) : null;
+    const yearBlock = {
+      year: selYear,
+      spend: Math.round(yearSpend),
+      entries: yearEntries,
+      monthsWithData: yearMonthsWithData,
+      avgMonth: Math.round(yearMonthsWithData > 0 ? yearSpend / yearMonthsWithData : 0),
+      target: targetAmt,
+      achieved: Math.round(yearSpend),
+      remaining: targetAmt != null ? Math.round(targetAmt - yearSpend) : null,
+      pct: targetAmt && targetAmt > 0 ? Number(((yearSpend / targetAmt) * 100).toFixed(1)) : null,
+      // The target belongs to the whole group - flag when only one member is in view.
+      scopedToClient: !!filterClientId,
+    };
+
+    // Channel directory for the group's companies: rep contact, latest negotiated
+    // deal and rate-card availability per client channel (same shape the client
+    // dashboard's directory renders, plus the owning company's name).
+    const clientNameById = new Map(visibleClients.map((c) => [c.id, c.name]));
+    const rawChannels = await prisma.channel.findMany({
+      where: { clientId: { in: scopeIds } },
+      include: { channelMaster: { select: { id: true, medium: true, rateCardDriveId: true, rateCardFileName: true } } },
+      orderBy: { name: 'asc' },
+    });
+    const dealKey = (clientId, masterId) => `${clientId}:${masterId}`;
+    const latestDeals = new Map();
+    const masterIds = [...new Set(rawChannels.map((c) => c.channelMasterId).filter(Boolean))];
+    if (masterIds.length) {
+      const deals = await prisma.channelClientDeal.findMany({
+        where: { clientId: { in: scopeIds }, channelMasterId: { in: masterIds } },
+        orderBy: { year: 'desc' },
+        select: { clientId: true, channelMasterId: true, year: true, discountPct: true, bonusPct: true },
+      });
+      for (const d of deals) {
+        const k = dealKey(d.clientId, d.channelMasterId);
+        // year-desc, so the first row seen per client+channel is the latest.
+        if (!latestDeals.has(k)) latestDeals.set(k, { year: d.year, discountPct: Number(d.discountPct), bonusPct: Number(d.bonusPct) });
+      }
+    }
+    const channels = rawChannels.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      clientId: c.clientId,
+      clientName: clientNameById.get(c.clientId) || '',
+      channelMasterId: c.channelMasterId,
+      channelMaster: c.channelMaster ? { id: c.channelMaster.id, medium: c.channelMaster.medium } : null,
+      contactName: c.contactName,
+      contactEmail: c.contactEmail,
+      contactMobile: c.contactMobile,
+      latestDeal: c.channelMasterId ? (latestDeals.get(dealKey(c.clientId, c.channelMasterId)) || null) : null,
+      hasClientRateCard: !!c.rateCardDriveId,
+      rateCardFileName: c.rateCardFileName || null,
+      hasGeneralRateCard: !!c.channelMaster?.rateCardDriveId,
+      generalRateCardName: c.channelMaster?.rateCardFileName || null,
+    }));
+
     return res.json({
       group: { id: group.id, name: group.name, agencyId: group.agency?.id, agencyName: group.agency?.name },
       clients: visibleClients,
       filterClientId,
       year: yearParam,
       availableYears,
+      yearBlock,
+      yoy: {
+        latestYear, previousYear,
+        currentYearSpend: Math.round(currentYearSpend),
+        previousYearSpendAligned: Math.round(previousYearSpendAligned),
+        yoyValue: Math.round(yoyValue), yoyPct, throughMonth: yoyThroughMonth,
+      },
+      channels,
       totalValue: Math.round(total),
       totalWithVat: Math.round(totalVat),
       totalEntries: scopedEntries,

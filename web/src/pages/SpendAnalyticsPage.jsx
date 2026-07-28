@@ -17,6 +17,8 @@ import {
 
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
+const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'DIGITAL', 'CINEMA', 'OOH'];
+const TOP_CHANNELS = 20; // rows shown in the Spend by Channel ranked list
 
 // Total value at the right end of each Annual Achievement bar. A custom content
 // renderer (not position="right") so it renders even when the outer stacked
@@ -105,6 +107,7 @@ export default function SpendAnalyticsPage() {
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
   const [expandedGroups, setExpandedGroups] = useState(() => new Set()); // media groups expanded to show channel rows
+  const [showBreakdown, setShowBreakdown] = useState(false); // Spend Breakdown table - collapsed by default
   const [paretoMode, setParetoMode] = useState('channel'); // 'channel' | 'client'
   const [compare, setCompare] = useState(false);
   const [cmpFrom, setCmpFrom] = useState('');
@@ -1234,7 +1237,12 @@ export default function SpendAnalyticsPage() {
 
           {/* By Channel + By Client - ranked clickable lists → intelligence pages */}
           {(() => {
-            const channelsView = (mediumFilter ? data.byChannel.filter(c => c.medium === mediumFilter) : data.byChannel).slice(0, 15);
+            // Mediums present in the current data, in canonical order, for the
+            // per-medium tabs on the Spend by Channel card (shared state with the
+            // Medium donut cross-filter, so the two stay in sync).
+            const channelMediums = MEDIUM_ORDER.filter(md => data.byChannel.some(c => c.medium === md));
+            const channelsMatching = mediumFilter ? data.byChannel.filter(c => c.medium === mediumFilter) : data.byChannel;
+            const channelsView = channelsMatching.slice(0, TOP_CHANNELS);
             const clientsView = (data.byClient || []).slice(0, 15);
             const maxCh = channelsView[0]?.value || 1;
             const maxCl = clientsView[0]?.value || 1;
@@ -1264,16 +1272,28 @@ export default function SpendAnalyticsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 20 }}>
                 <div className="section-card" style={{ padding: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Spend by Channel (Top 15)</h3>
-                    {mediumFilter && (
-                      <button onClick={() => setMediumFilter('')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: MEDIUM_COLORS[mediumFilter] || '#16243C', background: '#F5F6F8', border: '1px solid #E5E8ED', borderRadius: 20, padding: '3px 10px', cursor: 'pointer' }}>
-                        {mediumFilter} <Icon name="x" size={12} />
-                      </button>
-                    )}
+                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>
+                      Spend by Channel {mediumFilter ? `· ${mediumFilter}` : ''} (Top {TOP_CHANNELS})
+                    </h3>
                     <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#93A0B5' }}>Click to open Channel Intelligence</span>
                   </div>
+                  {/* Medium tabs - All / TV / Radio / Print / … (only mediums with data) */}
+                  {channelMediums.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                      {[['', 'All'], ...channelMediums.map(m => [m, m])].map(([k, label]) => {
+                        const active = mediumFilter === k;
+                        const mc = k ? (MEDIUM_COLORS[k] || '#1e3a5f') : '#16243C';
+                        return (
+                          <button key={k || 'all'} onClick={() => setMediumFilter(k)}
+                            style={{ border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, fontFamily: 'inherit', background: active ? mc : '#EEF0F3', color: active ? '#fff' : '#6B7790' }}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div ref={chartChannelRef}>
-                    {channelsView.length === 0 ? <div style={{ color: '#93A0B5', fontSize: 13, padding: 16 }}>No channels for the current filters.</div> : (
+                    {channelsView.length === 0 ? <div style={{ color: '#93A0B5', fontSize: 13, padding: 16 }}>No channels{mediumFilter ? ` for ${mediumFilter}` : ''} in the current filters.</div> : (
                       channelsView.map((ch, i) => (
                         <RankRow key={ch.name} rank={i + 1} name={ch.name} sub={ch.medium} value={ch.value} max={maxCh}
                           color={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]}
@@ -1282,6 +1302,11 @@ export default function SpendAnalyticsPage() {
                       ))
                     )}
                   </div>
+                  {channelsMatching.length > TOP_CHANNELS && (
+                    <div style={{ fontSize: 11.5, color: '#93A0B5', padding: '8px 8px 0' }}>
+                      Showing the top {TOP_CHANNELS} of {channelsMatching.length} channels{mediumFilter ? ` in ${mediumFilter}` : ''} · the full list is in the breakdown table below
+                    </div>
+                  )}
                 </div>
                 <div className="section-card" style={{ padding: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -1350,12 +1375,20 @@ export default function SpendAnalyticsPage() {
             )}
           </div>
 
-          {/* Grouped Breakdown: Media Group → Channels */}
+          {/* Grouped Breakdown: Media Group → Channels. The whole section is
+              collapsed by default - click the header to expand it. */}
           <div className="section-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
-              Spend Breakdown - Media Group &amp; Channels
+            <div
+              onClick={() => setShowBreakdown(v => !v)}
+              style={{ padding: '14px 20px', borderBottom: showBreakdown ? '1px solid var(--border)' : 'none', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+            >
+              <Icon name={showBreakdown ? 'chevD' : 'chevR'} size={15} style={{ color: '#6B7790' }} />
+              <span>Spend Breakdown - Media Group &amp; Channels</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: '#93A0B5' }}>
+                {data.byMediaGroup.length} media group{data.byMediaGroup.length === 1 ? '' : 's'} · click to {showBreakdown ? 'hide' : 'expand'}
+              </span>
             </div>
-            <div style={{ overflow: 'auto' }}>
+            <div style={{ overflow: 'auto', display: showBreakdown ? 'block' : 'none' }}>
               <table className="tbl" style={{ margin: 0 }}>
                 <thead>
                   <tr>
