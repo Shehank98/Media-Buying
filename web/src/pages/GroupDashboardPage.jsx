@@ -37,7 +37,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 function Stat({ label, value, sub, tone, icon, accent }) {
   return (
-    <div style={{ ...CARD, padding: '16px 18px', position: 'relative', overflow: 'hidden' }}>
+    <div
+      style={{ ...CARD, padding: '16px 18px', position: 'relative', overflow: 'hidden', transition: 'transform .16s ease, box-shadow .16s ease' }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 26px rgba(15,31,61,.10)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = CARD.boxShadow; }}
+    >
       <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${tone[1]}, ${tone[1]}1A 70%, transparent)` }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
         <div style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${tone[0]}, #ffffff)`, color: tone[1], boxShadow: `inset 0 0 0 1px ${tone[1]}22` }}><Icon name={icon} size={15} /></div>
@@ -58,8 +62,10 @@ export default function GroupDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [clientFilter, setClientFilter] = useState(''); // '' = all clients in group
-  const [year, setYear] = useState('all'); // 'all' or a YYYY string
+  const [year, setYear] = useState(''); // '' until the first load resolves the current year
   const [chMedium, setChMedium] = useState(''); // Spend-by-Channel medium filter ('' = all)
+  const [channelSearch, setChannelSearch] = useState('');
+  const [dirMedium, setDirMedium] = useState(''); // active medium tab in the Channel Directory
   const [showBrandTrend, setShowBrandTrend] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -99,10 +105,32 @@ export default function GroupDashboardPage() {
     if (clientFilter) params.clientId = clientFilter;
     if (/^\d{4}$/.test(year)) params.year = year;
     api.get(`/analytics/client-group/${groupId}/overview`, { params })
-      .then(({ data }) => setData(data))
+      .then(({ data }) => { setData(data); if (!year && data?.yearBlock?.year) setYear(String(data.yearBlock.year)); })
       .catch(() => setError('Failed to load group dashboard.'))
       .finally(() => setLoading(false));
   }, [groupId, clientFilter, year]);
+
+  // Download a rate card: client-specific if the channel has one, else the
+  // channel's general (channel-master) card.
+  const openRateCard = async (ch, download) => {
+    try {
+      const useClient = ch.hasClientRateCard;
+      const path = useClient ? `/channels/${ch.id}/rate-card` : `/analytics/channel/${ch.channelMasterId}/rate-card`;
+      const res = await api.get(path, { params: download ? { download: 1 } : {}, responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (useClient ? ch.rateCardFileName : ch.generalRateCardName) || 'rate-card';
+        document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        window.open(url, '_blank');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError('Could not open the rate card.');
+    }
+  };
 
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading group dashboard…" /></div>;
   if (error) return <div className="content-narrow fade-in" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--red-600)' }}>{error}</div>;
@@ -134,8 +162,99 @@ export default function GroupDashboardPage() {
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
   const brandTrend = data.brandTrend || [];
   const brandTrendKeys = data.brandTrendKeys || [];
-  const avgMonth = data.monthsActive ? data.totalValue / data.monthsActive : 0;
   const filterName = clientFilter ? (members.find(m => String(m.id) === String(clientFilter))?.name || 'Client') : 'All companies';
+
+  // Period-aligned YoY (same window this year vs last year).
+  const yoy = data.yoy || null;
+  const yoyUp = yoy && yoy.yoyPct != null && yoy.yoyPct >= 0;
+  const yoySub = yoy?.throughMonth
+    ? (() => {
+        const mLabel = MONTHS[parseInt(yoy.throughMonth.slice(5, 7), 10) - 1];
+        return `Jan–${mLabel} ${yoy.throughMonth.slice(0, 4)} vs Jan–${mLabel} ${yoy.previousYear}`;
+      })()
+    : 'vs last year, same period';
+
+  // Channel directory: one card per client channel in the group (or in the
+  // filtered company), grouped by medium and searchable.
+  const channels = data.channels || [];
+  const channelCard = (ch) => {
+    const medium = ch.channelMaster?.medium || ch.type;
+    const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
+    const hasContact = ch.contactName || ch.contactEmail || ch.contactMobile;
+    const d = ch.latestDeal;
+    const cardKind = ch.hasClientRateCard ? 'Client' : ch.hasGeneralRateCard ? 'General' : null;
+    return (
+      <div key={ch.id} style={{ position: 'relative', overflow: 'hidden', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 10, boxShadow: '0 1px 2px rgba(15,31,61,.05)', padding: '10px 11px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${mc}, ${mc}22 75%, transparent)` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: `${mc}18`, color: mc, display: 'grid', placeItems: 'center', flex: 'none' }}>
+            <Icon name={(medium || 'tv').toLowerCase()} size={14} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#16243C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.name}>{ch.name}</div>
+            {/* Which company in the group this channel belongs to */}
+            {ch.clientName && <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.clientName}>{ch.clientName}</div>}
+          </div>
+          {medium && <span className="medium-tag" data-medium={medium} style={{ flex: 'none' }}>{medium}</span>}
+        </div>
+
+        {hasContact ? (
+          <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+            {ch.contactName && <div style={{ fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ch.contactName}>{ch.contactName}</div>}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: 'var(--muted)' }}>
+              {ch.contactMobile && <span title={ch.contactMobile}><Icon name="phone" size={10} /> {ch.contactMobile}</span>}
+              {ch.contactEmail && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, whiteSpace: 'nowrap' }} title={ch.contactEmail}><Icon name="mail" size={10} /> {ch.contactEmail}</span>}
+            </div>
+          </div>
+        ) : <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>No contact recorded</div>}
+
+        <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #EEF0F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          {d ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#93A0B5' }}>{d.year}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 3, padding: '2px 7px', borderRadius: 6, background: '#F2F5FA' }}>
+                <b className="mono" style={{ fontSize: 12.5, color: 'var(--ink)' }}>{d.discountPct.toFixed(1)}%</b>
+                <span style={{ fontSize: 10, color: 'var(--muted)' }}>off</span>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 3, padding: '2px 7px', borderRadius: 6, background: '#EAF7EF' }}>
+                <b className="mono" style={{ fontSize: 12.5, color: '#15814B' }}>{d.bonusPct.toFixed(1)}%</b>
+                <span style={{ fontSize: 10, color: '#15814B' }}>bonus</span>
+              </span>
+            </div>
+          ) : <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>No deal</span>}
+          {cardKind ? (
+            <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <span title={`${cardKind} rate card`} style={{ display: 'inline-flex', alignItems: 'center', color: cardKind === 'Client' ? 'var(--coral-700,#C44A18)' : '#93A0B5' }}><Icon name="file" size={12} /></span>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, false)} title="View rate card"><Icon name="eye" size={13} /></button>
+              <button className="btn btn-ghost btn-sm" onClick={() => openRateCard(ch, true)} title="Download rate card"><Icon name="download" size={13} /></button>
+            </div>
+          ) : (
+            <span style={{ fontSize: 11, color: '#93A0B5', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="file" size={11} /> No card</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const dirQuery = channelSearch.trim().toLowerCase();
+  const dirFiltered = channels.filter(ch =>
+    !dirQuery ||
+    (ch.name || '').toLowerCase().includes(dirQuery) ||
+    (ch.contactName || '').toLowerCase().includes(dirQuery) ||
+    (ch.clientName || '').toLowerCase().includes(dirQuery),
+  );
+  const dirGroups = (() => {
+    const map = new Map();
+    dirFiltered.forEach(ch => {
+      const m = (ch.channelMaster?.medium || ch.type || 'Other').toUpperCase();
+      if (!map.has(m)) map.set(m, []);
+      map.get(m).push(ch);
+    });
+    return [...map.entries()].sort((a, b) => {
+      const ia = MEDIUM_ORDER.indexOf(a[0]); const ib = MEDIUM_ORDER.indexOf(b[0]);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a[0].localeCompare(b[0]);
+    }).map(([medium, list]) => ({ medium, list: list.sort((x, y) => (x.name || '').localeCompare(y.name || '')) }));
+  })();
 
   return (
     <div className="content-narrow fade-in">
@@ -166,6 +285,11 @@ export default function GroupDashboardPage() {
           <button className="btn btn-ghost" onClick={exportAllCharts} disabled={exporting} title="Download every chart on this page as JPG images" style={{ height: 38 }}>
             <Icon name="download" size={15} /> {exporting ? 'Exporting…' : 'Charts (JPG)'}
           </button>
+          {clientFilter && (
+            <button className="btn btn-ghost" onClick={() => navigate(`/clients/${clientFilter}/dashboard`)} title="Open this company's own dashboard" style={{ height: 38 }}>
+              <Icon name="settings" size={15} /> Open company dashboard
+            </button>
+          )}
         </div>
       </div>
 
@@ -176,13 +300,65 @@ export default function GroupDashboardPage() {
         </div>
       )}
 
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 24 }}>
-        <Stat label="Total Spend" value={fmtLKR(data.totalValue)} sub={`${data.totalEntries} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
-        <Stat label="Avg / Month" value={fmtLKR(avgMonth)} sub={`${data.monthsActive} active months`} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
-        <Stat label="Channels" value={String(data.channelCount || 0)} sub={`${data.brandCount || 0} brands`} tone={['#EDF3FD', '#1F5BB5']} icon="tv" accent="#1F5BB5" />
-        <Stat label="Companies" value={String(members.length)} sub={clientFilter ? '1 in view' : 'in this group'} tone={['#F3ECFB', '#6B34C0']} icon="users" accent="#6B34C0" />
-      </div>
+      {/* Stat cards (year-scoped, or all-time when Year = All) */}
+      {(() => {
+        const allTime = year === 'all';
+        const yb = data.yearBlock || {};
+        const spend = allTime ? data.totalValue : (yb.spend || 0);
+        const entries = allTime ? data.totalEntries : (yb.entries || 0);
+        const avg = allTime ? (data.monthsActive ? data.totalValue / data.monthsActive : 0) : (yb.avgMonth || 0);
+        const spendLabel = allTime ? 'Total Spend' : `Spend ${yb.year || ''}`;
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 14, marginBottom: 20 }}>
+            <Stat label={spendLabel} value={fmtLKR(spend)} sub={`${entries} schedule entries`} tone={['#FDF1EB', '#D9521C']} icon="money" accent="#D9521C" />
+            {!allTime && (
+              <Stat label={`Group Target ${yb.year || ''}`} value={yb.target != null ? fmtLKR(yb.target) : 'Not set'} sub={yb.target != null && yb.pct != null ? `${yb.pct}% achieved` : 'Set in Admin → Group Targets'} tone={['#EDF3FD', '#1F5BB5']} icon="trending-up" accent="#1F5BB5" />
+            )}
+            <Stat label={allTime ? 'Avg / Month (all-time)' : 'Avg / Month'} value={fmtLKR(avg)} tone={['#EEF0F3', '#3B4A63']} icon="activity" />
+            {yoy && yoy.yoyPct != null && (
+              <Stat
+                label="YoY Growth"
+                value={`${yoyUp ? '+' : ''}${yoy.yoyPct}%`}
+                sub={yoySub}
+                tone={yoyUp ? ['#ECF8F1', '#15814B'] : ['#FBE0DA', '#C5391F']}
+                icon={yoyUp ? 'trending-up' : 'trending-down'}
+                accent={yoyUp ? '#15814B' : '#C5391F'}
+              />
+            )}
+            <Stat label="Channels" value={String(data.channelCount || 0)} sub={`${data.brandCount || 0} brands`} tone={['#EDF3FD', '#1F5BB5']} icon="tv" accent="#1F5BB5" />
+            <Stat label="Companies" value={String(members.length)} sub={clientFilter ? '1 in view' : 'in this group'} tone={['#F3ECFB', '#6B34C0']} icon="users" accent="#6B34C0" />
+          </div>
+        );
+      })()}
+
+      {/* Group target progress for the selected year (not shown for All time) */}
+      {year !== 'all' && data.yearBlock && data.yearBlock.target != null && (
+        <div style={{ ...CARD, padding: 20, marginBottom: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>{data.yearBlock.year} Target Progress</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>
+                Achieved from actual schedule spend
+                {data.yearBlock.scopedToClient ? ` · ${filterName} only, against the whole group's target` : ''}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="mono" style={{ fontSize: 20, fontWeight: 750, color: (data.yearBlock.pct || 0) >= 100 ? '#15814B' : '#16243C' }}>{data.yearBlock.pct == null ? '-' : `${data.yearBlock.pct}%`}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                {fmtLKR(data.yearBlock.achieved)} of {fmtLKR(data.yearBlock.target)}
+              </div>
+            </div>
+          </div>
+          <div style={{ background: '#EEF0F3', borderRadius: 6, height: 12, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, data.yearBlock.pct || 0)}%`, height: '100%', background: (data.yearBlock.pct || 0) >= 100 ? '#15814B' : '#1F5BB5', borderRadius: 6 }} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: data.yearBlock.remaining > 0 ? '#C5391F' : '#15814B' }}>
+            {data.yearBlock.remaining > 0
+              ? <>Still needed: <span className="mono">{fmtLKR(data.yearBlock.remaining)}</span></>
+              : <>Target reached - over by <span className="mono">{fmtLKR(Math.abs(data.yearBlock.remaining))}</span></>}
+          </div>
+        </div>
+      )}
 
       {/* Monthly spend trend - one line per year */}
       <div ref={trendRef} style={{ ...CARD, padding: 24, marginBottom: 24 }}>
@@ -322,7 +498,7 @@ export default function GroupDashboardPage() {
               <thead><tr><th>Channel</th><th>Medium</th><th style={{ textAlign: 'right' }}>Entries</th><th style={{ textAlign: 'right' }}>Spend</th></tr></thead>
               <tbody>
                 {(data.byChannel || []).map(ch => (
-                  <tr key={ch.name} className={ch.id ? 'clickable' : ''} onClick={() => ch.id && navigate(`/channel-masters/${ch.id}`)}>
+                  <tr key={ch.name} className={ch.id ? 'clickable' : ''} onClick={() => ch.id && navigate(`/channel-masters/${ch.id}${clientFilter ? `?clientId=${clientFilter}` : ''}`)}>
                     <td className="strong">{ch.name}</td>
                     <td>{ch.medium ? <span className="medium-tag" data-medium={ch.medium}>{ch.medium}</span> : '-'}</td>
                     <td style={{ textAlign: 'right' }}>{ch.count}</td>
@@ -352,6 +528,61 @@ export default function GroupDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Channel directory: grouped by medium, searchable by channel / contact / company */}
+      {channels.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>Channel Directory</h3>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>Rep contact · latest deal · rate card. Pick a medium tab - {channels.length} channels{clientFilter ? ` · ${filterName}` : ' across the group'}</div>
+            </div>
+            <div style={{ position: 'relative', minWidth: 220 }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#93A0B5', pointerEvents: 'none', display: 'flex' }}><Icon name="search" size={15} /></span>
+              <input
+                className="input"
+                value={channelSearch}
+                onChange={e => setChannelSearch(e.target.value)}
+                placeholder="Search channel, contact or company…"
+                style={{ paddingLeft: 32, width: '100%' }}
+              />
+              {channelSearch && (
+                <button onClick={() => setChannelSearch('')} title="Clear" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#93A0B5', display: 'flex', padding: 4 }}><Icon name="x" size={14} /></button>
+              )}
+            </div>
+          </div>
+          {dirGroups.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)', fontSize: 13.5 }}>
+              {channelSearch ? `No channels match "${channelSearch}".` : 'No channels.'}
+            </div>
+          ) : (() => {
+            // Medium tabs; the effective tab falls back to the first group when the
+            // current one is filtered out by the search.
+            const activeGroup = dirGroups.find(g => g.medium === dirMedium) || dirGroups[0];
+            return (
+              <>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, borderBottom: '1px solid #EEF0F3', paddingBottom: 2 }}>
+                  {dirGroups.map(({ medium, list }) => {
+                    const active = medium === activeGroup.medium;
+                    const mc = MEDIUM_COLORS[medium] || '#1e3a5f';
+                    return (
+                      <button key={medium} onClick={() => setDirMedium(medium)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: active ? mc : '#6B7790', borderBottom: `2px solid ${active ? mc : 'transparent'}`, marginBottom: -2 }}>
+                        <Icon name={(medium || 'tv').toLowerCase()} size={14} />
+                        {medium}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: active ? mc : '#93A0B5', background: active ? `${mc}18` : '#EEF1F6', borderRadius: 20, padding: '1px 7px' }}>{list.length}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 12 }}>
+                  {activeGroup.list.map(channelCard)}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

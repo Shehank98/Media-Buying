@@ -220,8 +220,8 @@ async function deliver(r) {
   const hub = await managingHeadForClient(r.clientId);
   const s = shape(r);
   const period = (s.campaignStart || s.campaignEnd) ? `${fmtDate(s.campaignStart)} – ${fmtDate(s.campaignEnd)}` : '-';
-  // Buying unit / admins review under Media Packages → Requisitions.
-  const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/packages`;
+  // Buying unit / admins review under the Buying Requisition tab.
+  const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/buying-requisition`;
 
   const details = [
     ['Client', s.clientName + (s.agencyName ? ` (${s.agencyName})` : '')],
@@ -263,8 +263,8 @@ async function deliver(r) {
     console.error('MBR email failed:', e);
   }
 
-  // In-app notifications - admins land on the admin Packages → Requisitions tab,
-  // the Hub on their own Media Packages → Requisitions tab.
+  // In-app notifications - admins and the managing Hub both land on the
+  // Buying Requisition tab (admins see every MBR there, the Hub their own).
   const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });
   const title = 'New Media Buying Requisition';
   const message = `${s.requesterName} raised an MBR for ${s.clientName} - ${s.brandCampaign}`;
@@ -273,10 +273,10 @@ async function deliver(r) {
   for (const a of admins) {
     if (seen.has(a.id)) continue;
     seen.add(a.id);
-    notes.push({ userId: a.id, type: 'REQUISITION', title, message, link: '/packages' });
+    notes.push({ userId: a.id, type: 'REQUISITION', title, message, link: '/buying-requisition' });
   }
   if (hub?.id && !seen.has(hub.id)) {
-    notes.push({ userId: hub.id, type: 'REQUISITION', title, message, link: '/my-packages' });
+    notes.push({ userId: hub.id, type: 'REQUISITION', title, message, link: '/buying-requisition' });
   }
   if (notes.length) await prisma.notification.createMany({ data: notes });
 }

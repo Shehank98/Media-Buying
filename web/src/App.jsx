@@ -28,6 +28,7 @@ import MediaBuyingPage from './pages/MediaBuyingPage';
 import ProfitPage from './pages/ProfitPage';
 import RateCardsPage from './pages/RateCardsPage';
 import GroupDashboardPage from './pages/GroupDashboardPage';
+import BuyingRequisitionPage from './pages/BuyingRequisitionPage';
 
 // Home (/) lands on the Executive Dashboard for SUPER_ADMIN, the Deep Dashboard
 // for MANAGER, Database otherwise.
@@ -72,6 +73,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'GROUP_HEAD', 'MANAGER']}>
                   <ForecastingPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/buying-requisition"
+              element={
+                <ProtectedRoute requiredRoles={['SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER', 'MANAGER']}>
+                  <BuyingRequisitionPage />
                 </ProtectedRoute>
               }
             />
