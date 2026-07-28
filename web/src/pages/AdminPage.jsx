@@ -197,6 +197,14 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [catSubmitting, setCatSubmitting] = useState(false);
   const [catError, setCatError] = useState('');
 
+  /* ---- direct placements (the digital roll-up bucket) ---- */
+  const [dpChannels, setDpChannels] = useState([]);      // every digital channel master
+  const [dpSelected, setDpSelected] = useState([]);      // ids currently in the bucket (local, saved on Save)
+  const [dpSearch, setDpSearch] = useState('');
+  const [dpLoading, setDpLoading] = useState(false);
+  const [dpSaving, setDpSaving] = useState(false);
+  const [dpSavedAt, setDpSavedAt] = useState(null);
+
   /* ---- annual targets ---- */
   const [annualTargets, setAnnualTargets] = useState([]);
   const [showTargetModal, setShowTargetModal] = useState(false);
@@ -1590,6 +1598,41 @@ export default function AdminPage({ initialTab = 'users' }) {
     }
   };
 
+  /* ---- direct placements ---- */
+  const fetchDirectPlacements = async () => {
+    setDpLoading(true);
+    try {
+      const { data } = await api.get('/masterdata/direct-placements');
+      setDpChannels(data.channels || []);
+      setDpSelected(data.selectedIds || []);
+      setDpSavedAt(null);
+    } catch {
+      setDpChannels([]); setDpSelected([]);
+    } finally {
+      setDpLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (activeTab === 'direct-placements') fetchDirectPlacements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const toggleDpChannel = (id) =>
+    setDpSelected(sel => (sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]));
+
+  const saveDirectPlacements = async () => {
+    setDpSaving(true);
+    try {
+      await api.post('/masterdata/direct-placements', { channelMasterIds: dpSelected });
+      setDpChannels(chs => chs.map(c => ({ ...c, isDirectPlacement: dpSelected.includes(c.id) })));
+      setDpSavedAt(new Date());
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save direct placements.');
+    } finally {
+      setDpSaving(false);
+    }
+  };
+
   /* ---- channel commitment deal groups (one target across several channels) ---- */
   const fetchCommitmentGroups = async () => {
     try {
@@ -1992,6 +2035,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       { key: 'channels', label: 'Channels', count: channelMasters.length },
       { key: 'media-groups', label: 'Media Groups', count: mediaGroups.length },
       { key: 'property-categories', label: 'Property Categories', count: propertyCategories.length },
+      { key: 'direct-placements', label: 'Direct Placements' },
     ] },
     { label: 'Targets', members: [
       { key: 'annual-targets', label: 'Annual Targets', count: annualTargets.length },
@@ -2091,7 +2135,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {/* Search */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'client-group-targets', 'backup', 'notify', 'errors', 'client-records', 'client-groups'].includes(activeTab) && (
+        {!['group-revenue', 'aor', 'channel-commitments', 'client-targets', 'client-group-targets', 'backup', 'notify', 'errors', 'client-records', 'client-groups', 'direct-placements'].includes(activeTab) && (
           <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 320 }}>
             <Icon name="search" size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
             <input
@@ -2721,6 +2765,93 @@ export default function AdminPage({ initialTab = 'users' }) {
           )}
         </div>
       )}
+
+      {/* ============ DIRECT PLACEMENTS ============ */}
+      {activeTab === 'direct-placements' && (() => {
+        const q = dpSearch.trim().toLowerCase();
+        const list = dpChannels.filter(c => !q || (c.name || '').toLowerCase().includes(q) || (c.mediaGroup?.name || '').toLowerCase().includes(q));
+        const saved = dpChannels.filter(c => c.isDirectPlacement).map(c => c.id).sort().join(',');
+        const dirty = [...dpSelected].sort().join(',') !== saved;
+        return (
+          <div>
+            <div style={{ background: 'var(--bg-sunken,#F5F6F8)', border: '1px solid var(--border)', borderRadius: 10, padding: '13px 16px', marginBottom: 16, fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.55 }}>
+              Digital channels bought as <b>direct placements</b> (Sirasa Digital, Swarnawahini Digital, …).
+              The channels ticked here are shown as <b>one combined "Direct Placements" bar</b> in the Digital tab of every
+              Spend by Channel chart — Spend Analytics, Group Dashboard and Client Dashboard — coloured per channel, with the
+              split on hover. Everywhere else (breakdown tables, All Channels, exports, reports, Channel Intelligence) each
+              channel is still reported on its own, so no detail is lost.
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none', display: 'flex' }}><Icon name="search" size={15} /></span>
+                <input className="input" value={dpSearch} onChange={e => setDpSearch(e.target.value)} placeholder="Search digital channels…" style={{ paddingLeft: 32, width: '100%' }} />
+              </div>
+              <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                {dpSelected.length} of {dpChannels.length} digital channel{dpChannels.length === 1 ? '' : 's'} selected
+              </span>
+              {dpSelected.length > 0 && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setDpSelected([])} disabled={dpSaving}>Clear all</button>
+              )}
+              <button className="btn btn-primary" onClick={saveDirectPlacements} disabled={dpSaving || !dirty}>
+                {dpSaving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+              </button>
+              {dpSavedAt && !dirty && (
+                <span style={{ fontSize: 12, color: 'var(--green-600,#15814B)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <Icon name="check" size={14} /> Saved
+                </span>
+              )}
+            </div>
+
+            {dpLoading ? (
+              <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading digital channels…" /></div>
+            ) : dpChannels.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>
+                <Icon name="folder" size={28} style={{ opacity: 0.4, marginBottom: 6 }} />
+                <p>No digital channels yet. Add one under Master Data → Channels with medium DIGITAL.</p>
+              </div>
+            ) : list.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No digital channels match "{dpSearch}".</div>
+            ) : (
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 60 }}>In bucket</th>
+                      <th>Channel</th>
+                      <th>Media Group</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Usage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map(c => {
+                      const on = dpSelected.includes(c.id);
+                      return (
+                        <tr key={c.id} className="clickable" onClick={() => toggleDpChannel(c.id)} style={{ background: on ? 'var(--coral-50,#FDF1EB)' : undefined }}>
+                          <td onClick={e => e.stopPropagation()}>
+                            <input type="checkbox" checked={on} onChange={() => toggleDpChannel(c.id)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--coral-700,#C44A18)' }} />
+                          </td>
+                          <td className="strong">{c.name}</td>
+                          <td style={{ color: 'var(--muted)' }}>{c.mediaGroup?.name || '-'}</td>
+                          <td>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                              background: c.isActive === false ? 'var(--bg-sunken)' : 'var(--green-100)',
+                              color: c.isActive === false ? 'var(--muted)' : 'var(--green-600)',
+                            }}>{c.isActive === false ? 'Inactive' : 'Active'}</span>
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{c._count?.scheduleLogs ?? 0}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ============ CHANNEL COMMITMENTS ============ */}
       {activeTab === 'channel-commitments' && (

@@ -731,3 +731,69 @@ export async function togglePropertyCategory(req, res) {
     return res.status(500).json({ error: 'Failed to toggle property category', detail: error.message });
   }
 }
+
+// ─── Direct Placements ────────────────────────────────────────────────────────
+// One fixed bucket of DIGITAL channels (Sirasa Digital, Swarnawahini Digital, …)
+// that the Spend by Channel charts render as a single combined bar. The flag
+// lives on ChannelMaster.isDirectPlacement; nothing else about the channel
+// changes, so tables, exports and Channel Intelligence keep it individual.
+
+// Every digital channel + which of them are currently in the bucket. The picker
+// lists deactivated channels too (a paused channel keeps its historical spend,
+// which still needs to roll up), each marked with its own isActive.
+export async function listDirectPlacements(req, res) {
+  try {
+    const channels = await prisma.channelMaster.findMany({
+      where: { medium: 'DIGITAL', isDeleted: false },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true, name: true, isActive: true, isDirectPlacement: true,
+        mediaGroup: { select: { id: true, name: true } },
+        _count: { select: { scheduleLogs: { where: { isDeleted: false } } } },
+      },
+    });
+    return res.json({
+      channels,
+      selectedIds: channels.filter((c) => c.isDirectPlacement).map((c) => c.id),
+    });
+  } catch (error) {
+    console.error('List direct placements error:', error);
+    return res.status(500).json({ error: 'Failed to list direct placements', detail: error.message });
+  }
+}
+
+// Set-based: the posted ids become the bucket exactly, so an id left out is
+// removed. Only DIGITAL channels can be flagged - the roll-up lives in the
+// Digital tab, so a TV/Radio channel in the bucket would silently never show.
+export async function setDirectPlacements(req, res) {
+  try {
+    const raw = Array.isArray(req.body?.channelMasterIds) ? req.body.channelMasterIds : null;
+    if (!raw) return res.status(400).json({ error: 'channelMasterIds must be an array' });
+    const ids = [...new Set(raw.map((v) => parseInt(v)).filter((v) => Number.isInteger(v)))];
+
+    if (ids.length > 0) {
+      const valid = await prisma.channelMaster.findMany({
+        where: { id: { in: ids }, medium: 'DIGITAL', isDeleted: false },
+        select: { id: true },
+      });
+      if (valid.length !== ids.length) {
+        return res.status(400).json({ error: 'Direct placements can only contain digital channels' });
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.channelMaster.updateMany({
+        where: { isDirectPlacement: true, id: { notIn: ids.length ? ids : [-1] } },
+        data: { isDirectPlacement: false },
+      }),
+      ...(ids.length
+        ? [prisma.channelMaster.updateMany({ where: { id: { in: ids } }, data: { isDirectPlacement: true } })]
+        : []),
+    ]);
+
+    return res.json({ ok: true, count: ids.length, selectedIds: ids });
+  } catch (error) {
+    console.error('Set direct placements error:', error);
+    return res.status(500).json({ error: 'Failed to save direct placements', detail: error.message });
+  }
+}

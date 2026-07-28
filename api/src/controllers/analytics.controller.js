@@ -1080,7 +1080,7 @@ export async function getClientOverview(req, res) {
       select: {
         scheduleMonth: true, scheduleValue: true, scheduleValueWithVat: true,
         medium: true, brandName: true,
-        channelMaster: { select: { id: true, name: true, medium: true } },
+        channelMaster: { select: { id: true, name: true, medium: true, isDirectPlacement: true } },
       },
     });
 
@@ -1110,7 +1110,7 @@ export async function getClientOverview(req, res) {
       if (yearParam == null || logYear === yearParam) {
         if (mm) { (byMonth[m] ||= { month: m, value: 0, count: 0 }).value += v; byMonth[m].count++; }
         const ch = l.channelMaster?.name || 'Unknown';
-        (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, value: 0, count: 0 }).value += v; byChannel[ch].count++;
+        (byChannel[ch] ||= { id: l.channelMaster?.id || null, name: ch, medium: l.channelMaster?.medium || l.medium, isDirectPlacement: l.channelMaster?.isDirectPlacement === true, value: 0, count: 0 }).value += v; byChannel[ch].count++;
         const med = l.medium || 'Unknown';
         (byMedium[med] ||= { name: med, value: 0 }).value += v;
         const br = l.brandName || 'Unbranded';

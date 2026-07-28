@@ -6,6 +6,10 @@ import {
 } from 'recharts';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+import {
+  rollUpDirectPlacements, toStackedChannelData, ChannelBarTooltip,
+  DirectPlacementLegend, DP_COLORS,
+} from '../components/DirectPlacements';
 import api from '../lib/api';
 
 const fmtLKR = (v) => {
@@ -73,6 +77,7 @@ export default function GroupDashboardPage() {
   const trendRef = useRef(null);
   const channelRef = useRef(null);
   const mediumRef = useRef(null);
+  const companyRef = useRef(null);
   const brandRef = useRef(null);
 
   const exportJpg = async (el, name) => {
@@ -90,6 +95,7 @@ export default function GroupDashboardPage() {
       const gn = data?.group?.name || 'group';
       await exportJpg(trendRef.current, `${gn}-monthly-trend`);
       await exportJpg(channelRef.current, `${gn}-spend-by-channel`);
+      if (!clientFilter) await exportJpg(companyRef.current, `${gn}-company-split`);
       await exportJpg(mediumRef.current, `${gn}-medium-split`);
       if (showBrandTrend) await exportJpg(brandRef.current, `${gn}-brand-trend`);
     } catch { setError('Could not export charts.'); } finally { setExporting(false); }
@@ -157,9 +163,14 @@ export default function GroupDashboardPage() {
   });
 
   const channelMediums = MEDIUM_ORDER.filter(md => (data.byChannel || []).some(ch => ch.medium === md));
-  const channelsMatching = (data.byChannel || []).filter(ch => !chMedium || ch.medium === chMedium);
+  // Direct-placement digital channels collapse into one combined bar in this
+  // chart only; the All Channels table below still lists them individually.
+  const channelRows = rollUpDirectPlacements(data.byChannel || []);
+  const channelsMatching = channelRows.filter(ch => !chMedium || ch.medium === chMedium);
   const topChannels = channelsMatching.slice(0, TOP_CHANNELS);
+  const { data: channelChartData, members: dpMembers, memberKeys: dpKeys } = toStackedChannelData(topChannels);
   const mediumData = (data.byMedium || []).filter(m => m.value > 0);
+  const companyData = (data.byClient || []).filter(c => c.value > 0);
   const brandTrend = data.brandTrend || [];
   const brandTrendKeys = data.brandTrendKeys || [];
   const filterName = clientFilter ? (members.find(m => String(m.id) === String(clientFilter))?.name || 'Client') : 'All companies';
@@ -410,17 +421,24 @@ export default function GroupDashboardPage() {
             <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No channel data{chMedium ? ` for ${chMedium}` : ''}</div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(200, topChannels.length * 30 + 20)}>
-              <BarChart data={topChannels} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
+              <BarChart data={channelChartData} layout="vertical" margin={{ top: 4, right: 20, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
                 <XAxis type="number" tickFormatter={fmtShort} tick={{ fontSize: 11, fill: '#93A0B5' }} tickLine={false} axisLine={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#16243C' }} tickLine={false} axisLine={false} width={120} />
-                <Tooltip formatter={(v) => [fmtLKR(v), 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                  {topChannels.map((ch, i) => <Cell key={i} fill={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]} />)}
+                <Tooltip cursor={{ fill: '#F5F6F8' }} content={<ChannelBarTooltip fmt={fmtLKR} />} />
+                {/* Real channels. The combined Direct Placements row holds 0 here
+                    and draws its per-channel segments from the dp* series below. */}
+                <Bar dataKey="value" stackId="a" radius={[0, 6, 6, 0]}>
+                  {channelChartData.map((ch, i) => <Cell key={i} fill={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]} />)}
                 </Bar>
+                {dpKeys.map((k, i) => (
+                  <Bar key={k} dataKey={k} stackId="a" fill={DP_COLORS[i % DP_COLORS.length]}
+                    radius={i === dpKeys.length - 1 ? [0, 6, 6, 0] : 0} />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           )}
+          <DirectPlacementLegend members={dpMembers} style={{ marginTop: 10 }} />
           {channelsMatching.length > TOP_CHANNELS && (
             <div style={{ fontSize: 11.5, color: '#93A0B5', marginTop: 8 }}>
               Showing the top {TOP_CHANNELS} of {channelsMatching.length} channels{chMedium ? ` in ${chMedium}` : ''} · the full list is in the All Channels table below
@@ -428,7 +446,11 @@ export default function GroupDashboardPage() {
           )}
         </div>
 
-        <div ref={mediumRef} style={{ ...CARD, padding: 24 }}>
+        {/* Company Split sits ON TOP, Medium Split under it — the two cards are
+            ordered with flex `order` rather than by JSX position, so the Company
+            Split block below keeps its comment and refs where they were. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div ref={mediumRef} style={{ ...CARD, padding: 24, order: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
             <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Medium Split</h3>
             {jpgButton(mediumRef, `${g.name}-medium-split`)}
@@ -457,6 +479,55 @@ export default function GroupDashboardPage() {
               </div>
             </>
           )}
+        </div>
+
+        {/* Company Split - the same donut, but by member company instead of
+            medium. Hidden when a single company is selected, where it would be
+            one 100% slice. */}
+        <div ref={companyRef} style={{ ...CARD, padding: 24, order: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+            <div>
+              <h3 style={{ margin: 0, fontWeight: 700, color: 'var(--ink)' }}>Company Split</h3>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--muted)' }}>Share of group spend by company</p>
+            </div>
+            {!clientFilter && companyData.length > 0 && jpgButton(companyRef, `${g.name}-company-split`)}
+          </div>
+          {clientFilter ? (
+            <div style={{ height: 160, display: 'grid', placeItems: 'center', textAlign: 'center', color: '#93A0B5', fontSize: 12.5, padding: '0 12px' }}>
+              <span>Showing {filterName} only.<br />
+                <button onClick={() => setClientFilter('')} style={{ background: 'none', border: 'none', color: 'var(--coral-700,#C44A18)', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 12.5 }}>Show the whole group</button>{' '}to compare companies.
+              </span>
+            </div>
+          ) : companyData.length === 0 ? (
+            <div style={{ height: 200, display: 'grid', placeItems: 'center', color: '#93A0B5', fontSize: 13 }}>No data</div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={210}>
+                <PieChart>
+                  <Pie data={companyData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={84} paddingAngle={2}>
+                    {companyData.map((c, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n) => [fmtLKR(v), n]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {companyData.map((c, i) => (
+                  <div
+                    key={c.name}
+                    onClick={() => c.id && setClientFilter(String(c.id))}
+                    title={c.id ? `Filter the dashboard to ${c.name}` : undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: c.id ? 'pointer' : 'default' }}
+                  >
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS[i % COLORS.length] }} />
+                    <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    <span className="mono">{fmtLKR(c.value)}</span>
+                    <span style={{ color: 'var(--muted)', minWidth: 42, textAlign: 'right' }}>{data.totalValue > 0 ? ((c.value / data.totalValue) * 100).toFixed(1) + '%' : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         </div>
       </div>
 

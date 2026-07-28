@@ -239,7 +239,7 @@ export async function getAnalytics(req, res) {
         scheduleValue: true,
         scheduleValueWithVat: true,
         channelMasterId: true,
-        channelMaster: { select: { name: true } },
+        channelMaster: { select: { name: true, isDirectPlacement: true } },
         clientId: true,
         client: { select: { name: true } },
         agency: { select: { name: true } },
@@ -278,7 +278,7 @@ export async function getAnalytics(req, res) {
       byMedium[med].count++;
 
       const ch = log.channelMaster?.name || 'Unknown';
-      if (!byChannel[ch]) byChannel[ch] = { name: ch, medium: med, mediaGroup: mg, channelMasterId: log.channelMasterId ?? null, value: 0, count: 0 };
+      if (!byChannel[ch]) byChannel[ch] = { name: ch, medium: med, mediaGroup: mg, channelMasterId: log.channelMasterId ?? null, isDirectPlacement: log.channelMaster?.isDirectPlacement === true, value: 0, count: 0 };
       byChannel[ch].value += val;
       byChannel[ch].count++;
 

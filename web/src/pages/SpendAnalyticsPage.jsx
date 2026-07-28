@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { canExport } from '../lib/permissions';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+import { rollUpDirectPlacements, ChannelRankBar, DirectPlacementLegend } from '../components/DirectPlacements';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -1241,12 +1242,17 @@ export default function SpendAnalyticsPage() {
             // per-medium tabs on the Spend by Channel card (shared state with the
             // Medium donut cross-filter, so the two stay in sync).
             const channelMediums = MEDIUM_ORDER.filter(md => data.byChannel.some(c => c.medium === md));
-            const channelsMatching = mediumFilter ? data.byChannel.filter(c => c.medium === mediumFilter) : data.byChannel;
+            // Direct-placement digital channels collapse into ONE combined row
+            // here (chart only — the breakdown table below and both exports keep
+            // reading data.byChannel, so they stay per-channel).
+            const channelRows = rollUpDirectPlacements(data.byChannel);
+            const channelsMatching = mediumFilter ? channelRows.filter(c => c.medium === mediumFilter) : channelRows;
             const channelsView = channelsMatching.slice(0, TOP_CHANNELS);
+            const dpRow = channelsView.find(c => c.isDirectGroup) || null;
             const clientsView = (data.byClient || []).slice(0, 15);
             const maxCh = channelsView[0]?.value || 1;
             const maxCl = clientsView[0]?.value || 1;
-            const RankRow = ({ rank, name, sub, value, max, color, onClick, clickable }) => (
+            const RankRow = ({ rank, name, sub, value, max, color, onClick, clickable, row }) => (
               <div
                 onClick={clickable ? onClick : undefined}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 8px', borderRadius: 8, cursor: clickable ? 'pointer' : 'default', transition: 'background .12s' }}
@@ -1261,9 +1267,7 @@ export default function SpendAnalyticsPage() {
                     </span>
                     <span className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: '#16243C', flex: 'none' }}>{fmtLKR(value)}</span>
                   </div>
-                  <div style={{ height: 6, borderRadius: 3, background: '#EEF0F3', overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.max(2, (value / max) * 100)}%`, height: '100%', background: color }} />
-                  </div>
+                  <ChannelRankBar row={row || { value }} max={max} color={color} fmt={fmtLKR} />
                   {sub && <div style={{ fontSize: 11, color: '#93A0B5', marginTop: 2 }}>{sub}</div>}
                 </div>
               </div>
@@ -1295,12 +1299,14 @@ export default function SpendAnalyticsPage() {
                   <div ref={chartChannelRef}>
                     {channelsView.length === 0 ? <div style={{ color: '#93A0B5', fontSize: 13, padding: 16 }}>No channels{mediumFilter ? ` for ${mediumFilter}` : ''} in the current filters.</div> : (
                       channelsView.map((ch, i) => (
-                        <RankRow key={ch.name} rank={i + 1} name={ch.name} sub={ch.medium} value={ch.value} max={maxCh}
+                        <RankRow key={ch.name} rank={i + 1} name={ch.name} sub={ch.isDirectGroup ? null : ch.medium} value={ch.value} max={maxCh}
+                          row={ch}
                           color={MEDIUM_COLORS[ch.medium] || COLORS[i % COLORS.length]}
                           clickable={!!ch.channelMasterId}
                           onClick={() => navigate(`/channel-masters/${ch.channelMasterId}${clientId ? `?clientId=${clientId}` : ''}`)} />
                       ))
                     )}
+                    {dpRow && <DirectPlacementLegend members={dpRow.members} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #EEF0F3' }} />}
                   </div>
                   {channelsMatching.length > TOP_CHANNELS && (
                     <div style={{ fontSize: 11.5, color: '#93A0B5', padding: '8px 8px 0' }}>
