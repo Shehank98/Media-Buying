@@ -655,6 +655,12 @@ A SUPER_ADMIN builds a package (name, **per-channel line items** = channel name 
 
 GROUP_HEADs open `/my-packages`, review the package, and reply **Interested / Open to negotiate / Not interested** with optional client, budget note, and notes. The admin sees every reply (and follow-up status) on the Packages → Responses view, and gets a notification per response. `PackageRecipient.tokenHash`/`expiresAt` are nullable legacy columns from the old token flow.
 
+## Buying Requisition (MBR)
+
+`/buying-requisition` (`BuyingRequisitionPage.jsx` → `RequisitionsPanel.jsx`) — a Desk/Hub request to the buying unit for a media plan, stored as `MediaBuyingRequisition`. PLANNER/GROUP_HEAD/MANAGER/SUPER_ADMIN can raise one; SUPER_ADMIN sees every MBR, everyone else only their own (`listRequisitions` filters on `requestedById`, not client). Submitting emails the buying unit (fixed TO/CC, plus the managing Hub) and notifies admins + that Hub. Endpoints `GET/POST /api/requisitions`, `GET /api/requisitions/clients`, `GET/DELETE /api/requisitions/:id`.
+
+**New clients:** the Client field is a two-way toggle — **Existing client** (the access-scoped dropdown) or **New client** (a free-text name), so an MBR can be raised for a client that isn't in Orbit yet (which the `new-client` deadline type always implied but the dropdown made impossible). `MediaBuyingRequisition.clientId` is nullable and `newClientName` holds the typed name; **exactly one of the two is ever set** (`createRequisition` nulls the other). This deliberately does **NOT** create a `Client` record — the name travels with that one requisition until an admin adds the client properly. Consequences, all intentional: the access check is skipped for a new client (there are no assignments to check yet), and `deliver()` sends with **no Hub CC or Hub notification** since no Hub manages it. Everything downstream reads `shape()`'s `clientName`, which falls back to `newClientName`, so the list, email and PDF all work unchanged; `shape()` also returns `isNewClient`, which drives a "New client" badge in the list and a "(new client)" marker on the PDF/email Client line.
+
 ## Media Buying (channel negotiation intelligence, SUPER_ADMIN only)
 
 `/media-buying` lets a SUPER_ADMIN track negotiated **discount %** (off rate card) and **bonus %** (free added-value airtime/space) per channel, both at the **agency level** and **per client**, year over year — distinct from `Property.bonusPct` (which is a deal-instance field on a specific client's channel, not a tracked negotiation term).

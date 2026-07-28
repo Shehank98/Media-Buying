@@ -88,7 +88,10 @@ function shape(r) {
   return {
     id: r.id,
     clientId: r.clientId,
-    clientName: r.client?.name || '',
+    // A new client has no Client row - its name lives on the requisition, and
+    // every consumer (list, PDF, email) reads clientName, so it works unchanged.
+    clientName: r.client?.name || r.newClientName || '',
+    isNewClient: !r.clientId && !!r.newClientName,
     agencyName: r.client?.agency?.name || '',
     requesterName: r.requester?.name || '',
     requesterRole: r.requester?.role || '',
@@ -167,12 +170,18 @@ export async function createRequisition(req, res) {
   try {
     const user = req.user;
     const b = req.body || {};
-    const clientId = parseInt(b.clientId);
-    if (!Number.isInteger(clientId)) return res.status(400).json({ error: 'Client is required' });
+    // Either an existing client or a brand-new one the requester names here.
+    // A new client is NOT created as a Client record - the name travels with
+    // this requisition only, until an admin adds the client properly.
+    const rawId = parseInt(b.clientId);
+    const clientId = Number.isInteger(rawId) ? rawId : null;
+    const newClientName = typeof b.newClientName === 'string' && b.newClientName.trim() ? b.newClientName.trim() : null;
+    if (!clientId && !newClientName) return res.status(400).json({ error: 'Client is required - pick an existing client or enter a new client name' });
     if (!b.brandCampaign || !String(b.brandCampaign).trim()) return res.status(400).json({ error: 'Brand / Campaign is required' });
 
-    // Access: SUPER_ADMIN any; others only their own clients.
-    if (user.role !== 'SUPER_ADMIN') {
+    // Access: SUPER_ADMIN any; others only their own clients. A new client has
+    // no assignments yet, so there is nothing to check against.
+    if (clientId && user.role !== 'SUPER_ADMIN') {
       const ids = await getAccessibleClientIds(user.id, user.role);
       if (!ids || !ids.includes(clientId)) return res.status(403).json({ error: 'You can only raise requisitions for your own clients' });
     }
@@ -184,7 +193,9 @@ export async function createRequisition(req, res) {
 
     const created = await prisma.mediaBuyingRequisition.create({
       data: {
-        clientId,
+        // Exactly one of the two - a named new client never also carries an id.
+        clientId: clientId || null,
+        newClientName: clientId ? null : newClientName,
         requestedById: user.id,
         brandCampaign: String(b.brandCampaign).trim(),
         targetGroup: clean(b.targetGroup),
@@ -217,14 +228,17 @@ export async function createRequisition(req, res) {
 // Email chandra (TO), CC shehan + the managing Hub; plus in-app notifications
 // to admins and the Hub.
 async function deliver(r) {
-  const hub = await managingHeadForClient(r.clientId);
+  // A brand-new client has no Hub yet, so there is nobody to CC or notify -
+  // the email still goes out to the fixed TO/CC, and the requester's name and
+  // role are in the body either way.
+  const hub = r.clientId ? await managingHeadForClient(r.clientId) : null;
   const s = shape(r);
   const period = (s.campaignStart || s.campaignEnd) ? `${fmtDate(s.campaignStart)} – ${fmtDate(s.campaignEnd)}` : '-';
   // Buying unit / admins review under the Buying Requisition tab.
   const link = `${(process.env.FRONTEND_URL || '').split(',')[0] || ''}/buying-requisition`;
 
   const details = [
-    ['Client', s.clientName + (s.agencyName ? ` (${s.agencyName})` : '')],
+    ['Client', s.clientName + (s.agencyName ? ` (${s.agencyName})` : s.isNewClient ? ' (NEW CLIENT - not yet set up in Orbit)' : '')],
     ['Brand / Campaign', s.brandCampaign],
     ['Target Group', s.targetGroup || '-'],
     ['Campaign Period', period],

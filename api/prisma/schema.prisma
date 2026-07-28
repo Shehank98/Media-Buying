@@ -1028,7 +1028,12 @@ model ErrorLog {
 // media plan. Free-form per-medium detail is kept as JSON so the form can grow.
 model MediaBuyingRequisition {
   id               Int       @id @default(autoincrement())
-  clientId         Int       @map("client_id")
+  // Either an existing client (clientId) OR a brand-new one the requester just
+  // names (newClientName) — exactly one is set. A new client is deliberately
+  // NOT created as a Client record here; the name only travels with this MBR so
+  // the buying unit can act on it, until an admin adds the client properly.
+  clientId         Int?      @map("client_id")
+  newClientName    String?   @map("new_client_name")
   requestedById    Int       @map("requested_by_id")
   brandCampaign    String    @map("brand_campaign")
   targetGroup      String?   @map("target_group")
@@ -1048,7 +1053,7 @@ model MediaBuyingRequisition {
   status           String    @default("SUBMITTED")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
-  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client           Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   requester        User      @relation("RequisitionRequester", fields: [requestedById], references: [id])
 
   @@index([clientId])

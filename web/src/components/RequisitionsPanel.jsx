@@ -35,7 +35,8 @@ const deadlineText = (r) => {
 };
 
 const EMPTY = {
-  clientId: '', brandCampaign: '', targetGroup: '', campaignStart: '', campaignEnd: '',
+  clientId: '', isNewClient: false, newClientName: '',
+  brandCampaign: '', targetGroup: '', campaignStart: '', campaignEnd: '',
   budgetPct: '', budgetAmount: '', mediums: [], stations: {}, buyingProperty: '', deliverables: {}, daypartMandates: {},
   discussionPoints: '', deadlineType: '', deadlineDate: '',
 };
@@ -79,12 +80,18 @@ export default function RequisitionsPanel() {
   const submit = async (e) => {
     e.preventDefault();
     setError(''); setOkMsg('');
-    if (!form.clientId) { setError('Please select a client.'); return; }
+    if (form.isNewClient) {
+      if (!form.newClientName.trim()) { setError('Please enter the new client name.'); return; }
+    } else if (!form.clientId) { setError('Please select a client.'); return; }
     if (!form.brandCampaign.trim()) { setError('Please enter the Brand / Campaign.'); return; }
     setSubmitting(true);
     try {
       await api.post('/requisitions', {
         ...form,
+        // Send only the side that's in use, so a stale selection left behind by
+        // toggling back and forth can't win over what's on screen.
+        clientId: form.isNewClient ? '' : form.clientId,
+        newClientName: form.isNewClient ? form.newClientName.trim() : '',
         budgetPct: form.budgetPct ? Number(form.budgetPct) : null,
       });
       setOkMsg('Requisition submitted - the buying unit has been emailed and notified.');
@@ -137,11 +144,39 @@ export default function RequisitionsPanel() {
           {error && <div style={{ marginBottom: 14, padding: '10px 13px', borderRadius: 9, background: 'var(--red-100)', color: 'var(--red-600)', fontSize: 13, fontWeight: 600 }}>{error}</div>}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Existing client, or a brand-new one the requester just names.
+                A new client is not created in Orbit here - the name travels
+                with this requisition so the buying unit can act on it. */}
             <div><Label req>Client</Label>
-              <select className="select" value={form.clientId} onChange={(e) => set('clientId', e.target.value)} style={{ width: '100%' }}>
-                <option value="">Select your client…</option>
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.agencyName ? ` · ${c.agencyName}` : ''}</option>)}
-              </select>
+              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden', marginBottom: 8 }}>
+                {[[false, 'Existing client'], [true, 'New client']].map(([isNew, lbl]) => (
+                  <button
+                    type="button"
+                    key={String(isNew)}
+                    onClick={() => setForm((p) => ({ ...p, isNewClient: isNew }))}
+                    style={{ border: 'none', padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: form.isNewClient === isNew ? 'var(--coral-600)' : '#fff', color: form.isNewClient === isNew ? '#fff' : 'var(--ink-soft)' }}
+                  >{lbl}</button>
+                ))}
+              </div>
+              {form.isNewClient ? (
+                <>
+                  <input
+                    className="input"
+                    value={form.newClientName}
+                    onChange={(e) => set('newClientName', e.target.value)}
+                    placeholder="New client name"
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                    Sent with this requisition only — an admin still needs to add the client to Orbit.
+                  </div>
+                </>
+              ) : (
+                <select className="select" value={form.clientId} onChange={(e) => set('clientId', e.target.value)} style={{ width: '100%' }}>
+                  <option value="">Select your client…</option>
+                  {clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.agencyName ? ` · ${c.agencyName}` : ''}</option>)}
+                </select>
+              )}
             </div>
             <div><Label req>Brand / Campaign</Label>
               <input className="input" value={form.brandCampaign} onChange={(e) => set('brandCampaign', e.target.value)} placeholder="Brand and/or campaign name" style={{ width: '100%' }} />
@@ -248,7 +283,11 @@ export default function RequisitionsPanel() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }} onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
                     <Icon name={expanded === r.id ? 'chevD' : 'chevR'} size={15} style={{ color: 'var(--muted)' }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{r.clientName} <span style={{ color: 'var(--muted)', fontWeight: 500 }}>· {r.brandCampaign}</span></div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+                        {r.clientName}
+                        {r.isNewClient && <span className="badge" style={{ background: 'var(--blue-50,#EDF3FD)', color: 'var(--blue-700,#1F5BB5)', marginLeft: 6, verticalAlign: 'middle' }}>New client</span>}
+                        <span style={{ color: 'var(--muted)', fontWeight: 500 }}> · {r.brandCampaign}</span>
+                      </div>
                       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
                         MBR #{r.id} · {fmtDate(r.createdAt)} · {(r.mediums || []).join(', ') || 'no medium'}{isAdmin ? ` · by ${r.requesterName}` : ''}
                       </div>
