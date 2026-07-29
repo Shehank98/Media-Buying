@@ -28,7 +28,7 @@ function buildRows(r) {
   const period = (r.campaignStart || r.campaignEnd) ? `${fmtDate(r.campaignStart)}  to  ${fmtDate(r.campaignEnd)}` : '-';
   const rows = [
     ['Date', fmtDate(r.createdAt)],
-    ['Client', r.clientName + (r.agencyName ? `  (${r.agencyName})` : '')],
+    ['Client', r.clientName + (r.agencyName ? `  (${r.agencyName})` : r.isNewClient ? '  (new client)' : '')],
     ['Brand / Campaign', r.brandCampaign || '-'],
     ['Target Group (TG)', r.targetGroup || '-'],
     ['Campaign Period', period],

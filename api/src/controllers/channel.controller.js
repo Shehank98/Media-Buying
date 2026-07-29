@@ -3,6 +3,7 @@ import {
   uploadRateCard, downloadRateCard, deleteRateCard, isRateCardConfigured,
   mimeForFile, isAllowedRateCard, extOf, rateCardName,
 } from '../services/ratecard.service.js';
+import { sanitizeBenefits } from '../utils/benefits.js';
 
 export async function getChannel(req, res) {
   try {
@@ -53,7 +54,7 @@ export async function getProperties(req, res) {
 
 export async function createProperty(req, res) {
   try {
-    const { category, name, type, cost, notes, bonusCount, startDate, endDate } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate, benefits } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -81,6 +82,7 @@ export async function createProperty(req, res) {
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         notes: notes || null,
+        benefits: sanitizeBenefits(benefits),
         createdBy: req.user.id,
       },
       include: { creator: { select: { id: true, name: true } } },

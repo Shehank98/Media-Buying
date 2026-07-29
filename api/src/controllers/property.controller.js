@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import { sanitizeBenefits, benefitsSummary } from '../utils/benefits.js';
 import {
   isEvaluationConfigured, isAllowedEvaluation, mimeForEvaluation, extOf,
   evaluationName, uploadEvaluation, downloadEvaluation, deleteEvaluation,
@@ -133,7 +134,7 @@ export async function list(req, res) {
 export async function create(req, res) {
   try {
     const { channelId } = req.params;
-    const { category, name, type, cost, notes, bonusCount, startDate, endDate } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate, benefits } = req.body;
 
     if (!category || !String(category).trim()) {
       return res.status(400).json({ error: 'Property category is required' });
@@ -161,6 +162,7 @@ export async function create(req, res) {
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         notes: notes || null,
+        benefits: sanitizeBenefits(benefits),
         createdBy: req.user.id,
       },
       include: {
@@ -178,7 +180,7 @@ export async function create(req, res) {
 export async function update(req, res) {
   try {
     const { id } = req.params;
-    const { category, name, type, cost, notes, bonusCount, startDate, endDate, changeNote } = req.body;
+    const { category, name, type, cost, notes, bonusCount, startDate, endDate, changeNote, benefits } = req.body;
 
     if (!changeNote) {
       return res.status(400).json({ error: 'changeNote is required when updating a property' });
@@ -231,6 +233,19 @@ export async function update(req, res) {
       previousValues.endDate = toDateStr(existing.endDate);
       newValues.endDate = toDateStr(endDate);
     }
+    // Benefits are diffed on their readable summary ("50 Trailers · 20 Mid
+    // intro") so the history timeline shows what actually changed rather than
+    // a blob of JSON.
+    let benefitsClean;
+    if (benefits !== undefined) {
+      benefitsClean = sanitizeBenefits(benefits);
+      const oldSummary = benefitsSummary(existing.benefits);
+      const newSummary = benefitsSummary(benefitsClean);
+      if (oldSummary !== newSummary) {
+        previousValues.benefits = oldSummary || null;
+        newValues.benefits = newSummary || null;
+      }
+    }
 
     const updateData = {};
     if (category !== undefined) updateData.category = String(category).trim();
@@ -241,6 +256,7 @@ export async function update(req, res) {
     if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
     if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null;
     if (notes !== undefined) updateData.notes = notes;
+    if (benefits !== undefined) updateData.benefits = benefitsClean;
     // Recompute the derived bonus value whenever the value or the bonus % changes.
     if (cost !== undefined || bonusCount !== undefined) {
       const baseCost = cost !== undefined ? Number(cost) : Number(existing.cost);
