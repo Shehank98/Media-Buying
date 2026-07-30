@@ -123,8 +123,14 @@ input, select, textarea { font-family: inherit; }
 }
 /* Custom brand logo: drop brand-logo.png (preferred, transparent) or
    brand-logo.jpg into web/public and it replaces the orbit lockup below.
-   Absent, the animated orbit mark + wordmark render instead. */
-.brand-logo { display: block; max-width: 100%; max-height: 44px; width: auto; object-fit: contain; border-radius: 6px; }
+   Absent, the animated orbit mark + wordmark render instead.
+   The logo spans the FULL sidebar width - height follows from its aspect ratio,
+   so a wide wordmark reads at a usable size instead of being squeezed to fit a
+   fixed height. Crop dead whitespace out of the file itself rather than adding
+   a max-height here: padding baked into the image shrinks the artwork on every
+   surface (sidebar, PDFs, slides), and no CSS can recover it. */
+.brand.has-logo { padding: 14px 14px 12px; }
+.brand-logo { display: block; width: 100%; height: auto; object-fit: contain; border-radius: 8px; }
 .brand-name { font-weight: 700; font-size: 15.5px; letter-spacing: -.2px; line-height: 1.1; }
 .brand-sub { font-size: 11px; color: var(--navy-300); letter-spacing: .3px; margin-top: 2px; }
 
