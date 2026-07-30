@@ -86,6 +86,9 @@ export default function DatabasePage() {
   const { user } = useAuth();
   const role = user?.role;
   const canWrite = ['SUPER_ADMIN', 'GROUP_HEAD', 'PLANNER'].includes(role);
+  // Overwriting rows already in the database (to fix a wrong Brand/RO) is an
+  // admin / group-head action; a planner still edits their own cells in the grid.
+  const canFixMatched = ['SUPER_ADMIN', 'GROUP_HEAD'].includes(role);
 
   const [agencies, setAgencies] = useState([]);
   const [clients, setClients] = useState([]);
@@ -105,6 +108,8 @@ export default function DatabasePage() {
   const [newRows, setNewRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState(null);
+  // "Fix rows already uploaded" toggle for the per-client save/upload path.
+  const [fixMatched, setFixMatched] = useState(false);
 
   const [editingCell, setEditingCell] = useState(null);
   const [editValue, setEditValue] = useState('');
@@ -278,12 +283,21 @@ export default function DatabasePage() {
         extra: r._extra || undefined,
       }));
 
-      const { data } = await api.post('/database/bulk', { rows: payload, fileName: uploadFileName || null });
+      const { data } = await api.post('/database/bulk', {
+        rows: payload,
+        fileName: uploadFileName || null,
+        // Correct Brand/RO on rows already in the database rather than skipping
+        // them as duplicates. Amounts are never touched, so totals can't move.
+        updateMatched: fixMatched,
+      });
       const createdCount = data.createdCount ?? (Array.isArray(data.created) ? data.created.length : (data.created || 0));
       const errorCount = data.errors?.length || 0;
-      setSaveResult({ created: createdCount, errors: errorCount, duplicates: data.duplicates || 0 });
+      setSaveResult({
+        created: createdCount, errors: errorCount, duplicates: data.duplicates || 0,
+        updated: data.updated || 0, updatedUnchanged: data.updatedUnchanged || 0, updatedAmbiguous: data.updatedAmbiguous || 0,
+      });
 
-      if (createdCount > 0) {
+      if (createdCount > 0 || data.updated > 0) {
         if (errorCount > 0) {
           const errorIndices = new Set(data.errors.map(e => e.row));
           setNewRows(prev => prev.filter((_, i) => errorIndices.has(i)));
@@ -801,7 +815,7 @@ export default function DatabasePage() {
         rows, fileName: importFileName, createMissingClients: importCreateClients, dryRun: true,
       });
       data.__rows = rows; data.__held = heldCount;
-      if (data.duplicates > 0 || data.failed > 0 || data.existingToReplace > 0) {
+      if (data.duplicates > 0 || data.failed > 0 || data.existingToReplace > 0 || data.matchedUpdates > 0) {
         setImportCheck(data);
         setImporting(false);
       } else {
@@ -815,8 +829,10 @@ export default function DatabasePage() {
 
   // Step 3: actually import. allowDuplicates=false → only new rows; true → all rows;
   // replaceExisting=true → soft-delete existing rows for the file's (client,month)
-  // pairs first, then insert everything (a clean replace, no doubling).
-  const runImport = async (allowDuplicates, rows = importRows, heldCount = 0, replaceExisting = false) => {
+  // pairs first, then insert everything (a clean replace, no doubling);
+  // updateMatched=true → correct Brand/RO on the rows the file already matches and
+  // insert only the genuinely new ones (no deletes, no amount changes).
+  const runImport = async (allowDuplicates, rows = importRows, heldCount = 0, replaceExisting = false, updateMatched = false) => {
     setImporting(true);
     try {
       const { data } = await api.post('/database/import-all', {
@@ -825,6 +841,7 @@ export default function DatabasePage() {
         createMissingClients: importCreateClients,
         allowDuplicates,
         replaceExisting,
+        updateMatched,
       });
       setImportResult({ ...data, held: heldCount });
       setImportCheck(null);
@@ -969,6 +986,15 @@ export default function DatabasePage() {
                 <button className="btn btn-ghost btn-sm" onClick={addNewRow}>
                   <Icon name="plus" size={14} /> Add Row
                 </button>
+                {newRows.length > 0 && canFixMatched && (
+                  <label
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: fixMatched ? '#15814B' : 'var(--muted)', fontWeight: fixMatched ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    title="For rows that already exist (same client, channel, month and value), overwrite the Brand/RO with what's in this upload instead of skipping them as duplicates. No amounts change and nothing is deleted, so totals stay the same."
+                  >
+                    <input type="checkbox" checked={fixMatched} onChange={e => setFixMatched(e.target.checked)} />
+                    Fix brand/RO on rows already uploaded
+                  </label>
+                )}
                 {newRows.length > 0 && (
                   <button className="btn btn-primary btn-sm" onClick={saveNewRows} disabled={saving}>
                     {saving ? 'Saving...' : `Save ${newRows.filter(r => r.roNumber && r.channelMasterId && r.scheduleValue).length} rows`}
@@ -1070,6 +1096,9 @@ export default function DatabasePage() {
               border: `1px solid ${saveResult.errors > 0 ? '#fcd34d' : '#86efac'}`,
             }}>
               {saveResult.created > 0 && <span>{saveResult.created} rows saved successfully. </span>}
+              {saveResult.updated > 0 && <span><b>{saveResult.updated} existing row{saveResult.updated === 1 ? '' : 's'} corrected</b> (brand/RO only — no amounts changed, so totals are unaffected). </span>}
+              {saveResult.updatedUnchanged > 0 && <span>{saveResult.updatedUnchanged} matched row{saveResult.updatedUnchanged === 1 ? ' was' : 's were'} already correct. </span>}
+              {saveResult.updatedAmbiguous > 0 && <span>{saveResult.updatedAmbiguous} left alone (conflicting values in the upload). </span>}
               {saveResult.duplicates > 0 && <span>{saveResult.duplicates} duplicate{saveResult.duplicates === 1 ? '' : 's'} skipped. </span>}
               {saveResult.errors > 0 && <span>{saveResult.errors} rows had errors. </span>}
               {saveResult.message && <span>{saveResult.message}</span>}
@@ -1582,9 +1611,50 @@ export default function DatabasePage() {
                       {importCheck.existingToReplace > 0 && importCheck.failed > 0 && ' · '}
                       {importCheck.failed > 0 && `${importCheck.failed} can't be imported (see below)`}
                       . How do you want to proceed?
-                      {importCheck.existingToReplace > 0 && <><br /><b style={{ color: '#C44A18' }}>Replacing 2025 (or any month)? Use “Replace”</b> - it removes the existing rows first so totals don't double.</>}
+                      {importCheck.matchedUpdates > 0 && <><br /><b style={{ color: '#15814B' }}>Fixing brands (or ROs) on rows already uploaded? Use “Fix {importCheck.matchedUpdates} matched row{importCheck.matchedUpdates === 1 ? '' : 's'}”</b> - it corrects the label on the existing rows and changes no amounts, so no total moves.</>}
+                      {importCheck.existingToReplace > 0 && importCheck.matchedUpdates === 0 && <><br /><b style={{ color: '#C44A18' }}>Replacing 2025 (or any month)? Use “Replace”</b> - it removes the existing rows first so totals don't double.</>}
                     </div>
                   </div>
+                  {importCheck.matchedUpdates > 0 && (
+                    <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#15814B', marginBottom: 4 }}>
+                        {importCheck.matchedUpdates} row{importCheck.matchedUpdates === 1 ? '' : 's'} already in the database can be corrected in place
+                      </div>
+                      <div style={{ fontSize: 13, color: '#3B4A63' }}>
+                        This file matches {importCheck.matchedRows} existing row{importCheck.matchedRows === 1 ? '' : 's'} on <b>Client + Channel + Month + Value</b>, and {importCheck.matchedUpdates} of them have a different Brand or RO. Choosing <b>Fix matched rows</b> overwrites just those labels — nothing is inserted, nothing is deleted, and every amount stays exactly as it is, so <b>no total can change</b>. Each change is recorded in the row's edit history.
+                        {importCheck.matchedUnchanged > 0 && <> {importCheck.matchedUnchanged} matched row{importCheck.matchedUnchanged === 1 ? ' is' : 's are'} already correct and will be left alone.</>}
+                        {importCheck.matchedAmbiguous > 0 && <><br /><b style={{ color: '#9A5B00' }}>{importCheck.matchedAmbiguous} skipped as unclear:</b> the file gives two different values for rows that are otherwise identical, so it can't tell which is right. Fix those in the grid.</>}
+                      </div>
+                      {importCheck.updateSample?.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#15814B', marginBottom: 6 }}>
+                            What would change{importCheck.matchedUpdates > importCheck.updateSample.length ? ` (showing ${importCheck.updateSample.length} of ${importCheck.matchedUpdates})` : ''}
+                          </div>
+                          <div style={{ maxHeight: 180, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                            <table className="tbl" style={{ margin: 0, fontSize: 11.5 }}>
+                              <thead><tr><th>Client</th><th>Channel</th><th>Month</th><th style={{ textAlign: 'right' }}>Value (unchanged)</th><th>Change</th></tr></thead>
+                              <tbody>
+                                {importCheck.updateSample.map((r, i) => (
+                                  <tr key={i}>
+                                    <td>{r.client}</td><td>{r.channel}</td><td>{r.month}</td>
+                                    <td style={{ textAlign: 'right' }} className="mono">{r.value?.toLocaleString()}</td>
+                                    <td>
+                                      {r.changes.map((c, j) => (
+                                        <div key={j} style={{ fontSize: 11.5 }}>
+                                          {c.field}: <span style={{ color: '#C5391F', textDecoration: 'line-through' }}>{c.from}</span>
+                                          {' → '}<b style={{ color: '#15814B' }}>{c.to}</b>
+                                        </div>
+                                      ))}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 12 }}>
                     <div style={{ flex: 1, background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 10, padding: '14px 16px' }}>
                       <div style={{ fontSize: 22, fontWeight: 750, color: '#15814B', fontFamily: 'Spline Sans Mono, monospace' }}>{importCheck.newRows}</div>
@@ -1653,14 +1723,16 @@ export default function DatabasePage() {
                         {importCheck.errors.length > 200 && <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 0 0' }}>…and {importCheck.errors.length - 200} more. Download to see them all.</div>}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' }}>
-                        A duplicate = same <b>Year+Month, Client, Channel and Schedule Value</b> as a row already in the database (brand &amp; RO are ignored; repeats within this file are kept). Tip: clients under more than one agency need an <b>Agency</b> column. Fix the downloaded rows and re-upload, or choose Re-upload everything.
+                        A duplicate = same <b>Year+Month, Client, Channel and Schedule Value</b> as a row already in the database (brand &amp; RO are ignored; repeats within this file are kept). Because brand &amp; RO are ignored, a row whose <i>only</i> difference is a corrected brand still counts as a duplicate — use <b>Fix matched rows</b> to write that correction onto the existing row instead of skipping it. Tip: clients under more than one agency need an <b>Agency</b> column.
                       </p>
                     </div>
                   )}
                   <p style={{ fontSize: 12, color: 'var(--muted)', margin: '12px 0 0' }}>
-                    {importCheck.duplicates > 0
-                      ? <><b>Upload only new</b> skips duplicates &amp; error rows. <b>Re-upload everything</b> also re-inserts the {importCheck.duplicates} duplicate{importCheck.duplicates === 1 ? '' : 's'}.</>
-                      : <>Proceeding imports the {importCheck.newRows} valid row{importCheck.newRows === 1 ? '' : 's'} and skips the rest. Fix the file first if you'd rather not skip them.</>}
+                    {importCheck.matchedUpdates > 0
+                      ? <><b>Fix matched rows</b> corrects Brand/RO on the {importCheck.matchedUpdates} existing row{importCheck.matchedUpdates === 1 ? '' : 's'} (totals unaffected){importCheck.newRows > 0 ? <> and adds the {importCheck.newRows} new row{importCheck.newRows === 1 ? '' : 's'}</> : ''}. <b>Upload only new</b> leaves the existing rows as they are. Avoid <b>Re-upload everything</b> here — it would insert second copies and double those amounts.</>
+                      : importCheck.duplicates > 0
+                        ? <><b>Upload only new</b> skips duplicates &amp; error rows. <b>Re-upload everything</b> also re-inserts the {importCheck.duplicates} duplicate{importCheck.duplicates === 1 ? '' : 's'}.</>
+                        : <>Proceeding imports the {importCheck.newRows} valid row{importCheck.newRows === 1 ? '' : 's'} and skips the rest. Fix the file first if you'd rather not skip them.</>}
                   </p>
                 </div>
               ) : importResult.error ? (
@@ -1676,10 +1748,17 @@ export default function DatabasePage() {
                       <div style={{ fontSize: 22, fontWeight: 750, color: importResult.failed ? '#C5391F' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.failed}</div>
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>rows skipped</div>
                     </div>
-                    <div style={{ flex: 1, background: importResult.duplicates ? '#FEF6E7' : '#F5F6F8', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px' }}>
-                      <div style={{ fontSize: 22, fontWeight: 750, color: importResult.duplicates ? '#9A5B00' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.duplicates || 0}</div>
-                      <div style={{ fontSize: 12, color: '#3B4A63' }}>duplicates skipped</div>
-                    </div>
+                    {importResult.updated > 0 ? (
+                      <div style={{ flex: 1, background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 22, fontWeight: 750, color: '#15814B', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.updated}</div>
+                        <div style={{ fontSize: 12, color: '#3B4A63' }}>existing rows corrected</div>
+                      </div>
+                    ) : (
+                      <div style={{ flex: 1, background: importResult.duplicates ? '#FEF6E7' : '#F5F6F8', border: '1px solid #F2E2BD', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 22, fontWeight: 750, color: importResult.duplicates ? '#9A5B00' : '#6B7790', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.duplicates || 0}</div>
+                        <div style={{ fontSize: 12, color: '#3B4A63' }}>duplicates skipped</div>
+                      </div>
+                    )}
                     <div style={{ flex: 1, background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 10, padding: '14px 16px' }}>
                       <div style={{ fontSize: 22, fontWeight: 750, color: '#1F5BB5', fontFamily: 'Spline Sans Mono, monospace' }}>{importResult.createdClients?.length || 0}</div>
                       <div style={{ fontSize: 12, color: '#3B4A63' }}>new clients created</div>
@@ -1694,6 +1773,13 @@ export default function DatabasePage() {
                   {importResult.duplicates > 0 && (
                     <div style={{ fontSize: 12, color: '#9A5B00', background: '#FEF6E7', border: '1px solid #F2E2BD', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
                       {importResult.duplicates} row{importResult.duplicates === 1 ? ' was' : 's were'} already in the database and skipped to avoid duplicates.
+                    </div>
+                  )}
+                  {importResult.updated > 0 && (
+                    <div style={{ fontSize: 12.5, color: '#15814B', background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
+                      <b>{importResult.updated} existing row{importResult.updated === 1 ? '' : 's'} corrected</b> (Brand/RO only). No amounts were changed and nothing was deleted, so every total is unaffected. Each change is in that row's edit history.
+                      {importResult.updatedUnchanged > 0 && <> {importResult.updatedUnchanged} matched row{importResult.updatedUnchanged === 1 ? ' was' : 's were'} already correct.</>}
+                      {importResult.updatedAmbiguous > 0 && <> {importResult.updatedAmbiguous} were left alone because the file gave conflicting values for otherwise identical rows.</>}
                     </div>
                   )}
                   {importResult.errors?.length > 0 && (
@@ -1738,7 +1824,7 @@ export default function DatabasePage() {
                         className="btn"
                         style={{ background: '#C44A18', borderColor: '#C44A18', color: '#fff' }}
                         onClick={() => {
-                          if (window.confirm(`Replace mode will DELETE the ${importCheck.existingToReplace} existing row(s) for these clients/months, then import this file fresh. Continue?`)) {
+                          if (window.confirm(`Replace mode will DELETE the ${importCheck.existingToReplace} existing row(s) for these clients/months, then import this file fresh.\n\nOnly do this if the file contains the COMPLETE data for those months - if it's only a partial extract, the rest of the month will be removed and your totals will drop.\n\nContinue?`)) {
                             runImport(false, importCheck.__rows || importRows, importCheck.__held || 0, true);
                           }
                         }}
@@ -1748,7 +1834,24 @@ export default function DatabasePage() {
                         {importing ? 'Working…' : `Replace (${importCheck.existingToReplace} old row${importCheck.existingToReplace === 1 ? '' : 's'})`}
                       </button>
                     )}
-                    <button className="btn btn-primary" onClick={() => runImport(false, importCheck.__rows || importRows, importCheck.__held || 0)} disabled={importing || importCheck.newRows === 0}>
+                    {/* Correcting labels on already-imported rows: safe on totals, so
+                        it's the primary action whenever the file carries corrections. */}
+                    {importCheck.matchedUpdates > 0 && (
+                      <button
+                        className="btn"
+                        style={{ background: '#15814B', borderColor: '#15814B', color: '#fff' }}
+                        onClick={() => runImport(false, importCheck.__rows || importRows, importCheck.__held || 0, false, true)}
+                        disabled={importing}
+                        title="Overwrite Brand/RO on the matching rows already in the database. No amounts change, nothing is deleted."
+                      >
+                        {importing ? 'Working…' : `Fix ${importCheck.matchedUpdates} matched row${importCheck.matchedUpdates === 1 ? '' : 's'}${importCheck.newRows > 0 ? ` + add ${importCheck.newRows} new` : ''}`}
+                      </button>
+                    )}
+                    <button
+                      className={importCheck.matchedUpdates > 0 ? 'btn btn-ghost' : 'btn btn-primary'}
+                      onClick={() => runImport(false, importCheck.__rows || importRows, importCheck.__held || 0)}
+                      disabled={importing || importCheck.newRows === 0}
+                    >
                       {importing ? 'Working…' : importCheck.duplicates > 0 ? `Upload ${importCheck.newRows} new only` : `Import ${importCheck.newRows} valid row${importCheck.newRows === 1 ? '' : 's'}`}
                     </button>
                   </>
