@@ -2,6 +2,7 @@ import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { commissionSnapshot } from '../utils/commission.js';
 import { bestMatch, rankMatches, clusterNames } from '../utils/fuzzy.js';
+import { matchKey, planMatchedUpdates } from '../utils/importMatch.js';
 
 // ── helpers ──
 
@@ -612,31 +613,27 @@ export async function createScheduleLog(req, res) {
 
 // A schedule log is a duplicate of an existing (non-deleted) DB row when the
 // Year+Month (scheduleMonth), Client, Channel and Schedule Value all match.
-// Brand and RO are intentionally NOT part of the key.
-function dedupeKey(o) {
-  const v = Number(o.scheduleValue);
-  // Compare on integer cents so the JS number (candidate) and the Decimal(14,2)
-  // read back from the DB key identically (avoids float round-trip mismatches).
-  const cents = Number.isFinite(v) ? Math.round(v * 100) : '';
-  return [
-    o.clientId,
-    o.channelMasterId,
-    o.scheduleMonth,
-    cents,
-  ].join('||');
-}
+// Brand and RO are intentionally NOT part of the key - which is also what lets a
+// brand-corrected re-upload still match its original row (see updateMatched).
+// The key itself lives in utils/importMatch.js so both paths share one definition.
+const dedupeKey = matchKey;
 
 // Split validated candidate rows into the ones to insert vs. a count of
 // duplicates. A row is a duplicate only if it matches a row ALREADY IN THE
 // DATABASE (month+client+channel+value) - repeats within the same file are NOT
 // treated as duplicates and are all kept.
+// Also returns the fetched `existing` rows (id + label columns) so a caller can
+// plan matched-row corrections without a second query.
 async function splitDuplicates(candidates) {
-  if (candidates.length === 0) return { unique: [], duplicates: 0, duplicateRows: [] };
+  if (candidates.length === 0) return { unique: [], duplicates: 0, duplicateRows: [], existing: [] };
   const clientIds = [...new Set(candidates.map(c => c.clientId))];
   const months = [...new Set(candidates.map(c => c.scheduleMonth))];
   const existing = await prisma.scheduleLog.findMany({
     where: { clientId: { in: clientIds }, scheduleMonth: { in: months }, isDeleted: false },
-    select: { clientId: true, channelMasterId: true, scheduleMonth: true, scheduleValue: true },
+    select: {
+      id: true, clientId: true, channelMasterId: true, scheduleMonth: true,
+      scheduleValue: true, brandName: true, roNumber: true,
+    },
   });
   const seen = new Set(existing.map(dedupeKey));
   const unique = [];
@@ -646,7 +643,59 @@ async function splitDuplicates(candidates) {
     if (seen.has(dedupeKey(c))) { duplicates++; if (c._row != null) duplicateRows.push(c._row); continue; }
     unique.push(c);
   }
-  return { unique, duplicates, duplicateRows };
+  return { unique, duplicates, duplicateRows, existing };
+}
+
+// ── "Update matched rows" re-upload mode ──
+//
+// The safe way to fix a label column (brand, RO) on already-imported rows: match
+// each file row to its existing row on Client+Channel+Month+Value and overwrite
+// ONLY that label. Nothing is inserted, nothing is deleted, and because the value
+// is part of the match key every touched row keeps the exact amount it already
+// had - so no total, in any aggregation, can move. Contrast with the two older
+// modes: the default SKIPS matches (brands stay wrong) and `replaceExisting`
+// soft-deletes whole client-months (destructive if the file is a partial subset).
+//
+// Every change writes a ScheduleLogEdit audit row, exactly like a grid edit.
+
+// Match on the RAW label values so a column missing from the sheet reads as "no
+// instruction" rather than as a blank that would clear real data. Shared by the
+// dry-run preview and the apply pass so the two can never disagree about what
+// would change (`_rawRo` is absent on the per-client path, where RO is required).
+function matchingShape(candidates) {
+  return candidates.map(c => ({ ...c, roNumber: c._rawRo === undefined ? c.roNumber : c._rawRo }));
+}
+
+// Apply the plan: overwrite the label columns on matched rows + audit each change.
+async function applyMatchedUpdates(existing, candidates, userId, fileName) {
+  const plan = planMatchedUpdates(existing, matchingShape(candidates));
+  if (plan.updates.length === 0) {
+    return { updated: 0, unchanged: plan.unchanged, ambiguous: plan.ambiguous, matchedRows: plan.matchedRows };
+  }
+
+  const note = `Corrected via re-upload${fileName ? `: ${fileName}` : ''}`;
+  let updated = 0;
+  // Chunked so a large correction doesn't build one enormous transaction.
+  const CHUNK = 200;
+  for (let i = 0; i < plan.updates.length; i += CHUNK) {
+    const slice = plan.updates.slice(i, i + CHUNK);
+    const ops = [];
+    for (const u of slice) {
+      ops.push(prisma.scheduleLog.update({ where: { id: u.id }, data: u.changes }));
+      ops.push(prisma.scheduleLogEdit.create({
+        data: {
+          scheduleLogId: u.id,
+          editedById: userId,
+          previousValues: u.before,
+          newValues: u.changes,
+          editNote: note,
+        },
+      }));
+    }
+    await prisma.$transaction(ops);
+    updated += slice.length;
+  }
+  return { updated, unchanged: plan.unchanged, ambiguous: plan.ambiguous, matchedRows: plan.matchedRows };
 }
 
 // "Replace" import: for every (client, scheduleMonth) pair present in the upload,
@@ -685,7 +734,7 @@ async function softDeleteForReplace(candidates, userId) {
 
 export async function bulkCreateScheduleLogs(req, res) {
   try {
-    const { rows, fileName } = req.body;
+    const { rows, fileName, updateMatched = false } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
@@ -695,6 +744,13 @@ export async function bulkCreateScheduleLogs(req, res) {
 
     const user = req.user;
     const errors = [];
+
+    // Correcting rows that are already in the database is an admin / group-head
+    // action: a PLANNER can still fix their own rows one cell at a time in the
+    // grid, but not overwrite a whole upload's worth in one request.
+    if (updateMatched && !['SUPER_ADMIN', 'GROUP_HEAD'].includes(user.role)) {
+      return res.status(403).json({ error: 'Only admins and group heads can update rows already in the database' });
+    }
 
     // Pre-fetch everything referenced so we don't run per-row queries (which
     // would be thousands of round-trips for a large sheet). Rows are normally
@@ -773,7 +829,14 @@ export async function bulkCreateScheduleLogs(req, res) {
     }
 
     // Skip rows already present (re-import) instead of duplicating them.
-    const { unique: toInsert, duplicates } = await splitDuplicates(candidates);
+    const { unique: toInsert, duplicates, existing } = await splitDuplicates(candidates);
+
+    // Optionally correct the label columns (brand/RO) on the rows this upload
+    // already matches, instead of skipping them. Amounts are never touched.
+    let matched = null;
+    if (updateMatched) {
+      matched = await applyMatchedUpdates(existing, candidates, user.id, fileName);
+    }
 
     // Single bulk insert for everything that validated and isn't a duplicate.
     let createdCount = 0;
@@ -789,12 +852,19 @@ export async function bulkCreateScheduleLogs(req, res) {
         data: {
           successfulRows: createdCount,
           failedRows: errors.length,
-          status: createdCount === 0 && duplicates === 0 ? 'FAILED' : 'COMPLETE',
+          status: createdCount === 0 && duplicates === 0 && !matched?.updated ? 'FAILED' : 'COMPLETE',
         },
       });
     }
 
-    return res.status(201).json({ created: createdCount, createdCount, duplicates, errors, batchId: uploadBatch?.id || null });
+    return res.status(201).json({
+      created: createdCount, createdCount,
+      duplicates: updateMatched ? 0 : duplicates,
+      updated: matched?.updated || 0,
+      updatedUnchanged: matched?.unchanged || 0,
+      updatedAmbiguous: matched?.ambiguous?.length || 0,
+      errors, batchId: uploadBatch?.id || null,
+    });
   } catch (error) {
     console.error('Bulk create error:', error);
     return res.status(500).json({ error: 'Failed to bulk create', detail: error.message });
@@ -1100,12 +1170,17 @@ export async function releaseHeldImportRows({ clientReqId = null, channelReqId =
 
 export async function importAllScheduleLogs(req, res) {
   try {
-    const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false, replaceExisting = false } = req.body;
+    const { rows, fileName, createMissingClients = true, dryRun = false, allowDuplicates = false, replaceExisting = false, updateMatched = false } = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'rows array is required' });
     }
     if (rows.length > 60000) {
       return res.status(400).json({ error: 'Maximum 60000 rows per import' });
+    }
+    // The three re-upload modes are mutually exclusive: correcting matched rows in
+    // place is the opposite of re-inserting them or deleting the month around them.
+    if (updateMatched && (allowDuplicates || replaceExisting)) {
+      return res.status(400).json({ error: 'updateMatched cannot be combined with allowDuplicates or replaceExisting' });
     }
     const user = req.user;
 
@@ -1207,6 +1282,9 @@ export async function importAllScheduleLogs(req, res) {
 
       candidates.push({
         _row: i + 1, // original spreadsheet row (stripped before insert)
+        // Raw RO as it appeared in the sheet (null when the column is absent), so
+        // a matched-row correction never overwrites a real RO with the '-' default.
+        _rawRo: roNumber === '' || roNumber == null ? null : String(roNumber),
         agencyId: agency.id,
         clientId: client.id,
         channelMasterId: channel.id,
@@ -1226,7 +1304,7 @@ export async function importAllScheduleLogs(req, res) {
 
     // Skip rows already in the DB (re-import) instead of duplicating them, then
     // derive the batch's agency/client lists from what actually gets inserted.
-    const { unique, duplicates, duplicateRows } = await splitDuplicates(candidates);
+    const { unique, duplicates, duplicateRows, existing } = await splitDuplicates(candidates);
 
     // Dry-run: report what WOULD happen (new vs duplicate vs failed) and stop -
     // nothing is written, so the UI can ask how to proceed.
@@ -1245,6 +1323,23 @@ export async function importAllScheduleLogs(req, res) {
       // How many existing rows a "Replace" would soft-delete (the months/clients
       // in this file), so the UI can offer replace and warn about the count.
       const existingToReplace = await countExistingForReplace(candidates);
+      // What an "Update matched rows" pass would correct: the label changes only,
+      // with a before/after sample so the user can see it before committing.
+      const plan = planMatchedUpdates(existing, matchingShape(candidates));
+      const updateSample = plan.updates.slice(0, 20).map((u) => {
+        const row = existing.find(e => e.id === u.id) || {};
+        return {
+          client: clientById.get(row.clientId) || `#${row.clientId}`,
+          channel: channelById.get(row.channelMasterId) || `#${row.channelMasterId}`,
+          month: row.scheduleMonth,
+          value: Number(row.scheduleValue),
+          changes: Object.keys(u.changes).map(f => ({
+            field: f === 'brandName' ? 'Brand' : 'RO',
+            from: u.before[f] || '(blank)',
+            to: u.changes[f],
+          })),
+        };
+      });
       return res.json({
         dryRun: true,
         total: candidates.length + pendingNewClientRows,
@@ -1252,6 +1347,12 @@ export async function importAllScheduleLogs(req, res) {
         newClientRows: pendingNewClientRows,
         duplicates,
         existingToReplace,
+        // Matched-row correction preview.
+        matchedRows: plan.matchedRows,
+        matchedUpdates: plan.updates.length,
+        matchedUnchanged: plan.unchanged,
+        matchedAmbiguous: plan.ambiguous.length,
+        updateSample,
         failed: errors.length,
         errors, // full list so the user can download every failed row
         duplicateRows,
@@ -1267,8 +1368,17 @@ export async function importAllScheduleLogs(req, res) {
     if (replaceExisting) {
       replacedCount = await softDeleteForReplace(candidates, user.id);
     }
+
+    // "Update matched rows" mode: correct the label columns (brand/RO) on the rows
+    // this file already matches, then fall through to insert only the genuinely
+    // new rows. Nothing is deleted and no amount is touched, so totals hold.
+    let matched = null;
+    if (updateMatched) {
+      matched = await applyMatchedUpdates(existing, candidates, user.id, fileName);
+    }
+
     const insertSource = (replaceExisting || allowDuplicates) ? candidates : unique;
-    const toInsert = insertSource.map(({ _row, ...rest }) => rest);
+    const toInsert = insertSource.map(({ _row, _rawRo, ...rest }) => rest);
     const reportedDuplicates = (replaceExisting || allowDuplicates) ? 0 : duplicates;
     for (const t of toInsert) { usedAgencyIds.add(t.agencyId); usedClientIds.add(t.clientId); }
 
@@ -1312,8 +1422,13 @@ export async function importAllScheduleLogs(req, res) {
     return res.status(201).json({
       created: createdCount,
       failed: errors.length,
-      duplicates: reportedDuplicates,
+      // In updateMatched mode the matched rows were corrected, not skipped, so
+      // reporting them as "duplicates" would misdescribe what happened.
+      duplicates: updateMatched ? 0 : reportedDuplicates,
       replaced: replacedCount,
+      updated: matched?.updated || 0,
+      updatedUnchanged: matched?.unchanged || 0,
+      updatedAmbiguous: matched?.ambiguous?.length || 0,
       createdClients,
       errors, // full list so the user can download every failed row
       batchId: uploadBatch?.id || null,
