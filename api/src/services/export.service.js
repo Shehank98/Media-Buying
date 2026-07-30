@@ -1,5 +1,57 @@
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import { getBrandLogo, fitLogo } from '../utils/brandLogo.js';
+
+// Draw the brand lockup in a PDF header band. The logo (web/public/brand-logo.jpg,
+// see utils/brandLogo.js) REPLACES the orbit mark and the "Ogilvy Orbit" wordmark
+// entirely - the report subtitle still renders beside/below it. With no logo file
+// present we fall back to the original drawn mark + wordmark, so the header is
+// never empty.
+// Returns the x where the subtitle should start and the y baseline for it.
+function drawPdfBrand(doc, { left, bandH = 84 }) {
+  const logo = getBrandLogo();
+  if (logo) {
+    const { width, height } = fitLogo(logo, 150, 34);
+    const pad = 5;
+    const y = (bandH - height) / 2;
+    try {
+      // The band is navy and a JPG cannot carry transparency, so the logo sits on
+      // a white chip - an opaque logo then reads as a deliberate badge instead of
+      // a stray white rectangle. Also keeps dark-ink logos legible.
+      doc.save()
+        .roundedRect(left - pad, y - pad, width + pad * 2, height + pad * 2, 4)
+        .fill('#ffffff')
+        .restore();
+      doc.image(logo.buffer, left, y, { width, height });
+      return { subtitleX: left, subtitleY: y + height + pad + 4 };
+    } catch { /* fall through to the drawn lockup */ }
+  }
+  doc.roundedRect(left, 25, 34, 34, 17).fill(PP.coral);
+  doc.fillColor('#FFF3EC').font('Helvetica-Bold').fontSize(17).text('O', left, 34, { width: 34, align: 'center' });
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Ogilvy Orbit', left + 44, 29);
+  return { subtitleX: left + 44, subtitleY: 49 };
+}
+
+// Float the brand logo over the first rows of a sheet and return the number of
+// rows reserved for it, so the caller starts its data below the logo instead of
+// underneath it. Excel images are anchored, not in-cell, hence the row reserve.
+export function addSheetLogo(workbook, sheet) {
+  const logo = getBrandLogo();
+  if (!logo) return 0;
+  try {
+    const imageId = workbook.addImage({ buffer: logo.buffer, extension: logo.ext });
+    const { width, height } = fitLogo(logo, 190, 46); // points, ~2.5 rows tall
+    sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width, height } });
+    const rows = Math.ceil(height / 20) + 1; // default row height is 20px
+    // getRow() materialises the row, so this both sets the height AND reserves
+    // the space - a subsequent addRow() appends below it. Do NOT also push empty
+    // rows in the caller or the reserve is counted twice.
+    for (let r = 1; r <= rows; r++) sheet.getRow(r).height = 20;
+    return rows;
+  } catch {
+    return 0; // never let a logo problem break the export
+  }
+}
 
 export async function generateExcel(data, title) {
   const workbook = new ExcelJS.Workbook();
@@ -7,6 +59,8 @@ export async function generateExcel(data, title) {
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(title);
+  // Reserve the top rows for the logo; addRow() then writes beneath it.
+  const logoRows = addSheetLogo(workbook, sheet);
 
   if (data.length === 0) {
     sheet.addRow(['No data available']);
@@ -19,7 +73,7 @@ export async function generateExcel(data, title) {
   sheet.addRow(headers);
 
   // Style headers
-  const headerRow = sheet.getRow(1);
+  const headerRow = sheet.getRow(logoRows + 1);
   headerRow.font = { bold: true, size: 12 };
   headerRow.fill = {
     type: 'pattern',
@@ -57,6 +111,17 @@ export async function generatePdf(data, title) {
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
+
+    // Brand logo, centred above the title (this report has no header band).
+    const logo = getBrandLogo();
+    if (logo) {
+      const { width, height } = fitLogo(logo, 130, 34);
+      const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      try {
+        doc.image(logo.buffer, doc.page.margins.left + (pageW - width) / 2, doc.y, { width, height });
+        doc.y += height + 10;
+      } catch { /* a bad image must not abort the report */ }
+    }
 
     // Title
     doc.fontSize(18).font('Helvetica-Bold').text(title, { align: 'center' });
@@ -146,10 +211,8 @@ export async function generatePropertyHistoryPdf({ title, filtersText, groups, t
 
     // Header band
     doc.save().rect(0, 0, doc.page.width, 84).fill(PP.navy).restore();
-    doc.roundedRect(left, 25, 34, 34, 17).fill(PP.coral);
-    doc.fillColor('#FFF3EC').font('Helvetica-Bold').fontSize(17).text('O', left, 34, { width: 34, align: 'center' });
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Ogilvy Orbit', left + 44, 29);
-    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(9.5).text(title || 'Property & Rate History', left + 44, 49);
+    const brand = drawPdfBrand(doc, { left });
+    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(9.5).text(title || 'Property & Rate History', brand.subtitleX, brand.subtitleY);
     doc.fillColor('#9FB0C9').font('Helvetica').fontSize(8).text('Generated ' + dt(new Date()), left, 31, { width: contentW, align: 'right' });
 
     doc.fillColor(PP.ink);
@@ -271,10 +334,8 @@ export async function generateGroupedTablePdf({ title, filtersText, columns, gro
 
     // Header band
     doc.save().rect(0, 0, doc.page.width, 84).fill(PP.navy).restore();
-    doc.roundedRect(left, 25, 34, 34, 17).fill(PP.coral);
-    doc.fillColor('#FFF3EC').font('Helvetica-Bold').fontSize(17).text('O', left, 34, { width: 34, align: 'center' });
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Ogilvy Orbit', left + 44, 29);
-    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(9.5).text(title || 'Report', left + 44, 49);
+    const brand = drawPdfBrand(doc, { left });
+    doc.fillColor('#9FB0C9').font('Helvetica').fontSize(9.5).text(title || 'Report', brand.subtitleX, brand.subtitleY);
     doc.fillColor('#9FB0C9').font('Helvetica').fontSize(8).text('Generated ' + dt(new Date()), left, 31, { width: contentW, align: 'right' });
     doc.fillColor(PP.ink);
     doc.y = 100;

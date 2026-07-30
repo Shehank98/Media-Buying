@@ -5,6 +5,7 @@ import OrbitLoader from '../components/OrbitLoader';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
 } from 'recharts';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtLKR = (v) => 'LKR ' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -129,10 +130,9 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
   const exportExcel = async () => {
     setExporting(true);
     try {
-      const XLSX = await import('xlsx');
-      const wb = XLSX.utils.book_new();
+      const sheets = [];
       const scope = agencies.find((a) => String(a.id) === String(agencyId))?.name || 'All agencies';
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      sheets.push({ name: 'Summary', aoa: [
         ['Revenue by Billing', `${year}`],
         ['Scope', scope],
         ['Total Rev (Billing + AVR)', Number(totalRev || 0)],
@@ -140,17 +140,11 @@ export default function BillingRevenueTab({ agencies = [], clients = [] }) {
         ['Total AVR Revenue', Number(aorTotal || 0)],
         ['Total Rev by Finance (AVR + Rev. from finance)', Number((Number(aorTotal || 0)) + Number(summary?.financeRevenue || 0))],
         ['Rev. from finance', Number(summary?.financeRevenue || 0)],
-      ]), 'Summary');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AVR Revenue': m.aor, 'Total Revenue': m.total })),
-      ), 'Monthly');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        byAgency.map((a) => ({ Agency: a.agency, 'Billing Revenue': a.revenue, Clients: a.clients })),
-      ), 'By Agency');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        byClient.map((c) => ({ Client: c.client, Agency: c.agency, 'Billing Revenue': c.revenue })),
-      ), 'By Client');
-      XLSX.writeFile(wb, `Billing_Revenue_${year}${agencyId ? '_' + scope.replace(/\W+/g, '') : ''}.xlsx`);
+      ] });
+      sheets.push({ name: 'Monthly', json: monthlyData.filter((m) => m.revenue || m.aor).map((m) => ({ Month: fmtMonth(m.month), 'Billing Revenue': m.revenue, 'AVR Revenue': m.aor, 'Total Revenue': m.total })) });
+      sheets.push({ name: 'By Agency', json: byAgency.map((a) => ({ Agency: a.agency, 'Billing Revenue': a.revenue, Clients: a.clients })) });
+      sheets.push({ name: 'By Client', json: byClient.map((c) => ({ Client: c.client, Agency: c.agency, 'Billing Revenue': c.revenue })) });
+      await writeBrandedWorkbook(sheets, `Billing_Revenue_${year}${agencyId ? '_' + scope.replace(/\W+/g, '') : ''}.xlsx`);
     } finally {
       setExporting(false);
     }

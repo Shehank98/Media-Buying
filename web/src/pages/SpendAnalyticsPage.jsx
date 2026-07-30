@@ -6,15 +6,16 @@ import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import { rollUpDirectPlacements, ChannelRankBar, DirectPlacementLegend } from '../components/DirectPlacements';
 import api from '../lib/api';
-import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { loadBrandLogo, fitLogo } from '../lib/brandLogo';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart, ComposedChart,
   ScatterChart, Scatter, ZAxis, ReferenceLine, LabelList,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush,
 } from 'recharts';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const COLORS = ['#1e3a5f', '#E85D24', '#059669', '#7c3aed', '#0ea5e9', '#d97706', '#dc2626', '#6366f1', '#14b8a6', '#f43f5e'];
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
@@ -288,9 +289,9 @@ export default function SpendAnalyticsPage() {
     return { grid, years, max: max || 1 };
   }, [data]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!data) return;
-    const wb = XLSX.utils.book_new();
+    const sheets = [];
 
     // Summary sheet
     const summaryData = [
@@ -300,8 +301,7 @@ export default function SpendAnalyticsPage() {
       ['Total Schedule Value', data.totalValue],
       [],
     ];
-    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+    sheets.push({ name: 'Summary', aoa: summaryData });
 
     // By Media Group
     const mgHeaders = ['Media Group', 'Schedule Value (LKR)', 'Entries', '% Share'];
@@ -309,8 +309,7 @@ export default function SpendAnalyticsPage() {
       mg.name, Math.round(mg.value), mg.count,
       data.totalValue > 0 ? ((mg.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
     ]);
-    const mgWs = XLSX.utils.aoa_to_sheet([mgHeaders, ...mgRows]);
-    XLSX.utils.book_append_sheet(wb, mgWs, 'By Media Group');
+    sheets.push({ name: 'By Media Group', aoa: [mgHeaders, ...mgRows] });
 
     // By Medium
     const medHeaders = ['Medium', 'Schedule Value (LKR)', 'Entries', '% Share'];
@@ -318,8 +317,7 @@ export default function SpendAnalyticsPage() {
       m.name, Math.round(m.value), m.count,
       data.totalValue > 0 ? ((m.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
     ]);
-    const medWs = XLSX.utils.aoa_to_sheet([medHeaders, ...medRows]);
-    XLSX.utils.book_append_sheet(wb, medWs, 'By Medium');
+    sheets.push({ name: 'By Medium', aoa: [medHeaders, ...medRows] });
 
     // By Channel
     const chHeaders = ['Channel', 'Medium', 'Media Group', 'Schedule Value (LKR)', 'Entries', '% Share'];
@@ -327,14 +325,12 @@ export default function SpendAnalyticsPage() {
       ch.name, ch.medium, ch.mediaGroup, Math.round(ch.value), ch.count,
       data.totalValue > 0 ? ((ch.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
     ]);
-    const chWs = XLSX.utils.aoa_to_sheet([chHeaders, ...chRows]);
-    XLSX.utils.book_append_sheet(wb, chWs, 'By Channel');
+    sheets.push({ name: 'By Channel', aoa: [chHeaders, ...chRows] });
 
     // Monthly Trend
     const moHeaders = ['Month', 'Schedule Value (LKR)', 'Entries'];
     const moRows = data.byMonth.map(m => [fmtMonth(m.month), Math.round(m.value), m.count]);
-    const moWs = XLSX.utils.aoa_to_sheet([moHeaders, ...moRows]);
-    XLSX.utils.book_append_sheet(wb, moWs, 'Monthly Trend');
+    sheets.push({ name: 'Monthly Trend', aoa: [moHeaders, ...moRows] });
 
     // By Client
     const clHeaders = ['Client', 'Schedule Value (LKR)', 'Entries', '% Share'];
@@ -342,8 +338,7 @@ export default function SpendAnalyticsPage() {
       c.name, Math.round(c.value), c.count,
       data.totalValue > 0 ? ((c.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
     ]);
-    const clWs = XLSX.utils.aoa_to_sheet([clHeaders, ...clRows]);
-    XLSX.utils.book_append_sheet(wb, clWs, 'By Client');
+    sheets.push({ name: 'By Client', aoa: [clHeaders, ...clRows] });
 
     // By Brand
     const brHeaders = ['Brand', 'Schedule Value (LKR)', 'Entries', '% Share'];
@@ -351,11 +346,10 @@ export default function SpendAnalyticsPage() {
       b.name, Math.round(b.value), b.count,
       data.totalValue > 0 ? ((b.value / data.totalValue) * 100).toFixed(1) + '%' : '0%',
     ]);
-    const brWs = XLSX.utils.aoa_to_sheet([brHeaders, ...brRows]);
-    XLSX.utils.book_append_sheet(wb, brWs, 'By Brand');
+    sheets.push({ name: 'By Brand', aoa: [brHeaders, ...brRows] });
 
     const fileName = `spend-analytics-${monthFrom || 'all'}-to-${monthTo || 'now'}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    await writeBrandedWorkbook(sheets, fileName);
   };
 
   const handlePdfExport = async () => {
@@ -369,7 +363,14 @@ export default function SpendAnalyticsPage() {
       const contentW = pageW - margin * 2;
       const dateLabel = monthFrom ? `${fmtMonth(monthFrom)} - ${fmtMonth(monthTo || 'Present')}` : 'All Time';
 
+      // Brand logo, top-right of the page header (white background, so no chip).
+      const brandLogo = await loadBrandLogo();
+
       const addHeader = (title) => {
+        if (brandLogo) {
+          const { width, height } = fitLogo(brandLogo, 38, 15);
+          try { pdf.addImage(brandLogo.dataUrl, brandLogo.format, pageW - margin - width, 12, width, height); } catch { /* keep the report */ }
+        }
         pdf.setFontSize(18);
         pdf.setTextColor(30, 58, 95);
         pdf.text(title, margin, 22);
