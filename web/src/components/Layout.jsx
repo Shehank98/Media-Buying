@@ -211,7 +211,9 @@ export default function Layout() {
     <div className="app">
       <div className={`sidebar-scrim${navOpen ? ' show' : ''}`} onClick={() => setNavOpen(false)} />
       <div className={`sidebar${navOpen ? ' open' : ''}`}>
-        <div className="brand">
+        {/* has-logo tightens the padding so the logo can run the full sidebar
+            width; the fallback orbit lockup keeps the original spacing. */}
+        <div className={`brand${brandLogo ? ' has-logo' : ''}`}>
           {brandLogo ? (
             // Custom logo from web/public (see BRAND_LOGOS). Falls through to the
             // orbit lockup below if none of the files exist.
