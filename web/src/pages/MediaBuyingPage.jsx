@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import api from '../lib/api';
 import Icon, { fmtLKR } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import OrbitLoader from '../components/OrbitLoader';
 import CommitmentPlanner from './CommitmentPlanner';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = [CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2, CURRENT_YEAR - 3];
@@ -574,8 +574,6 @@ export default function MediaBuyingPage() {
     if (!data) return;
     setExporting(true);
     try {
-      const wb = XLSX.utils.book_new();
-
       const summaryRows = [
         ['Media Buying: Channel Negotiation Intelligence'],
         ['Channel', data.channel.name],
@@ -585,14 +583,8 @@ export default function MediaBuyingPage() {
         ['Latest Agency Deal', latestAgencyDeal ? `${latestAgencyDeal.year}: ${fmtPct(latestAgencyDeal.discountPct)} discount / ${fmtPct(latestAgencyDeal.bonusPct)} bonus` : 'Not set'],
         ['Exported', new Date().toLocaleString()],
       ];
-      const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
-
       const dealHeaders = ['Year', 'Agency Discount %', 'Agency Bonus %', 'Trend', 'Notes', 'Created By'];
       const dealRows = (data.agencyDeals || []).map((d) => [d.year, fmtPct(d.discountPct), fmtPct(d.bonusPct), d.trend, d.notes, d.createdBy]);
-      const dealWs = XLSX.utils.aoa_to_sheet([dealHeaders, ...dealRows]);
-      XLSX.utils.book_append_sheet(wb, dealWs, 'Agency Deal History');
-
       const yearlyResults = await Promise.all(sortedClients.map((c) =>
         api.get(`/media-buying/channels/${channelMasterId}/clients/${c.clientId}/yearly`).then((res) => ({ client: c, years: res.data }))
       ));
@@ -613,18 +605,18 @@ export default function MediaBuyingPage() {
           });
         }
       });
-      const clientWs = XLSX.utils.aoa_to_sheet([clientHeaders, ...clientRows]);
-      XLSX.utils.book_append_sheet(wb, clientWs, 'Client Breakdown');
-
-      XLSX.writeFile(wb, `media-buying-${data.channel.name.replace(/\W+/g, '_')}.xlsx`);
+      await writeBrandedWorkbook([
+        { name: 'Summary', aoa: summaryRows },
+        { name: 'Agency Deal History', aoa: [dealHeaders, ...dealRows] },
+        { name: 'Client Breakdown', aoa: [clientHeaders, ...clientRows] },
+      ], `media-buying-${data.channel.name.replace(/\W+/g, '_')}.xlsx`);
     } finally {
       setExporting(false);
     }
   }
 
-  function handlePlannerExport() {
+  async function handlePlannerExport() {
     if (!plannerResult || !selectedChannel) return;
-    const wb = XLSX.utils.book_new();
     const discountMid = plannerResult.suggestedDiscountRange ? (plannerResult.suggestedDiscountRange.min + plannerResult.suggestedDiscountRange.max) / 2 : null;
     const bonusMid = plannerResult.suggestedBonusRange ? (plannerResult.suggestedBonusRange.min + plannerResult.suggestedBonusRange.max) / 2 : null;
     const rows = [
@@ -671,9 +663,7 @@ export default function MediaBuyingPage() {
         p.benefitsSummary || p.sponsorshipDetails || '',
       ]),
     ];
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Negotiation Plan');
-    XLSX.writeFile(wb, `negotiation-plan-${selectedChannel.name.replace(/\W+/g, '_')}.xlsx`);
+    await writeBrandedWorkbook([{ name: 'Negotiation Plan', aoa: rows }], `negotiation-plan-${selectedChannel.name.replace(/\W+/g, '_')}.xlsx`);
   }
 
   const selectedChannel = channels.find((c) => String(c.id) === String(channelMasterId));

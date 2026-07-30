@@ -7,6 +7,8 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { loadBrandLogo, fitLogo } from '../lib/brandLogo';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -97,9 +99,9 @@ function downloadCSV(sheets, filename) {
 }
 
 function downloadXLSX(sheets, filename) {
-  const wb = XLSX.utils.book_new();
-  sheets.forEach((s) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s.rows), (s.name || 'Sheet').slice(0, 31)));
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  // Branded via ExcelJS (SheetJS cannot embed the logo). The sibling CSV export
+  // stays on SheetJS - the format has no way to carry an image.
+  return writeBrandedWorkbook(sheets.map((s) => ({ name: s.name || 'Sheet', aoa: s.rows })), `${filename}.xlsx`);
 }
 
 // Small three-button export cluster.
@@ -395,6 +397,12 @@ function InsightsTab() {
       const margin = 15;
       const contentW = pageW - margin * 2;
       const title = sub === 'summary' ? 'Next Month Forecast Summary' : sub === 'variance' ? 'Forecast vs Actual' : sub === 'accuracy' ? 'Forecast Accuracy' : sub === 'budget' ? 'Overall Budget' : 'Trend Analysis';
+      // Brand logo, top-right of the header (white background, so no chip).
+      const brandLogo = await loadBrandLogo();
+      if (brandLogo) {
+        const { width, height } = fitLogo(brandLogo, 38, 15);
+        try { pdf.addImage(brandLogo.dataUrl, brandLogo.format, pageW - margin - width, 10, width, height); } catch { /* keep the report */ }
+      }
       pdf.setFontSize(18); pdf.setTextColor(30, 58, 95); pdf.text(`Forecasting · ${title}`, margin, 20);
       pdf.setFontSize(9); pdf.setTextColor(100);
       pdf.text(appliedFilters.map((f) => `${f[0]}: ${f[1]}`).join('   |   '), margin, 27, { maxWidth: contentW });

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Icon, { Avatar, RoleBadge, roleLabel } from './Icon';
 import api from '../lib/api';
 import { hasPageAccess, isPageGranted } from '../lib/permissions';
+import { BRAND_LOGO_FILES } from '../lib/brandLogo';
 
 const NAV = [
   { key: '/executive-dashboard', label: 'Executive Dashboard', icon: 'bar-chart', roles: ['SUPER_ADMIN'] },
@@ -29,7 +30,9 @@ const NAV_ADMIN = [
 // transparent PNG sits best on the navy sidebar) or web/public/brand-logo.jpg
 // and it replaces the built-in orbit lockup. Each candidate is tried in turn;
 // when none loads, the orbit mark + "Ogilvy ORBIT" wordmark render as before.
-const BRAND_LOGOS = ['/brand-logo.png', '/brand-logo.jpg'];
+// The SAME files brand every PDF / PowerPoint / Excel export - the shared list
+// lives in lib/brandLogo.js so the sidebar and the documents cannot disagree.
+const BRAND_LOGOS = BRAND_LOGO_FILES;
 
 function Breadcrumbs({ go }) {
   const location = useLocation();

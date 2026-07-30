@@ -7,6 +7,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Area, AreaChart, PieChart, Pie, LabelList,
 } from 'recharts';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // Finance figures: LKR with exactly 2 decimals + thousands separators.
@@ -200,8 +201,7 @@ export default function ProfitPage() {
   const exportExcel = async () => {
     setExporting(true);
     try {
-      const XLSX = await import('xlsx');
-      const wb = XLSX.utils.book_new();
+      const sheets = [];
       const scope = agencyId ? (agencies.find((a) => String(a.id) === String(agencyId))?.name || 'Agency') : 'All agencies';
       const sumRows = [
         ['Profit report', `${year}`],
@@ -213,17 +213,11 @@ export default function ProfitPage() {
         ['Blended Commission %', Number(summary?.blendedCommissionPct || 0)],
         ['Active Clients', Number(summary?.clientCount || 0)],
       ];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), 'Summary');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        monthlyData.filter((m) => m.revenue || m.profit).map((m) => ({ Month: fmtMonth(m.month), 'Schedule Value': m.revenue, Commission: m.profit, 'Margin %': m.marginPct ?? 0 })),
-      ), 'Monthly');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        byAgency.map((a) => ({ Agency: a.agency, 'Schedule Value': a.revenue, Commission: a.profit, 'Margin %': margin(a.profit, a.revenue) })),
-      ), 'By Agency');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        breakdown.map((c) => ({ Client: c.client, Agency: c.agency, 'Comm. Rate': commissionLabel(c.commissionType, c.commissionValue), 'Schedule Value': c.revenue, Commission: c.profit, 'Margin %': margin(c.profit, c.revenue) })),
-      ), 'By Client');
-      XLSX.writeFile(wb, `Profit_${year}${agencyId ? '_' + scope.replace(/\W+/g, '') : ''}.xlsx`);
+      sheets.push({ name: 'Summary', aoa: sumRows });
+      sheets.push({ name: 'Monthly', json: monthlyData.filter((m) => m.revenue || m.profit).map((m) => ({ Month: fmtMonth(m.month), 'Schedule Value': m.revenue, Commission: m.profit, 'Margin %': m.marginPct ?? 0 })) });
+      sheets.push({ name: 'By Agency', json: byAgency.map((a) => ({ Agency: a.agency, 'Schedule Value': a.revenue, Commission: a.profit, 'Margin %': margin(a.profit, a.revenue) })) });
+      sheets.push({ name: 'By Client', json: breakdown.map((c) => ({ Client: c.client, Agency: c.agency, 'Comm. Rate': commissionLabel(c.commissionType, c.commissionValue), 'Schedule Value': c.revenue, Commission: c.profit, 'Margin %': margin(c.profit, c.revenue) })) });
+      await writeBrandedWorkbook(sheets, `Profit_${year}${agencyId ? '_' + scope.replace(/\W+/g, '') : ''}.xlsx`);
     } catch { /* ignore */ } finally { setExporting(false); }
   };
 

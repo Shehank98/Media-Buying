@@ -9,6 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ComposedChart, Bar, Cell, ReferenceLine,
 } from 'recharts';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -216,10 +217,9 @@ export default function ChannelIntelligencePage() {
   // Excel: a By Client summary sheet + a per-log Detail sheet.
   const exportMonthDetail = async () => {
     if (!monthDetail || !monthDetail.clients?.length) return;
-    const XLSX = await import('xlsx');
     const channelName = summary?.channel?.name || 'Channel';
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    const sheets = [];
+    sheets.push({ name: 'By Client', aoa: [
       ['Channel', channelName],
       ['Month', monthDetail.label],
       ['Clients', monthDetail.clients.length],
@@ -227,14 +227,14 @@ export default function ChannelIntelligencePage() {
       [],
       ['Client', 'Agency', 'Schedule Value'],
       ...monthDetail.clients.map(c => [c.clientName, c.agencyName || '', Number(c.value) || 0]),
-    ]), 'By Client');
+    ] });
     const detail = [['Client', 'Agency', 'RO Number', 'Brand', 'Schedule Value', 'With VAT']];
     monthDetail.clients.forEach(c => (c.logs || []).forEach(l => {
       detail.push([c.clientName, c.agencyName || '', l.roNumber || '', l.brandName || '', Number(l.scheduleValue) || 0, Number(l.scheduleValueWithVat) || 0]);
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), 'Detail');
+    sheets.push({ name: 'Detail', aoa: detail });
     const safe = (s) => String(s).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-    XLSX.writeFile(wb, `channel-${safe(channelName)}-${safe(monthDetail.label)}.xlsx`);
+    await writeBrandedWorkbook(sheets, `channel-${safe(channelName)}-${safe(monthDetail.label)}.xlsx`);
   };
 
   if (loading) return <div className="content-narrow fade-in"><OrbitLoader fullHeight label="Loading channel intelligence…" /></div>;

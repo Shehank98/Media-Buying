@@ -1,21 +1,11 @@
 // Branded PDF export for a Media Buying Requisition (MBR).
-// Loads the Ogilvy Orbit logo from /orbit-logo.png for the header.
+// The header logo comes from the shared brand loader (web/public/brand-logo.jpg,
+// falling back to the built-in orbit mark) so it matches the sidebar and every
+// other export.
+
+import { loadBrandLogo, fitLogo } from './brandLogo.js';
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-');
-
-async function loadLogo() {
-  try {
-    const res = await fetch('/orbit-logo.png');
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise((resolve) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = () => resolve(null);
-      fr.readAsDataURL(blob);
-    });
-  } catch { return null; }
-}
 
 const DEADLINES = {
   'annual': { label: 'Annual buy', lead: 'two weeks' },
@@ -58,8 +48,13 @@ export async function exportRequisitionPdf(r) {
   const pageW = doc.internal.pageSize.getWidth();
   const M = 14;
 
-  const logo = await loadLogo();
-  if (logo) doc.addImage(logo, 'PNG', M, 12, 46, 19);
+  // Fitted rather than forced to a fixed box, so a logo of any aspect ratio
+  // renders undistorted.
+  const logo = await loadBrandLogo();
+  if (logo) {
+    const { width, height } = fitLogo(logo, 46, 19);
+    try { doc.addImage(logo.dataUrl, logo.format, M, 12, width, height); } catch { /* keep the report */ }
+  }
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(16, 36, 60);
   doc.text('Media Buying Requisition', pageW - M, 19, { align: 'right' });
