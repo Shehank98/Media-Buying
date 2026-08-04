@@ -1,24 +1,25 @@
-// Single source of truth for the brand logo used in every client-side export
-// (PDFs and the PowerPoint deck) and, via the same files, the sidebar.
+// Single source of truth for the brand logo used in every DOCUMENT the app
+// generates - the PDFs, the PowerPoint deck and the Excel exports.
 //
-// Drop the company logo at web/public/brand-logo.jpg (or .png) and it appears
-// everywhere automatically - there is deliberately no second place to configure.
+// Drop the company logo at web/public/brand-logo.jpg (or .png) and it appears in
+// all of them automatically - there is deliberately no second place to configure.
 // The chain falls back to the built-in orbit mark so exports keep working (and
 // stay branded) when no custom logo has been added yet.
+//
+// NOT the sidebar. The sidebar shows the animated orbit lockup + an "Ogilvy
+// Orbit" wordmark (Layout.jsx / .brand-name in index.css) and deliberately
+// ignores this file, so changing the document logo never touches the app chrome.
 //
 // Mirrored server-side by api/src/utils/brandLogo.js, which reads the same files
 // out of web/dist for the PDFKit/ExcelJS exports.
 
 // The custom logo files, in preference order. PNG first because it can carry
-// transparency, which sits better on the navy sidebar; a .jpg works everywhere
-// too (exports put it on a white chip where the background is dark).
-// Layout.jsx uses THIS list for the sidebar, so the sidebar and the documents can
-// never disagree about which file is the brand logo.
+// transparency; a .jpg works too (exports put it on a white chip where the
+// background is dark).
 export const BRAND_LOGO_FILES = ['/brand-logo.png', '/brand-logo.jpg'];
 
-// Documents additionally fall back to the built-in orbit mark, so an export is
-// always branded even before a custom logo is added. (The sidebar instead falls
-// back to its animated orbit lockup, which is why that list is separate.)
+// Documents fall back to the built-in orbit mark, so an export is always branded
+// even before a custom logo is added.
 export const BRAND_LOGO_CANDIDATES = [...BRAND_LOGO_FILES, '/orbit-logo.png'];
 
 // Resolved once per page load - every export reuses it rather than re-fetching.
