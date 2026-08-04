@@ -22,6 +22,9 @@ const STATUS = {
   none: { dot: '#C7D0DD', label: 'Not started' },
 };
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
+// Sentinel for the forecast entry form's "All" tab (every medium stacked). Not a
+// real medium, so it can never collide with a category name from the API.
+const ALL_CAT = '__all__';
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 const CHART_COLORS = ['#1e3a5f', '#E85D24', '#059669', '#6B3FB5', '#C2185B', '#0E7490', '#d97706', '#dc2626', '#0ea5e9', '#14b8a6'];
 
@@ -1214,7 +1217,7 @@ export default function ForecastingPage() {
   const [entryError, setEntryError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [channelSearch, setChannelSearch] = useState('');
-  // Which medium tab (TV | Radio | Press …) is showing in the entry form.
+  // Which medium tab (All | TV | Radio | Press …) is showing in the entry form.
   const [activeCat, setActiveCat] = useState('');
 
   // request modal
@@ -1289,8 +1292,9 @@ export default function ForecastingPage() {
       .filter(cat => cat.channels.length > 0 || cat.totalChannel);
   }, [categories, channelSearch]);
 
-  // One medium is shown at a time (TV | Radio | Press …) - stacking every
-  // medium's channel list made the form very long to scroll. This is purely a
+  // One medium is shown at a time (All | TV | Radio | Press …) - stacking every
+  // medium's channel list made the form very long to scroll. "All" keeps the
+  // original stacked view for when the whole picture is wanted. This is purely a
   // display filter: `amounts` is keyed by channel id and `submit` walks ALL
   // categories, so switching tabs never loses or omits what was typed.
   const searching = !!channelSearch.trim();
@@ -1302,14 +1306,18 @@ export default function ForecastingPage() {
     () => filteredCategories.filter(c => !searching || c.channels.length > 0).map(c => c.category),
     [filteredCategories, searching],
   );
-  const shownCat = filteredCategories.find(
-    c => c.category === activeCat && (!searching || c.channels.length > 0),
-  ) || null;
+  // "All" renders every medium stacked (the pre-tabs layout); a medium tab
+  // renders just that one.
+  const shownCats = activeCat === ALL_CAT
+    ? filteredCategories.filter(c => !searching || c.channels.length > 0)
+    : filteredCategories.filter(c => c.category === activeCat && (!searching || c.channels.length > 0));
 
-  // Default to the first medium once the channel list arrives, and keep the
-  // selection valid if the categories change underneath it.
+  // Default to the first medium once the channel list arrives (NOT "All" - the
+  // point of the tabs is that the stacked list is too long to open into), and
+  // keep the selection valid if the categories change underneath it.
   useEffect(() => {
     if (!categories.length) return;
+    if (activeCat === ALL_CAT) return;
     if (!activeCat || !categories.some(c => c.category === activeCat)) setActiveCat(categories[0].category);
   }, [categories]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1610,6 +1618,38 @@ export default function ForecastingPage() {
                       double-counting its Unspecified row. */}
                   {categories.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, borderBottom: '1px solid #E5E8ED', paddingBottom: 10 }}>
+                      {/* "All" = the original stacked view, every medium at once. */}
+                      {(() => {
+                        const isActive = activeCat === ALL_CAT;
+                        const filled = categories.reduce((s, cat) => s + entryRows(cat).filter(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0).length, 0);
+                        const overlap = canEdit && categories.some(cat => unspecifiedOverlap(cat) > 0);
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setActiveCat(ALL_CAT)}
+                            title="Show every medium stacked"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              border: isActive ? '1px solid var(--coral-600, #C44A18)' : '1px solid #E5E8ED',
+                              background: isActive ? 'var(--coral-500, #E85D24)' : '#fff',
+                              color: isActive ? '#fff' : '#3B4A63',
+                              borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 650,
+                              cursor: 'pointer', fontFamily: 'inherit', transition: '.13s',
+                            }}
+                          >
+                            All
+                            {filled > 0 && (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 700, lineHeight: 1, padding: '2px 6px', borderRadius: 20,
+                                background: isActive ? 'rgba(255,255,255,.25)' : '#ECF8F1',
+                                color: isActive ? '#fff' : '#15814B',
+                              }}>{filled}</span>
+                            )}
+                            {overlap && <span title="A medium is double-counting its Unspecified row" style={{ color: isActive ? '#FFE9A8' : '#B8860B', fontSize: 12 }}>⚠</span>}
+                          </button>
+                        );
+                      })()}
+                      <span style={{ width: 1, alignSelf: 'stretch', background: '#E5E8ED', margin: '0 2px' }} />
                       {categories.map(cat => {
                         const isActive = cat.category === activeCat;
                         const subtotal = catTotal(cat);
@@ -1648,7 +1688,7 @@ export default function ForecastingPage() {
                   )}
                   {/* The search box spans every medium, so when the hit is on
                       another tab say so rather than showing a bare empty state. */}
-                  {searching && !matchingCats.includes(activeCat) && matchingCats.length > 0 && (
+                  {searching && activeCat !== ALL_CAT && !matchingCats.includes(activeCat) && matchingCats.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, padding: '9px 13px', background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 8, fontSize: 12.5, color: '#1F5BB5' }}>
                       <span>No channel matches “{channelSearch}” under <strong>{activeCat}</strong> — found in:</span>
                       {matchingCats.map(c => (
@@ -1656,8 +1696,13 @@ export default function ForecastingPage() {
                       ))}
                     </div>
                   )}
-                  {(shownCat ? [shownCat] : []).map(cat => (
+                  {shownCats.map(cat => (
                     <div key={cat.category} style={{ marginBottom: 18 }}>
+                      {/* The medium heading is only needed when several are
+                          stacked - on a single-medium tab the tab already says it. */}
+                      {activeCat === ALL_CAT && (
+                        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
+                      )}
                       <table className="tbl" style={{ fontSize: 12.5 }}>
                         <thead><tr><th style={{ width: '42%', position: 'static' }}>Channel</th><th style={{ width: '26%', position: 'static' }}>Amount (LKR)</th><th style={{ position: 'static' }}>Notes</th></tr></thead>
                         <tbody>
