@@ -6,13 +6,14 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush,
   Cell, BarChart, Bar,
 } from 'recharts';
-import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
 import api from '../lib/api';
+import { loadBrandLogo, fitLogo } from '../lib/brandLogo';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -136,22 +137,26 @@ export default function DeepDashboardPage() {
   const sortBy = (f) => { if (sortField === f) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setSortField(f); setSortDir('desc'); } };
   const sortArrow = (f) => (sortField === f ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '');
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const rows = tableRows.map((r) => ({
       Year: r.year, Channel: r.channel, Client: r.client, 'Property Category': r.category, 'Property Type': r.type, 'Property Name': r.name,
       'Property Value': r.value, 'Bonus Value': r.bonusValue, 'Bonus %': r.bonusCount,
       'Bonus Yield %': Number(r.value) > 0 ? Number(((Number(r.bonusValue || 0) / Number(r.value)) * 100).toFixed(1)) : 0,
       'Start Date': r.startDate ? r.startDate.slice(0, 10) : '', 'End Date': r.endDate ? r.endDate.slice(0, 10) : 'Ongoing',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '', 'Bonus Yield %': '', 'Start Date': '', 'End Date': '' }]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Properties');
-    XLSX.writeFile(wb, `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const json = rows.length ? rows : [{ Year: '', Channel: '', Client: '', 'Property Category': '', 'Property Type': '', 'Property Name': '', 'Property Value': '', 'Bonus Value': '', 'Bonus %': '', 'Bonus Yield %': '', 'Start Date': '', 'End Date': '' }];
+    await writeBrandedWorkbook([{ name: 'Properties', json }], `deep-dashboard-properties-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const exportTablePdf = () => {
+  const exportTablePdf = async () => {
     const doc = new jsPDF({ orientation: 'landscape' });
-    doc.setFontSize(14); doc.text('Property Performance', 14, 16);
+    // Brand logo, top-right (white background, so no chip).
+    const brandLogo = await loadBrandLogo();
+    if (brandLogo) {
+      const { width, height } = fitLogo(brandLogo, 38, 15);
+      try { doc.addImage(brandLogo.dataUrl, brandLogo.format, doc.internal.pageSize.getWidth() - 14 - width, 8, width, height); } catch { /* keep the report */ }
+    }
+    doc.setFontSize(14); doc.setTextColor(0); doc.text('Property Performance', 14, 16);
     doc.setFontSize(9); doc.setTextColor(120);
     doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, 14, 22);
     autoTable(doc, {
@@ -174,6 +179,12 @@ export default function DeepDashboardPage() {
       const doc = new jsPDF({ orientation: 'landscape' });
       const w = doc.internal.pageSize.getWidth() - 20;
       const h = canvas.height * (w / canvas.width);
+      // Brand logo, top-right (white background, so no chip).
+      const brandLogo = await loadBrandLogo();
+      if (brandLogo) {
+        const { width, height } = fitLogo(brandLogo, 34, 13);
+        try { doc.addImage(brandLogo.dataUrl, brandLogo.format, doc.internal.pageSize.getWidth() - 14 - width, 6, width, height); } catch { /* keep the chart */ }
+      }
       doc.setFontSize(14); doc.text('Multi-Year Monthly Spend Trend', 14, 14);
       doc.addImage(img, 'PNG', 10, 20, w, h);
       doc.save('spend-trend.pdf');

@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+/* ── Ogilvy Sans ─────────────────────────────────────────────────────────────
+   The corporate typeface. It is proprietary, so it is NOT loaded from Google
+   Fonts or any CDN - drop the licensed web fonts into web/public/fonts/ using
+   the names below and they are picked up automatically, no code change needed:
+
+     web/public/fonts/OgilvySans-Regular.woff2
+     web/public/fonts/OgilvySans-Medium.woff2
+     web/public/fonts/OgilvySans-Bold.woff2
+
+   Until those files exist the browser simply skips the missing source and falls
+   back to the next family in --brand-font (Hanken Grotesk), so nothing breaks
+   and nothing 404s visibly. A viewer who has Ogilvy Sans installed locally gets
+   it either way, since the stack names the family directly. */
+@font-face {
+  font-family: 'Ogilvy Sans';
+  src: url('/fonts/OgilvySans-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ogilvy Sans';
+  src: url('/fonts/OgilvySans-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Ogilvy Sans';
+  src: url('/fonts/OgilvySans-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
 :root {
   --navy-950: #0A1729;
   --navy-900: #0F1F3D;
@@ -57,6 +86,8 @@
   --topbar-h: 64px;
 
   --font: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Brand lockup only. Swap --font to this to take Ogilvy Sans app-wide. */
+  --brand-font: "Ogilvy Sans", var(--font);
   --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
@@ -121,12 +152,14 @@ input, select, textarea { font-family: inherit; }
   color: #fff; font-weight: 800; font-size: 17px; letter-spacing: -.5px;
   box-shadow: 0 4px 12px rgba(232,93,36,.4);
 }
-/* Custom brand logo: drop brand-logo.png (preferred, transparent) or
-   brand-logo.jpg into web/public and it replaces the orbit lockup below.
-   Absent, the animated orbit mark + wordmark render instead. */
-.brand-logo { display: block; max-width: 100%; max-height: 44px; width: auto; object-fit: contain; border-radius: 6px; }
-.brand-name { font-weight: 700; font-size: 15.5px; letter-spacing: -.2px; line-height: 1.1; }
-.brand-sub { font-size: 11px; color: var(--navy-300); letter-spacing: .3px; margin-top: 2px; }
+/* "Ogilvy Orbit" on ONE line beside the orbit mark, set in Ogilvy Sans.
+   The sidebar deliberately does NOT use web/public/brand-logo.png - that image
+   still brands every PDF / PowerPoint / Excel export (see lib/brandLogo.js). */
+.brand-name {
+  font-family: var(--brand-font);
+  font-weight: 700; font-size: 16px; letter-spacing: -.2px; line-height: 1.1;
+  white-space: nowrap;
+}
 
 .nav-group { padding: 6px 12px; }
 .nav-label {

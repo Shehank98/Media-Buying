@@ -7,6 +7,8 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { loadBrandLogo, fitLogo } from '../lib/brandLogo';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -20,6 +22,9 @@ const STATUS = {
   none: { dot: '#C7D0DD', label: 'Not started' },
 };
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
+// Sentinel for the forecast entry form's "All" tab (every medium stacked). Not a
+// real medium, so it can never collide with a category name from the API.
+const ALL_CAT = '__all__';
 const MEDIUM_COLORS = { TV: '#1e3a5f', RADIO: '#E85D24', PRINT: '#059669', DIGITAL: '#6B3FB5', CINEMA: '#C2185B', OOH: '#0E7490' };
 const CHART_COLORS = ['#1e3a5f', '#E85D24', '#059669', '#6B3FB5', '#C2185B', '#0E7490', '#d97706', '#dc2626', '#0ea5e9', '#14b8a6'];
 
@@ -97,9 +102,9 @@ function downloadCSV(sheets, filename) {
 }
 
 function downloadXLSX(sheets, filename) {
-  const wb = XLSX.utils.book_new();
-  sheets.forEach((s) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s.rows), (s.name || 'Sheet').slice(0, 31)));
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  // Branded via ExcelJS (SheetJS cannot embed the logo). The sibling CSV export
+  // stays on SheetJS - the format has no way to carry an image.
+  return writeBrandedWorkbook(sheets.map((s) => ({ name: s.name || 'Sheet', aoa: s.rows })), `${filename}.xlsx`);
 }
 
 // Small three-button export cluster.
@@ -395,6 +400,12 @@ function InsightsTab() {
       const margin = 15;
       const contentW = pageW - margin * 2;
       const title = sub === 'summary' ? 'Next Month Forecast Summary' : sub === 'variance' ? 'Forecast vs Actual' : sub === 'accuracy' ? 'Forecast Accuracy' : sub === 'budget' ? 'Overall Budget' : 'Trend Analysis';
+      // Brand logo, top-right of the header (white background, so no chip).
+      const brandLogo = await loadBrandLogo();
+      if (brandLogo) {
+        const { width, height } = fitLogo(brandLogo, 38, 15);
+        try { pdf.addImage(brandLogo.dataUrl, brandLogo.format, pageW - margin - width, 10, width, height); } catch { /* keep the report */ }
+      }
       pdf.setFontSize(18); pdf.setTextColor(30, 58, 95); pdf.text(`Forecasting · ${title}`, margin, 20);
       pdf.setFontSize(9); pdf.setTextColor(100);
       pdf.text(appliedFilters.map((f) => `${f[0]}: ${f[1]}`).join('   |   '), margin, 27, { maxWidth: contentW });
@@ -1206,6 +1217,8 @@ export default function ForecastingPage() {
   const [entryError, setEntryError] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [channelSearch, setChannelSearch] = useState('');
+  // Which medium tab (All | TV | Radio | Press …) is showing in the entry form.
+  const [activeCat, setActiveCat] = useState('');
 
   // request modal
   const [reqType, setReqType] = useState(null); // 'client' | 'channel'
@@ -1260,7 +1273,7 @@ export default function ForecastingPage() {
       setEntryLoading(false);
     }
   };
-  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); };
+  const closeEntry = () => { setActive(null); setCategories([]); setAmounts({}); setActiveCat(''); setChannelSearch(''); };
 
   const setCell = (chId, field, value) => setAmounts(p => ({ ...p, [chId]: { ...p[chId], [field]: value } }));
 
@@ -1278,6 +1291,35 @@ export default function ForecastingPage() {
       // Keep a category if a channel matches, or it has an Unspecified row.
       .filter(cat => cat.channels.length > 0 || cat.totalChannel);
   }, [categories, channelSearch]);
+
+  // One medium is shown at a time (All | TV | Radio | Press …) - stacking every
+  // medium's channel list made the form very long to scroll. "All" keeps the
+  // original stacked view for when the whole picture is wanted. This is purely a
+  // display filter: `amounts` is keyed by channel id and `submit` walks ALL
+  // categories, so switching tabs never loses or omits what was typed.
+  const searching = !!channelSearch.trim();
+  // Mediums with a genuine channel-name hit under the current search. Note
+  // filteredCategories keeps a medium purely because it has an Unspecified
+  // bucket, so that alone must NOT count as a match - otherwise every tab would
+  // look like a hit and the "it's on another tab" hint would never fire.
+  const matchingCats = useMemo(
+    () => filteredCategories.filter(c => !searching || c.channels.length > 0).map(c => c.category),
+    [filteredCategories, searching],
+  );
+  // "All" renders every medium stacked (the pre-tabs layout); a medium tab
+  // renders just that one.
+  const shownCats = activeCat === ALL_CAT
+    ? filteredCategories.filter(c => !searching || c.channels.length > 0)
+    : filteredCategories.filter(c => c.category === activeCat && (!searching || c.channels.length > 0));
+
+  // Default to the first medium once the channel list arrives (NOT "All" - the
+  // point of the tabs is that the stacked list is too long to open into), and
+  // keep the selection valid if the categories change underneath it.
+  useEffect(() => {
+    if (!categories.length) return;
+    if (activeCat === ALL_CAT) return;
+    if (!activeCat || !categories.some(c => c.category === activeCat)) setActiveCat(categories[0].category);
+  }, [categories]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Medium subtotal = every channel filled + the Unspecified amount (additive).
   const catTotal = (cat) => entryRows(cat).reduce((s, ch) => s + (parseFloat(amounts[ch.id]?.amount) || 0), 0);
@@ -1570,9 +1612,97 @@ export default function ForecastingPage() {
                       <input className="input" placeholder="Search channels…" value={channelSearch} onChange={e => setChannelSearch(e.target.value)} style={{ paddingLeft: 32 }} />
                     </div>
                   )}
-                  {filteredCategories.map(cat => (
+                  {/* Medium tabs - one medium's channels at a time. Each tab
+                      carries its own subtotal / filled count so nothing typed on
+                      another tab is out of sight, and a ⚠ when that medium is
+                      double-counting its Unspecified row. */}
+                  {categories.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, borderBottom: '1px solid #E5E8ED', paddingBottom: 10 }}>
+                      {/* "All" = the original stacked view, every medium at once. */}
+                      {(() => {
+                        const isActive = activeCat === ALL_CAT;
+                        const filled = categories.reduce((s, cat) => s + entryRows(cat).filter(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0).length, 0);
+                        const overlap = canEdit && categories.some(cat => unspecifiedOverlap(cat) > 0);
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setActiveCat(ALL_CAT)}
+                            title="Show every medium stacked"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              border: isActive ? '1px solid var(--coral-600, #C44A18)' : '1px solid #E5E8ED',
+                              background: isActive ? 'var(--coral-500, #E85D24)' : '#fff',
+                              color: isActive ? '#fff' : '#3B4A63',
+                              borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 650,
+                              cursor: 'pointer', fontFamily: 'inherit', transition: '.13s',
+                            }}
+                          >
+                            All
+                            {filled > 0 && (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 700, lineHeight: 1, padding: '2px 6px', borderRadius: 20,
+                                background: isActive ? 'rgba(255,255,255,.25)' : '#ECF8F1',
+                                color: isActive ? '#fff' : '#15814B',
+                              }}>{filled}</span>
+                            )}
+                            {overlap && <span title="A medium is double-counting its Unspecified row" style={{ color: isActive ? '#FFE9A8' : '#B8860B', fontSize: 12 }}>⚠</span>}
+                          </button>
+                        );
+                      })()}
+                      <span style={{ width: 1, alignSelf: 'stretch', background: '#E5E8ED', margin: '0 2px' }} />
+                      {categories.map(cat => {
+                        const isActive = cat.category === activeCat;
+                        const subtotal = catTotal(cat);
+                        const filled = entryRows(cat).filter(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0).length;
+                        const hasMatch = matchingCats.includes(cat.category);
+                        const overlap = canEdit && unspecifiedOverlap(cat) > 0;
+                        return (
+                          <button
+                            key={cat.category}
+                            type="button"
+                            onClick={() => setActiveCat(cat.category)}
+                            title={subtotal > 0 ? `${cat.category}: LKR ${subtotal.toLocaleString('en-US')} across ${filled} channel${filled === 1 ? '' : 's'}` : `${cat.category}: nothing entered yet`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              border: isActive ? '1px solid var(--coral-600, #C44A18)' : '1px solid #E5E8ED',
+                              background: isActive ? 'var(--coral-500, #E85D24)' : '#fff',
+                              color: isActive ? '#fff' : (searching && !hasMatch ? '#B4BCC9' : '#3B4A63'),
+                              borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 650,
+                              cursor: 'pointer', fontFamily: 'inherit', transition: '.13s',
+                            }}
+                          >
+                            {cat.category}
+                            {filled > 0 && (
+                              <span style={{
+                                fontSize: 10.5, fontWeight: 700, lineHeight: 1, padding: '2px 6px', borderRadius: 20,
+                                background: isActive ? 'rgba(255,255,255,.25)' : '#ECF8F1',
+                                color: isActive ? '#fff' : '#15814B',
+                              }}>{filled}</span>
+                            )}
+                            {overlap && <span title="Unspecified is double-counting on this medium" style={{ color: isActive ? '#FFE9A8' : '#B8860B', fontSize: 12 }}>⚠</span>}
+                            {searching && hasMatch && !isActive && <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#1F5BB5' }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* The search box spans every medium, so when the hit is on
+                      another tab say so rather than showing a bare empty state. */}
+                  {searching && activeCat !== ALL_CAT && !matchingCats.includes(activeCat) && matchingCats.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, padding: '9px 13px', background: '#EDF3FD', border: '1px solid #d4e2f7', borderRadius: 8, fontSize: 12.5, color: '#1F5BB5' }}>
+                      <span>No channel matches “{channelSearch}” under <strong>{activeCat}</strong> — found in:</span>
+                      {matchingCats.map(c => (
+                        <button key={c} type="button" className="btn-subtle btn-sm" onClick={() => setActiveCat(c)}>{c}</button>
+                      ))}
+                    </div>
+                  )}
+                  {shownCats.map(cat => (
                     <div key={cat.category} style={{ marginBottom: 18 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
+                      {/* The medium heading is only needed when several are
+                          stacked - on a single-medium tab the tab already says it. */}
+                      {activeCat === ALL_CAT && (
+                        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: '#93A0B5', margin: '0 0 6px 2px' }}>{cat.category}</div>
+                      )}
                       <table className="tbl" style={{ fontSize: 12.5 }}>
                         <thead><tr><th style={{ width: '42%', position: 'static' }}>Channel</th><th style={{ width: '26%', position: 'static' }}>Amount (LKR)</th><th style={{ position: 'static' }}>Notes</th></tr></thead>
                         <tbody>
@@ -1604,7 +1734,7 @@ export default function ForecastingPage() {
                     </div>
                   ))}
                   {categories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No active channels configured.</div>}
-                  {categories.length > 0 && filteredCategories.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No channels match "{channelSearch}".</div>}
+                  {categories.length > 0 && searching && matchingCats.length === 0 && <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--muted)' }}>No channels match "{channelSearch}" in any medium.</div>}
                 </>
               )}
             </div>

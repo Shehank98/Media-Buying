@@ -403,6 +403,11 @@ model Property {
   bonusCount           Int               @default(0) @map("bonus_count")
   bonusPct             Decimal?          @map("bonus_pct") @db.Decimal(6, 3)
   sponsorshipDetails   String?           @map("sponsorship_details")
+  // What the deal actually delivers, as structured rows: [{ item, qty }] —
+  // e.g. [{item:'Trailers',qty:50},{item:'Mid intro',qty:20}]. Kept structured
+  // (rather than in the free-text sponsorshipDetails) so the Negotiation
+  // Planner can show what a given budget has historically bought on a channel.
+  benefits             Json?
   startDate            DateTime?         @map("start_date") @db.Date
   endDate              DateTime?         @map("end_date") @db.Date
   notes                String?
@@ -1028,7 +1033,12 @@ model ErrorLog {
 // media plan. Free-form per-medium detail is kept as JSON so the form can grow.
 model MediaBuyingRequisition {
   id               Int       @id @default(autoincrement())
-  clientId         Int       @map("client_id")
+  // Either an existing client (clientId) OR a brand-new one the requester just
+  // names (newClientName) — exactly one is set. A new client is deliberately
+  // NOT created as a Client record here; the name only travels with this MBR so
+  // the buying unit can act on it, until an admin adds the client properly.
+  clientId         Int?      @map("client_id")
+  newClientName    String?   @map("new_client_name")
   requestedById    Int       @map("requested_by_id")
   brandCampaign    String    @map("brand_campaign")
   targetGroup      String?   @map("target_group")
@@ -1048,7 +1058,7 @@ model MediaBuyingRequisition {
   status           String    @default("SUBMITTED")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
-  client           Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client           Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   requester        User      @relation("RequisitionRequester", fields: [requestedById], references: [id])
 
   @@index([clientId])

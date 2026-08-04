@@ -11,6 +11,7 @@ import Icon from '../components/Icon';
 import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { canExport } from '../lib/permissions';
+import { loadBrandLogo, drawPdfLogo } from '../lib/brandLogo';
 
 const fmtLKR = (v) => {
   if (v == null || v === '') return '-';
@@ -1102,10 +1103,26 @@ export default function ExecutiveDashboardPage() {
       const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
       const agencyName = agencyId ? (agencies.find(a => String(a.id) === String(agencyId))?.name || 'Selected agency') : 'All agencies';
 
-      // Cover slide
+      // Brand logo (web/public/brand-logo.jpg, else the built-in orbit mark).
+      const brandLogo = await loadBrandLogo();
+      // Slide sizes are in inches. On the navy slides the logo sits on a white
+      // panel, since a JPG carries no transparency and would otherwise show as a
+      // bare white rectangle.
+      const addSlideLogo = (slide, { x, y, maxW, maxH, chip = false }) => {
+        if (!brandLogo) return false;
+        const w = Math.min(maxW, maxH * brandLogo.ratio);
+        const h = w / brandLogo.ratio;
+        const pad = 0.09;
+        if (chip) slide.addShape(pptx.ShapeType.roundRect, { x: x - pad, y: y - pad, w: w + pad * 2, h: h + pad * 2, fill: { color: 'FFFFFF' }, rectRadius: 0.04 });
+        slide.addImage({ data: brandLogo.dataUrl, x, y, w, h });
+        return true;
+      };
+
+      // Cover slide - the logo replaces the "OGILVY ORBIT" wordmark.
       const cover = pptx.addSlide();
       cover.background = { color: NAVY };
-      cover.addText('OGILVY ORBIT', { x: 0.7, y: 2.2, w: 12, h: 0.4, fontSize: 13, color: MUTED, bold: true, charSpacing: 6 });
+      const coverLogo = addSlideLogo(cover, { x: 0.72, y: 1.25, maxW: 2.6, maxH: 0.78, chip: true });
+      if (!coverLogo) cover.addText('OGILVY ORBIT', { x: 0.7, y: 2.2, w: 12, h: 0.4, fontSize: 13, color: MUTED, bold: true, charSpacing: 6 });
       cover.addText('Media Buying Dashboard', { x: 0.66, y: 2.7, w: 12, h: 1.1, fontSize: 44, color: 'FFFFFF', bold: true });
       cover.addShape(pptx.ShapeType.rect, { x: 0.72, y: 3.95, w: 0.6, h: 0.05, fill: { color: CORAL } });
       cover.addText(`${agencyName}   ·   ${dateStr}`, { x: 0.7, y: 4.15, w: 12, h: 0.4, fontSize: 14, color: MUTED });
@@ -1119,11 +1136,15 @@ export default function ExecutiveDashboardPage() {
         const data = canvas.toDataURL('image/png');
         const slide = pptx.addSlide();
         slide.background = { color: BG };
+        // Logo top-right on every chart slide (light background, no chip needed).
+        const logoW = brandLogo ? Math.min(1.5, 0.42 * brandLogo.ratio) : 0;
+        addSlideLogo(slide, { x: 13.333 - 0.5 - logoW, y: 0.45, maxW: 1.5, maxH: 0.42 });
         const titleEl = card.querySelector('.chart-card-title');
         const title = titleEl ? titleEl.textContent.trim() : '';
         if (title) {
           slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 0.5, w: 0.42, h: 0.05, fill: { color: CORAL } });
-          slide.addText(title, { x: 0.5, y: 0.62, w: 12.3, h: 0.55, fontSize: 22, color: '16243C', bold: true });
+          // Leave room for the logo so a long title never runs under it.
+          slide.addText(title, { x: 0.5, y: 0.62, w: 12.3 - logoW - 0.3, h: 0.55, fontSize: 22, color: '16243C', bold: true });
         }
         // Fit the chart image within the slide, preserving aspect ratio.
         const topY = title ? 1.35 : 0.5;
@@ -1139,7 +1160,10 @@ export default function ExecutiveDashboardPage() {
       ty.background = { color: NAVY };
       ty.addText('Thank you', { x: 0.5, y: 3.0, w: 12.33, h: 1.2, fontSize: 46, color: 'FFFFFF', bold: true, align: 'center' });
       ty.addShape(pptx.ShapeType.rect, { x: 6.16, y: 4.25, w: 1.0, h: 0.05, fill: { color: CORAL } });
-      ty.addText('Ogilvy Orbit', { x: 0.5, y: 4.5, w: 12.33, h: 0.4, fontSize: 14, color: MUTED, align: 'center' });
+      // Logo replaces the "Ogilvy Orbit" sign-off, centred.
+      const tyW = brandLogo ? Math.min(2.0, 0.6 * brandLogo.ratio) : 0;
+      const tyLogo = addSlideLogo(ty, { x: (13.333 - tyW) / 2, y: 4.55, maxW: 2.0, maxH: 0.6, chip: true });
+      if (!tyLogo) ty.addText('Ogilvy Orbit', { x: 0.5, y: 4.5, w: 12.33, h: 0.4, fontSize: 14, color: MUTED, align: 'center' });
 
       await pptx.writeFile({ fileName: `Executive_Dashboard_${new Date().toISOString().slice(0, 10)}.pptx` });
     } catch (err) {
@@ -1151,7 +1175,7 @@ export default function ExecutiveDashboardPage() {
     }
   };
 
-  const exportSummaryPdf = () => {
+  const exportSummaryPdf = async () => {
     setExporting(true);
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
@@ -1159,15 +1183,22 @@ export default function ExecutiveDashboardPage() {
       const margin = 40;
       const agencyName = agencyId ? (agencies.find((a) => String(a.id) === String(agencyId))?.name || 'Selected agency') : 'All agencies';
 
-      // Branded header band
+      // Branded header band. The brand logo replaces the "Ogilvy Orbit" wordmark
+      // when one is present (web/public/brand-logo.jpg); the report subtitle
+      // stays either way.
       doc.setFillColor(10, 23, 41);
       doc.rect(0, 0, pageW, 70, 'F');
+      const logo = await loadBrandLogo();
+      // Logo left, title + meta right - the same arrangement as the MBR PDF.
+      const placed = drawPdfLogo(doc, logo, margin, 0, 70, { maxW: 150, maxH: 34, chip: true, pad: 5 });
+      const metaX = placed ? pageW - margin : margin;
+      const metaAlign = placed ? { align: 'right' } : undefined;
       doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
-      doc.text('Ogilvy Orbit - Executive Summary', margin, 32);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(placed ? 15 : 17);
+      doc.text(placed ? 'Executive Summary' : 'Ogilvy Orbit - Executive Summary', metaX, 32, metaAlign);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
       doc.setTextColor(200, 210, 224);
-      doc.text(`${agencyName}  ·  Generated ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, margin, 50);
+      doc.text(`${agencyName}  ·  Generated ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, metaX, 50, metaAlign);
 
       let y = 96;
 

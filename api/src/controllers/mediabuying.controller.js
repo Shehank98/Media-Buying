@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma.js';
+import { readBenefits, benefitsSummary } from '../utils/benefits.js';
 
 function safeNum(v) {
   if (v == null) return null;
@@ -331,10 +332,53 @@ export async function getNegotiationPlanner(req, res) {
       orderBy: { year: 'desc' },
     });
 
+    // "What can this budget actually get?" - the deals already recorded on this
+    // channel (any client) that cost no more than the budget as typed, richest
+    // first, so the closest affordable package leads. Deliberately compared
+    // against the MONTHLY figure, not projectedYearlySpend: a property's cost is
+    // the price of that package, which is what the buyer is weighing up.
+    // Added-value properties (cost 0) are excluded - they buy nothing on their
+    // own and would otherwise fill the list.
+    const channelProperties = monthlyBudget > 0
+      ? await prisma.property.findMany({
+          where: {
+            channel: { channelMasterId },
+            cost: { gt: 0, lte: monthlyBudget },
+          },
+          select: {
+            id: true, name: true, category: true, type: true, cost: true,
+            bonusCount: true, bonusValue: true, sponsorshipDetails: true, benefits: true,
+            startDate: true, endDate: true,
+            channel: { select: { id: true, name: true, client: { select: { id: true, name: true } } } },
+          },
+          orderBy: { cost: 'desc' },
+          take: 25,
+        })
+      : [];
+    const affordableProperties = channelProperties.map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category || '',
+      type: p.type || '',
+      cost: safeNum(p.cost) || 0,
+      bonusPct: p.bonusCount == null ? 0 : Number(p.bonusCount),
+      bonusValue: safeNum(p.bonusValue) || 0,
+      sponsorshipDetails: p.sponsorshipDetails || '',
+      benefits: readBenefits(p.benefits),
+      benefitsSummary: benefitsSummary(p.benefits),
+      startDate: p.startDate,
+      endDate: p.endDate,
+      clientId: p.channel?.client?.id ?? null,
+      clientName: p.channel?.client?.name || 'Unknown',
+      channelId: p.channel?.id ?? null,
+    }));
+
     return res.json({
       channelMasterId,
       monthlyBudget,
       projectedYearlySpend,
+      affordableProperties,
+      affordablePropertyCount: affordableProperties.length,
       spendTier,
       tierThresholds: { lowMax, midMax },
       suggestedDiscountRange,

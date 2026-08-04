@@ -25,12 +25,6 @@ const NAV_ADMIN = [
   { key: '/profile', label: 'Profile', icon: 'user' },
 ];
 
-// Sidebar brand logo. Drop a file at web/public/brand-logo.png (preferred - a
-// transparent PNG sits best on the navy sidebar) or web/public/brand-logo.jpg
-// and it replaces the built-in orbit lockup. Each candidate is tried in turn;
-// when none loads, the orbit mark + "Ogilvy ORBIT" wordmark render as before.
-const BRAND_LOGOS = ['/brand-logo.png', '/brand-logo.jpg'];
-
 function Breadcrumbs({ go }) {
   const location = useLocation();
   const path = location.pathname;
@@ -75,11 +69,6 @@ export default function Layout() {
 
   // Mobile: the sidebar collapses into a hamburger-triggered drawer.
   const [navOpen, setNavOpen] = useState(false);
-
-  // Which brand-logo candidate we're on; past the end = no logo file, use the
-  // built-in orbit lockup.
-  const [logoIdx, setLogoIdx] = useState(0);
-  const brandLogo = BRAND_LOGOS[logoIdx] || null;
 
   useEffect(() => {
     const q = searchQ.trim();
@@ -208,29 +197,17 @@ export default function Layout() {
     <div className="app">
       <div className={`sidebar-scrim${navOpen ? ' show' : ''}`} onClick={() => setNavOpen(false)} />
       <div className={`sidebar${navOpen ? ' open' : ''}`}>
+        {/* The sidebar deliberately uses the animated orbit lockup, NOT the
+            web/public/brand-logo file - that image still brands every PDF /
+            PowerPoint / Excel export (see lib/brandLogo.js), it just isn't used
+            here. "Ogilvy Orbit" sits on one line beside the mark. */}
         <div className="brand">
-          {brandLogo ? (
-            // Custom logo from web/public (see BRAND_LOGOS). Falls through to the
-            // orbit lockup below if none of the files exist.
-            <img
-              className="brand-logo"
-              src={brandLogo}
-              alt="Ogilvy Orbit"
-              onError={() => setLogoIdx((i) => i + 1)}
-            />
-          ) : (
-            <>
-              <div className="brand-orbit">
-                <span className="bo-ring" />
-                <span className="bo-track"><span className="bo-dot" /></span>
-                <span className="bo-core">O</span>
-              </div>
-              <div>
-                <div className="brand-name">Ogilvy</div>
-                <div className="brand-sub">ORBIT</div>
-              </div>
-            </>
-          )}
+          <div className="brand-orbit">
+            <span className="bo-ring" />
+            <span className="bo-track"><span className="bo-dot" /></span>
+            <span className="bo-core">O</span>
+          </div>
+          <div className="brand-name">Ogilvy Orbit</div>
         </div>
 
         <div className="nav-group">

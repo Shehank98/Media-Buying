@@ -7,6 +7,7 @@ import OrbitLoader from '../components/OrbitLoader';
 import ClientGroupsTab from '../components/ClientGroupsTab';
 import ClientGroupTargetsTab from '../components/ClientGroupTargetsTab';
 import { TOGGLEABLE_PAGES } from '../lib/permissions';
+import { writeBrandedWorkbook } from '../lib/brandedXlsx';
 
 const ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1801,8 +1802,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   })();
 
   // Export the by-client revenue worksheet (Revenue + Rev. from finance + head verification).
-  const exportClientRevenue = () => {
-    const wb = XLSX.utils.book_new();
+  const exportClientRevenue = async () => {
     const rows = [
       ['Group Head', 'Client', 'Agency', 'Status', 'Revenue (LKR)', 'Rev. from Finance (LKR)', 'Verification', 'Verified Amount (LKR)', 'Note', 'Verified By'],
       ...grClients.map(c => [
@@ -1816,8 +1816,7 @@ export default function AdminPage({ initialTab = 'users' }) {
         c.verifiedByName || '',
       ]),
     ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Revenue by Client');
-    XLSX.writeFile(wb, `revenue-by-client-${grYear}-${String(grMonth).padStart(2, '0')}.xlsx`);
+    await writeBrandedWorkbook([{ name: 'Revenue by Client', aoa: rows }], `revenue-by-client-${grYear}-${String(grMonth).padStart(2, '0')}.xlsx`);
   };
 
   // Parse an uploaded Excel/CSV with columns: Client, Revenue, Rev. from finance.
@@ -1958,9 +1957,9 @@ export default function AdminPage({ initialTab = 'users' }) {
   const hideClientSelect = userForm.role === 'SUPER_ADMIN' || userForm.role === 'MANAGER';
 
   // Export every admin dataset into one workbook, a sheet per entity.
-  const exportAll = () => {
-    const wb = XLSX.utils.book_new();
-    const add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
+  const exportAll = async () => {
+    const sheets = [];
+    const add = (name, rows) => sheets.push({ name: name.slice(0, 31), aoa: rows });
     const yn = (v, def = 'Yes') => (v === false ? 'No' : v === true ? 'Yes' : def);
 
     add('Users', [
@@ -2014,7 +2013,7 @@ export default function AdminPage({ initialTab = 'users' }) {
     ]);
 
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `ogilvy-orbit-admin-export-${stamp}.xlsx`);
+    await writeBrandedWorkbook(sheets, `ogilvy-orbit-admin-export-${stamp}.xlsx`);
   };
 
   if (loading) {
