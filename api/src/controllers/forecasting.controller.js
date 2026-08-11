@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
+import { accountManagerByClient, buildForecastBudgetDetail } from './forecastInsights.controller.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
@@ -161,9 +162,12 @@ export async function exportForecastEntries(req, res) {
       where,
       include: {
         client: { select: { name: true, agency: { select: { name: true } } } },
-        channelMaster: { select: { name: true, medium: true } },
+        channelMaster: { select: { name: true, medium: true, mediaGroup: { select: { name: true } } } },
       },
     });
+
+    // Account manager (managing group head) per client, for the by-manager sheets.
+    const amMap = await accountManagerByClient([...new Set(rows.map(r => r.clientId))]);
 
     return res.json({
       year,
@@ -172,8 +176,11 @@ export async function exportForecastEntries(req, res) {
         clientId: r.clientId,
         clientName: r.client?.name || `#${r.clientId}`,
         agencyName: r.client?.agency?.name || '',
+        accountManager: amMap.get(r.clientId) || 'Unassigned',
+        channelMasterId: r.channelMasterId,
         channelName: r.channelMaster?.name || '',
         medium: r.channelMaster?.medium || '',
+        mediaGroup: r.channelMaster?.mediaGroup?.name || '',
         amountMillions: Number(r.amountMillions),
         notes: r.notes || '',
       })),
@@ -537,6 +544,14 @@ export async function listBudget(req, res) {
       billing: t.billing + (r.billingLastMonth || 0),
     }), { actual: 0, best: 0, billing: 0 });
 
+    // Channel roll-up (with media group) + per-(manager, client, channel) detail
+    // matrix, so the Overall Budget export can add "By Channel" + "Account Manager
+    // Detail" sheets. Same client scope as the worksheet above.
+    const amMap = await accountManagerByClient(clientIds);
+    const clientNameById = new Map(clients.map(c => [c.id, c.name]));
+    const { detail, byChannel } = await buildForecastBudgetDetail({ year, month, clientId: { in: clientIds } }, amMap, clientNameById);
+    const channelTotalAmount = byChannel.reduce((s, r) => s + r.forecastAmount, 0);
+
     return res.json({
       year,
       month,
@@ -546,6 +561,9 @@ export async function listBudget(req, res) {
         bestAmount: Number(totals.best.toFixed(2)),
         billingLastMonth: Number(totals.billing.toFixed(2)),
       },
+      byChannel,
+      channelTotalAmount: Number(channelTotalAmount.toFixed(2)),
+      detail,
     });
   } catch (error) {
     console.error('listBudget error:', error);

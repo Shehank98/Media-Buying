@@ -159,6 +159,55 @@ export async function accountManagerByClient(clientIds) {
   return map;
 }
 
+// Build the per-channel roll-up (with media group) and the per-(manager, client,
+// channel) detail breakdown of MonthlyForecast for a month — the data behind the
+// budget/forecast exports' "By Channel" and "Account Manager Detail" sheets.
+// `where` is the MonthlyForecast filter; `amMap` = accountManagerByClient(clientIds);
+// `clientNameById` = Map(clientId -> name). Amounts are returned in full LKR.
+export async function buildForecastBudgetDetail(where, amMap, clientNameById) {
+  const grouped = await prisma.monthlyForecast.groupBy({
+    by: ['clientId', 'channelMasterId'],
+    where,
+    _sum: { amountMillions: true },
+  });
+  const channelIds = [...new Set(grouped.map((g) => g.channelMasterId).filter((v) => v != null))];
+  const channels = channelIds.length
+    ? await prisma.channelMaster.findMany({
+        where: { id: { in: channelIds } },
+        select: { id: true, name: true, medium: true, mediaGroup: { select: { name: true } } },
+      })
+    : [];
+  const chMap = new Map(channels.map((c) => [c.id, c]));
+
+  const detail = grouped.map((g) => {
+    const ch = g.channelMasterId != null ? chMap.get(g.channelMasterId) : null;
+    return {
+      accountManager: amMap.get(g.clientId) || 'Unassigned',
+      clientId: g.clientId,
+      clientName: clientNameById.get(g.clientId) || `#${g.clientId}`,
+      channelMasterId: g.channelMasterId,
+      channelName: ch?.name || 'Unlinked',
+      medium: ch?.medium || '',
+      mediaGroup: ch?.mediaGroup?.name || '',
+      forecastAmount: Number(((Number(g._sum.amountMillions) || 0) * 1e6).toFixed(2)),
+    };
+  });
+
+  // Per-channel roll-up (carries the media group so the By Channel sheet can show it).
+  const byChMap = new Map();
+  for (const d of detail) {
+    const k = d.channelMasterId ?? `n:${d.channelName}`;
+    const e = byChMap.get(k) || { channelMasterId: d.channelMasterId, channelName: d.channelName, medium: d.medium, mediaGroup: d.mediaGroup, forecastAmount: 0 };
+    e.forecastAmount += d.forecastAmount;
+    byChMap.set(k, e);
+  }
+  const byChannel = [...byChMap.values()]
+    .map((r) => ({ ...r, forecastAmount: Number(r.forecastAmount.toFixed(2)) }))
+    .sort((a, b) => (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || a.channelName.localeCompare(b.channelName));
+
+  return { detail, byChannel };
+}
+
 // Spec §1: client-wise next-month forecast + status, and a medium-level breakdown.
 export async function getInsightsSummary(req, res) {
   try {
@@ -315,9 +364,8 @@ export async function getInsightsBudget(req, res) {
 
     const amMap = await accountManagerByClient(clientIds); // clientId -> group head name
 
-    const [byClientF, byChannelF, budgets] = await Promise.all([
+    const [byClientF, budgets] = await Promise.all([
       prisma.monthlyForecast.groupBy({ by: ['clientId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
-      prisma.monthlyForecast.groupBy({ by: ['channelMasterId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
       prisma.monthlyBudget.findMany({ where: { year, month, clientId: { in: clientIds } } }),
     ]);
     // Forecast is stored in millions; the budget worksheet works in full LKR.
@@ -353,22 +401,14 @@ export async function getInsightsBudget(req, res) {
       { actual: 0, best: 0, billing: 0 },
     );
 
-    // ── 2) By channel: total forecast per ChannelMaster (respects medium/channel filters).
-    const channelIds = byChannelF.map((g) => g.channelMasterId).filter((v) => v != null);
-    const channels = await prisma.channelMaster.findMany({ where: { id: { in: channelIds } }, select: { id: true, name: true, medium: true } });
-    const chMap = new Map(channels.map((c) => [c.id, c]));
-    let byChannel = byChannelF.map((g) => {
-      const ch = g.channelMasterId != null ? chMap.get(g.channelMasterId) : null;
-      return {
-        channelMasterId: g.channelMasterId,
-        channelName: ch?.name || 'Unlinked',
-        medium: ch?.medium || '',
-        forecastAmount: Number(((Number(g._sum.amountMillions) || 0) * 1e6).toFixed(2)),
-      };
-    });
-    if (filters.medium) byChannel = byChannel.filter((r) => r.medium === filters.medium);
-    if (filters.channelMasterId) byChannel = byChannel.filter((r) => r.channelMasterId === filters.channelMasterId);
-    byChannel.sort((a, b) => (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || a.channelName.localeCompare(b.channelName));
+    // ── 2) By channel (with media group) + the per-(manager, client, channel)
+    // detail matrix (respects the medium/channel filters). The detail feeds the
+    // exports' "Account Manager Detail" sheet.
+    const detailWhere = { year, month, clientId: { in: clientIds } };
+    if (filters.medium) detailWhere.channelMaster = { medium: filters.medium };
+    if (filters.channelMasterId) detailWhere.channelMasterId = filters.channelMasterId;
+    const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
+    const { detail, byChannel } = await buildForecastBudgetDetail(detailWhere, amMap, clientNameById);
     const channelTotalAmount = byChannel.reduce((s, r) => s + r.forecastAmount, 0);
 
     return res.json({
@@ -382,6 +422,7 @@ export async function getInsightsBudget(req, res) {
       },
       byChannel,
       channelTotalAmount: Number(channelTotalAmount.toFixed(2)),
+      detail,
     });
   } catch (error) {
     console.error('getInsightsBudget error:', error);
