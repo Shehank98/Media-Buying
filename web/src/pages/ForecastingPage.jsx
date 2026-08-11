@@ -107,6 +107,75 @@ function downloadXLSX(sheets, filename) {
   return writeBrandedWorkbook(sheets.map((s) => ({ name: s.name || 'Sheet', aoa: s.rows })), `${filename}.xlsx`);
 }
 
+// "By Channel" sheet rows including a Media Group column. `byChannel` rows carry
+// { channelName, medium, mediaGroup, forecastAmount } (amount in full LKR).
+function channelBreakdownRows(byChannel) {
+  const list = byChannel || [];
+  return [
+    ['Channel', 'Medium', 'Media Group', 'Forecast (LKR)'],
+    ...list.map((c) => [c.channelName, c.medium, c.mediaGroup || '', c.forecastAmount || 0]),
+    ['TOTAL', '', '', list.reduce((s, c) => s + (c.forecastAmount || 0), 0)],
+  ];
+}
+
+// "Account Manager Detail" sheet: one block per account manager showing how each
+// channel's total is made up across that manager's client accounts. Channels are
+// rows (with their media group); that manager's clients are the columns. `atoms`
+// carry { accountManager, clientId, clientName, channelMasterId, channelName,
+// medium, mediaGroup, forecastAmount } in full LKR.
+function managerDetailRows(atoms) {
+  const list = atoms || [];
+  if (!list.length) return [['No forecast detail for this month.']];
+  const byMgr = new Map();
+  for (const a of list) {
+    if (!byMgr.has(a.accountManager)) byMgr.set(a.accountManager, []);
+    byMgr.get(a.accountManager).push(a);
+  }
+  // Named managers A→Z, then "Unassigned" last.
+  const managers = [...byMgr.keys()].sort((a, b) =>
+    a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b));
+
+  const out = [];
+  managers.forEach((mgr, mi) => {
+    const items = byMgr.get(mgr);
+    // Distinct clients (columns) for this manager, A→Z.
+    const clientMap = new Map();
+    for (const a of items) if (!clientMap.has(a.clientId)) clientMap.set(a.clientId, a.clientName);
+    const clients = [...clientMap.entries()].sort((x, y) => String(x[1]).localeCompare(String(y[1])));
+    // Distinct channels (rows) for this manager.
+    const chMap = new Map();
+    for (const a of items) {
+      const k = a.channelMasterId ?? `n:${a.channelName}`;
+      if (!chMap.has(k)) chMap.set(k, { name: a.channelName, medium: a.medium, mediaGroup: a.mediaGroup || '' });
+    }
+    const amt = new Map(); // `${channelKey}|${clientId}` -> amount
+    for (const a of items) {
+      const k = a.channelMasterId ?? `n:${a.channelName}`;
+      const key = `${k}|${a.clientId}`;
+      amt.set(key, (amt.get(key) || 0) + (a.forecastAmount || 0));
+    }
+    const channelKeys = [...chMap.keys()].sort((x, y) => {
+      const cx = chMap.get(x), cy = chMap.get(y);
+      return (MEDIUM_ORDER.indexOf(cx.medium) - MEDIUM_ORDER.indexOf(cy.medium)) || cx.name.localeCompare(cy.name);
+    });
+
+    if (mi > 0) out.push([]);
+    out.push([`Account Manager: ${mgr}`]);
+    out.push(['Channel', 'Media Group', 'Total (LKR)', ...clients.map((c) => c[1])]);
+    const colTotals = clients.map(() => 0);
+    let grand = 0;
+    for (const ck of channelKeys) {
+      const ch = chMap.get(ck);
+      const cells = clients.map(([cid], i) => { const v = amt.get(`${ck}|${cid}`) || 0; colTotals[i] += v; return v || ''; });
+      const rowTotal = clients.reduce((s, [cid]) => s + (amt.get(`${ck}|${cid}`) || 0), 0);
+      grand += rowTotal;
+      out.push([ch.name, ch.mediaGroup, rowTotal, ...cells]);
+    }
+    out.push(['TOTAL', '', grand, ...colTotals.map((v) => v || '')]);
+  });
+  return out;
+}
+
 // Small three-button export cluster.
 function ExportButtons({ onExcel, onCsv, onPdf, busy }) {
   return (
@@ -379,12 +448,14 @@ function InsightsTab() {
       ...(budget?.byManager || []).map((m) => [m.accountManager, m.clientCount, m.actualAmount, m.bestAmount, m.billingLastMonth]),
       ['TOTAL', '', budget?.managerTotals.actualAmount ?? 0, budget?.managerTotals.bestAmount ?? 0, budget?.managerTotals.billingLastMonth ?? 0],
     ];
-    const chRows = [
-      ['Channel', 'Medium', 'Forecast (LKR)'],
-      ...(budget?.byChannel || []).map((c) => [c.channelName, c.medium, c.forecastAmount]),
-      ['TOTAL', '', budget?.channelTotalAmount ?? 0],
+    const chRows = channelBreakdownRows(budget?.byChannel);
+    const detailRows = managerDetailRows(budget?.detail);
+    return [
+      filterSheet,
+      { name: 'By Account Manager', rows: mgrRows },
+      { name: 'By Channel', rows: chRows },
+      { name: 'Account Manager Detail', rows: detailRows },
     ];
-    return [filterSheet, { name: 'By Account Manager', rows: mgrRows }, { name: 'By Channel', rows: chRows }];
   };
 
   const sheetsForSub = () => (sub === 'summary' ? summarySheets() : sub === 'variance' ? varianceSheets() : sub === 'accuracy' ? accuracySheets() : sub === 'budget' ? budgetSheets() : trendSheets());
@@ -1018,7 +1089,12 @@ function BudgetTab({ isAdmin, canEdit = true }) {
       }),
       ['TOTAL', totals.actual, totals.best, '', totals.billing],
     ];
-    downloadXLSX([{ name: 'Overall Budget', rows: [[`Overall Budget - ${label}`], [], ...body] }], `overall-budget-${data.year}-${String(data.month).padStart(2, '0')}`);
+    const sheets = [
+      { name: 'Overall Budget', rows: [[`Overall Budget - ${label}`], [], ...body] },
+      { name: 'By Channel', rows: channelBreakdownRows(data.byChannel) },
+      { name: 'Account Manager Detail', rows: managerDetailRows(data.detail) },
+    ];
+    downloadXLSX(sheets, `overall-budget-${data.year}-${String(data.month).padStart(2, '0')}`);
   };
 
   const inputStyle = { textAlign: 'right', width: 160, height: 30, fontSize: 12.5 };
@@ -1174,15 +1250,15 @@ export default function ForecastingPage() {
       const rows = data.rows || [];
       const label = `${MONTHS[data.month - 1]} ${data.year}`;
       const toLKR = (m) => Math.round(Number(m) * 1e6);
-      // Detail sheet: one row per client × channel.
+      // Detail sheet: one row per client × channel (with account manager + media group).
       const detail = rows.slice().sort((a, b) =>
         a.clientName.localeCompare(b.clientName) ||
         (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) ||
         a.channelName.localeCompare(b.channelName));
       const detailRows = [
-        ['Client', 'Agency', 'Channel', 'Medium', 'Amount (LKR)', 'Notes'],
-        ...detail.map(r => [r.clientName, r.agencyName, r.channelName, r.medium, toLKR(r.amountMillions), r.notes]),
-        ['TOTAL', '', '', '', toLKR(rows.reduce((s, r) => s + r.amountMillions, 0)), ''],
+        ['Client', 'Agency', 'Account Manager', 'Channel', 'Medium', 'Media Group', 'Amount (LKR)', 'Notes'],
+        ...detail.map(r => [r.clientName, r.agencyName, r.accountManager || 'Unassigned', r.channelName, r.medium, r.mediaGroup || '', toLKR(r.amountMillions), r.notes]),
+        ['TOTAL', '', '', '', '', '', toLKR(rows.reduce((s, r) => s + r.amountMillions, 0)), ''],
       ];
       // Client-wise summary sheet.
       const byClient = new Map();
@@ -1196,8 +1272,30 @@ export default function ForecastingPage() {
         ...[...byClient.values()].sort((a, b) => a.name.localeCompare(b.name)).map(c => [c.name, c.agency, toLKR(c.total)]),
         ['TOTAL', '', toLKR(rows.reduce((s, r) => s + r.amountMillions, 0))],
       ];
+      // Full-LKR atoms for the shared By Channel + Account Manager Detail sheets.
+      const atoms = rows.map(r => ({
+        accountManager: r.accountManager || 'Unassigned',
+        clientId: r.clientId,
+        clientName: r.clientName,
+        channelMasterId: r.channelMasterId,
+        channelName: r.channelName,
+        medium: r.medium,
+        mediaGroup: r.mediaGroup || '',
+        forecastAmount: toLKR(r.amountMillions),
+      }));
+      const byChMap = new Map();
+      for (const a of atoms) {
+        const k = a.channelMasterId ?? `n:${a.channelName}`;
+        const e = byChMap.get(k) || { channelName: a.channelName, medium: a.medium, mediaGroup: a.mediaGroup, forecastAmount: 0 };
+        e.forecastAmount += a.forecastAmount;
+        byChMap.set(k, e);
+      }
+      const byChannel = [...byChMap.values()].sort((a, b) =>
+        (MEDIUM_ORDER.indexOf(a.medium) - MEDIUM_ORDER.indexOf(b.medium)) || a.channelName.localeCompare(b.channelName));
       const sheets = [
         { name: 'By Client', rows: summaryRows },
+        { name: 'By Channel', rows: channelBreakdownRows(byChannel) },
+        { name: 'Account Manager Detail', rows: managerDetailRows(atoms) },
         { name: 'Detail', rows: detailRows },
       ];
       downloadXLSX(sheets, `forecast-${data.year}-${String(data.month).padStart(2, '0')}`);
