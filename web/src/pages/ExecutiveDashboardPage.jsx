@@ -1261,7 +1261,7 @@ export default function ExecutiveDashboardPage() {
       if (agencyComparison.length) {
         if (y > doc.internal.pageSize.getHeight() - 140) { doc.addPage(); y = 50; }
         doc.setTextColor(22, 36, 60); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-        doc.text('Agency Comparison', margin, y); y += 8;
+        doc.text('Agency Performance', margin, y); y += 8;
         autoTable(doc, {
           startY: y,
           head: [['Agency', 'YTD Billings', 'Active Clients', 'Active Channels']],
@@ -1439,12 +1439,12 @@ export default function ExecutiveDashboardPage() {
         trendData={trendData} trendLoading={trendLoading} trendView={trendView} setTrendView={setTrendView}
       />
 
-      {/* Section 4: Agency Comparison */}
+      {/* Section 4: Agency Performance */}
       <div className="dash-section">
         <div className="chart-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <div className="chart-card-title">Agency Comparison</div>
+              <div className="chart-card-title">Agency Performance</div>
               <div className="chart-card-sub">Monthly billings per agency · {year ? year : `${new Date().getFullYear()} (Jan to latest month)`}</div>
             </div>
             <div className="toggle-group">

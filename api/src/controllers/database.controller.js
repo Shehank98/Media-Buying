@@ -191,7 +191,7 @@ export async function getMetadata(req, res) {
 
 export async function getAnalytics(req, res) {
   try {
-    const { monthFrom, monthTo, agencyId, clientId } = req.query;
+    const { monthFrom, monthTo, agencyId, clientId, brand } = req.query;
     const user = req.user;
 
     const where = { isDeleted: false };
@@ -230,6 +230,21 @@ export async function getAnalytics(req, res) {
       if (agencyId) where.agencyId = parseInt(agencyId);
       if (clientId) where.clientId = parseInt(clientId);
     }
+
+    // Brand drill-down (only surfaced in the UI when a single client is selected).
+    // The full brand list for the current scope is computed BEFORE applying the
+    // brand filter, so the picker stays populated once a brand is chosen.
+    let brandOptions = [];
+    if (clientId) {
+      const brandRows = await prisma.scheduleLog.findMany({
+        where: { ...where, brandName: { not: null } },
+        select: { brandName: true },
+        distinct: ['brandName'],
+        orderBy: { brandName: 'asc' },
+      });
+      brandOptions = brandRows.map(b => b.brandName).filter(Boolean);
+    }
+    if (brand) where.brandName = brand;
 
     const logs = await prisma.scheduleLog.findMany({
       where,
@@ -363,6 +378,7 @@ export async function getAnalytics(req, res) {
       clientTenure,
       clientFlighting,
       flightingMonths: sortedMonths,
+      brandOptions,
     });
   } catch (error) {
     console.error('Get analytics error:', error);

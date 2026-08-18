@@ -105,6 +105,9 @@ export default function SpendAnalyticsPage() {
   const [clients, setClients] = useState([]);
   const [agencyId, setAgencyId] = useState('');
   const [clientId, setClientId] = useState('');
+  const [brand, setBrand] = useState(''); // brand drill-down, only when a client is selected
+  const [brandOptions, setBrandOptions] = useState([]); // brands for the selected client (stable across the brand filter)
+  const [agencyOverviewOpen, setAgencyOverviewOpen] = useState(false); // agency target + spend-by-agency collapse when a client is filtered
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
   const [mediumFilter, setMediumFilter] = useState(''); // cross-filter: click a medium to filter channels
@@ -165,6 +168,10 @@ export default function SpendAnalyticsPage() {
     }).catch(() => setClients([]));
   }, [agencyId]);
 
+  // A brand belongs to a client - clear the brand drill-down whenever the client
+  // changes (or is cleared), and drop the stale brand list.
+  useEffect(() => { setBrand(''); if (!clientId) setBrandOptions([]); }, [clientId]);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -175,8 +182,10 @@ export default function SpendAnalyticsPage() {
         if (monthTo) params.monthTo = monthTo;
         if (agencyId) params.agencyId = agencyId;
         if (clientId) params.clientId = clientId;
+        if (brand) params.brand = brand;
         const { data } = await api.get('/database/analytics', { params });
         setData(data);
+        if (clientId) setBrandOptions(data.brandOptions || []);
       } catch {
         setError('Failed to load analytics data.');
         setData(null);
@@ -184,7 +193,7 @@ export default function SpendAnalyticsPage() {
       setLoading(false);
     };
     load();
-  }, [monthFrom, monthTo, agencyId, clientId]);
+  }, [monthFrom, monthTo, agencyId, clientId, brand]);
 
   // Deals & properties for the accessible clients (not month-dependent).
   useEffect(() => {
@@ -217,8 +226,9 @@ export default function SpendAnalyticsPage() {
     if (cmpTo) params.monthTo = cmpTo;
     if (agencyId) params.agencyId = agencyId;
     if (clientId) params.clientId = clientId;
+    if (brand) params.brand = brand;
     api.get('/database/analytics', { params }).then(({ data }) => setCmpData(data)).catch(() => setCmpData(null));
-  }, [compare, cmpFrom, cmpTo, agencyId, clientId]);
+  }, [compare, cmpFrom, cmpTo, agencyId, clientId, brand]);
 
   const chartMonthly = useMemo(() => {
     if (!data?.byMonth) return [];
@@ -657,6 +667,15 @@ export default function SpendAnalyticsPage() {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+            {clientId && brandOptions.length > 0 && (
+              <div className="spa-field">
+                <label>Brand</label>
+                <select className="spa-input" value={brand} onChange={e => setBrand(e.target.value)}>
+                  <option value="">All Brands</option>
+                  {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            )}
             <div className="spa-field">
               <label>From</label>
               <input type="month" className="spa-input" value={monthFrom} onChange={e => setMonthFrom(e.target.value)} />
@@ -665,8 +684,8 @@ export default function SpendAnalyticsPage() {
               <label>To</label>
               <input type="month" className="spa-input" value={monthTo} onChange={e => setMonthTo(e.target.value)} />
             </div>
-            {(agencyId || monthFrom || monthTo) && (
-              <button className="spa-btn" onClick={() => { setAgencyId(''); setClientId(''); setMonthFrom(''); setMonthTo(''); }}>
+            {(agencyId || clientId || brand || monthFrom || monthTo) && (
+              <button className="spa-btn" onClick={() => { setAgencyId(''); setClientId(''); setBrand(''); setMonthFrom(''); setMonthTo(''); }}>
                 <Icon name="x" size={14} /> Clear
               </button>
             )}
@@ -800,8 +819,25 @@ export default function SpendAnalyticsPage() {
             );
           })()}
 
+          {/* When a single client is filtered, the agency-level views (Agency
+              Annual Achievement + Spend by Agency) collapse behind this toggle,
+              since they're not client-specific. Without a client they show as normal. */}
+          {clientId && (canSeeAgencyAch || isSuperAdmin) && (
+            <div
+              className="spa-card"
+              onClick={() => setAgencyOverviewOpen(v => !v)}
+              style={{ padding: '12px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+            >
+              <Icon name={agencyOverviewOpen ? 'chevD' : 'chevR'} size={15} style={{ color: '#6B7790' }} />
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Agency overview</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: '#93A0B5' }}>
+                Agency target &amp; Spend by Agency · click to {agencyOverviewOpen ? 'hide' : 'expand'}
+              </span>
+            </div>
+          )}
+
           {/* Agency-wise Annual Achievement + this-year monthly spend (per accessible agency) */}
-          {canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
+          {(!clientId || agencyOverviewOpen) && canSeeAgencyAch && agencyAch?.agencies?.length > 0 && agencyAch.agencies.map(a => {
             const targetLabel = a.targetRangeLabel ? `${a.targetRangeLabel} Target` : `Upto ${a.uptoMonthLabel || '-'} Target`;
             const bars = [
               { name: 'Budget Forecast', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
@@ -965,8 +1001,8 @@ export default function SpendAnalyticsPage() {
             </div>
           )}
 
-          {/* Spend by Agency (SUPER_ADMIN only) */}
-          {isSuperAdmin && data.byAgency?.length > 0 && (
+          {/* Spend by Agency (SUPER_ADMIN only) - collapses with the agency overview when a client is filtered */}
+          {(!clientId || agencyOverviewOpen) && isSuperAdmin && data.byAgency?.length > 0 && (
             <div className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
               <h3 className="spa-ctitle">Spend by Agency</h3>
               <p className="spa-csub" style={{ marginBottom: 12 }}>Committed value across agencies</p>
