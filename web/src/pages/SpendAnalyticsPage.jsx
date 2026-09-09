@@ -692,7 +692,7 @@ export default function SpendAnalyticsPage() {
                   <Icon name="chevD" size={13} />
                 </button>
                 {brandMenuOpen && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 40, marginTop: 4, minWidth: 220, maxHeight: 300, overflow: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,31,61,.14)', padding: 8 }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 40, marginTop: 4, minWidth: 220, maxHeight: 300, overflow: 'auto', background: 'var(--card, #fff)', color: 'var(--ink, #16243C)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,31,61,.14)', padding: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px 8px' }}>
                       <button type="button" onClick={() => setBrands(brandOptions.slice())} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--coral-700, #C44A18)', cursor: 'pointer', fontWeight: 600 }}>Select all</button>
                       <button type="button" onClick={() => setBrands([])} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>Clear</button>
