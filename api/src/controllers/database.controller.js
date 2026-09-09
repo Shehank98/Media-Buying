@@ -244,7 +244,12 @@ export async function getAnalytics(req, res) {
       });
       brandOptions = brandRows.map(b => b.brandName).filter(Boolean);
     }
-    if (brand) where.brandName = brand;
+    // `brand` may be a single value or a comma-separated list (multi-select).
+    if (brand) {
+      const brands = String(brand).split(',').map(b => b.trim()).filter(Boolean);
+      if (brands.length === 1) where.brandName = brands[0];
+      else if (brands.length > 1) where.brandName = { in: brands };
+    }
 
     const logs = await prisma.scheduleLog.findMany({
       where,
