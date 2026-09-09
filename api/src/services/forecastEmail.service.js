@@ -127,8 +127,10 @@ export async function sendForecastReminderEmails() {
       where: { year, month, clientId: { in: rosterIds } },
     });
     const submittedIds = new Set(submitted.map(s => s.clientId));
+    // A head who has forecast even ONE client is treated as having submitted -
+    // only remind heads who have entered nothing at all for the month.
+    if (submittedIds.size > 0) continue;
     const pending = head.clients.filter(c => !submittedIds.has(c.id));
-    if (!pending.length) continue; // all forecast → no reminder
     eligible++;
     try {
       await sendEmail({
@@ -147,7 +149,7 @@ export async function sendForecastReminderEmails() {
       console.error(`[forecast-email] reminder email to ${head.email} failed:`, err.message);
     }
   }
-  console.log(`[forecast-email] forecast-reminder sent to ${sent}/${eligible} Hub head(s) with pending forecasts for ${label}`);
+  console.log(`[forecast-email] forecast-reminder sent to ${sent}/${eligible} Hub head(s) who submitted nothing for ${label}`);
   return { sent, eligible, month: label };
 }
 
