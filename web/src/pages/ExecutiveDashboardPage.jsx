@@ -849,6 +849,9 @@ export default function ExecutiveDashboardPage() {
   const [agencyCompLoading, setAgencyCompLoading] = useState(true);
   const [agencyCompValueType, setAgencyCompValueType] = useState('scheduleValue');
 
+  const [agencyRevenue, setAgencyRevenue] = useState([]);
+  const [agencyRevLoading, setAgencyRevLoading] = useState(true);
+
   const [mediumSplit, setMediumSplit] = useState(null);
   const [mediumLoading, setMediumLoading] = useState(true);
 
@@ -930,6 +933,15 @@ export default function ExecutiveDashboardPage() {
       .then(r => setAgencyComparison(r.data || []))
       .catch(() => setAgencyComparison([]))
       .finally(() => setAgencyCompLoading(false));
+  }, [year]);
+
+  // Agency revenue (admin-entered per agency per month + per-agency annual target)
+  useEffect(() => {
+    setAgencyRevLoading(true);
+    api.get('/analytics/dashboard/agency-revenue', { params: year ? { year } : {} })
+      .then(r => setAgencyRevenue(r.data?.agencies || []))
+      .catch(() => setAgencyRevenue([]))
+      .finally(() => setAgencyRevLoading(false));
   }, [year]);
 
   // Annual achievement + monthly spend (with forecast for the remote month)
@@ -1021,6 +1033,21 @@ export default function ExecutiveDashboardPage() {
       agencyComparison.forEach((ag, i) => {
         const m = (ag.monthly || []).find(x => x.month === month);
         row[ag.agencyName] = m ? m[agencyCompValueType] : 0;
+      });
+      return row;
+    });
+  })();
+
+  const agencyRevChartData = (() => {
+    if (!agencyRevenue.length) return [];
+    const monthSet = new Set();
+    agencyRevenue.forEach(a => (a.monthly || []).forEach(m => monthSet.add(m.month)));
+    const months = Array.from(monthSet).sort().slice(-12);
+    return months.map(month => {
+      const row = { month: fmtMonth(month) };
+      agencyRevenue.forEach((ag) => {
+        const m = (ag.monthly || []).find(x => x.month === month);
+        row[ag.agencyName] = m ? m.revenue : 0;
       });
       return row;
     });
@@ -1489,6 +1516,64 @@ export default function ExecutiveDashboardPage() {
                       </div>
                     ) : (
                       <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>No target set (Admin → Agencies)</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 4b: Agency Revenue (admin-entered, from Group Revenue) */}
+      <div className="dash-section">
+        <div className="chart-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div>
+              <div className="chart-card-title">Agency Revenue</div>
+              <div className="chart-card-sub">Monthly revenue per agency · {year ? year : `${new Date().getFullYear()} (Jan to latest month)`}</div>
+            </div>
+            <div className="toggle-group">
+              <button className="toggle-btn active">Revenue</button>
+            </div>
+          </div>
+          {agencyRevLoading ? <Skeleton h={260} /> : !agencyRevChartData.length ? <ChartEmpty /> : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={agencyRevChartData} barCategoryGap="25%">
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
+                <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
+                <Tooltip content={<CustomTooltipLKR />} />
+                <Legend />
+                {agencyRevenue.map((ag, i) => (
+                  <Bar key={ag.agencyId} dataKey={ag.agencyName} fill={AGENCY_COLORS[i % AGENCY_COLORS.length]} radius={[3, 3, 0, 0]} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {!agencyRevLoading && agencyRevenue.length > 0 && (
+            <div className="agency-comp-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center', marginTop: 18 }}>
+              {agencyRevenue.map((ag, i) => {
+                const color = AGENCY_COLORS[i % AGENCY_COLORS.length];
+                const pct = ag.targetPct;
+                const barColor = pct == null ? color : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
+                return (
+                  <div key={ag.agencyId} className="agency-sum-card" style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)' }}>
+                    <div className="agency-sum-name" style={{ fontWeight: 750, color: 'var(--ink)', marginBottom: 10 }}>{ag.agencyName}</div>
+                    <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 10 }}><span style={{ color: 'var(--muted)' }}>YTD Rev</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdRevenue)}</span></div>
+                    {ag.annualTargetMillions > 0 ? (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+                          <span>Target{ag.targetRangeLabel ? ` (${ag.targetRangeLabel})` : ''}</span>
+                          <span className="mono" style={{ fontWeight: 700, color: barColor }}>{pct == null ? '' : `${pct}%`}</span>
+                        </div>
+                        <div style={{ height: 8, background: '#EEF0F3', borderRadius: 5, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, pct || 0)}%`, height: '100%', background: barColor, borderRadius: 5 }} />
+                        </div>
+                        <div className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, textAlign: 'right' }}>{fmtLKR(ag.ytdRevenue)} / {fmtLKR(ag.targetToDate)}</div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>No revenue target set (Admin → Group Revenue)</div>
                     )}
                   </div>
                 );

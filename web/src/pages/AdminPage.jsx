@@ -235,6 +235,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
   const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
+  const [grAgencyTargets, setGrAgencyTargets] = useState({}); // { agencyId: annual target in LKR millions }
   const [grClients, setGrClients] = useState([]);      // [{ clientId, name, agencyName, headName, amount }]
   const [grClientAmounts, setGrClientAmounts] = useState({}); // { clientId: '12345' }
   const [grClientFinanceAmounts, setGrClientFinanceAmounts] = useState({}); // { clientId: '12345' } Rev. from finance
@@ -1178,6 +1179,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const atgts = {};
+      ags.forEach(a => { atgts[a.agencyId] = a.annualTarget == null ? '' : String(a.annualTarget); });
+      setGrAgencyTargets(atgts);
       const cls = data.clients || [];
       setGrClients(cls);
       const camts = {}; const cfamts = {};
@@ -1189,7 +1193,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setGrClientFinanceAmounts(cfamts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
     } catch {
-      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrClients([]); setGrClientAmounts({}); setGrClientFinanceAmounts({}); setGrRevenueTarget('');
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrAgencyTargets({}); setGrClients([]); setGrClientAmounts({}); setGrClientFinanceAmounts({}); setGrRevenueTarget('');
     } finally {
       setGrLoading(false);
     }
@@ -1360,11 +1364,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
+      const agencyAnnualTargets = {};
+      Object.entries(grAgencyTargets).forEach(([id, v]) => { agencyAnnualTargets[id] = v === '' ? null : Number(v); });
       const clientAmounts = {};
       Object.entries(grClientAmounts).forEach(([id, v]) => { clientAmounts[id] = v === '' ? null : Number(v); });
       const clientFinanceAmounts = {};
       Object.entries(grClientFinanceAmounts).forEach(([id, v]) => { clientFinanceAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, clientAmounts, clientFinanceAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, agencyAnnualTargets, clientAmounts, clientFinanceAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -1375,6 +1381,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const atgts = {};
+      ags.forEach(a => { atgts[a.agencyId] = a.annualTarget == null ? '' : String(a.annualTarget); });
+      setGrAgencyTargets(atgts);
       const cls = data.clients || [];
       setGrClients(cls);
       const camts = {}; const cfamts = {};
@@ -3289,13 +3298,24 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <div style={{ height: 4, borderRadius: 3, background: '#EEF0F3', marginTop: 6, overflow: 'hidden' }}>
                             <div style={{ width: `${Math.min(100, apct)}%`, height: '100%', background: '#1F5BB5', borderRadius: 3 }} />
                           </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                            <label style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Annual target (LKR M)</label>
+                            <input
+                              type="number"
+                              className="input"
+                              value={grAgencyTargets[a.agencyId] ?? ''}
+                              onChange={e => { setGrSavedAt(null); setGrAgencyTargets(m => ({ ...m, [a.agencyId]: e.target.value })); }}
+                              placeholder="e.g. 1412"
+                              style={{ textAlign: 'right', maxWidth: 130, marginLeft: 'auto' }}
+                            />
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
-                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart - no separate billing entry needed.
+                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart - no separate billing entry needed. The <b style={{ color: 'var(--ink)' }}>Annual target (LKR M)</b> per agency drives the Executive Dashboard's <b style={{ color: 'var(--ink)' }}>Agency Revenue</b> cards (yearly figure, prorated over active months).
                 </div>
               </div>
             </div>
