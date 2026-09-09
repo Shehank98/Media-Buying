@@ -3298,24 +3298,13 @@ export default function AdminPage({ initialTab = 'users' }) {
                           <div style={{ height: 4, borderRadius: 3, background: '#EEF0F3', marginTop: 6, overflow: 'hidden' }}>
                             <div style={{ width: `${Math.min(100, apct)}%`, height: '100%', background: '#1F5BB5', borderRadius: 3 }} />
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                            <label style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>Annual target (LKR M)</label>
-                            <input
-                              type="number"
-                              className="input"
-                              value={grAgencyTargets[a.agencyId] ?? ''}
-                              onChange={e => { setGrSavedAt(null); setGrAgencyTargets(m => ({ ...m, [a.agencyId]: e.target.value })); }}
-                              placeholder="e.g. 1412"
-                              style={{ textAlign: 'right', maxWidth: 130, marginLeft: 'auto' }}
-                            />
-                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
-                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart - no separate billing entry needed. The <b style={{ color: 'var(--ink)' }}>Annual target (LKR M)</b> per agency drives the Executive Dashboard's <b style={{ color: 'var(--ink)' }}>Agency Revenue</b> cards (yearly figure, prorated over active months).
+                  Drives the <b style={{ color: 'var(--ink)' }}>Business Units Contribution</b> Revenue donut, and the month total feeds the <b style={{ color: 'var(--ink)' }}>Revenue Achievement</b> chart - no separate billing entry needed.
                 </div>
               </div>
             </div>
@@ -3357,6 +3346,30 @@ export default function AdminPage({ initialTab = 'users' }) {
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
                   The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the Revenue Achievement chart = this ÷ 12 × months elapsed (e.g. an annual 120 → 60 at June). Leave blank to fall back to the prorated Annual Target.
+                </div>
+
+                {/* Per-agency annual revenue target → Executive Dashboard "Agency Revenue" cards */}
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 2 }}>By agency (annual)</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>Each agency's yearly revenue target · ÷ 12 × months elapsed drives the Executive Dashboard <b style={{ color: 'var(--ink)' }}>Agency Revenue</b> cards</div>
+                  {grAgencies.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '4px 0' }}>No agencies found.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {grAgencies.map(a => (
+                        <div key={a.agencyId} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{a.agencyName}</label>
+                          <MoneyInput
+                            className="input"
+                            value={grAgencyTargets[a.agencyId] ?? ''}
+                            onValueChange={v => { setGrSavedAt(null); setGrAgencyTargets(m => ({ ...m, [a.agencyId]: v })); }}
+                            placeholder="Annual (full LKR)"
+                            style={{ textAlign: 'right', maxWidth: 190 }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -1561,7 +1561,7 @@ export default function ExecutiveDashboardPage() {
                   <div key={ag.agencyId} className="agency-sum-card" style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)' }}>
                     <div className="agency-sum-name" style={{ fontWeight: 750, color: 'var(--ink)', marginBottom: 10 }}>{ag.agencyName}</div>
                     <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 10 }}><span style={{ color: 'var(--muted)' }}>YTD Rev</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdRevenue)}</span></div>
-                    {ag.annualTargetMillions > 0 ? (
+                    {ag.annualTarget > 0 ? (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
                           <span>Target{ag.targetRangeLabel ? ` (${ag.targetRangeLabel})` : ''}</span>

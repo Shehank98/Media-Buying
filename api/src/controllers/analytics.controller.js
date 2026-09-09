@@ -337,7 +337,7 @@ export async function getAgencyRevenue(req, res) {
       }),
       prisma.agencyRevenueTarget.findMany({ where: { year: targetYear, ...(ids ? { agencyId: { in: ids } } : {}) } }),
     ]);
-    const targetByAgency = new Map(targetRows.map(r => [r.agencyId, Number(r.totalTargetMillions)]));
+    const targetByAgency = new Map(targetRows.map(r => [r.agencyId, Number(r.totalTargetAmount)]));
     const revByAgency = new Map();
     for (const r of revRows) {
       if (!revByAgency.has(r.agencyId)) revByAgency.set(r.agencyId, []);
@@ -347,28 +347,22 @@ export async function getAgencyRevenue(req, res) {
     const result = agencies.map((agency) => {
       const months = (revByAgency.get(agency.id) || []).slice().sort((a, b) => a.month - b.month);
       const ytd = months.reduce((s, m) => s + m.amount, 0);
-      const targetMillions = targetByAgency.get(agency.id) || 0;
-      const firstMonth = months.length ? months[0].month : null;
-      const latestMonth = months.length ? months[months.length - 1].month : null;
-      // Prorate the annual target over the agency's ACTIVE months (first month
-      // with revenue → Dec), and count only its elapsed active months so far -
-      // same method as getAgencyComparison, so a mid-year starter is fair.
-      const activeMonthsInYear = firstMonth != null ? (12 - firstMonth + 1) : 0;
-      const monthsElapsedActive = firstMonth != null ? (latestMonth - firstMonth + 1) : 0;
-      const targetToDate = targetMillions > 0 && activeMonthsInYear > 0 && monthsElapsedActive > 0
-        ? Number(((targetMillions / activeMonthsInYear) * monthsElapsedActive * 1e6).toFixed(2)) : 0;
+      const targetAmount = targetByAgency.get(agency.id) || 0; // full LKR annual
+      const latestMonth = months.length ? months[months.length - 1].month : null; // 1-12
+      // Target-to-date = annual ÷ 12 × months elapsed (Jan-based), i.e. the
+      // cumulative target up to the latest month that has revenue.
+      const targetToDate = targetAmount > 0 && latestMonth
+        ? Number(((targetAmount / 12) * latestMonth).toFixed(2)) : 0;
       const targetPct = targetToDate > 0 ? Number(((ytd / targetToDate) * 100).toFixed(1)) : null;
       return {
         agencyId: agency.id,
         agencyName: agency.name,
         ytdRevenue: Number(ytd.toFixed(2)),
-        annualTargetMillions: targetMillions,
+        annualTarget: targetAmount,
         targetToDate,
         targetPct,
-        targetRangeLabel: firstMonth != null && latestMonth != null
-          ? (firstMonth === latestMonth
-            ? `${MONTH_NAMES[firstMonth - 1]}`
-            : `${MONTH_NAMES[firstMonth - 1]}–${MONTH_NAMES[latestMonth - 1]}`)
+        targetRangeLabel: latestMonth
+          ? (latestMonth === 1 ? 'Jan' : `Jan–${MONTH_NAMES[latestMonth - 1]}`)
           : null,
         monthly: months.map(m => ({ month: `${targetYear}-${String(m.month).padStart(2, '0')}`, revenue: m.amount })),
       };

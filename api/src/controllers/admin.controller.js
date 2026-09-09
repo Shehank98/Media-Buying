@@ -1091,8 +1091,8 @@ export async function listGroupRevenue(req, res) {
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
-    // Per-agency ANNUAL revenue target (LKR millions) for the year.
-    const targetByAgency = new Map(agencyTargetRows.map((r) => [r.agencyId, Number(r.totalTargetMillions)]));
+    // Per-agency ANNUAL revenue target (full LKR) for the year.
+    const targetByAgency = new Map(agencyTargetRows.map((r) => [r.agencyId, Number(r.totalTargetAmount)]));
     // Per-client revenue row (Revenue + Rev. from finance + head verification).
     const clientRevBy = new Map(clientRevRows.map((r) => [r.clientId, r]));
     const headByClient = await accountManagerByClient(rosterClients.map((c) => c.id));
@@ -1126,8 +1126,8 @@ export async function listGroupRevenue(req, res) {
       clients,
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
-      // `annualTarget` = per-agency yearly revenue target in LKR millions (drives
-      // the Executive Dashboard Agency Revenue cards); null when unset.
+      // `annualTarget` = per-agency yearly revenue target in FULL LKR (drives the
+      // Executive Dashboard Agency Revenue cards); null when unset.
       agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null, annualTarget: targetByAgency.has(a.id) ? targetByAgency.get(a.id) : null })),
       // Single ANNUAL revenue target for the whole year (admin enters the yearly
       // figure). The Revenue Achievement Target bar = this ÷ 12 × months elapsed.
@@ -1200,7 +1200,7 @@ export async function setGroupRevenue(req, res) {
         }
       }
     }
-    // Per-agency ANNUAL revenue target (LKR millions), keyed by year (month is
+    // Per-agency ANNUAL revenue target (full LKR), keyed by year (month is
     // ignored). Blank/0/negative clears it. Drives the Agency Revenue cards.
     if (hasAgencyTargets) {
       const agencies = await prisma.agency.findMany({ select: { id: true } });
@@ -1214,8 +1214,8 @@ export async function setGroupRevenue(req, res) {
         } else {
           ops.push(prisma.agencyRevenueTarget.upsert({
             where: { agencyId_year: { agencyId, year: y } },
-            update: { totalTargetMillions: num, createdById: req.user?.id ?? null },
-            create: { agencyId, year: y, totalTargetMillions: num, createdById: req.user?.id ?? null },
+            update: { totalTargetAmount: num, createdById: req.user?.id ?? null },
+            create: { agencyId, year: y, totalTargetAmount: num, createdById: req.user?.id ?? null },
           }));
         }
       }

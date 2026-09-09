@@ -655,18 +655,18 @@ model AgencyAnnualTarget {
   @@map("agency_annual_targets")
 }
 
-// Per-agency ANNUAL revenue target (LKR millions), one per agency per year.
-// Entered in Admin → Group Revenue ("by agency"). Drives the Executive
-// Dashboard's Agency Revenue cards (target = annual ÷ active months × months
-// elapsed). Distinct from AgencyAnnualTarget, which is a SPEND target.
+// Per-agency ANNUAL revenue target (FULL LKR), one per agency per year. Entered
+// in Admin → Group Revenue ("Annual revenue target" card). Drives the Executive
+// Dashboard's Agency Revenue cards (target-to-date = annual ÷ 12 × months
+// elapsed). Distinct from AgencyAnnualTarget, which is a SPEND target in millions.
 model AgencyRevenueTarget {
-  id                  Int      @id @default(autoincrement())
-  agencyId            Int      @map("agency_id")
-  year                Int
-  totalTargetMillions Decimal  @map("total_target_millions") @db.Decimal(14, 2)
-  createdById         Int?     @map("created_by_id")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                Int      @id @default(autoincrement())
+  agencyId          Int      @map("agency_id")
+  year              Int
+  totalTargetAmount Decimal  @map("total_target_amount") @db.Decimal(16, 2)
+  createdById       Int?     @map("created_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 
