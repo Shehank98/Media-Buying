@@ -698,7 +698,7 @@ export default function SpendAnalyticsPage() {
                       <button type="button" onClick={() => setBrands([])} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>Clear</button>
                     </div>
                     {brandOptions.map(b => (
-                      <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}>
+                      <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: 13, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink, #16243C)', cursor: 'pointer', borderRadius: 6 }}>
                         <input
                           type="checkbox"
                           checked={brands.includes(b)}
