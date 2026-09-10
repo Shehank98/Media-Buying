@@ -144,6 +144,21 @@ export default function SpendAnalyticsPage() {
       .finally(() => setAgencyAchLoading(false));
   }, [agencyId, canSeeAgencyAch]);
 
+  // Agency-wise Annual REVENUE Achievement (admin-entered revenue vs the per-agency
+  // annual revenue target). Control Room (SUPER_ADMIN) + each agency's Boardroom
+  // (MANAGER) only - not Hub/Desk.
+  const canSeeAgencyRevAch = ['SUPER_ADMIN', 'MANAGER'].includes(user?.role);
+  const [agencyRevAch, setAgencyRevAch] = useState(null);
+  const [agencyRevAchLoading, setAgencyRevAchLoading] = useState(false);
+  useEffect(() => {
+    if (!canSeeAgencyRevAch) { setAgencyRevAch(null); return; }
+    setAgencyRevAchLoading(true);
+    api.get('/analytics/agency-revenue-achievement', { params: agencyId ? { agencyId } : {} })
+      .then(({ data }) => setAgencyRevAch(data))
+      .catch(() => setAgencyRevAch(null))
+      .finally(() => setAgencyRevAchLoading(false));
+  }, [agencyId, canSeeAgencyRevAch]);
+
   const chartMonthlyRef = useRef(null);
   const chartMediumRef = useRef(null);
   const chartMediaGroupRef = useRef(null);
@@ -936,6 +951,65 @@ export default function SpendAnalyticsPage() {
                         <YAxis tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={38} />
                         <Tooltip formatter={v => [`LKR ${Number(v).toFixed(1)}M`, 'Spend']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
                         <Bar dataKey="value" fill="#1F5BB5" radius={[3, 3, 0, 0]} maxBarSize={26} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Agency-wise Annual REVENUE Achievement (Control Room + Boardroom only) */}
+          {(!clientId || agencyOverviewOpen) && canSeeAgencyRevAch && agencyRevAch?.agencies?.length > 0 && agencyRevAch.agencies.map(a => {
+            const targetLabel = a.targetRangeLabel ? `${a.targetRangeLabel} Target` : `Upto ${a.uptoMonthLabel || '-'} Target`;
+            const bars = [
+              { name: 'Budget', actualPart: a.targetMillions, forecastPart: 0, total: a.targetMillions, fill: '#1F5BB5' },
+              { name: targetLabel, actualPart: a.uptoTargetMillions, forecastPart: 0, total: a.uptoTargetMillions, fill: '#9A5B00' },
+              { name: `Actual ${a.actualRangeLabel || ('upto ' + (a.uptoMonthLabel || '-'))}`, actualPart: a.actualMillions, forecastPart: 0, total: a.actualMillions, fill: '#15814B' },
+            ];
+            const pctColor = a.achievementPct == null ? '#6B7790' : a.achievementPct >= 100 ? '#15814B' : a.achievementPct >= 80 ? '#9A5B00' : '#C5391F';
+            return (
+              <div key={`rev-${a.agencyId}`} className="spa-card" style={{ padding: '20px', marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                  <div>
+                    <h3 className="spa-ctitle">{a.agencyName} · Annual Rev Achievement · {agencyRevAch.year}</h3>
+                    <p className="spa-csub">
+                      {a.hasTarget
+                        ? 'Annual revenue target ÷ 12 × months elapsed vs actual revenue · LKR millions'
+                        : 'No annual revenue target set for this agency. Add one in Admin → Group Revenue → Annual revenue target → By agency'}
+                    </p>
+                  </div>
+                  {a.hasTarget && a.achievementPct != null && (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: pctColor, background: pctColor + '18', borderRadius: 8, padding: '5px 11px' }} title={`Actual ${a.actualRangeLabel || ''} vs target through ${a.uptoMonthLabel || ''}`}>
+                      {a.achievementPct}% YTD
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+                  {a.hasTarget && (
+                    <div>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={bars} layout="vertical" margin={{ top: 6, right: 60, bottom: 6, left: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" horizontal={false} />
+                          <XAxis type="number" tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="name" width={128} tick={{ fontSize: 11, fill: '#3B4A63' }} axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(v) => [`LKR ${Number(v).toFixed(1)}M`, 'Revenue']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                          <Bar dataKey="actualPart" stackId="a" shape={<AchActualShape />} maxBarSize={30}>
+                            <LabelList dataKey="total" content={(p) => <AchTotalLabel {...p} />} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div>
+                    <p className="spa-csub" style={{ marginBottom: 6 }}>Revenue this year, monthly · LKR millions</p>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={a.monthly} margin={{ top: 16, right: 12, bottom: 4, left: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F3" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#93A0B5' }} tickLine={false} axisLine={{ stroke: '#E5E8ED' }} interval={0} />
+                        <YAxis tickFormatter={v => `${v}`} tick={{ fontSize: 10.5, fill: '#93A0B5' }} tickLine={false} axisLine={false} width={38} />
+                        <Tooltip formatter={v => [`LKR ${Number(v).toFixed(1)}M`, 'Revenue']} contentStyle={{ borderRadius: 9, border: '1px solid #E5E8ED', fontSize: 12 }} />
+                        <Bar dataKey="value" fill="#15814B" radius={[3, 3, 0, 0]} maxBarSize={26} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

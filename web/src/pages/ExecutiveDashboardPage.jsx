@@ -377,8 +377,8 @@ function AchievementSection({
   };
 
   return (
-    <div className="dash-section">
-      <div className="chart-card">
+    <>
+      <div className="chart-card" style={{ order: 1 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="chart-card-title">Annual Achievement</div>
@@ -427,7 +427,7 @@ function AchievementSection({
         )}
       </div>
 
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 2 }}>
         <div className="chart-card-title">Monthly Spend</div>
         <div className="chart-card-sub">
           Monthly spend (actuals + submitted forecasts) · LKR millions
@@ -450,7 +450,7 @@ function AchievementSection({
         )}
       </div>
 
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 3 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="chart-card-title">Monthly Billing Trend</div>
@@ -535,7 +535,7 @@ function AchievementSection({
         )}
       </div>
 
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 8 }}>
         <div className="chart-card-title">Business Units Contribution</div>
         <div className="chart-card-sub">
           {buBudget && buRevenue
@@ -623,7 +623,7 @@ function AchievementSection({
         )}
       </div>
 
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 4 }}>
         <div className="chart-card-title">Monthly Avg</div>
         <div className="chart-card-sub">Average monthly spend per calendar year, all clients · LKR millions. A partial year is averaged over its months with data (shown under the bar), not 12</div>
         {monthlyAvgByYearLoading ? <div style={{ marginTop: 12 }}><Skeleton h={240} /></div> : mabyYears.length === 0 ? <ChartEmpty /> : (
@@ -672,7 +672,7 @@ function AchievementSection({
       )}
 
       {/* Revenue Achievement - admin billing YTD vs prorated annual target */}
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="chart-card-title">
@@ -709,7 +709,7 @@ function AchievementSection({
       </div>
 
       {/* Channel Commitments - grouped by type: Annual targets first, then Monthly */}
-      <div className="chart-card" style={{ marginTop: 16 }}>
+      <div className="chart-card" style={{ order: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div className="chart-card-title">Channel Commitments</div>
@@ -821,7 +821,7 @@ function AchievementSection({
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1121,8 +1121,16 @@ export default function ExecutiveDashboardPage() {
         import('pptxgenjs'),
         import('html2canvas'),
       ]);
-      const cards = Array.from(document.querySelectorAll('.dash-section .chart-card'))
-        .filter(el => el.querySelector('svg, canvas'));
+      // Effective CSS order of a card = the order on the card itself or the
+      // nearest ordered ancestor (charts are reordered via `order` in .dash-order).
+      const orderVal = (el) => {
+        let n = el;
+        while (n) { const o = n.style && n.style.order; if (o) return parseInt(o) || 0; n = n.parentElement; }
+        return 0;
+      };
+      const cards = Array.from(document.querySelectorAll('.dash-order .chart-card'))
+        .filter(el => el.querySelector('svg, canvas'))
+        .sort((a, b) => orderVal(a) - orderVal(b));
       const pptx = new PptxGenJS();
       pptx.defineLayout({ name: 'ORBIT', width: 13.333, height: 7.5 });
       pptx.layout = 'ORBIT';
@@ -1341,6 +1349,10 @@ export default function ExecutiveDashboardPage() {
         /* Hidden only while capturing chart images for the PPT export. */
         .exporting-pptx .no-export, .exporting-pptx .export-hide { display: none !important; }
         .dash-section { margin-bottom: 36px; }
+        /* Ordered dashboard: charts are sequenced via CSS order (set inline per
+           chart-card / section). Uniform 16px vertical spacing. */
+        .dash-order { display: flex; flex-direction: column; gap: 16px; }
+        .dash-order > .dash-section { margin-bottom: 0; }
         .dash-section-title { font-size: 15px; font-weight: 720; color: var(--ink); margin-bottom: 14px; letter-spacing: -0.3px; }
         .ed-card { background: #fff; border: 1px solid #E5E8ED; border-radius: 14px; box-shadow: 0 1px 2px rgba(15,31,61,.06); }
         .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
@@ -1455,6 +1467,7 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
+      <div className="dash-order">
       {/* Section 1: Annual Achievement + Monthly Spend (forecast) */}
       <AchievementSection
         year={year} setYear={setYear} achievement={achievement} forecastMonthly={forecastMonthly} loading={achLoading}
@@ -1466,12 +1479,12 @@ export default function ExecutiveDashboardPage() {
         trendData={trendData} trendLoading={trendLoading} trendView={trendView} setTrendView={setTrendView}
       />
 
-      {/* Section 4: Agency Performance */}
-      <div className="dash-section">
+      {/* Business Unit Performance (schedule value by agency) */}
+      <div className="dash-section" style={{ order: 5 }}>
         <div className="chart-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <div className="chart-card-title">Agency Performance</div>
+              <div className="chart-card-title">Business Unit Performance</div>
               <div className="chart-card-sub">Monthly billings per agency · {year ? year : `${new Date().getFullYear()} (Jan to latest month)`}</div>
             </div>
             <div className="toggle-group">
@@ -1525,12 +1538,12 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 4b: Agency Revenue (admin-entered, from Group Revenue) */}
-      <div className="dash-section">
+      {/* Business Unit Revenue (admin-entered, from Group Revenue) */}
+      <div className="dash-section" style={{ order: 7 }}>
         <div className="chart-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <div className="chart-card-title">Agency Revenue</div>
+              <div className="chart-card-title">Business Unit Revenue</div>
               <div className="chart-card-sub">Monthly revenue per agency · {year ? year : `${new Date().getFullYear()} (Jan to latest month)`}</div>
             </div>
             <div className="toggle-group">
@@ -1583,8 +1596,8 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 5: Medium Split */}
-      <div className="dash-section">
+      {/* Medium Split */}
+      <div className="dash-section" style={{ order: 9 }}>
         <div className="chart-card">
           <div className="chart-card-title" style={{ marginBottom: 16 }}>Medium Split</div>
           {mediumLoading ? (
@@ -1661,8 +1674,8 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
-      {/* Section 6: Channel-wise Forecast vs monthly target (targets-only) */}
-      <div className="dash-section">
+      {/* Channel-wise Forecast vs monthly target (targets-only) */}
+      <div className="dash-section" style={{ order: 11 }}>
         <div className="chart-card">
           <div style={{ marginBottom: 16 }}>
             <div className="chart-card-title">Channel-wise Forecast (by channel)</div>
@@ -1758,6 +1771,7 @@ export default function ExecutiveDashboardPage() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
     </div>

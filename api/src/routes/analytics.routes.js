@@ -26,6 +26,7 @@ import {
   getChannelForecastVsTarget,
   getRevenueAchievement,
   getAgencyAchievement,
+  getAgencyRevenueAchievement,
   getForecastMonthly,
   getGroupContribution,
   getGroupContributionVariance,
@@ -69,6 +70,7 @@ router.get('/dashboard/channel-commitments', authenticate, requireRole('SUPER_AD
 router.get('/dashboard/channel-forecast-target', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getChannelForecastVsTarget);
 router.get('/dashboard/revenue-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getRevenueAchievement);
 router.get('/agency-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD'), getAgencyAchievement);
+router.get('/agency-revenue-achievement', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyRevenueAchievement);
 router.get('/dashboard/forecast-monthly', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getForecastMonthly);
 router.get('/dashboard/group-contribution', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContribution);
 router.get('/dashboard/group-contribution-variance', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getGroupContributionVariance);

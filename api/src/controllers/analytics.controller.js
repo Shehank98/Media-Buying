@@ -2111,6 +2111,83 @@ export async function getAgencyAchievement(req, res) {
   }
 }
 
+// Agency-wise Annual REVENUE Achievement (mirror of getAgencyAchievement, but on
+// admin-entered revenue: actual = AgencyRevenue per month, target = the per-agency
+// annual AgencyRevenueTarget prorated Jan-based (÷ 12 × months elapsed)). Revenue
+// is actuals-only (no forecast-fill). SUPER_ADMIN sees all agencies; MANAGER only
+// their own (Boardroom). GROUP_HEAD/PLANNER never reach this (route-gated).
+export async function getAgencyRevenueAchievement(req, res) {
+  try {
+    const user = req.user;
+    let agencyIds = await accessibleAgencyIds(user);
+    const dataYears = await availableYears({ isDeleted: false });
+    const year = await resolveYear(req.query.year, dataYears);
+    const years = await selectableYears(dataYears);
+
+    const filterAgency = parseInt(req.query.agencyId);
+    if (Number.isFinite(filterAgency)) {
+      agencyIds = agencyIds.includes(filterAgency) ? [filterAgency] : [];
+    }
+    if (!agencyIds.length) return res.json({ year, availableYears: years, agencies: [] });
+
+    const agencies = await prisma.agency.findMany({
+      where: { id: { in: agencyIds } }, select: { id: true, name: true }, orderBy: { name: 'asc' },
+    });
+    const now = new Date();
+
+    const [revRows, targetRows] = await Promise.all([
+      prisma.agencyRevenue.findMany({ where: { year, agencyId: { in: agencyIds } } }),
+      prisma.agencyRevenueTarget.findMany({ where: { year, agencyId: { in: agencyIds } } }),
+    ]);
+    const targetByAgency = new Map(targetRows.map(r => [r.agencyId, Number(r.totalTargetAmount)])); // full LKR annual
+    const revByAgencyMonth = new Map(); // agencyId -> { month: amount(full LKR) }
+    for (const r of revRows) {
+      if (!revByAgencyMonth.has(r.agencyId)) revByAgencyMonth.set(r.agencyId, {});
+      revByAgencyMonth.get(r.agencyId)[r.month] = Number(r.amount);
+    }
+
+    const rangeLabel = (pm) => pm <= 0 ? null : (pm === 1 ? 'Jan' : `Jan–${MONTH_NAMES[pm - 1]}`);
+
+    const result = agencies.map((ag) => {
+      const byMonth = revByAgencyMonth.get(ag.id) || {};
+      // positionMonth = latest month with revenue (capped at the current calendar
+      // month for the current year, so a future entry never over-paces the target).
+      let positionMonth = 0;
+      for (let m = 1; m <= 12; m++) if (byMonth[m] != null) positionMonth = m;
+      if (year === now.getFullYear()) positionMonth = Math.min(positionMonth, now.getMonth() + 1);
+      let actualSum = 0;
+      for (let m = 1; m <= positionMonth; m++) actualSum += (byMonth[m] || 0);
+
+      const targetAmount = targetByAgency.get(ag.id) || 0; // full LKR annual
+      // Target-to-date = annual ÷ 12 × months elapsed (Jan-based), in millions.
+      const uptoTargetMillions = targetAmount > 0 && positionMonth > 0
+        ? Number(((targetAmount / 12) * positionMonth / 1e6).toFixed(2)) : 0;
+      const actualMillions = Number((actualSum / 1e6).toFixed(2));
+      const achievementPct = uptoTargetMillions > 0 ? Number(((actualMillions / uptoTargetMillions) * 100).toFixed(1)) : null;
+      const monthly = MONTH_NAMES.map((label, i) => ({ monthNum: i + 1, label, value: Number(((byMonth[i + 1] || 0) / 1e6).toFixed(2)) }));
+
+      return {
+        agencyId: ag.id,
+        agencyName: ag.name,
+        hasTarget: targetAmount > 0,
+        targetMillions: Number((targetAmount / 1e6).toFixed(2)),
+        positionMonth,
+        uptoMonthLabel: positionMonth > 0 ? MONTH_NAMES[positionMonth - 1] : null,
+        uptoTargetMillions,
+        actualMillions,
+        actualRangeLabel: rangeLabel(positionMonth),
+        targetRangeLabel: rangeLabel(positionMonth),
+        achievementPct,
+        monthly,
+      };
+    });
+    return res.json({ year, availableYears: years, agencies: result });
+  } catch (error) {
+    console.error('getAgencyRevenueAchievement error:', error);
+    return res.status(500).json({ error: 'Failed to build agency revenue achievement', detail: error.message });
+  }
+}
+
 export async function getForecastMonthly(req, res) {
   try {
     const user = req.user;
