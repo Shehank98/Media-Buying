@@ -1678,7 +1678,7 @@ export default function ExecutiveDashboardPage() {
       <div className="dash-section" style={{ order: 11 }}>
         <div className="chart-card">
           <div style={{ marginBottom: 16 }}>
-            <div className="chart-card-title">Channel-wise Forecast (by channel)</div>
+            <div className="chart-card-title">{channelFcTarget?.monthLabel ? `(${channelFcTarget.monthLabel}) ` : ''}Forecast-Based Channel Commitment</div>
             <div className="chart-card-sub">
               {channelFcTarget?.monthLabel
                 ? <>Forecast for <strong style={{ color: '#16243C', fontWeight: 700 }}>{channelFcTarget.monthLabel} {channelFcTarget.year}</strong> vs monthly target · only channels with a target set</>
