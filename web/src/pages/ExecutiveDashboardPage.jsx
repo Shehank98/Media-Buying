@@ -1349,8 +1349,8 @@ export default function ExecutiveDashboardPage() {
         /* Hidden only while capturing chart images for the PPT export. */
         .exporting-pptx .no-export, .exporting-pptx .export-hide { display: none !important; }
         .dash-section { margin-bottom: 36px; }
-        /* Ordered dashboard: charts are sequenced via CSS `order` (see each
-           chart-card / section's inline order). Uniform 16px vertical spacing. */
+        /* Ordered dashboard: charts are sequenced via CSS order (set inline per
+           chart-card / section). Uniform 16px vertical spacing. */
         .dash-order { display: flex; flex-direction: column; gap: 16px; }
         .dash-order > .dash-section { margin-bottom: 0; }
         .dash-section-title { font-size: 15px; font-weight: 720; color: var(--ink); margin-bottom: 14px; letter-spacing: -0.3px; }
