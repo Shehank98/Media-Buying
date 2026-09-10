@@ -37,6 +37,7 @@ import { financialCors, financialCorsConfigured } from './middleware/financialCo
 import { logError } from './services/errorLog.service.js';
 import { startBackupScheduler } from './services/backup.service.js';
 import { startDataExportScheduler } from './services/dataExport.service.js';
+import { startForecastEmailScheduler } from './services/forecastEmail.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -176,6 +177,9 @@ app.listen(PORT, '0.0.0.0', () => {
   startBackupScheduler();
   // Daily per-tab Excel export to Google Drive (no-op unless configured via env).
   startDataExportScheduler();
+  // Monthly forecast open (15th) + reminder (25th) emails to Hub heads
+  // (no-op unless GOOGLE_SCRIPT_URL is configured).
+  startForecastEmailScheduler();
 });
 
 export default app;

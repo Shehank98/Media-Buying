@@ -13,6 +13,7 @@ import {
   getClientOverview,
   getDashboardSummary,
   getAgencyComparison,
+  getAgencyRevenue,
   getTopClients,
   getTopChannels,
   getMediumSplit,
@@ -51,6 +52,7 @@ router.get('/client-group/:groupId/overview', authenticate, requireRole('SUPER_A
 // Executive Dashboard
 router.get('/dashboard/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getDashboardSummary);
 router.get('/dashboard/agency-comparison', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyComparison);
+router.get('/dashboard/agency-revenue', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyRevenue);
 router.get('/dashboard/top-clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getTopClients);
 router.get('/dashboard/top-channels', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getTopChannels);
 router.get('/dashboard/medium-split', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getMediumSplit);

@@ -119,6 +119,7 @@ model Agency {
   uploadBatches UploadBatch[]
   annualTargets AgencyAnnualTarget[]
   revenues      AgencyRevenue[]
+  revenueTargets AgencyRevenueTarget[]
   clientGroups  ClientGroup[]
 
   @@map("agencies")
@@ -652,6 +653,29 @@ model AgencyAnnualTarget {
   @@unique([agencyId, year])
   @@index([year])
   @@map("agency_annual_targets")
+}
+
+// Per-agency ANNUAL revenue target, one per agency per year. Entered in Admin →
+// Group Revenue ("Annual revenue target" card). Drives the Executive Dashboard's
+// Agency Revenue cards (target-to-date = annual ÷ 12 × months elapsed). Distinct
+// from AgencyAnnualTarget, which is a SPEND target in millions.
+// NOTE: `totalTargetAmount` now holds the FULL LKR figure; the DB column keeps
+// its original name (`total_target_millions`) so no destructive migration is
+// needed on an existing table. Re-save any target entered before this change.
+model AgencyRevenueTarget {
+  id                Int      @id @default(autoincrement())
+  agencyId          Int      @map("agency_id")
+  year              Int
+  totalTargetAmount Decimal  @map("total_target_millions") @db.Decimal(14, 2)
+  createdById       Int?     @map("created_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, year])
+  @@index([year])
+  @@map("agency_revenue_targets")
 }
 
 model MonthlyForecast {

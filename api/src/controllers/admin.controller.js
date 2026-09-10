@@ -1072,12 +1072,13 @@ export async function listGroupRevenue(req, res) {
       year = currentRevenueMonth?.year ?? d.getFullYear();
       month = currentRevenueMonth?.month ?? (d.getMonth() + 1);
     }
-    const [heads, agencies, rows, agencyRows, yearTargetRow, rosterClients, clientRevRows] = await Promise.all([
+    const [heads, agencies, rows, agencyRows, yearTargetRow, agencyTargetRows, rosterClients, clientRevRows] = await Promise.all([
       prisma.user.findMany({ where: { role: 'GROUP_HEAD' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       prisma.groupRevenue.findMany({ where: { year, month } }),
       prisma.agencyRevenue.findMany({ where: { year, month } }),
       prisma.yearRevenueTarget.findUnique({ where: { year } }),
+      prisma.agencyRevenueTarget.findMany({ where: { year } }),
       // EVERY client for the admin by-client revenue grid - including inactive
       // ones (e.g. a paused account like Mobitel) and ones with no Hub head - so
       // the admin can always enter revenue. Inactive/Unassigned are flagged in the
@@ -1090,6 +1091,8 @@ export async function listGroupRevenue(req, res) {
     ]);
     const byHead = new Map(rows.map((r) => [r.headUserId, Number(r.amount)]));
     const byAgency = new Map(agencyRows.map((r) => [r.agencyId, Number(r.amount)]));
+    // Per-agency ANNUAL revenue target (full LKR) for the year.
+    const targetByAgency = new Map(agencyTargetRows.map((r) => [r.agencyId, Number(r.totalTargetAmount)]));
     // Per-client revenue row (Revenue + Rev. from finance + head verification).
     const clientRevBy = new Map(clientRevRows.map((r) => [r.clientId, r]));
     const headByClient = await accountManagerByClient(rosterClients.map((c) => c.id));
@@ -1123,7 +1126,9 @@ export async function listGroupRevenue(req, res) {
       clients,
       // Agency-wise actual billing/revenue for the month - the total is mirrored
       // into MonthlyBilling on save, and the split drives the agency Revenue donut.
-      agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null })),
+      // `annualTarget` = per-agency yearly revenue target in FULL LKR (drives the
+      // Executive Dashboard Agency Revenue cards); null when unset.
+      agencies: agencies.map((a) => ({ agencyId: a.id, agencyName: a.name, amount: byAgency.has(a.id) ? byAgency.get(a.id) : null, annualTarget: targetByAgency.has(a.id) ? targetByAgency.get(a.id) : null })),
       // Single ANNUAL revenue target for the whole year (admin enters the yearly
       // figure). The Revenue Achievement Target bar = this ÷ 12 × months elapsed.
       // Stored in the `monthlyAmount` column, which now holds the annual amount.
@@ -1137,13 +1142,14 @@ export async function listGroupRevenue(req, res) {
 
 export async function setGroupRevenue(req, res) {
   try {
-    const { year, month, amounts, agencyAmounts, clientAmounts, clientFinanceAmounts, annualRevenueTarget } = req.body || {};
+    const { year, month, amounts, agencyAmounts, agencyAnnualTargets, clientAmounts, clientFinanceAmounts, annualRevenueTarget } = req.body || {};
     const y = parseInt(year), m = parseInt(month);
     const hasHeads = amounts && typeof amounts === 'object';
     const hasAgencies = agencyAmounts && typeof agencyAmounts === 'object';
+    const hasAgencyTargets = agencyAnnualTargets && typeof agencyAnnualTargets === 'object';
     const hasClients = (clientAmounts && typeof clientAmounts === 'object') || (clientFinanceAmounts && typeof clientFinanceAmounts === 'object');
     const hasTarget = annualRevenueTarget !== undefined;
-    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasClients && !hasTarget)) {
+    if (!y || !m || m < 1 || m > 12 || (!hasHeads && !hasAgencies && !hasAgencyTargets && !hasClients && !hasTarget)) {
       return res.status(400).json({ error: 'year, month (1-12) and amounts { headUserId } and/or agencyAmounts { agencyId } and/or clientAmounts { clientId } and/or clientFinanceAmounts { clientId } and/or annualRevenueTarget are required' });
     }
     // Only accept ids that are actually GROUP_HEAD users.
@@ -1190,6 +1196,26 @@ export async function setGroupRevenue(req, res) {
             where: { year_month_agencyId: { year: y, month: m, agencyId } },
             update: { amount: num, createdById: req.user?.id ?? null },
             create: { year: y, month: m, agencyId, amount: num, createdById: req.user?.id ?? null },
+          }));
+        }
+      }
+    }
+    // Per-agency ANNUAL revenue target (full LKR), keyed by year (month is
+    // ignored). Blank/0/negative clears it. Drives the Agency Revenue cards.
+    if (hasAgencyTargets) {
+      const agencies = await prisma.agency.findMany({ select: { id: true } });
+      const agencyIds = new Set(agencies.map((a) => a.id));
+      for (const [k, v] of Object.entries(agencyAnnualTargets)) {
+        const agencyId = parseInt(k);
+        if (!agencyIds.has(agencyId)) continue;
+        const num = v === '' || v == null ? null : Number(v);
+        if (num == null || isNaN(num) || num <= 0) {
+          ops.push(prisma.agencyRevenueTarget.deleteMany({ where: { agencyId, year: y } }));
+        } else {
+          ops.push(prisma.agencyRevenueTarget.upsert({
+            where: { agencyId_year: { agencyId, year: y } },
+            update: { totalTargetAmount: num, createdById: req.user?.id ?? null },
+            create: { agencyId, year: y, totalTargetAmount: num, createdById: req.user?.id ?? null },
           }));
         }
       }

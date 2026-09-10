@@ -12,6 +12,8 @@
  *   Reset:    { type: "reset",    to, name, resetLink }
  *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
  *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
+ *   Forecast open:     { type: "forecast-open",     to, cc:[...], name, monthLabel, clientCount, loginUrl }
+ *   Forecast reminder: { type: "forecast-reminder", to, cc:[...], name, monthLabel, pendingCount, totalCount, pendingClients:[...], loginUrl }
  */
 
 var BRAND_NAME = "Ogilvy Orbit";
@@ -44,6 +46,10 @@ function doPost(e) {
       sendReminderEmail(data);
     } else if (data.type === "package") {
       sendPackageEmail(data);
+    } else if (data.type === "forecast-open") {
+      sendForecastOpenEmail(data);
+    } else if (data.type === "forecast-reminder") {
+      sendForecastReminderEmail(data);
     } else if (data.type === "requisition") {
       sendRequisitionEmail(data);
     } else {
@@ -346,6 +352,107 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
       'Sign in with your agency credentials to view the full package.');
 
   return emailShell(packageName, inner);
+}
+
+// ─── Forecast open (15th) ─────────────────────────────────────────────────────
+// Sent when the forecasting window rolls over to a new month: invites the Hub
+// head to enter the upcoming month's per-channel allocations.
+function sendForecastOpenEmail(data) {
+  var to          = data.to;
+  var cc          = (data.cc || []).filter(function (e) { return e && e !== to; });
+  var name        = data.name        || "Hub Head";
+  var monthLabel  = data.monthLabel  || "next month";
+  var clientCount = data.clientCount || 0;
+  var loginUrl    = data.loginUrl    || "https://your-app.railway.app";
+
+  var subject = "Forecasting open: submit your " + monthLabel + " forecast";
+
+  var inner =
+    emailHeader('Forecasting is open', 'Time to plan ' + escHtml(monthLabel)) +
+    bodyOpen() +
+      '<p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.7;">' +
+        'Hi <strong>' + escHtml(name) + '</strong>,<br><br>' +
+        'The forecasting window for <strong>' + escHtml(monthLabel) + '</strong> is now open. Please log in and enter the per-channel forecast for each of your accounts' +
+        (clientCount ? ' (<strong>' + clientCount + '</strong> client' + (clientCount === 1 ? '' : 's') + ' assigned to you)' : '') + '.' +
+      '</p>' +
+
+      '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
+        '<tr><td style="background:#FDF1EB;border:1px solid #F6D2BF;border-left:4px solid ' + C_CORAL + ';border-radius:11px;padding:16px 20px;">' +
+          '<p style="margin:0;color:' + C_CORAL_D + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Forecast month</p>' +
+          '<p style="margin:5px 0 0;color:' + C_INK + ';font-size:20px;font-weight:700;">' + escHtml(monthLabel) + '</p>' +
+        '</td></tr>' +
+      '</table>' +
+
+      ctaButton(loginUrl, 'Enter forecast &rarr;') +
+      spacer(28) +
+
+      callout('amber', '&#9200;', 'Finalise before the 15th',
+        'The per-channel breakdown should be completed before the 15th, when the window rolls over to the following month.') +
+    bodyClose() +
+    emailFooter(
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated forecasting notice. Please do not reply.',
+      'You are receiving this because you are a Hub head with assigned accounts.');
+
+  var html    = emailShell('Forecasting is open', inner);
+  var options = { name: FROM_NAME, htmlBody: html };
+  if (cc.length) options.cc = cc.join(",");
+  GmailApp.sendEmail(to, subject, stripTags(html), options);
+}
+
+// ─── Forecast reminder (25th) ─────────────────────────────────────────────────
+// Sent only to Hub heads who still have accounts without a submitted forecast
+// for the upcoming month; lists the pending clients.
+function sendForecastReminderEmail(data) {
+  var to             = data.to;
+  var cc             = (data.cc || []).filter(function (e) { return e && e !== to; });
+  var name           = data.name           || "Hub Head";
+  var monthLabel     = data.monthLabel     || "next month";
+  var pendingCount   = data.pendingCount   || 0;
+  var totalCount     = data.totalCount     || 0;
+  var pendingClients = data.pendingClients || [];
+  var loginUrl       = data.loginUrl       || "https://your-app.railway.app";
+
+  var subject = "Reminder: " + pendingCount + " forecast" + (pendingCount === 1 ? "" : "s") +
+                " still pending for " + monthLabel;
+
+  var listRows = "";
+  for (var i = 0; i < pendingClients.length; i++) {
+    listRows +=
+      '<tr><td style="padding:9px 18px;border-top:1px solid ' + C_LINE + ';color:' + C_INK + ';font-size:13px;">' +
+        escHtml(pendingClients[i]) +
+      '</td></tr>';
+  }
+
+  var inner =
+    emailHeader('Forecast reminder', pendingCount + ' of ' + totalCount + ' accounts still pending for ' + escHtml(monthLabel)) +
+    bodyOpen() +
+      '<p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.7;">' +
+        'Hi <strong>' + escHtml(name) + '</strong>,<br><br>' +
+        'The following account' + (pendingCount === 1 ? ' does' : 's do') + ' not yet have a forecast submitted for <strong>' + escHtml(monthLabel) + '</strong>. ' +
+        'Please log in and complete ' + (pendingCount === 1 ? 'it' : 'them') + '.' +
+      '</p>' +
+
+      (listRows
+        ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:28px;border-collapse:separate;overflow:hidden;">' +
+            '<tr><td style="padding:11px 18px;color:' + C_MUTED + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Pending accounts</td></tr>' +
+            listRows +
+          '</table>'
+        : '') +
+
+      ctaButton(loginUrl, 'Complete forecast &rarr;') +
+      spacer(28) +
+
+      callout('green', '&#9989;', 'Already submitted some?',
+        'Accounts you have already forecast for ' + escHtml(monthLabel) + ' are not listed above - only the pending ones remain.') +
+    bodyClose() +
+    emailFooter(
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated forecasting reminder. Please do not reply.',
+      'You are receiving this because you have accounts with a pending forecast.');
+
+  var html    = emailShell('Forecast reminder', inner);
+  var options = { name: FROM_NAME, htmlBody: html };
+  if (cc.length) options.cc = cc.join(",");
+  GmailApp.sendEmail(to, subject, stripTags(html), options);
 }
 
 // ─── Media Buying Requisition (MBR) ─────────────────────────────────────────

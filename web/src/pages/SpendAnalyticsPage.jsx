@@ -105,8 +105,11 @@ export default function SpendAnalyticsPage() {
   const [clients, setClients] = useState([]);
   const [agencyId, setAgencyId] = useState('');
   const [clientId, setClientId] = useState('');
-  const [brand, setBrand] = useState(''); // brand drill-down, only when a client is selected
+  const [brands, setBrands] = useState([]); // brand drill-down (multi-select), only when a client is selected
   const [brandOptions, setBrandOptions] = useState([]); // brands for the selected client (stable across the brand filter)
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const brandMenuRef = useRef(null);
+  const brandParam = brands.join(','); // comma-separated for the API + effect deps
   const [agencyOverviewOpen, setAgencyOverviewOpen] = useState(false); // agency target + spend-by-agency collapse when a client is filtered
   const [monthFrom, setMonthFrom] = useState('');
   const [monthTo, setMonthTo] = useState('');
@@ -170,7 +173,14 @@ export default function SpendAnalyticsPage() {
 
   // A brand belongs to a client - clear the brand drill-down whenever the client
   // changes (or is cleared), and drop the stale brand list.
-  useEffect(() => { setBrand(''); if (!clientId) setBrandOptions([]); }, [clientId]);
+  useEffect(() => { setBrands([]); setBrandMenuOpen(false); if (!clientId) setBrandOptions([]); }, [clientId]);
+
+  // Close the brand multi-select on outside click.
+  useEffect(() => {
+    const onDoc = (e) => { if (brandMenuRef.current && !brandMenuRef.current.contains(e.target)) setBrandMenuOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -182,7 +192,7 @@ export default function SpendAnalyticsPage() {
         if (monthTo) params.monthTo = monthTo;
         if (agencyId) params.agencyId = agencyId;
         if (clientId) params.clientId = clientId;
-        if (brand) params.brand = brand;
+        if (brandParam) params.brand = brandParam;
         const { data } = await api.get('/database/analytics', { params });
         setData(data);
         if (clientId) setBrandOptions(data.brandOptions || []);
@@ -193,7 +203,7 @@ export default function SpendAnalyticsPage() {
       setLoading(false);
     };
     load();
-  }, [monthFrom, monthTo, agencyId, clientId, brand]);
+  }, [monthFrom, monthTo, agencyId, clientId, brandParam]);
 
   // Deals & properties for the accessible clients (not month-dependent).
   useEffect(() => {
@@ -226,9 +236,9 @@ export default function SpendAnalyticsPage() {
     if (cmpTo) params.monthTo = cmpTo;
     if (agencyId) params.agencyId = agencyId;
     if (clientId) params.clientId = clientId;
-    if (brand) params.brand = brand;
+    if (brandParam) params.brand = brandParam;
     api.get('/database/analytics', { params }).then(({ data }) => setCmpData(data)).catch(() => setCmpData(null));
-  }, [compare, cmpFrom, cmpTo, agencyId, clientId, brand]);
+  }, [compare, cmpFrom, cmpTo, agencyId, clientId, brandParam]);
 
   const chartMonthly = useMemo(() => {
     if (!data?.byMonth) return [];
@@ -668,12 +678,37 @@ export default function SpendAnalyticsPage() {
               </select>
             </div>
             {clientId && brandOptions.length > 0 && (
-              <div className="spa-field">
+              <div className="spa-field" ref={brandMenuRef} style={{ position: 'relative' }}>
                 <label>Brand</label>
-                <select className="spa-input" value={brand} onChange={e => setBrand(e.target.value)}>
-                  <option value="">All Brands</option>
-                  {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+                <button
+                  type="button"
+                  className="spa-input"
+                  onClick={() => setBrandMenuOpen(o => !o)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {brands.length === 0 ? 'All Brands' : brands.length === 1 ? brands[0] : `${brands.length} brands`}
+                  </span>
+                  <Icon name="chevD" size={13} />
+                </button>
+                {brandMenuOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 40, marginTop: 4, minWidth: 220, maxHeight: 300, overflow: 'auto', background: 'var(--card, #fff)', color: 'var(--ink, #16243C)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,31,61,.14)', padding: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px 8px' }}>
+                      <button type="button" onClick={() => setBrands(brandOptions.slice())} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--coral-700, #C44A18)', cursor: 'pointer', fontWeight: 600 }}>Select all</button>
+                      <button type="button" onClick={() => setBrands([])} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>Clear</button>
+                    </div>
+                    {brandOptions.map(b => (
+                      <label key={b} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', fontSize: 13, fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink, #16243C)', cursor: 'pointer', borderRadius: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={brands.includes(b)}
+                          onChange={() => setBrands(prev => prev.includes(b) ? prev.filter(x => x !== b) : [...prev, b])}
+                        />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div className="spa-field">
@@ -684,8 +719,8 @@ export default function SpendAnalyticsPage() {
               <label>To</label>
               <input type="month" className="spa-input" value={monthTo} onChange={e => setMonthTo(e.target.value)} />
             </div>
-            {(agencyId || clientId || brand || monthFrom || monthTo) && (
-              <button className="spa-btn" onClick={() => { setAgencyId(''); setClientId(''); setBrand(''); setMonthFrom(''); setMonthTo(''); }}>
+            {(agencyId || clientId || brands.length || monthFrom || monthTo) && (
+              <button className="spa-btn" onClick={() => { setAgencyId(''); setClientId(''); setBrands([]); setMonthFrom(''); setMonthTo(''); }}>
                 <Icon name="x" size={14} /> Clear
               </button>
             )}

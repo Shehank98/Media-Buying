@@ -235,6 +235,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [grAmounts, setGrAmounts] = useState({});      // { headUserId: '12345' }
   const [grAgencies, setGrAgencies] = useState([]);    // [{ agencyId, agencyName, amount }]
   const [grAgencyAmounts, setGrAgencyAmounts] = useState({}); // { agencyId: '12345' }
+  const [grAgencyTargets, setGrAgencyTargets] = useState({}); // { agencyId: annual target in LKR millions }
   const [grClients, setGrClients] = useState([]);      // [{ clientId, name, agencyName, headName, amount }]
   const [grClientAmounts, setGrClientAmounts] = useState({}); // { clientId: '12345' }
   const [grClientFinanceAmounts, setGrClientFinanceAmounts] = useState({}); // { clientId: '12345' } Rev. from finance
@@ -1178,6 +1179,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const atgts = {};
+      ags.forEach(a => { atgts[a.agencyId] = a.annualTarget == null ? '' : String(a.annualTarget); });
+      setGrAgencyTargets(atgts);
       const cls = data.clients || [];
       setGrClients(cls);
       const camts = {}; const cfamts = {};
@@ -1189,7 +1193,7 @@ export default function AdminPage({ initialTab = 'users' }) {
       setGrClientFinanceAmounts(cfamts);
       setGrRevenueTarget(data.annualRevenueTarget == null ? '' : String(data.annualRevenueTarget));
     } catch {
-      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrClients([]); setGrClientAmounts({}); setGrClientFinanceAmounts({}); setGrRevenueTarget('');
+      setGrHeads([]); setGrAmounts({}); setGrAgencies([]); setGrAgencyAmounts({}); setGrAgencyTargets({}); setGrClients([]); setGrClientAmounts({}); setGrClientFinanceAmounts({}); setGrRevenueTarget('');
     } finally {
       setGrLoading(false);
     }
@@ -1360,11 +1364,13 @@ export default function AdminPage({ initialTab = 'users' }) {
       Object.entries(grAmounts).forEach(([id, v]) => { amounts[id] = v === '' ? null : Number(v); });
       const agencyAmounts = {};
       Object.entries(grAgencyAmounts).forEach(([id, v]) => { agencyAmounts[id] = v === '' ? null : Number(v); });
+      const agencyAnnualTargets = {};
+      Object.entries(grAgencyTargets).forEach(([id, v]) => { agencyAnnualTargets[id] = v === '' ? null : Number(v); });
       const clientAmounts = {};
       Object.entries(grClientAmounts).forEach(([id, v]) => { clientAmounts[id] = v === '' ? null : Number(v); });
       const clientFinanceAmounts = {};
       Object.entries(grClientFinanceAmounts).forEach(([id, v]) => { clientFinanceAmounts[id] = v === '' ? null : Number(v); });
-      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, clientAmounts, clientFinanceAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
+      const { data } = await api.post('/admin/group-revenue', { year: grYear, month: grMonth, amounts, agencyAmounts, agencyAnnualTargets, clientAmounts, clientFinanceAmounts, annualRevenueTarget: grRevenueTarget === '' ? null : Number(grRevenueTarget) });
       const heads = data.heads || [];
       setGrHeads(heads);
       const amts = {};
@@ -1375,6 +1381,9 @@ export default function AdminPage({ initialTab = 'users' }) {
       const aamts = {};
       ags.forEach(a => { aamts[a.agencyId] = a.amount == null ? '' : String(a.amount); });
       setGrAgencyAmounts(aamts);
+      const atgts = {};
+      ags.forEach(a => { atgts[a.agencyId] = a.annualTarget == null ? '' : String(a.annualTarget); });
+      setGrAgencyTargets(atgts);
       const cls = data.clients || [];
       setGrClients(cls);
       const camts = {}; const cfamts = {};
@@ -3337,6 +3346,30 @@ export default function AdminPage({ initialTab = 'users' }) {
                 )}
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
                   The yellow <b style={{ color: 'var(--ink)' }}>Target</b> bar on the Revenue Achievement chart = this ÷ 12 × months elapsed (e.g. an annual 120 → 60 at June). Leave blank to fall back to the prorated Annual Target.
+                </div>
+
+                {/* Per-agency annual revenue target → Executive Dashboard "Agency Revenue" cards */}
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 2 }}>By agency (annual)</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>Each agency's yearly revenue target · ÷ 12 × months elapsed drives the Executive Dashboard <b style={{ color: 'var(--ink)' }}>Agency Revenue</b> cards</div>
+                  {grAgencies.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '4px 0' }}>No agencies found.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {grAgencies.map(a => (
+                        <div key={a.agencyId} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{a.agencyName}</label>
+                          <MoneyInput
+                            className="input"
+                            value={grAgencyTargets[a.agencyId] ?? ''}
+                            onValueChange={v => { setGrSavedAt(null); setGrAgencyTargets(m => ({ ...m, [a.agencyId]: v })); }}
+                            placeholder="Annual (full LKR)"
+                            style={{ textAlign: 'right', maxWidth: 190 }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

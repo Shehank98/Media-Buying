@@ -306,6 +306,75 @@ export async function getAgencyComparison(req, res) {
   }
 }
 
+// Agency-wise REVENUE performance for the Executive Dashboard - the revenue
+// mirror of getAgencyComparison. Revenue is admin-entered per agency per month
+// (AgencyRevenue, from Group Revenue → "by agency"); the per-agency ANNUAL
+// target is AgencyRevenueTarget (LKR millions). Cards show YTD revenue vs the
+// target prorated over the agency's active months, like Agency Performance.
+export async function getAgencyRevenue(req, res) {
+  try {
+    const user = req.user;
+    const ids = await agencyIdsForUser(user); // null = unrestricted
+    const agencyWhere = ids ? { id: { in: ids } } : {};
+    const agencies = await prisma.agency.findMany({ where: agencyWhere, orderBy: { name: 'asc' } });
+
+    // Anchor to the selected year, or the latest year that has any agency
+    // revenue across the accessible agencies.
+    let targetYear = parseInt(req.query.year);
+    if (!(targetYear >= 2000)) {
+      const latest = await prisma.agencyRevenue.findFirst({
+        where: ids ? { agencyId: { in: ids } } : undefined,
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        select: { year: true },
+      });
+      targetYear = latest ? latest.year : new Date().getFullYear();
+    }
+
+    const [revRows, targetRows] = await Promise.all([
+      prisma.agencyRevenue.findMany({
+        where: { year: targetYear, ...(ids ? { agencyId: { in: ids } } : {}) },
+        orderBy: [{ agencyId: 'asc' }, { month: 'asc' }],
+      }),
+      prisma.agencyRevenueTarget.findMany({ where: { year: targetYear, ...(ids ? { agencyId: { in: ids } } : {}) } }),
+    ]);
+    const targetByAgency = new Map(targetRows.map(r => [r.agencyId, Number(r.totalTargetAmount)]));
+    const revByAgency = new Map();
+    for (const r of revRows) {
+      if (!revByAgency.has(r.agencyId)) revByAgency.set(r.agencyId, []);
+      revByAgency.get(r.agencyId).push({ month: r.month, amount: Number(r.amount) });
+    }
+
+    const result = agencies.map((agency) => {
+      const months = (revByAgency.get(agency.id) || []).slice().sort((a, b) => a.month - b.month);
+      const ytd = months.reduce((s, m) => s + m.amount, 0);
+      const targetAmount = targetByAgency.get(agency.id) || 0; // full LKR annual
+      const latestMonth = months.length ? months[months.length - 1].month : null; // 1-12
+      // Target-to-date = annual ÷ 12 × months elapsed (Jan-based), i.e. the
+      // cumulative target up to the latest month that has revenue.
+      const targetToDate = targetAmount > 0 && latestMonth
+        ? Number(((targetAmount / 12) * latestMonth).toFixed(2)) : 0;
+      const targetPct = targetToDate > 0 ? Number(((ytd / targetToDate) * 100).toFixed(1)) : null;
+      return {
+        agencyId: agency.id,
+        agencyName: agency.name,
+        ytdRevenue: Number(ytd.toFixed(2)),
+        annualTarget: targetAmount,
+        targetToDate,
+        targetPct,
+        targetRangeLabel: latestMonth
+          ? (latestMonth === 1 ? 'Jan' : `Jan–${MONTH_NAMES[latestMonth - 1]}`)
+          : null,
+        monthly: months.map(m => ({ month: `${targetYear}-${String(m.month).padStart(2, '0')}`, revenue: m.amount })),
+      };
+    });
+
+    return res.json({ year: targetYear, agencies: result });
+  } catch (error) {
+    console.error('getAgencyRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to get agency revenue', detail: error.message });
+  }
+}
+
 export async function getTopClients(req, res) {
   try {
     const user = req.user;
