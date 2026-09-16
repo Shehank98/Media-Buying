@@ -354,7 +354,7 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
   return emailShell(packageName, inner);
 }
 
-// ─── Forecast open (15th) ─────────────────────────────────────────────────────
+// ─── Forecast open (20th) ─────────────────────────────────────────────────────
 // Sent when the forecasting window rolls over to a new month: invites the Hub
 // head to enter the upcoming month's per-channel allocations.
 function sendForecastOpenEmail(data) {
@@ -386,8 +386,8 @@ function sendForecastOpenEmail(data) {
       ctaButton(loginUrl, 'Enter forecast &rarr;') +
       spacer(28) +
 
-      callout('amber', '&#9200;', 'Finalise before the 15th',
-        'The per-channel breakdown should be completed before the 15th, when the window rolls over to the following month.') +
+      callout('amber', '&#9200;', 'Finalise before the 20th',
+        'The per-channel breakdown should be completed before the 20th, when the window rolls over to the following month.') +
     bodyClose() +
     emailFooter(
       '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated forecasting notice. Please do not reply.',
@@ -399,7 +399,7 @@ function sendForecastOpenEmail(data) {
   GmailApp.sendEmail(to, subject, stripTags(html), options);
 }
 
-// ─── Forecast reminder (25th) ─────────────────────────────────────────────────
+// ─── Forecast reminder (1st of the month) ─────────────────────────────────────
 // Sent only to Hub heads who still have accounts without a submitted forecast
 // for the upcoming month; lists the pending clients.
 function sendForecastReminderEmail(data) {

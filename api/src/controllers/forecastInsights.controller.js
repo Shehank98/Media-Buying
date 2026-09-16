@@ -3,11 +3,11 @@ import { getAccessibleClientIds } from '../middleware/access.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
-// The month group heads forecast: current calendar month through the 14th,
-// then rolls to next month from the 15th onward. Mirrors forecasting.controller.js.
+// The month group heads forecast: current calendar month through the 19th,
+// then rolls to next month from the 20th onward. Mirrors forecasting.controller.js.
 function nextMonth() {
   const d = new Date();
-  const rollOver = d.getDate() >= 15;
+  const rollOver = d.getDate() >= 20;
   d.setDate(1);
   if (rollOver) d.setMonth(d.getMonth() + 1);
   return { year: d.getFullYear(), month: d.getMonth() + 1 };

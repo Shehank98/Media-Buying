@@ -5,11 +5,11 @@ import { accountManagerByClient, buildForecastBudgetDetail } from './forecastIns
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
 // The month group heads forecast: the current calendar month through the
-// 14th, then it rolls to next month from the 15th onward (e.g. through May
-// 14th shows May; from May 15th it shows June).
+// 19th, then it rolls to next month from the 20th onward (e.g. through May
+// 19th shows May; from May 20th it shows June).
 function nextMonth() {
   const d = new Date();
-  const rollOver = d.getDate() >= 15;
+  const rollOver = d.getDate() >= 20;
   d.setDate(1);
   if (rollOver) d.setMonth(d.getMonth() + 1);
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
