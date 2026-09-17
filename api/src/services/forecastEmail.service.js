@@ -20,12 +20,12 @@ import { getAccessibleClientIds } from '../middleware/access.js';
 import { GROUP_HEAD_CLIENT_OR } from '../controllers/forecasting.controller.js';
 import { sendEmail } from './email.service.js';
 
-// The month Hub heads forecast: current calendar month through the 14th, then
-// next month from the 15th onward. Mirrors nextMonth() in the controller (kept
+// The month Hub heads forecast: current calendar month through the 19th, then
+// next month from the 20th onward. Mirrors nextMonth() in the controller (kept
 // local so the two schedulers can't drift on import cycles).
 function upcomingMonth() {
   const d = new Date();
-  const rollOver = d.getDate() >= 15;
+  const rollOver = d.getDate() >= 20;
   d.setDate(1);
   if (rollOver) d.setMonth(d.getMonth() + 1);
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
@@ -160,8 +160,8 @@ export function startForecastEmailScheduler() {
     return;
   }
   const tz = process.env.FORECAST_EMAIL_TZ || 'Asia/Colombo';
-  const openExpr = process.env.FORECAST_OPEN_CRON || '0 9 15 * *';       // 15th, 09:00
-  const remindExpr = process.env.FORECAST_REMINDER_CRON || '0 9 25 * *'; // 25th, 09:00
+  const openExpr = process.env.FORECAST_OPEN_CRON || '0 9 20 * *';      // 20th, 09:00 (window opens for next month)
+  const remindExpr = process.env.FORECAST_REMINDER_CRON || '0 9 1 * *'; // 1st, 09:00 (reminder for the open month)
 
   for (const [expr, name, fn] of [
     [openExpr, 'forecast-open', sendForecastOpenEmails],
