@@ -104,6 +104,7 @@ export default function SpendAnalyticsPage() {
   const [mgLoading, setMgLoading] = useState(false);
   const [mgYear, setMgYear] = useState('');       // '' = default (latest) until user picks
   const [mgTab, setMgTab] = useState('channels'); // 'channels' | 'clients'
+  const [mgCell, setMgCell] = useState(null);     // { channelMasterId, channelName, month, total } drilled cell
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -251,8 +252,8 @@ export default function SpendAnalyticsPage() {
   }, [ctYear, agencyId, clientId]);
 
   // Open / close the media-group drill-down modal.
-  const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); };
-  const closeMgDrill = () => { setMgDrill(null); setMgData(null); };
+  const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); setMgCell(null); };
+  const closeMgDrill = () => { setMgDrill(null); setMgData(null); setMgCell(null); };
 
   // Export the drill-down (all three tables) to Excel - one sheet each.
   const exportMgDetail = async () => {
@@ -315,7 +316,7 @@ export default function SpendAnalyticsPage() {
     if (agencyId) params.agencyId = agencyId;
     if (clientId) params.clientId = clientId;
     api.get('/database/media-group-detail', { params })
-      .then(({ data }) => { setMgData(data); if (!mgYear && data?.year) setMgYear(String(data.year)); })
+      .then(({ data }) => { setMgData(data); setMgCell(null); if (!mgYear && data?.year) setMgYear(String(data.year)); })
       .catch(() => setMgData(null))
       .finally(() => setMgLoading(false));
   }, [mgDrill, mgYear, agencyId, clientId]);
@@ -1827,7 +1828,17 @@ export default function SpendAnalyticsPage() {
                       {mgData.channels.map(c => (
                         <tr key={c.channelMasterId}>
                           <td className="strong">{c.name} {c.medium ? <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span> : null}</td>
-                          {mgData.months.map(m => <td key={m} className="mono" style={{ textAlign: 'right' }}>{c.byMonth[m] ? fmtLKR(c.byMonth[m]) : '-'}</td>)}
+                          {mgData.months.map(m => (
+                            <td key={m} className="mono" style={{ textAlign: 'right' }}>
+                              {c.byMonth[m]
+                                ? <span
+                                    onClick={() => setMgCell({ channelMasterId: c.channelMasterId, channelName: c.name, month: m, total: c.byMonth[m] })}
+                                    title="Show client contribution"
+                                    style={{ cursor: 'pointer', color: 'var(--coral-700, #C44A18)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                                  >{fmtLKR(c.byMonth[m])}</span>
+                                : '-'}
+                            </td>
+                          ))}
                           <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(c.total)}</td>
                         </tr>
                       ))}
@@ -1892,6 +1903,46 @@ export default function SpendAnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* Channel×month cell → which clients contributed, how much */}
+      {mgCell && mgData && (() => {
+        const contrib = (mgData.clientChannel || [])
+          .filter(cc => cc.channelMasterId === mgCell.channelMasterId && (cc.byMonth[mgCell.month] || 0))
+          .map(cc => ({ name: cc.clientName, value: cc.byMonth[mgCell.month] || 0 }))
+          .sort((a, b) => b.value - a.value);
+        const total = mgCell.total || contrib.reduce((s, r) => s + r.value, 0);
+        return (
+          <div onClick={() => setMgCell(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(10,23,41,.45)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 460, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 24px 60px rgba(10,23,41,.4)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 750, color: 'var(--ink)' }}>{mgCell.channelName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{MONTHS[mgCell.month - 1]} {mgData.year} · {fmtLKR(total)} · {contrib.length} client{contrib.length === 1 ? '' : 's'}</div>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setMgCell(null)}><Icon name="x" size={14} /></button>
+              </div>
+              {contrib.length === 0 ? (
+                <div style={{ padding: 20, fontSize: 13, color: 'var(--muted)' }}>No client detail for this cell.</div>
+              ) : (
+                <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+                  <table className="tbl">
+                    <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'right' }}>%</th></tr></thead>
+                    <tbody>
+                      {contrib.map((r, i) => (
+                        <tr key={i}>
+                          <td className="strong">{r.name}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtLKR(r.value)}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--muted)' }}>{total > 0 ? ((r.value / total) * 100).toFixed(1) + '%' : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
