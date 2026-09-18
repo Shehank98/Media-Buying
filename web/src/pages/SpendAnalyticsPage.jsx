@@ -97,6 +97,7 @@ export default function SpendAnalyticsPage() {
   const [properties, setProperties] = useState([]);
   const [clientTargets, setClientTargets] = useState(null); // { year, availableYears, rows, totals }
   const [ctYear, setCtYear] = useState('');
+  const [ctSort, setCtSort] = useState({ key: 'achieved', dir: 'desc' }); // sortable Client Targets columns
   // Media-group drill-down modal (channel×month + client×month + client×channel×month)
   const [mgDrill, setMgDrill] = useState(null);   // selected media group name, or null
   const [mgData, setMgData] = useState(null);
@@ -252,6 +253,57 @@ export default function SpendAnalyticsPage() {
   // Open / close the media-group drill-down modal.
   const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); };
   const closeMgDrill = () => { setMgDrill(null); setMgData(null); };
+
+  // Export the drill-down (all three tables) to Excel - one sheet each.
+  const exportMgDetail = async () => {
+    if (!mgData) return;
+    const mh = mgData.months.map(m => MONTHS[m - 1]);
+    const sheets = [];
+    // Media Channels
+    sheets.push({
+      name: 'Media Channels',
+      aoa: [
+        ['Channel', 'Medium', ...mh, 'Total'],
+        ...mgData.channels.map(c => [c.name, c.medium || '', ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+        ['Total', '', ...mgData.months.map(m => Math.round(mgData.colTotals[m] || 0)), Math.round(mgData.totalValue)],
+      ],
+    });
+    // By client × month
+    sheets.push({
+      name: 'By Client',
+      aoa: [
+        ['Client', 'Agency', ...mh, 'Total'],
+        ...mgData.clientsByMonth.map(c => [c.name, c.agencyName || '', ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+      ],
+    });
+    // By client × channel × month
+    sheets.push({
+      name: 'By Client & Channel',
+      aoa: [
+        ['Client', 'Channel', ...mh, 'Total'],
+        ...mgData.clientChannel.map(c => [c.clientName, c.channelName, ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+      ],
+    });
+    const safe = String(mgDrill).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    await writeBrandedWorkbook(sheets, `media-group-${safe}-${mgData.year}.xlsx`);
+  };
+
+  // Client Targets: click a column header to sort (first click = high→low, click
+  // again to flip). String columns sort alphabetically.
+  const toggleCtSort = (key) => setCtSort(s => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }));
+  const ctSortedRows = useMemo(() => {
+    const rows = clientTargets?.rows ? [...clientTargets.rows] : [];
+    const { key, dir } = ctSort;
+    const mul = dir === 'desc' ? -1 : 1;
+    const isText = key === 'name' || key === 'agencyName';
+    rows.sort((a, b) => {
+      if (isText) return mul * String(a[key] || '').localeCompare(String(b[key] || ''));
+      const av = a[key] == null ? -Infinity : a[key];
+      const bv = b[key] == null ? -Infinity : b[key];
+      return mul * (av - bv);
+    });
+    return rows;
+  }, [clientTargets, ctSort]);
 
   // Fetch the media-group drill-down when opened or its year changes (respects
   // the page's agency/client filters).
@@ -1089,16 +1141,27 @@ export default function SpendAnalyticsPage() {
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Client</th>
-                      <th>Agency</th>
-                      <th style={{ textAlign: 'right' }}>Target</th>
-                      <th style={{ textAlign: 'right' }}>Achieved</th>
-                      <th style={{ textAlign: 'right' }}>Still needed</th>
-                      <th style={{ minWidth: 200 }}>Progress</th>
+                      {[
+                        ['name', 'Client', 'left'],
+                        ['agencyName', 'Agency', 'left'],
+                        ['target', 'Target', 'right'],
+                        ['achieved', 'Achieved', 'right'],
+                        ['remaining', 'Still needed', 'right'],
+                        ['pct', 'Progress', 'left'],
+                      ].map(([key, label, align]) => (
+                        <th
+                          key={key}
+                          onClick={() => toggleCtSort(key)}
+                          title="Click to sort"
+                          style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', minWidth: key === 'pct' ? 200 : undefined }}
+                        >
+                          {label}<span style={{ color: '#C44A18', marginLeft: 4 }}>{ctSort.key === key ? (ctSort.dir === 'desc' ? '▼' : '▲') : ''}</span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {clientTargets.rows.map(r => {
+                    {ctSortedRows.map(r => {
                       const pct = r.pct;
                       const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 70 ? '#9A5B00' : '#C5391F';
                       return (
@@ -1737,6 +1800,7 @@ export default function SpendAnalyticsPage() {
                   {(mgData?.availableYears || (mgYear ? [mgYear] : [])).map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
+              <button className="btn btn-ghost btn-sm" onClick={exportMgDetail} disabled={!mgData || !(mgData.months || []).length}><Icon name="download" size={14} /> Excel</button>
               <button className="btn btn-ghost btn-sm" onClick={closeMgDrill}><Icon name="x" size={14} /> Close</button>
             </div>
 
