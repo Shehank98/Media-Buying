@@ -477,7 +477,7 @@ export async function getClientTargets(req, res) {
           pct: target > 0 ? Number(((achieved / target) * 100).toFixed(1)) : null,
         };
       })
-      .sort((a, b) => b.target - a.target);
+      .sort((a, b) => b.achieved - a.achieved);
 
     const totals = {
       target: Number(rows.reduce((s, r) => s + r.target, 0).toFixed(2)),
@@ -490,6 +490,109 @@ export async function getClientTargets(req, res) {
   } catch (error) {
     console.error('getClientTargets error:', error);
     return res.status(500).json({ error: 'Failed to load client targets', detail: error.message });
+  }
+}
+
+// Drill-down for one media group (clicked from Spend Analytics): channel×month,
+// client×month, and client×channel×month breakdowns for a year. Role-scoped like
+// getAnalytics; respects the page's agency/client filters. Only months with data
+// are returned. `year` defaults to the latest year that media group has data.
+export async function getMediaGroupDetail(req, res) {
+  try {
+    const user = req.user;
+    const { agencyId, clientId } = req.query;
+    const mediaGroup = String(req.query.mediaGroup || '').trim();
+    if (!mediaGroup) return res.status(400).json({ error: 'mediaGroup is required' });
+
+    // Base where + role scoping (mirrors getAnalytics).
+    const base = { isDeleted: false, mediaGroup };
+    if (user.role === 'MANAGER') {
+      const access = await prisma.userAgencyAccess.findMany({ where: { userId: user.id }, select: { agencyId: true } });
+      const allowed = access.map(a => a.agencyId);
+      if (agencyId) {
+        const req2 = parseInt(agencyId);
+        if (!allowed.includes(req2)) return res.status(403).json({ error: 'Access denied to this agency' });
+        base.agencyId = req2;
+      } else base.agencyId = { in: allowed };
+      if (clientId) base.clientId = parseInt(clientId);
+    } else if (user.role === 'GROUP_HEAD' || user.role === 'PLANNER') {
+      const ids = await getAccessibleClientIds(user.id, user.role);
+      if (clientId) {
+        const cid = parseInt(clientId);
+        if (!ids.includes(cid)) return res.status(403).json({ error: 'Access denied to this client' });
+        base.clientId = cid;
+      } else base.clientId = { in: ids };
+    } else {
+      if (agencyId) base.agencyId = parseInt(agencyId);
+      if (clientId) base.clientId = parseInt(clientId);
+    }
+
+    // Years that this media group (in scope) has data for → the picker.
+    const yearRows = await prisma.scheduleLog.findMany({
+      where: base, select: { scheduleMonth: true }, distinct: ['scheduleMonth'],
+    });
+    const yset = new Set();
+    for (const r of yearRows) { const y = parseInt(String(r.scheduleMonth).slice(0, 4)); if (y) yset.add(y); }
+    const availableYears = [...yset].sort((a, b) => b - a);
+    const year = parseInt(req.query.year) || availableYears[0] || new Date().getFullYear();
+
+    const rows = await prisma.scheduleLog.findMany({
+      where: { ...base, scheduleMonth: { gte: `${year}-01`, lte: `${year}-12` } },
+      select: {
+        clientId: true, channelMasterId: true, scheduleMonth: true, scheduleValue: true,
+        client: { select: { name: true, agency: { select: { name: true } } } },
+        channelMaster: { select: { name: true, medium: true } },
+      },
+    });
+
+    const monthsSet = new Set();
+    const chMap = new Map();      // channelMasterId -> { name, medium, byMonth, total }
+    const clMap = new Map();      // clientId -> { name, agencyName, byMonth, total }
+    const ccMap = new Map();      // `${clientId}:${channelMasterId}` -> { ..., byMonth, total }
+    let totalValue = 0;
+
+    for (const r of rows) {
+      const m = parseInt(String(r.scheduleMonth).slice(5));
+      if (!(m >= 1 && m <= 12)) continue;
+      const v = Number(r.scheduleValue) || 0;
+      monthsSet.add(m);
+      totalValue += v;
+
+      const chName = r.channelMaster?.name || 'Unlinked';
+      let ch = chMap.get(r.channelMasterId);
+      if (!ch) { ch = { channelMasterId: r.channelMasterId, name: chName, medium: r.channelMaster?.medium || '', byMonth: {}, total: 0 }; chMap.set(r.channelMasterId, ch); }
+      ch.byMonth[m] = (ch.byMonth[m] || 0) + v; ch.total += v;
+
+      let cl = clMap.get(r.clientId);
+      if (!cl) { cl = { clientId: r.clientId, name: r.client?.name || `#${r.clientId}`, agencyName: r.client?.agency?.name || '', byMonth: {}, total: 0 }; clMap.set(r.clientId, cl); }
+      cl.byMonth[m] = (cl.byMonth[m] || 0) + v; cl.total += v;
+
+      const key = `${r.clientId}:${r.channelMasterId}`;
+      let cc = ccMap.get(key);
+      if (!cc) { cc = { clientId: r.clientId, clientName: cl.name, channelMasterId: r.channelMasterId, channelName: chName, byMonth: {}, total: 0 }; ccMap.set(key, cc); }
+      cc.byMonth[m] = (cc.byMonth[m] || 0) + v; cc.total += v;
+    }
+
+    const months = [...monthsSet].sort((a, b) => a - b);
+    const round = (n) => Number((n || 0).toFixed(2));
+    const roundByMonth = (bm) => { const o = {}; for (const m of months) o[m] = round(bm[m] || 0); return o; };
+
+    const channels = [...chMap.values()].map(c => ({ ...c, byMonth: roundByMonth(c.byMonth), total: round(c.total) })).sort((a, b) => b.total - a.total);
+    const clientsByMonth = [...clMap.values()].map(c => ({ ...c, byMonth: roundByMonth(c.byMonth), total: round(c.total) })).sort((a, b) => b.total - a.total);
+    const clientChannel = [...ccMap.values()].map(c => ({ ...c, byMonth: roundByMonth(c.byMonth), total: round(c.total) }))
+      .sort((a, b) => a.clientName.localeCompare(b.clientName) || b.total - a.total);
+
+    // Column totals (per month) for the footer rows.
+    const colTotals = {}; for (const m of months) colTotals[m] = round(channels.reduce((s, c) => s + (c.byMonth[m] || 0), 0));
+
+    return res.json({
+      mediaGroup, year, availableYears, months,
+      channels, clientsByMonth, clientChannel,
+      colTotals, totalValue: round(totalValue),
+    });
+  } catch (error) {
+    console.error('getMediaGroupDetail error:', error);
+    return res.status(500).json({ error: 'Failed to load media group detail', detail: error.message });
   }
 }
 

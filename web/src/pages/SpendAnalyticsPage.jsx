@@ -97,6 +97,13 @@ export default function SpendAnalyticsPage() {
   const [properties, setProperties] = useState([]);
   const [clientTargets, setClientTargets] = useState(null); // { year, availableYears, rows, totals }
   const [ctYear, setCtYear] = useState('');
+  const [ctSort, setCtSort] = useState({ key: 'achieved', dir: 'desc' }); // sortable Client Targets columns
+  // Media-group drill-down modal (channel×month + client×month + client×channel×month)
+  const [mgDrill, setMgDrill] = useState(null);   // selected media group name, or null
+  const [mgData, setMgData] = useState(null);
+  const [mgLoading, setMgLoading] = useState(false);
+  const [mgYear, setMgYear] = useState('');       // '' = default (latest) until user picks
+  const [mgTab, setMgTab] = useState('channels'); // 'channels' | 'clients'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -242,6 +249,76 @@ export default function SpendAnalyticsPage() {
       .then(({ data }) => { setClientTargets(data); if (!ctYear && data?.year) setCtYear(String(data.year)); })
       .catch(() => setClientTargets(null));
   }, [ctYear, agencyId, clientId]);
+
+  // Open / close the media-group drill-down modal.
+  const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); };
+  const closeMgDrill = () => { setMgDrill(null); setMgData(null); };
+
+  // Export the drill-down (all three tables) to Excel - one sheet each.
+  const exportMgDetail = async () => {
+    if (!mgData) return;
+    const mh = mgData.months.map(m => MONTHS[m - 1]);
+    const sheets = [];
+    // Media Channels
+    sheets.push({
+      name: 'Media Channels',
+      aoa: [
+        ['Channel', 'Medium', ...mh, 'Total'],
+        ...mgData.channels.map(c => [c.name, c.medium || '', ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+        ['Total', '', ...mgData.months.map(m => Math.round(mgData.colTotals[m] || 0)), Math.round(mgData.totalValue)],
+      ],
+    });
+    // By client × month
+    sheets.push({
+      name: 'By Client',
+      aoa: [
+        ['Client', 'Agency', ...mh, 'Total'],
+        ...mgData.clientsByMonth.map(c => [c.name, c.agencyName || '', ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+      ],
+    });
+    // By client × channel × month
+    sheets.push({
+      name: 'By Client & Channel',
+      aoa: [
+        ['Client', 'Channel', ...mh, 'Total'],
+        ...mgData.clientChannel.map(c => [c.clientName, c.channelName, ...mgData.months.map(m => Math.round(c.byMonth[m] || 0)), Math.round(c.total)]),
+      ],
+    });
+    const safe = String(mgDrill).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    await writeBrandedWorkbook(sheets, `media-group-${safe}-${mgData.year}.xlsx`);
+  };
+
+  // Client Targets: click a column header to sort (first click = high→low, click
+  // again to flip). String columns sort alphabetically.
+  const toggleCtSort = (key) => setCtSort(s => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }));
+  const ctSortedRows = useMemo(() => {
+    const rows = clientTargets?.rows ? [...clientTargets.rows] : [];
+    const { key, dir } = ctSort;
+    const mul = dir === 'desc' ? -1 : 1;
+    const isText = key === 'name' || key === 'agencyName';
+    rows.sort((a, b) => {
+      if (isText) return mul * String(a[key] || '').localeCompare(String(b[key] || ''));
+      const av = a[key] == null ? -Infinity : a[key];
+      const bv = b[key] == null ? -Infinity : b[key];
+      return mul * (av - bv);
+    });
+    return rows;
+  }, [clientTargets, ctSort]);
+
+  // Fetch the media-group drill-down when opened or its year changes (respects
+  // the page's agency/client filters).
+  useEffect(() => {
+    if (!mgDrill) return;
+    setMgLoading(true);
+    const params = { mediaGroup: mgDrill };
+    if (mgYear) params.year = mgYear;
+    if (agencyId) params.agencyId = agencyId;
+    if (clientId) params.clientId = clientId;
+    api.get('/database/media-group-detail', { params })
+      .then(({ data }) => { setMgData(data); if (!mgYear && data?.year) setMgYear(String(data.year)); })
+      .catch(() => setMgData(null))
+      .finally(() => setMgLoading(false));
+  }, [mgDrill, mgYear, agencyId, clientId]);
 
   // Comparison period (Period B)
   useEffect(() => {
@@ -1064,16 +1141,27 @@ export default function SpendAnalyticsPage() {
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Client</th>
-                      <th>Agency</th>
-                      <th style={{ textAlign: 'right' }}>Target</th>
-                      <th style={{ textAlign: 'right' }}>Achieved</th>
-                      <th style={{ textAlign: 'right' }}>Still needed</th>
-                      <th style={{ minWidth: 200 }}>Progress</th>
+                      {[
+                        ['name', 'Client', 'left'],
+                        ['agencyName', 'Agency', 'left'],
+                        ['target', 'Target', 'right'],
+                        ['achieved', 'Achieved', 'right'],
+                        ['remaining', 'Still needed', 'right'],
+                        ['pct', 'Progress', 'left'],
+                      ].map(([key, label, align]) => (
+                        <th
+                          key={key}
+                          onClick={() => toggleCtSort(key)}
+                          title="Click to sort"
+                          style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', minWidth: key === 'pct' ? 200 : undefined }}
+                        >
+                          {label}<span style={{ color: '#C44A18', marginLeft: 4 }}>{ctSort.key === key ? (ctSort.dir === 'desc' ? '▼' : '▲') : ''}</span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {clientTargets.rows.map(r => {
+                    {ctSortedRows.map(r => {
                       const pct = r.pct;
                       const col = pct == null ? '#6B7790' : pct >= 100 ? '#15814B' : pct >= 70 ? '#9A5B00' : '#C5391F';
                       return (
@@ -1342,7 +1430,7 @@ export default function SpendAnalyticsPage() {
 
             {/* By Media Group - Pie */}
             <div className="section-card" style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Media Group</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Spend by Media Group <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)' }}>· click a group to drill down</span></h3>
               <div ref={chartMediaGroupRef}>
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
@@ -1366,10 +1454,17 @@ export default function SpendAnalyticsPage() {
               </div>
               <div style={{ maxHeight: 200, overflow: 'auto', marginTop: 10 }}>
                 {data.byMediaGroup.map((mg, idx) => (
-                  <div key={mg.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+                  <div
+                    key={mg.name}
+                    onClick={() => openMgDrill(mg.name)}
+                    title={`Drill into ${mg.name}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 4px', borderBottom: '1px solid var(--border)', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#F5F6F8')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 10, height: 10, borderRadius: 2, background: COLORS[idx % COLORS.length] }} />
-                      <span style={{ fontWeight: 600 }}>{mg.name}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--coral-700, #C44A18)' }}>{mg.name}</span>
                       <span style={{ color: 'var(--muted)', fontSize: 11 }}>({mg.count})</span>
                     </div>
                     <div style={{ display: 'flex', gap: 16 }}>
@@ -1687,6 +1782,116 @@ export default function SpendAnalyticsPage() {
       )}
 
       {revOpen && <RevVerificationModal user={user} onClose={() => { setRevOpen(false); refreshRevPending(); }} />}
+
+      {/* Media-group drill-down modal: channel×month + client×month + client×channel×month */}
+      {mgDrill && (
+        <div onClick={closeMgDrill} style={{ position: 'fixed', inset: 0, background: 'rgba(10,23,41,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 1120, boxShadow: '0 24px 60px rgba(10,23,41,.35)' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 17, fontWeight: 750, color: 'var(--ink)' }}>{mgDrill}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>
+                  Spend detail{mgData ? ` · ${mgData.year} · ${fmtLKR(mgData.totalValue)} total` : ''}
+                </div>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label style={{ fontSize: 11 }}>Year</label>
+                <select className="select" value={mgYear} onChange={e => setMgYear(e.target.value)}>
+                  {(mgData?.availableYears || (mgYear ? [mgYear] : [])).map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={exportMgDetail} disabled={!mgData || !(mgData.months || []).length}><Icon name="download" size={14} /> Excel</button>
+              <button className="btn btn-ghost btn-sm" onClick={closeMgDrill}><Icon name="x" size={14} /> Close</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, padding: '12px 22px 0' }}>
+              {[['channels', 'Media Channels'], ['clients', 'Client Wise']].map(([k, lbl]) => (
+                <button key={k} onClick={() => setMgTab(k)} className={`btn btn-sm ${mgTab === k ? 'btn-primary' : 'btn-subtle'}`}>{lbl}</button>
+              ))}
+            </div>
+
+            <div style={{ padding: '16px 22px 22px', maxHeight: '70vh', overflow: 'auto' }}>
+              {mgLoading ? <OrbitLoader label="Loading detail…" /> : !mgData || !(mgData.months || []).length ? (
+                <div style={{ color: 'var(--muted)', fontSize: 13, padding: 20 }}>No spend recorded for this media group in {mgYear || 'the selected year'}.</div>
+              ) : mgTab === 'channels' ? (
+                <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Channel</th>
+                        {mgData.months.map(m => <th key={m} style={{ textAlign: 'right' }}>{MONTHS[m - 1]}</th>)}
+                        <th style={{ textAlign: 'right' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mgData.channels.map(c => (
+                        <tr key={c.channelMasterId}>
+                          <td className="strong">{c.name} {c.medium ? <span className="medium-tag" style={{ marginLeft: 4 }}>{c.medium}</span> : null}</td>
+                          {mgData.months.map(m => <td key={m} className="mono" style={{ textAlign: 'right' }}>{c.byMonth[m] ? fmtLKR(c.byMonth[m]) : '-'}</td>)}
+                          <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(c.total)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid var(--border)' }}>
+                        <td className="strong">Total</td>
+                        {mgData.months.map(m => <td key={m} className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(mgData.colTotals[m])}</td>)}
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(mgData.totalValue)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', margin: '2px 0 8px' }}>By client · monthly</div>
+                  <div className="tbl-wrap" style={{ overflowX: 'auto', marginBottom: 22 }}>
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Client</th><th>Agency</th>
+                          {mgData.months.map(m => <th key={m} style={{ textAlign: 'right' }}>{MONTHS[m - 1]}</th>)}
+                          <th style={{ textAlign: 'right' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mgData.clientsByMonth.map(c => (
+                          <tr key={c.clientId}>
+                            <td className="strong">{c.name}</td>
+                            <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
+                            {mgData.months.map(m => <td key={m} className="mono" style={{ textAlign: 'right' }}>{c.byMonth[m] ? fmtLKR(c.byMonth[m]) : '-'}</td>)}
+                            <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(c.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', margin: '2px 0 8px' }}>By client &amp; channel · monthly</div>
+                  <div className="tbl-wrap" style={{ overflowX: 'auto' }}>
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Client</th><th>Channel</th>
+                          {mgData.months.map(m => <th key={m} style={{ textAlign: 'right' }}>{MONTHS[m - 1]}</th>)}
+                          <th style={{ textAlign: 'right' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mgData.clientChannel.map(c => (
+                          <tr key={`${c.clientId}:${c.channelMasterId}`}>
+                            <td className="strong">{c.clientName}</td>
+                            <td>{c.channelName}</td>
+                            {mgData.months.map(m => <td key={m} className="mono" style={{ textAlign: 'right' }}>{c.byMonth[m] ? fmtLKR(c.byMonth[m]) : '-'}</td>)}
+                            <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{fmtLKR(c.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

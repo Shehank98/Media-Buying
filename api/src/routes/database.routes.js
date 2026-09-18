@@ -5,6 +5,7 @@ import {
   getMetadata,
   getAnalytics,
   getClientTargets,
+  getMediaGroupDetail,
   getScopedProperties,
   createScheduleLog,
   bulkCreateScheduleLogs,
@@ -25,6 +26,7 @@ router.get('/', authenticate, getScheduleLogs);
 router.get('/metadata', authenticate, getMetadata);
 router.get('/analytics', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getAnalytics);
 router.get('/client-targets', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getClientTargets);
+router.get('/media-group-detail', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getMediaGroupDetail);
 router.get('/properties', authenticate, requireRole('SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'), getScopedProperties);
 router.get('/batches', authenticate, getUploadBatches);
 router.get('/recent-batches', authenticate, getRecentBatches);
