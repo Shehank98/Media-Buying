@@ -105,6 +105,7 @@ export default function SpendAnalyticsPage() {
   const [mgYear, setMgYear] = useState('');       // '' = default (latest) until user picks
   const [mgTab, setMgTab] = useState('channels'); // 'channels' | 'clients'
   const [mgCell, setMgCell] = useState(null);     // { channelMasterId, channelName, month, total } drilled cell
+  const [mgClientCh, setMgClientCh] = useState(''); // Client Wise tab: channel filter ('' = all channels)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -252,8 +253,8 @@ export default function SpendAnalyticsPage() {
   }, [ctYear, agencyId, clientId]);
 
   // Open / close the media-group drill-down modal.
-  const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); setMgCell(null); };
-  const closeMgDrill = () => { setMgDrill(null); setMgData(null); setMgCell(null); };
+  const openMgDrill = (name) => { setMgDrill(name); setMgYear(''); setMgTab('channels'); setMgData(null); setMgCell(null); setMgClientCh(''); };
+  const closeMgDrill = () => { setMgDrill(null); setMgData(null); setMgCell(null); setMgClientCh(''); };
 
   // Export the drill-down (all three tables) to Excel - one sheet each.
   const exportMgDetail = async () => {
@@ -306,6 +307,32 @@ export default function SpendAnalyticsPage() {
     return rows;
   }, [clientTargets, ctSort]);
 
+  // Client Wise tab: "By client · monthly" respecting the channel filter. With a
+  // channel picked, rebuild each client's monthly totals from the client×channel
+  // data for just that channel; otherwise use the all-channels roll-up.
+  const mgClientRows = useMemo(() => {
+    if (!mgData) return [];
+    if (!mgClientCh) return mgData.clientsByMonth;
+    const chId = parseInt(mgClientCh);
+    const agBy = new Map(mgData.clientsByMonth.map(c => [c.clientId, c.agencyName]));
+    const map = new Map();
+    for (const cc of mgData.clientChannel) {
+      if (cc.channelMasterId !== chId) continue;
+      let e = map.get(cc.clientId);
+      if (!e) { e = { clientId: cc.clientId, name: cc.clientName, agencyName: agBy.get(cc.clientId) || '', byMonth: {}, total: 0 }; map.set(cc.clientId, e); }
+      for (const m of mgData.months) { const v = cc.byMonth[m] || 0; if (v) { e.byMonth[m] = (e.byMonth[m] || 0) + v; e.total += v; } }
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  }, [mgData, mgClientCh]);
+
+  // Client Wise tab: "By client & channel" rows, filtered to the picked channel.
+  const mgClientChannelRows = useMemo(() => {
+    if (!mgData) return [];
+    if (!mgClientCh) return mgData.clientChannel;
+    const chId = parseInt(mgClientCh);
+    return mgData.clientChannel.filter(cc => cc.channelMasterId === chId);
+  }, [mgData, mgClientCh]);
+
   // Fetch the media-group drill-down when opened or its year changes (respects
   // the page's agency/client filters).
   useEffect(() => {
@@ -316,7 +343,7 @@ export default function SpendAnalyticsPage() {
     if (agencyId) params.agencyId = agencyId;
     if (clientId) params.clientId = clientId;
     api.get('/database/media-group-detail', { params })
-      .then(({ data }) => { setMgData(data); setMgCell(null); if (!mgYear && data?.year) setMgYear(String(data.year)); })
+      .then(({ data }) => { setMgData(data); setMgCell(null); setMgClientCh(''); if (!mgYear && data?.year) setMgYear(String(data.year)); })
       .catch(() => setMgData(null))
       .finally(() => setMgLoading(false));
   }, [mgDrill, mgYear, agencyId, clientId]);
@@ -1852,6 +1879,15 @@ export default function SpendAnalyticsPage() {
                 </div>
               ) : (
                 <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Channel</label>
+                    <select className="select" value={mgClientCh} onChange={e => setMgClientCh(e.target.value)} style={{ maxWidth: 260 }}>
+                      <option value="">All channels</option>
+                      {mgData.channels.map(c => <option key={c.channelMasterId} value={c.channelMasterId}>{c.name}</option>)}
+                    </select>
+                    {mgClientCh && <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>filtering both tables</span>}
+                  </div>
+
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', margin: '2px 0 8px' }}>By client · monthly</div>
                   <div className="tbl-wrap" style={{ overflowX: 'auto', marginBottom: 22 }}>
                     <table className="tbl">
@@ -1863,7 +1899,9 @@ export default function SpendAnalyticsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {mgData.clientsByMonth.map(c => (
+                        {mgClientRows.length === 0 ? (
+                          <tr><td colSpan={mgData.months.length + 3} style={{ color: 'var(--muted)', fontSize: 13 }}>No spend for this channel.</td></tr>
+                        ) : mgClientRows.map(c => (
                           <tr key={c.clientId}>
                             <td className="strong">{c.name}</td>
                             <td style={{ color: 'var(--muted)' }}>{c.agencyName || '-'}</td>
@@ -1886,7 +1924,7 @@ export default function SpendAnalyticsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {mgData.clientChannel.map(c => (
+                        {mgClientChannelRows.map(c => (
                           <tr key={`${c.clientId}:${c.channelMasterId}`}>
                             <td className="strong">{c.clientName}</td>
                             <td>{c.channelName}</td>
