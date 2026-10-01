@@ -445,6 +445,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [notifyUserSearch, setNotifyUserSearch] = useState('');
   const [notifySending, setNotifySending] = useState(false);
   const [notifyResult, setNotifyResult] = useState(null); // { ok, text }
+  const [notifyEmail, setNotifyEmail] = useState(true);
   const toggleNotifyRole = (r) => setNotifyRoles((s) => (s.includes(r) ? s.filter((x) => x !== r) : [...s, r]));
   const toggleNotifyUser = (id) => setNotifyUserIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const sendNotification = async () => {
@@ -452,13 +453,60 @@ export default function AdminPage({ initialTab = 'users' }) {
     try {
       const { data } = await api.post('/notifications/broadcast', {
         title: notifyTitle, message: notifyMessage, link: notifyLink || undefined,
-        roles: notifyRoles, userIds: notifyUserIds,
+        roles: notifyRoles, userIds: notifyUserIds, sendEmail: notifyEmail,
       });
       setNotifyResult({ ok: true, text: data.message || 'Sent.' });
       setNotifyTitle(''); setNotifyMessage(''); setNotifyLink(''); setNotifyRoles([]); setNotifyUserIds([]);
     } catch (err) {
       setNotifyResult({ ok: false, text: err.response?.data?.error || 'Failed to send.' });
     } finally { setNotifySending(false); }
+  };
+
+  /* ---- forecast reminder (manual send, any month) ---- */
+  const [frMonth, setFrMonth] = useState(''); // 'YYYY-MM'; '' = month currently open
+  const [frMode, setFrMode] = useState('empty'); // 'empty' | 'pending'
+  const [frPreview, setFrPreview] = useState(null);
+  const [frLoading, setFrLoading] = useState(false);
+  const [frSending, setFrSending] = useState(false);
+  const [frResult, setFrResult] = useState(null); // { ok, text }
+  const loadForecastReminder = async (ym) => {
+    setFrLoading(true);
+    try {
+      const [y, m] = (ym || '').split('-');
+      const { data } = await api.get('/notifications/forecast-reminder', { params: ym ? { year: y, month: +m } : {} });
+      setFrPreview(data);
+      if (!ym) setFrMonth(data.forecastMonth);
+    } catch (err) {
+      setFrResult({ ok: false, text: err.response?.data?.error || 'Failed to load forecast status.' });
+    } finally { setFrLoading(false); }
+  };
+  useEffect(() => {
+    if (activeTab === 'notify' && !frPreview) loadForecastReminder('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+  const frMonthOptions = (() => {
+    const base = frPreview?.currentForecastMonth || frMonth;
+    if (!base) return [];
+    const [by, bm] = base.split('-').map(Number);
+    return [1, 0, -1, -2, -3].map((off) => {
+      const d = new Date(by, bm - 1 + off, 1);
+      const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      return { v, label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + (v === base ? ' (open now)' : '') };
+    });
+  })();
+  const frTargets = (frPreview?.heads || []).filter((h) => h.pending > 0 && (frMode === 'pending' || h.submitted === 0));
+  const sendForecastReminderNow = async () => {
+    if (!frMonth) return;
+    if (!window.confirm(`Send the ${frPreview?.monthLabel} forecast reminder to ${frTargets.length} Hub head(s) now (in-app + email)?`)) return;
+    setFrSending(true); setFrResult(null);
+    try {
+      const [y, m] = frMonth.split('-');
+      const { data } = await api.post('/notifications/forecast-reminder', { year: +y, month: +m, mode: frMode });
+      setFrResult({ ok: true, text: data.message || 'Sent.' });
+      loadForecastReminder(frMonth);
+    } catch (err) {
+      setFrResult({ ok: false, text: err.response?.data?.error || 'Failed to send.' });
+    } finally { setFrSending(false); }
   };
 
   /* ---- delete modal ---- */
@@ -3861,7 +3909,7 @@ export default function AdminPage({ initialTab = 'users' }) {
           <div className="card" style={{ padding: 20 }}>
             <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Send a notification</div>
             <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16 }}>
-              Notify whole roles and/or specific people. Recipients see it in-app and as a desktop notification (if they allowed it).
+              Notify whole roles and/or specific people. Recipients see it in-app, as a desktop notification (if they allowed it) and, unless you untick it below, by email.
             </div>
 
             <div className="field" style={{ marginBottom: 12 }}>
@@ -3911,6 +3959,10 @@ export default function AdminPage({ initialTab = 'users' }) {
               {users.length === 0 && <div style={{ padding: 14, fontSize: 12.5, color: 'var(--muted)' }}>No users.</div>}
             </div>
 
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} />
+              Also send as an email
+            </label>
             {notifyResult && (
               <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: notifyResult.ok ? 'var(--green-600)' : 'var(--red-600)' }}>
                 {notifyResult.text}
@@ -3919,6 +3971,71 @@ export default function AdminPage({ initialTab = 'users' }) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn btn-primary" disabled={notifySending || !notifyTitle.trim() || !notifyMessage.trim() || (!notifyRoles.length && !notifyUserIds.length)} onClick={sendNotification}>
                 <Icon name="bell" size={15} />{notifySending ? 'Sending…' : 'Send notification'}
+              </button>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 20, marginTop: 18 }}>
+            <div style={{ fontSize: 15, fontWeight: 720, color: 'var(--ink)' }}>Forecast reminder</div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 3, marginBottom: 16 }}>
+              Sent automatically on the {frPreview?.reminderDay ? `${frPreview.reminderDay}${frPreview.reminderDay === 1 ? 'st' : 'th'}` : '1st'} of each month for the month that is still open
+              (e.g. on 1 October the forecast month is October). Use this to send it now, in-app + email.
+              {frPreview && !frPreview.emailEnabled && <span style={{ color: 'var(--red-600)', fontWeight: 600 }}> Email is not configured (GOOGLE_SCRIPT_URL) - in-app only.</span>}
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+              <div className="field" style={{ minWidth: 220 }}>
+                <label className="field-label">Forecast month</label>
+                <select className="select" value={frMonth} onChange={(e) => { setFrMonth(e.target.value); setFrResult(null); loadForecastReminder(e.target.value); }}>
+                  {frMonthOptions.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="field" style={{ minWidth: 260 }}>
+                <label className="field-label">Remind</label>
+                <select className="select" value={frMode} onChange={(e) => setFrMode(e.target.value)}>
+                  <option value="empty">Hub heads who submitted nothing</option>
+                  <option value="pending">Hub heads with any pending account</option>
+                </select>
+              </div>
+            </div>
+
+            {frLoading ? <OrbitLoader size={36} /> : frPreview && (
+              <>
+                {frPreview.lastRun && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                    Last sent {new Date(frPreview.lastRun.createdAt).toLocaleString()} - {frPreview.lastRun.message}
+                  </div>
+                )}
+                <div className="tbl-wrap" style={{ maxHeight: 260, overflow: 'auto' }}>
+                  <table className="tbl">
+                    <thead><tr><th>Hub head</th><th style={{ textAlign: 'right' }}>Submitted</th><th style={{ textAlign: 'right' }}>Pending</th><th>Will be reminded</th></tr></thead>
+                    <tbody>
+                      {frPreview.heads.map((h) => {
+                        const will = frTargets.some((t) => t.id === h.id);
+                        return (
+                          <tr key={h.id} title={h.pendingClients.join(', ')}>
+                            <td>{h.name}<span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11.5 }}>{h.email}</span></td>
+                            <td style={{ textAlign: 'right' }}>{h.submitted}/{h.total}</td>
+                            <td style={{ textAlign: 'right' }}>{h.pending}</td>
+                            <td style={{ color: will ? 'var(--coral-700, #C44A18)' : 'var(--muted)', fontWeight: will ? 600 : 400 }}>{will ? 'Yes' : 'No'}</td>
+                          </tr>
+                        );
+                      })}
+                      {frPreview.heads.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>No Hub heads with assigned accounts.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {frResult && (
+              <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: frResult.ok ? 'var(--green-600)' : 'var(--red-600)' }}>
+                {frResult.text}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn btn-primary" disabled={frSending || frLoading || !frMonth || frTargets.length === 0} onClick={sendForecastReminderNow}>
+                <Icon name="bell" size={15} />{frSending ? 'Sending…' : `Send reminder to ${frTargets.length} Hub head${frTargets.length === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>
