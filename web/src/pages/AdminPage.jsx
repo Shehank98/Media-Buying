@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge, fmtLKR, roleLabel } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
+import HubRevenueTargetsCard from '../components/HubRevenueTargetsCard';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import ClientGroupsTab from '../components/ClientGroupsTab';
@@ -3419,6 +3420,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                     </div>
                   )}
                 </div>
+
+                <HubRevenueTargetsCard year={grYear} />
               </div>
             </div>
           </div>

@@ -92,6 +92,13 @@ function buildScheduleWhere(filters) {
 // GROUP_HEAD member of the client's team, else a directly-assigned GROUP_HEAD user
 // (UserClientAccess). Returns a Map of clientId -> group head name.
 export async function accountManagerByClient(clientIds) {
+  const rec = await accountManagerRecordByClient(clientIds);
+  return new Map([...rec].map(([clientId, h]) => [clientId, h.name]));
+}
+
+// Same resolution as accountManagerByClient, but each value is the head user
+// { id, name } - for callers that need to join on the head's id.
+export async function accountManagerRecordByClient(clientIds) {
   if (!clientIds.length) return new Map();
   const clients = await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, agencyId: true } });
   const agencyByClient = new Map(clients.map((c) => [c.id, c.agencyId]));
@@ -102,15 +109,15 @@ export async function accountManagerByClient(clientIds) {
       include: {
         team: {
           include: {
-            head: { select: { name: true, role: true } },
-            members: { where: { user: { role: 'GROUP_HEAD' } }, include: { user: { select: { name: true } } }, orderBy: { userId: 'asc' } },
+            head: { select: { id: true, name: true, role: true } },
+            members: { where: { user: { role: 'GROUP_HEAD' } }, include: { user: { select: { id: true, name: true } } }, orderBy: { userId: 'asc' } },
           },
         },
       },
     }),
     prisma.userClientAccess.findMany({
       where: { clientId: { in: clientIds }, user: { role: 'GROUP_HEAD' } },
-      include: { user: { select: { name: true, agencyAccess: { select: { agencyId: true } } } } },
+      include: { user: { select: { id: true, name: true, agencyAccess: { select: { agencyId: true } } } } },
       // Most-recently granted first (higher id = newer), so a fresh reassignment
       // via a head's user account wins over an older direct assignment.
       orderBy: { id: 'desc' },
@@ -135,12 +142,12 @@ export async function accountManagerByClient(clientIds) {
   for (const tc of teamClients) {
     const t = tc.team;
     if (!t) continue;
-    let name = null;
-    if (t.head?.name && t.head.role === 'GROUP_HEAD') name = t.head.name;
-    else if (t.members?.[0]?.user?.name) name = t.members[0].user.name;
-    if (!name) continue;
-    if (!teamHeadAny.has(tc.clientId)) teamHeadAny.set(tc.clientId, name);
-    if (t.agencyId === agencyByClient.get(tc.clientId) && !teamHeadInAgency.has(tc.clientId)) teamHeadInAgency.set(tc.clientId, name);
+    let head = null;
+    if (t.head?.name && t.head.role === 'GROUP_HEAD') head = { id: t.head.id, name: t.head.name };
+    else if (t.members?.[0]?.user?.name) head = { id: t.members[0].user.id, name: t.members[0].user.name };
+    if (!head) continue;
+    if (!teamHeadAny.has(tc.clientId)) teamHeadAny.set(tc.clientId, head);
+    if (t.agencyId === agencyByClient.get(tc.clientId) && !teamHeadInAgency.has(tc.clientId)) teamHeadInAgency.set(tc.clientId, head);
   }
 
   const map = new Map();
@@ -149,11 +156,11 @@ export async function accountManagerByClient(clientIds) {
     const directs = directByClient.get(clientId) || [];
     // 1. Most-recent direct assignment whose head has access to the current agency.
     const directMatch = directs.find((h) => (h.agencyAccess || []).some((a) => a.agencyId === ag));
-    if (directMatch) { map.set(clientId, directMatch.name); continue; }
+    if (directMatch) { map.set(clientId, { id: directMatch.id, name: directMatch.name }); continue; }
     // 2. A team in the client's own agency.
     if (teamHeadInAgency.has(clientId)) { map.set(clientId, teamHeadInAgency.get(clientId)); continue; }
     // 3. Fallbacks: most-recent direct (agency unknown), then any team head.
-    if (directs.length) { map.set(clientId, directs[0].name); continue; }
+    if (directs.length) { map.set(clientId, { id: directs[0].id, name: directs[0].name }); continue; }
     if (teamHeadAny.has(clientId)) { map.set(clientId, teamHeadAny.get(clientId)); continue; }
   }
   return map;

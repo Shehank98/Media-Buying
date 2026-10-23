@@ -2,6 +2,7 @@ import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 import { accountManagerByClient } from './forecastInsights.controller.js';
+import { buildHubRevenueBreakdown } from '../services/hubRevenue.service.js';
 import { downloadRateCard, isRateCardConfigured } from '../services/ratecard.service.js';
 
 // Client ids the user may see (null = unrestricted, for SUPER_ADMIN).
@@ -372,6 +373,24 @@ export async function getAgencyRevenue(req, res) {
   } catch (error) {
     console.error('getAgencyRevenue error:', error);
     return res.status(500).json({ error: 'Failed to get agency revenue', detail: error.message });
+  }
+}
+
+// GET /dashboard/agency-revenue/:agencyId/hubs?year= - drill-down behind a
+// Business Unit Revenue card: per Hub head target vs achievement, and under
+// each head the client × month revenue build-up (see hubRevenue.service.js).
+export async function getAgencyHubRevenue(req, res) {
+  try {
+    const agencyId = parseInt(req.params.agencyId, 10);
+    if (!agencyId) return res.status(400).json({ error: 'Invalid agency' });
+    const ids = await agencyIdsForUser(req.user);
+    if (ids && !ids.includes(agencyId)) return res.status(403).json({ error: 'No access to this agency' });
+    const data = await buildHubRevenueBreakdown(agencyId, req.query.year);
+    if (!data) return res.status(404).json({ error: 'Agency not found' });
+    return res.json(data);
+  } catch (error) {
+    console.error('getAgencyHubRevenue error:', error);
+    return res.status(500).json({ error: 'Failed to get Hub revenue breakdown', detail: error.message });
   }
 }
 
