@@ -405,6 +405,8 @@ input, select, textarea { font-family: inherit; }
   transform: translateY(12px) scale(.98); transition: transform .22s cubic-bezier(.22,.61,.36,1);
 }
 .modal-scrim.show .modal { transform: none; }
+/* Recharts surfaces take focus on click; the browser ring looks like a stray box. */
+.hub-rev-modal .recharts-wrapper:focus, .hub-rev-modal .recharts-surface:focus, .hub-rev-modal .recharts-wrapper *:focus { outline: none; }
 /* Let a <form> wrapping modal-body + modal-foot fill the modal so the body scrolls
    (otherwise tall modals clip their bottom instead of scrolling). */
 .modal > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }

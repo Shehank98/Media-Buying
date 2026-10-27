@@ -19,6 +19,9 @@ GOOGLE_SCRIPT_URL  ──►  appscript/Code.gs  ──►  Gmail  ──►  re
 | `welcome` | Admin creates a user (`POST /api/admin/users`) | `to, name, password, loginUrl` |
 | `reset` | User requests password reset (`POST /api/auth/forgot-password`) | `to, name, resetLink` |
 | `reminder` | Admin sends an upload reminder (`POST /api/notifications/send-reminder`) | `to, name, monthLabel, message, loginUrl` |
+| `announcement` | Admin → Notify (`POST /api/notifications/broadcast`) | `to, name, title, message, link` |
+| `forecast-reminder` | 1st of the month (auto) or Admin → Notify → Forecast reminder | `to, cc, name, forecastMonth, pendingCount, totalCount, pendingClients, deadlineDay, loginUrl` |
+| `forecast-open` | 20th of the month (auto) | `to, cc, name, forecastMonth, clientCount, deadlineDay, loginUrl` |
 
 All three render full branded HTML (navy + coral theme) with a plain-text fallback.
 

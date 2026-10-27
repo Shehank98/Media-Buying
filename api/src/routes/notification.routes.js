@@ -7,6 +7,8 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   broadcastNotification,
+  getForecastReminderPreview,
+  sendForecastReminderNow,
   exportMasterSheet,
 } from '../controllers/uploadtracker.controller.js';
 
@@ -16,6 +18,8 @@ const router = Router();
 router.get('/upload-tracker', authenticate, requireRole('SUPER_ADMIN'), getUploadTracker);
 router.post('/send-reminder', authenticate, requireRole('SUPER_ADMIN'), sendReminder);
 router.post('/broadcast', authenticate, requireRole('SUPER_ADMIN'), broadcastNotification);
+router.get('/forecast-reminder', authenticate, requireRole('SUPER_ADMIN'), getForecastReminderPreview);
+router.post('/forecast-reminder', authenticate, requireRole('SUPER_ADMIN'), sendForecastReminderNow);
 router.get('/master-sheet', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), exportMasterSheet);
 
 // Notifications (all authenticated users)

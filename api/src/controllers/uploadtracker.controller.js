@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import ExcelJS from 'exceljs';
 import { sendEmail } from '../services/email.service.js';
+import { previewForecastReminder, sendForecastReminderEmails } from '../services/forecastEmail.service.js';
 
 // FRONTEND_URL may be a comma-separated CORS whitelist; use the first entry.
 function loginUrl() {
@@ -230,13 +231,15 @@ export async function markNotificationRead(req, res) {
 
 // POST /api/notifications/broadcast - SUPER_ADMIN sends an announcement to any
 // mix of roles and/or specific users. Creates one in-app Notification per
-// recipient (which the frontend also surfaces as a desktop notification).
+// recipient (which the frontend also surfaces as a desktop notification) and,
+// unless sendEmail is false, also emails each recipient.
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 export async function broadcastNotification(req, res) {
   try {
     const title = String(req.body.title || '').trim();
     const message = String(req.body.message || '').trim();
     const link = req.body.link ? String(req.body.link).trim() : null;
+    const withEmail = req.body.sendEmail !== false;
     if (!title || !message) return res.status(400).json({ error: 'Title and message are required' });
 
     const roles = Array.isArray(req.body.roles) ? req.body.roles.filter(r => VALID_ROLES.includes(r)) : [];
@@ -248,16 +251,75 @@ export async function broadcastNotification(req, res) {
     const or = [];
     if (roles.length) or.push({ role: { in: roles } });
     if (userIds.length) or.push({ id: { in: userIds } });
-    const users = await prisma.user.findMany({ where: { OR: or }, select: { id: true } });
+    const users = await prisma.user.findMany({
+      where: { OR: or },
+      select: { id: true, name: true, email: true },
+    });
     if (!users.length) return res.status(404).json({ error: 'No matching recipients' });
 
     const created = await prisma.notification.createMany({
       data: users.map(u => ({ userId: u.id, type: 'ANNOUNCEMENT', title, message, link })),
     });
-    return res.json({ message: `Notification sent to ${users.length} user(s)`, count: created.count });
+
+    let emailed = 0;
+    const failed = [];
+    let emailNote = '';
+    if (withEmail) {
+      if (!process.env.GOOGLE_SCRIPT_URL) {
+        emailNote = ' (email not configured - in-app only)';
+      } else {
+        // In-app links are paths ("/forecasting"); emails need a full URL.
+        const base = loginUrl();
+        const fullLink = link ? (/^https?:\/\//i.test(link) ? link : `${base}${link.startsWith('/') ? '' : '/'}${link}`) : base;
+        const results = await Promise.allSettled(users.filter(u => u.email).map(u =>
+          sendEmail({ type: 'announcement', to: u.email, name: u.name, title, message, link: fullLink })
+            .then(() => u.email)
+            .catch(err => { console.error(`Announcement email to ${u.email} failed:`, err.message); throw u.email; })));
+        for (const r of results) {
+          if (r.status === 'fulfilled') emailed++; else failed.push(r.reason);
+        }
+        emailNote = `, ${emailed} emailed${failed.length ? ` (${failed.length} email failure${failed.length === 1 ? '' : 's'})` : ''}`;
+      }
+    }
+
+    return res.json({
+      message: `Notification sent to ${users.length} user(s)${emailNote}`,
+      count: created.count,
+      emailed,
+      failed,
+    });
   } catch (error) {
     console.error('broadcastNotification error:', error);
     return res.status(500).json({ error: 'Failed to send notification', detail: error.message });
+  }
+}
+
+// GET /api/notifications/forecast-reminder?year=&month= - who would be reminded
+// for that forecast month (defaults to the month currently open for forecasting).
+export async function getForecastReminderPreview(req, res) {
+  try {
+    return res.json(await previewForecastReminder({ year: req.query.year, month: req.query.month }));
+  } catch (error) {
+    console.error('getForecastReminderPreview error:', error);
+    return res.status(500).json({ error: 'Failed to load forecast reminder status', detail: error.message });
+  }
+}
+
+// POST /api/notifications/forecast-reminder { year, month, mode: 'empty'|'pending' }
+// Sends the forecast reminder (in-app + email) now, for the chosen month.
+export async function sendForecastReminderNow(req, res) {
+  try {
+    const result = await sendForecastReminderEmails({ year: req.body.year, month: req.body.month, mode: req.body.mode });
+    const mail = result.emailEnabled ? `, ${result.sent} emailed` : ' (email not configured - in-app only)';
+    return res.json({
+      ...result,
+      message: result.reminded
+        ? `${result.month} reminder sent to ${result.reminded} Hub head(s)${mail}${result.failed.length ? `, ${result.failed.length} email failure(s)` : ''}`
+        : `Nobody to remind for ${result.month} - every Hub head has already submitted`,
+    });
+  } catch (error) {
+    console.error('sendForecastReminderNow error:', error);
+    return res.status(500).json({ error: 'Failed to send forecast reminder', detail: error.message });
   }
 }
 

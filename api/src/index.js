@@ -177,7 +177,7 @@ app.listen(PORT, '0.0.0.0', () => {
   startBackupScheduler();
   // Daily per-tab Excel export to Google Drive (no-op unless configured via env).
   startDataExportScheduler();
-  // Monthly forecast open (15th) + reminder (25th) emails to Hub heads
+  // Monthly forecast reminder (1st) + open (20th) emails to Hub heads
   // (no-op unless GOOGLE_SCRIPT_URL is configured).
   startForecastEmailScheduler();
 });

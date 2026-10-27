@@ -101,6 +101,7 @@ model User {
   packagesCreated           MediaPackage[]           @relation("PackageCreator")
   packageRecipients         PackageRecipient[]       @relation("PackageRecipientUser")
   groupRevenues             GroupRevenue[]           @relation("GroupRevenueHead")
+  hubRevenueTargets         HubRevenueTarget[]       @relation("HubRevenueTargetHead")
   clientRevenuesVerified    ClientRevenue[]          @relation("ClientRevenueVerifier")
   requisitions              MediaBuyingRequisition[] @relation("RequisitionRequester")
 
@@ -120,6 +121,7 @@ model Agency {
   annualTargets AgencyAnnualTarget[]
   revenues      AgencyRevenue[]
   revenueTargets AgencyRevenueTarget[]
+  hubRevenueTargets HubRevenueTarget[]
   clientGroups  ClientGroup[]
 
   @@map("agencies")
@@ -728,6 +730,28 @@ model MonthlyBudget {
 // Admin-entered Revenue Contribution per group head, per month. Drives the right
 // donut of the Executive Dashboard's Group Contribution card (the left donut is
 // derived from schedule logs). One amount (full LKR) per GROUP_HEAD user per month.
+// Per-Hub-head ANNUAL revenue target (full LKR) within one agency, per year.
+// Keyed by agency too because a head can manage clients in more than one
+// agency. Drives the per-head bars in the Executive Dashboard's Business Unit
+// Revenue drill-down (achievement = the head's clients' ClientRevenue.amount).
+model HubRevenueTarget {
+  id          Int      @id @default(autoincrement())
+  headUserId  Int      @map("head_user_id")
+  agencyId    Int      @map("agency_id")
+  year        Int
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  head   User   @relation("HubRevenueTargetHead", fields: [headUserId], references: [id], onDelete: Cascade)
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([headUserId, agencyId, year])
+  @@index([year])
+  @@map("hub_revenue_targets")
+}
+
 model GroupRevenue {
   id          Int      @id @default(autoincrement())
   year        Int

@@ -37,6 +37,8 @@ import {
   reviewChannelRequest,
   listGroupRevenue,
   setGroupRevenue,
+  listHubRevenueTargets,
+  setHubRevenueTarget,
   listChannelCommitments,
   setChannelCommitment,
   listCommitmentGroups,
@@ -130,6 +132,8 @@ router.delete('/channel-masters/:id/rate-card', deleteChannelRateCardHandler);
 // Group Revenue Contribution (per group head, per month) → Executive Dashboard right donut
 router.get('/group-revenue', listGroupRevenue);
 router.post('/group-revenue', setGroupRevenue);
+router.get('/hub-revenue-targets', listHubRevenueTargets);
+router.post('/hub-revenue-targets', setHubRevenueTarget);
 
 // Channel commitments (yearly target per channel) → Executive Dashboard tracker
 router.get('/channel-commitments', listChannelCommitments);

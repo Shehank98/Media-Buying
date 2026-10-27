@@ -12,8 +12,9 @@
  *   Reset:    { type: "reset",    to, name, resetLink }
  *   Reminder: { type: "reminder", to, name, monthLabel, message, loginUrl }
  *   Package:  { type: "package",  to, name, packageName, intro, lineItems:[{label,rate}], responseLink, pdfBase64?, pdfFileName? }
- *   Forecast open:     { type: "forecast-open",     to, cc:[...], name, monthLabel, clientCount, loginUrl }
- *   Forecast reminder: { type: "forecast-reminder", to, cc:[...], name, monthLabel, pendingCount, totalCount, pendingClients:[...], loginUrl }
+ *   Forecast open:     { type: "forecast-open",     to, cc:[...], name, monthLabel, forecastMonth, clientCount, deadlineDay, loginUrl }
+ *   Forecast reminder: { type: "forecast-reminder", to, cc:[...], name, monthLabel, forecastMonth, pendingCount, totalCount, pendingClients:[...], deadlineDay, loginUrl }
+ *   Announcement:      { type: "announcement",      to, name, title, message, link }   (Admin -> Notify)
  */
 
 var BRAND_NAME = "Ogilvy Orbit";
@@ -50,6 +51,8 @@ function doPost(e) {
       sendForecastOpenEmail(data);
     } else if (data.type === "forecast-reminder") {
       sendForecastReminderEmail(data);
+    } else if (data.type === "announcement") {
+      sendAnnouncementEmail(data);
     } else if (data.type === "requisition") {
       sendRequisitionEmail(data);
     } else {
@@ -354,6 +357,21 @@ function buildPackageHtml(name, packageName, intro, lineItems, responseLink) {
   return emailShell(packageName, inner);
 }
 
+// Highlighted "Forecast month" card used by both forecast emails.
+function forecastMonthCard(label) {
+  return '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
+    '<tr><td style="background:#FDF1EB;border:1px solid #F6D2BF;border-left:4px solid ' + C_CORAL + ';border-radius:11px;padding:16px 20px;">' +
+      '<p style="margin:0;color:' + C_CORAL_D + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Forecast month</p>' +
+      '<p style="margin:5px 0 0;color:' + C_INK + ';font-size:20px;font-weight:700;">' + escHtml(label) + '</p>' +
+    '</td></tr>' +
+  '</table>';
+}
+
+function ordinal(n) {
+  var s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 // ─── Forecast open (20th) ─────────────────────────────────────────────────────
 // Sent when the forecasting window rolls over to a new month: invites the Hub
 // head to enter the upcoming month's per-channel allocations.
@@ -361,8 +379,9 @@ function sendForecastOpenEmail(data) {
   var to          = data.to;
   var cc          = (data.cc || []).filter(function (e) { return e && e !== to; });
   var name        = data.name        || "Hub Head";
-  var monthLabel  = data.monthLabel  || "next month";
+  var monthLabel  = data.forecastMonth || data.monthLabel || "next month";
   var clientCount = data.clientCount || 0;
+  var deadline    = ordinal(data.deadlineDay || 20);
   var loginUrl    = data.loginUrl    || "https://your-app.railway.app";
 
   var subject = "Forecasting open: submit your " + monthLabel + " forecast";
@@ -376,18 +395,13 @@ function sendForecastOpenEmail(data) {
         (clientCount ? ' (<strong>' + clientCount + '</strong> client' + (clientCount === 1 ? '' : 's') + ' assigned to you)' : '') + '.' +
       '</p>' +
 
-      '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
-        '<tr><td style="background:#FDF1EB;border:1px solid #F6D2BF;border-left:4px solid ' + C_CORAL + ';border-radius:11px;padding:16px 20px;">' +
-          '<p style="margin:0;color:' + C_CORAL_D + ';font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Forecast month</p>' +
-          '<p style="margin:5px 0 0;color:' + C_INK + ';font-size:20px;font-weight:700;">' + escHtml(monthLabel) + '</p>' +
-        '</td></tr>' +
-      '</table>' +
+      forecastMonthCard(monthLabel) +
 
       ctaButton(loginUrl, 'Enter forecast &rarr;') +
       spacer(28) +
 
-      callout('amber', '&#9200;', 'Finalise before the 20th',
-        'The per-channel breakdown should be completed before the 20th, when the window rolls over to the following month.') +
+      callout('amber', '&#9200;', 'Finalise before the ' + deadline,
+        'The per-channel breakdown should be completed before the ' + deadline + ', when the window rolls over to the following month.') +
     bodyClose() +
     emailFooter(
       '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Automated forecasting notice. Please do not reply.',
@@ -400,20 +414,21 @@ function sendForecastOpenEmail(data) {
 }
 
 // ─── Forecast reminder (1st of the month) ─────────────────────────────────────
-// Sent only to Hub heads who still have accounts without a submitted forecast
-// for the upcoming month; lists the pending clients.
+// Sent to Hub heads who still have accounts without a submitted forecast for the
+// month that is OPEN (on Oct 1st that is October); lists the pending clients.
 function sendForecastReminderEmail(data) {
   var to             = data.to;
   var cc             = (data.cc || []).filter(function (e) { return e && e !== to; });
   var name           = data.name           || "Hub Head";
-  var monthLabel     = data.monthLabel     || "next month";
+  var monthLabel     = data.forecastMonth  || data.monthLabel || "this month";
+  var deadline       = ordinal(data.deadlineDay || 20);
   var pendingCount   = data.pendingCount   || 0;
   var totalCount     = data.totalCount     || 0;
   var pendingClients = data.pendingClients || [];
   var loginUrl       = data.loginUrl       || "https://your-app.railway.app";
 
-  var subject = "Reminder: " + pendingCount + " forecast" + (pendingCount === 1 ? "" : "s") +
-                " still pending for " + monthLabel;
+  var subject = "Reminder: " + monthLabel + " forecast - " + pendingCount + " account" + (pendingCount === 1 ? "" : "s") +
+                " still pending";
 
   var listRows = "";
   for (var i = 0; i < pendingClients.length; i++) {
@@ -429,8 +444,10 @@ function sendForecastReminderEmail(data) {
       '<p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.7;">' +
         'Hi <strong>' + escHtml(name) + '</strong>,<br><br>' +
         'The following account' + (pendingCount === 1 ? ' does' : 's do') + ' not yet have a forecast submitted for <strong>' + escHtml(monthLabel) + '</strong>. ' +
-        'Please log in and complete ' + (pendingCount === 1 ? 'it' : 'them') + '.' +
+        'Please log in and complete ' + (pendingCount === 1 ? 'it' : 'them') + ' before the ' + deadline + '.' +
       '</p>' +
+
+      forecastMonthCard(monthLabel) +
 
       (listRows
         ? '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-radius:13px;margin-bottom:28px;border-collapse:separate;overflow:hidden;">' +
@@ -453,6 +470,36 @@ function sendForecastReminderEmail(data) {
   var options = { name: FROM_NAME, htmlBody: html };
   if (cc.length) options.cc = cc.join(",");
   GmailApp.sendEmail(to, subject, stripTags(html), options);
+}
+
+// ─── Announcement (Admin -> Notify) ─────────────────────────────────────────
+// Payload: { type:"announcement", to, name, title, message, link }
+function sendAnnouncementEmail(data) {
+  var to      = data.to;
+  var name    = data.name    || "there";
+  var title   = data.title   || "Announcement";
+  var message = data.message || "";
+  var link    = data.link    || "https://your-app.railway.app";
+
+  var inner =
+    emailHeader(escHtml(title), 'A message from the ' + BRAND_NAME + ' team') +
+    bodyOpen() +
+      '<p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.7;">' +
+        'Hi <strong>' + escHtml(name) + '</strong>,' +
+      '</p>' +
+      '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
+        '<tr><td style="background:#F7F9FB;border:1px solid ' + C_LINE + ';border-left:4px solid ' + C_CORAL + ';border-radius:11px;padding:18px 20px;color:' + C_INK + ';font-size:15px;line-height:1.7;">' +
+          escHtml(message).replace(/\n/g, '<br>') +
+        '</td></tr>' +
+      '</table>' +
+      ctaButton(link, 'Open in Ogilvy Orbit &rarr;') +
+    bodyClose() +
+    emailFooter(
+      '&copy; ' + new Date().getFullYear() + ' ' + BRAND_NAME + '. Sent from Admin &rarr; Notify. Please do not reply.',
+      'You are receiving this because an administrator sent you a notification.');
+
+  var html = emailShell(title, inner);
+  GmailApp.sendEmail(to, title, stripTags(html), { name: FROM_NAME, htmlBody: html });
 }
 
 // ─── Media Buying Requisition (MBR) ─────────────────────────────────────────
