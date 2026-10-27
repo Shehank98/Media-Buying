@@ -26,7 +26,7 @@ const sum = (arr) => arr.reduce((s, v) => s + v, 0);
 
 // Every client mapped to its Hub head ({id, name}) - resolved once over all
 // clients so we also know which agencies each head works across.
-async function headsForAllClients() {
+export async function headsForAllClients() {
   const clients = await prisma.client.findMany({ select: { id: true, name: true, agencyId: true, isActive: true } });
   const headByClient = await accountManagerRecordByClient(clients.map((c) => c.id));
   const agenciesByHead = new Map();
@@ -41,10 +41,11 @@ async function headsForAllClients() {
 
 // Heads (GROUP_HEAD users) that belong to each agency: anyone with an active
 // client there, plus anyone who already has a target there for the year.
-export async function hubHeadsByAgency(year) {
+export async function hubHeadsByAgency(year, kind = 'revenue') {
+  const targetModel = kind === 'spend' ? prisma.hubSpendTarget : prisma.hubRevenueTarget;
   const [{ clients, headByClient }, targets] = await Promise.all([
     headsForAllClients(),
-    prisma.hubRevenueTarget.findMany({ where: { year }, include: { head: { select: { id: true, name: true } } } }),
+    targetModel.findMany({ where: { year }, include: { head: { select: { id: true, name: true } } } }),
   ]);
   const byAgency = new Map();
   const add = (agencyId, head) => {
@@ -78,14 +79,18 @@ export async function buildHubRevenueBreakdown(agencyId, yearParam) {
   const agencyClientIds = agencyClients.map((c) => c.id);
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
 
-  const [clientRev, agencyRev, targets, groupRev] = await Promise.all([
+  const [clientRev, agencyRev, targets, groupRev, clientTargetRows] = await Promise.all([
     agencyClientIds.length
       ? prisma.clientRevenue.findMany({ where: { year, clientId: { in: agencyClientIds }, amount: { not: null } }, select: { clientId: true, month: true, amount: true } })
       : [],
     prisma.agencyRevenue.findMany({ where: { year, agencyId }, select: { month: true, amount: true } }),
     prisma.hubRevenueTarget.findMany({ where: { year, agencyId }, include: { head: { select: { id: true, name: true } } } }),
     prisma.groupRevenue.findMany({ where: { year }, select: { headUserId: true, month: true, amount: true } }),
+    agencyClientIds.length
+      ? prisma.clientRevenueTarget.findMany({ where: { year, clientId: { in: agencyClientIds } }, select: { clientId: true, amount: true } })
+      : [],
   ]);
+  const clientTarget = new Map(clientTargetRows.map((t) => [t.clientId, Number(t.amount)]));
 
   // Head -> { name, clients: Map(clientId -> monthly[12]) }
   const heads = new Map();
@@ -107,6 +112,13 @@ export async function buildHubRevenueBreakdown(agencyId, yearParam) {
   for (const c of agencyClients) {
     const h = headByClient.get(c.id);
     if (h && c.isActive !== false) ensureHead(h.id, h.name);
+  }
+  // A client with a target but no revenue yet still gets a (0%) row.
+  for (const c of agencyClients) {
+    if (!(clientTarget.get(c.id) > 0)) continue;
+    const h = headByClient.get(c.id);
+    const bucket = h ? ensureHead(h.id, h.name).clients : unassigned;
+    if (!bucket.has(c.id)) bucket.set(c.id, zeros());
   }
   const targetByHead = new Map();
   for (const t of targets) {
@@ -138,9 +150,14 @@ export async function buildHubRevenueBreakdown(agencyId, yearParam) {
   if (!latestMonth) clientRev.forEach((r) => { latestMonth = Math.max(latestMonth, r.month); });
   if (!latestMonth) groupRev.forEach((g) => { if (heads.has(g.headUserId)) latestMonth = Math.max(latestMonth, g.month); });
 
+  // Annual client target + the same Jan-based "target to date" as the head/agency.
+  const targetToDateOf = (annual) => (annual > 0 && latestMonth ? round2((annual / 12) * latestMonth) : 0);
   const shapeClients = (map) => [...map.entries()]
-    .map(([clientId, monthly]) => ({ clientId, name: clientName.get(clientId) || `#${clientId}`, monthly: monthly.map(round2), total: round2(sum(monthly)) }))
-    .filter((c) => c.total !== 0 || c.monthly.some((v) => v !== 0))
+    .map(([clientId, monthly]) => {
+      const annualTarget = clientTarget.get(clientId) || 0;
+      return { clientId, name: clientName.get(clientId) || `#${clientId}`, monthly: monthly.map(round2), total: round2(sum(monthly)), annualTarget, targetToDate: targetToDateOf(annualTarget) };
+    })
+    .filter((c) => c.total !== 0 || c.annualTarget > 0 || c.monthly.some((v) => v !== 0))
     .sort((a, b) => b.total - a.total);
 
   const shapeGroup = (headUserId, headName, clientRows, annualTarget) => {
@@ -152,6 +169,7 @@ export async function buildHubRevenueBreakdown(agencyId, yearParam) {
       headUserId,
       headName,
       annualTarget,
+      monthlyTarget: annualTarget > 0 ? round2(annualTarget / 12) : 0,
       targetToDate,
       achieved: round2(achieved),
       pct: targetToDate > 0 ? Number(((achieved / targetToDate) * 100).toFixed(1)) : null,
@@ -180,6 +198,7 @@ export async function buildHubRevenueBreakdown(agencyId, yearParam) {
   const notAssigned = naRows.length ? shapeGroup(null, 'Not assigned', naRows, 0) : null;
 
   return {
+    kind: 'revenue',
     year,
     agencyId,
     agencyName: agency.name,

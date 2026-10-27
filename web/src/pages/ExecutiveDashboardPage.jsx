@@ -852,6 +852,7 @@ export default function ExecutiveDashboardPage() {
 
   const [agencyRevenue, setAgencyRevenue] = useState([]);
   const [hubAgency, setHubAgency] = useState(null); // Business Unit Revenue card clicked → Hub drill-down popup
+  const [hubSpendAgency, setHubSpendAgency] = useState(null); // Business Unit Performance card clicked → Hub spend drill-down
   const [agencyRevLoading, setAgencyRevLoading] = useState(true);
 
   const [mediumSplit, setMediumSplit] = useState(null);
@@ -1514,8 +1515,12 @@ export default function ExecutiveDashboardPage() {
                 const pct = ag.targetPct;
                 const barColor = pct == null ? color : pct >= 100 ? '#15814B' : pct >= 85 ? '#9A5B00' : '#C5391F';
                 return (
-                  <div key={ag.agencyId} className="agency-sum-card" style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)' }}>
+                  <div key={ag.agencyId} className="agency-sum-card" role="button" tabIndex={0} title="View spend by Hub head"
+                    onClick={() => setHubSpendAgency(ag)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setHubSpendAgency(ag); } }}
+                    style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)', cursor: 'pointer' }}>
                     <div className="agency-sum-name" style={{ fontWeight: 750, color: 'var(--ink)', marginBottom: 10 }}>{ag.agencyName}</div>
+                    <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 6 }}><span style={{ color: 'var(--muted)' }}>Annual target</span><span className="mono" style={{ fontWeight: 700 }}>{ag.annualTargetMillions > 0 ? fmtLKR(ag.annualTargetMillions * 1e6) : '-'}</span></div>
                     <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 6 }}><span style={{ color: 'var(--muted)' }}>YTD Billings</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdBillings)}</span></div>
                     <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 10 }}><span style={{ color: 'var(--muted)' }}>Active clients</span><span style={{ fontWeight: 700 }}>{ag.activeClients}</span></div>
                     {ag.annualTargetMillions > 0 ? (
@@ -1532,6 +1537,7 @@ export default function ExecutiveDashboardPage() {
                     ) : (
                       <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>No target set (Admin → Agencies)</div>
                     )}
+                    <div className="no-export" style={{ marginTop: 10, fontSize: 11.5, fontWeight: 700, color: 'var(--coral-700, #C44A18)', textAlign: 'right' }}>View Hub heads ›</div>
                   </div>
                 );
               })}
@@ -1578,6 +1584,7 @@ export default function ExecutiveDashboardPage() {
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setHubAgency(ag); } }}
                     style={{ background: '#fff', border: '1px solid var(--border)', borderTop: `3px solid ${color}`, borderRadius: 12, padding: '14px 16px', flex: '1 1 240px', maxWidth: 320, boxShadow: '0 1px 2px rgba(15,31,61,.05)', cursor: 'pointer' }}>
                     <div className="agency-sum-name" style={{ fontWeight: 750, color: 'var(--ink)', marginBottom: 10 }}>{ag.agencyName}</div>
+                    <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 6 }}><span style={{ color: 'var(--muted)' }}>Annual target</span><span className="mono" style={{ fontWeight: 700 }}>{ag.annualTarget > 0 ? fmtLKR(ag.annualTarget) : '-'}</span></div>
                     <div className="agency-sum-row" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 10 }}><span style={{ color: 'var(--muted)' }}>YTD Rev</span><span className="mono" style={{ fontWeight: 700 }}>{fmtLKR(ag.ytdRevenue)}</span></div>
                     {ag.annualTarget > 0 ? (
                       <div>
@@ -1603,6 +1610,7 @@ export default function ExecutiveDashboardPage() {
       </div>
 
       {hubAgency && <AgencyHubRevenueModal agency={hubAgency} year={year} onClose={() => setHubAgency(null)} />}
+      {hubSpendAgency && <AgencyHubRevenueModal kind="spend" agency={hubSpendAgency} year={year} onClose={() => setHubSpendAgency(null)} />}
 
       {/* Medium Split */}
       <div className="dash-section" style={{ order: 9 }}>

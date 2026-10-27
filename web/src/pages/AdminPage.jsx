@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import Icon, { Avatar, RoleBadge, fmtLKR, roleLabel } from '../components/Icon';
 import MoneyInput from '../components/MoneyInput';
 import HubRevenueTargetsCard from '../components/HubRevenueTargetsCard';
+import YearSetupCard from '../components/YearSetupCard';
 import api from '../lib/api';
 import OrbitLoader from '../components/OrbitLoader';
 import ClientGroupsTab from '../components/ClientGroupsTab';
@@ -295,6 +296,9 @@ export default function AdminPage({ initialTab = 'users' }) {
   const [ctYears, setCtYears] = useState([]);
   const [ctClients, setCtClients] = useState([]);   // [{ clientId, name, agencyName, amount }]
   const [ctAmounts, setCtAmounts] = useState({});   // { clientId: '120000000' }
+  const [ctRevAmounts, setCtRevAmounts] = useState({}); // yearly REVENUE target per client
+  const [ytSetupYear, setYtSetupYear] = useState(new Date().getFullYear()); // Year setup panel (Annual Targets tab)
+  const [ytReload, setYtReload] = useState(0); // bumped after a copy so the target tables refetch
   const [ctLoading, setCtLoading] = useState(false);
   const [ctSavingId, setCtSavingId] = useState(null);
   const [ctSearch, setCtSearch] = useState('');
@@ -1767,10 +1771,11 @@ export default function AdminPage({ initialTab = 'users' }) {
       const cls = data.clients || [];
       setCtClients(cls);
       const amts = {};
-      cls.forEach(c => { amts[c.clientId] = c.amount == null ? '' : String(c.amount); });
-      setCtAmounts(amts);
+      const revAmts = {};
+      cls.forEach(c => { amts[c.clientId] = c.amount == null ? '' : String(c.amount); revAmts[c.clientId] = c.revenueAmount == null ? '' : String(c.revenueAmount); });
+      setCtAmounts(amts); setCtRevAmounts(revAmts);
     } catch {
-      setCtClients([]); setCtAmounts({});
+      setCtClients([]); setCtAmounts({}); setCtRevAmounts({});
     } finally {
       setCtLoading(false);
     }
@@ -1778,13 +1783,13 @@ export default function AdminPage({ initialTab = 'users' }) {
   useEffect(() => {
     if (activeTab === 'client-targets') fetchClientTargets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, ctYear]);
+  }, [activeTab, ctYear, ytReload]);
 
-  const saveClientTarget = async (clientId) => {
-    const raw = ctAmounts[clientId];
+  const saveClientTarget = async (clientId, kind = 'spend') => {
+    const raw = (kind === 'revenue' ? ctRevAmounts : ctAmounts)[clientId];
     setCtSavingId(clientId);
     try {
-      await api.post('/admin/client-targets', { clientId, year: ctYear, amount: raw === '' ? null : Number(raw) });
+      await api.post('/admin/client-targets', { clientId, year: ctYear, amount: raw === '' ? null : Number(raw), kind });
       setCtSavedId(clientId);
       setTimeout(() => setCtSavedId(id => (id === clientId ? null : id)), 1600);
     } catch (err) {
@@ -1813,7 +1818,7 @@ export default function AdminPage({ initialTab = 'users' }) {
   useEffect(() => {
     if (activeTab === 'annual-targets') fetchAgencyTargets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, agTargetYear]);
+  }, [activeTab, agTargetYear, ytReload]);
 
   const saveAgencyTarget = async (agencyId) => {
     const raw = agTargetVals[agencyId];
@@ -3192,7 +3197,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                 <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#D9521C,#B23F12)', color: '#fff', display: 'grid', placeItems: 'center' }}><Icon name="trending-up" size={20} /></div>
                 <div>
                   <div style={{ fontSize: 16.5, fontWeight: 780, color: 'var(--ink)', lineHeight: 1.05 }}>Client Targets</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly spend target per client · achieved from actual schedule spend</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Yearly spend &amp; revenue target per client · spend achieved from schedule logs, revenue from Group Revenue</div>
                 </div>
               </div>
               <div className="field" style={{ margin: 0, marginLeft: 'auto' }}>
@@ -3214,7 +3219,7 @@ export default function AdminPage({ initialTab = 'users' }) {
             {/* Table */}
             <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
               <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-                Enter each client's <b style={{ color: 'var(--ink)' }}>yearly spend target</b> for {ctYear} (full LKR). Saved automatically when you leave a field; clear a value to remove the target.
+                Enter each client's <b style={{ color: 'var(--ink)' }}>yearly spend target</b> and <b style={{ color: 'var(--ink)' }}>yearly revenue target</b> for {ctYear} (full LKR). Revenue targets feed the client summary in Business Unit Revenue. Saved automatically when you leave a field; clear a value to remove the target.
               </div>
               {ctLoading ? (
                 <div style={{ padding: '30px 0' }}><OrbitLoader label="Loading clients…" /></div>
@@ -3226,7 +3231,8 @@ export default function AdminPage({ initialTab = 'users' }) {
                     <thead>
                       <tr>
                         <th>Client</th>
-                        <th style={{ textAlign: 'right', width: 240 }}>Yearly Target (LKR)</th>
+                        <th style={{ textAlign: 'right', width: 240 }}>Yearly Spend Target (LKR)</th>
+                        <th style={{ textAlign: 'right', width: 240 }}>Yearly Revenue Target (LKR)</th>
                         <th style={{ width: 90 }}></th>
                       </tr>
                     </thead>
@@ -3234,7 +3240,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       {groups.map(g => (
                         <Fragment key={g.name}>
                           <tr style={{ background: 'var(--bg,#F5F6F8)' }}>
-                            <td colSpan={3} style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: '#6B7790', padding: '8px 12px' }}>
+                            <td colSpan={4} style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: '#6B7790', padding: '8px 12px' }}>
                               {g.name} <span style={{ color: 'var(--muted)', fontWeight: 600 }}>· {g.clients.length}</span>
                             </td>
                           </tr>
@@ -3254,6 +3260,17 @@ export default function AdminPage({ initialTab = 'users' }) {
                                     disabled={ctSavingId === c.clientId}
                                   />
                                 </td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <MoneyInput
+                                    className="input"
+                                    value={ctRevAmounts[c.clientId] ?? ''}
+                                    onValueChange={v => setCtRevAmounts(a => ({ ...a, [c.clientId]: v }))}
+                                    onBlur={() => saveClientTarget(c.clientId, 'revenue')}
+                                    placeholder="Not set"
+                                    style={{ maxWidth: 220, textAlign: 'right', ...(Number(ctRevAmounts[c.clientId]) > 0 ? {} : { color: 'var(--muted)' }) }}
+                                    disabled={ctSavingId === c.clientId}
+                                  />
+                                </td>
                                 <td style={{ fontSize: 12, color: '#15814B', fontWeight: 700 }}>
                                   {ctSavingId === c.clientId ? <span style={{ color: 'var(--muted)' }}>Saving…</span> : ctSavedId === c.clientId ? '✓ Saved' : ''}
                                 </td>
@@ -3265,6 +3282,7 @@ export default function AdminPage({ initialTab = 'users' }) {
                       <tr style={{ borderTop: '2px solid var(--border)' }}>
                         <td className="strong">Total ({setCount} set)</td>
                         <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(totalTarget)}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 750 }}>{fmtLKR(filtered.reduce((s2, c) => s2 + (Number(ctRevAmounts[c.clientId]) || 0), 0))}</td>
                         <td />
                       </tr>
                     </tbody>
@@ -3613,6 +3631,7 @@ export default function AdminPage({ initialTab = 'users' }) {
 
       {activeTab === 'annual-targets' && (
         <div>
+          <YearSetupCard year={ytSetupYear} onYearChange={setYtSetupYear} onCopied={() => setYtReload(n => n + 1)} />
           {annualTargets.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--muted)', background: '#fff', border: '1px solid var(--border)', borderRadius: 14 }}>
               <Icon name="bar-chart" size={30} style={{ opacity: 0.4, marginBottom: 8 }} />
@@ -3704,6 +3723,11 @@ export default function AdminPage({ initialTab = 'users' }) {
                 </table>
               </div>
             )}
+          </div>
+
+          {/* Per-Hub-head spend targets → Business Unit Performance drill-down */}
+          <div style={{ marginTop: 28 }}>
+            <HubRevenueTargetsCard kind="spend" year={agTargetYear} reloadKey={ytReload} />
           </div>
         </div>
       )}

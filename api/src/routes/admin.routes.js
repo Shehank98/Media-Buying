@@ -39,6 +39,10 @@ import {
   setGroupRevenue,
   listHubRevenueTargets,
   setHubRevenueTarget,
+  listHubSpendTargets,
+  setHubSpendTarget,
+  getYearSetup,
+  copyYearTargets,
   listChannelCommitments,
   setChannelCommitment,
   listCommitmentGroups,
@@ -134,6 +138,10 @@ router.get('/group-revenue', listGroupRevenue);
 router.post('/group-revenue', setGroupRevenue);
 router.get('/hub-revenue-targets', listHubRevenueTargets);
 router.post('/hub-revenue-targets', setHubRevenueTarget);
+router.get('/hub-spend-targets', listHubSpendTargets);
+router.post('/hub-spend-targets', setHubSpendTarget);
+router.get('/year-setup', getYearSetup);
+router.post('/year-setup/copy', copyYearTargets);
 
 // Channel commitments (yearly target per channel) → Executive Dashboard tracker
 router.get('/channel-commitments', listChannelCommitments);

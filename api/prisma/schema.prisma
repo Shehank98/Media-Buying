@@ -102,6 +102,7 @@ model User {
   packageRecipients         PackageRecipient[]       @relation("PackageRecipientUser")
   groupRevenues             GroupRevenue[]           @relation("GroupRevenueHead")
   hubRevenueTargets         HubRevenueTarget[]       @relation("HubRevenueTargetHead")
+  hubSpendTargets           HubSpendTarget[]         @relation("HubSpendTargetHead")
   clientRevenuesVerified    ClientRevenue[]          @relation("ClientRevenueVerifier")
   requisitions              MediaBuyingRequisition[] @relation("RequisitionRequester")
 
@@ -122,6 +123,7 @@ model Agency {
   revenues      AgencyRevenue[]
   revenueTargets AgencyRevenueTarget[]
   hubRevenueTargets HubRevenueTarget[]
+  hubSpendTargets   HubSpendTarget[]
   clientGroups  ClientGroup[]
 
   @@map("agencies")
@@ -168,6 +170,7 @@ model Client {
   budgets         MonthlyBudget[]
   channelDeals    ChannelClientDeal[]
   targets         ClientTarget[]
+  revenueTargets  ClientRevenueTarget[]
   revenues        ClientRevenue[]
   requisitions    MediaBuyingRequisition[]
 
@@ -750,6 +753,46 @@ model HubRevenueTarget {
   @@unique([headUserId, agencyId, year])
   @@index([year])
   @@map("hub_revenue_targets")
+}
+
+// Per-Hub-head ANNUAL spend target (full LKR) within one agency, per year - the
+// spend twin of HubRevenueTarget. Achievement = schedule value of the head's
+// clients in that agency. Drives the Business Unit Performance drill-down.
+model HubSpendTarget {
+  id          Int      @id @default(autoincrement())
+  headUserId  Int      @map("head_user_id")
+  agencyId    Int      @map("agency_id")
+  year        Int
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  head   User   @relation("HubSpendTargetHead", fields: [headUserId], references: [id], onDelete: Cascade)
+  agency Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([headUserId, agencyId, year])
+  @@index([year])
+  @@map("hub_spend_targets")
+}
+
+// Admin-entered ANNUAL revenue target per client (full LKR), per year. Shown in
+// the client summary of the Business Unit Revenue drill-down. Distinct from
+// ClientTarget, which is the client's yearly SPEND target.
+model ClientRevenueTarget {
+  id          Int      @id @default(autoincrement())
+  clientId    Int      @map("client_id")
+  year        Int
+  amount      Decimal  @db.Decimal(16, 2)
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, year])
+  @@index([year])
+  @@map("client_revenue_targets")
 }
 
 model GroupRevenue {

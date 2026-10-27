@@ -15,6 +15,7 @@ import {
   getAgencyComparison,
   getAgencyRevenue,
   getAgencyHubRevenue,
+  getAgencyHubSpend,
   getTopClients,
   getTopChannels,
   getMediumSplit,
@@ -56,6 +57,7 @@ router.get('/dashboard/summary', authenticate, requireRole('SUPER_ADMIN', 'MANAG
 router.get('/dashboard/agency-comparison', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyComparison);
 router.get('/dashboard/agency-revenue', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyRevenue);
 router.get('/dashboard/agency-revenue/:agencyId/hubs', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyHubRevenue);
+router.get('/dashboard/agency-comparison/:agencyId/hubs', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getAgencyHubSpend);
 router.get('/dashboard/top-clients', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getTopClients);
 router.get('/dashboard/top-channels', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getTopChannels);
 router.get('/dashboard/medium-split', authenticate, requireRole('SUPER_ADMIN', 'MANAGER'), getMediumSplit);
