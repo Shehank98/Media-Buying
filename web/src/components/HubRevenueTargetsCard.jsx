@@ -1,7 +1,7 @@
-// Admin → Group Revenue: annual revenue target per Hub head, per agency.
-// Feeds the per-head bars in the Executive Dashboard's Business Unit Revenue
-// drill-down (target to date = annual ÷ 12 × months elapsed). Auto-saves each
-// row on blur. Backed by GET/POST /admin/hub-revenue-targets.
+// Admin: annual target per Hub head, per agency. kind='revenue' (Group Revenue
+// tab) feeds the Business Unit Revenue drill-down; kind='spend' (Annual Targets
+// tab) feeds the Business Unit Performance drill-down. Auto-saves each row on
+// blur. Backed by GET/POST /admin/hub-revenue-targets | /admin/hub-spend-targets.
 import { useEffect, useState } from 'react';
 import Icon, { fmtLKR } from './Icon';
 import MoneyInput from './MoneyInput';
@@ -10,7 +10,9 @@ import api from '../lib/api';
 
 const keyOf = (agencyId, headUserId) => `${agencyId}:${headUserId}`;
 
-export default function HubRevenueTargetsCard({ year }) {
+export default function HubRevenueTargetsCard({ year, kind = 'revenue', reloadKey = 0 }) {
+  const spend = kind === 'spend';
+  const endpoint = spend ? '/admin/hub-spend-targets' : '/admin/hub-revenue-targets';
   const [agencies, setAgencies] = useState([]);
   const [values, setValues] = useState({}); // key -> string (full LKR)
   const [saved, setSaved] = useState({});   // key -> last saved string
@@ -21,7 +23,7 @@ export default function HubRevenueTargetsCard({ year }) {
   useEffect(() => {
     let alive = true;
     setLoading(true); setError('');
-    api.get('/admin/hub-revenue-targets', { params: { year } })
+    api.get(endpoint, { params: { year } })
       .then(({ data }) => {
         if (!alive) return;
         const ags = data.agencies || [];
@@ -32,7 +34,7 @@ export default function HubRevenueTargetsCard({ year }) {
       .catch((e) => { if (alive) setError(e.response?.data?.error || 'Failed to load Hub head targets.'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [year]);
+  }, [year, endpoint, reloadKey]);
 
   const save = async (agencyId, headUserId) => {
     const k = keyOf(agencyId, headUserId);
@@ -40,7 +42,7 @@ export default function HubRevenueTargetsCard({ year }) {
     if (v === (saved[k] ?? '')) return;
     setStatus((s) => ({ ...s, [k]: 'saving' }));
     try {
-      await api.post('/admin/hub-revenue-targets', { year, agencyId, headUserId, amount: v === '' ? null : Number(v) });
+      await api.post(endpoint, { year, agencyId, headUserId, amount: v === '' ? null : Number(v) });
       setSaved((s) => ({ ...s, [k]: v }));
       setStatus((s) => ({ ...s, [k]: 'saved' }));
     } catch {
@@ -51,10 +53,10 @@ export default function HubRevenueTargetsCard({ year }) {
   const withHeads = agencies.filter((a) => a.heads.length);
 
   return (
-    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 12.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 2 }}>Hub head targets (annual)</div>
+    <div style={spend ? { background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 18px' } : { marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 720, color: 'var(--ink)', marginBottom: 2 }}>Hub head {spend ? 'spend' : 'revenue'} targets (annual)</div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
-        Each Hub head's {year} revenue target within an agency · drives the per-head bars when you click an agency card under Executive Dashboard → <b style={{ color: 'var(--ink)' }}>Business Unit Revenue</b>. Saves when you leave the field.
+        Each Hub head's {year} {spend ? 'spend' : 'revenue'} target within an agency · drives the per-head bars when you click an agency card under Executive Dashboard → <b style={{ color: 'var(--ink)' }}>{spend ? 'Business Unit Performance' : 'Business Unit Revenue'}</b>. Saves when you leave the field.
       </div>
       {loading ? <OrbitLoader size={32} /> : error ? (
         <div style={{ fontSize: 12.5, color: 'var(--red-600)' }}>{error}</div>

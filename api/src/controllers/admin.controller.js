@@ -8,6 +8,7 @@ import { GROUP_HEAD_CLIENT_OR } from './forecasting.controller.js';
 import { accountManagerByClient } from './forecastInsights.controller.js';
 import ExcelJS from 'exceljs';
 import { hubHeadsByAgency } from '../services/hubRevenue.service.js';
+import { getYearSetup as getYearSetupData, copyTargets as copyYearTargetsData } from '../services/yearSetup.service.js';
 
 const VALID_ROLES = ['SUPER_ADMIN', 'MANAGER', 'GROUP_HEAD', 'PLANNER'];
 
@@ -1484,8 +1485,12 @@ export async function listClientTargets(req, res) {
       select: { id: true, name: true, agency: { select: { name: true } } },
       orderBy: [{ agency: { name: 'asc' } }, { name: 'asc' }],
     });
-    const targets = await prisma.clientTarget.findMany({ where: { year } });
+    const [targets, revTargets] = await Promise.all([
+      prisma.clientTarget.findMany({ where: { year } }),
+      prisma.clientRevenueTarget.findMany({ where: { year } }),
+    ]);
     const byClient = new Map(targets.map((t) => [t.clientId, Number(t.amount)]));
+    const revByClient = new Map(revTargets.map((t) => [t.clientId, Number(t.amount)]));
 
     return res.json({
       year,
@@ -1495,6 +1500,7 @@ export async function listClientTargets(req, res) {
         name: c.name,
         agencyName: c.agency?.name || '',
         amount: byClient.has(c.id) ? byClient.get(c.id) : null,
+        revenueAmount: revByClient.has(c.id) ? revByClient.get(c.id) : null,
       })),
     });
   } catch (error) {
@@ -1505,15 +1511,17 @@ export async function listClientTargets(req, res) {
 
 export async function setClientTarget(req, res) {
   try {
-    const { clientId, year, amount } = req.body || {};
+    const { clientId, year, amount, kind } = req.body || {};
     const cid = parseInt(clientId), y = parseInt(year);
     if (!cid || !y) return res.status(400).json({ error: 'clientId and year are required' });
+    // kind 'revenue' edits the client's yearly REVENUE target; default is the spend target.
+    const model = kind === 'revenue' ? prisma.clientRevenueTarget : prisma.clientTarget;
     const num = amount === '' || amount == null ? null : Number(amount);
     if (num == null || isNaN(num) || num <= 0) {
-      await prisma.clientTarget.deleteMany({ where: { clientId: cid, year: y } });
+      await model.deleteMany({ where: { clientId: cid, year: y } });
       return res.json({ clientId: cid, year: y, amount: null });
     }
-    const saved = await prisma.clientTarget.upsert({
+    const saved = await model.upsert({
       where: { clientId_year: { clientId: cid, year: y } },
       update: { amount: num, createdById: req.user?.id ?? null },
       create: { clientId: cid, year: y, amount: num, createdById: req.user?.id ?? null },
@@ -1913,11 +1921,16 @@ export async function purgeClientRecords(req, res) {
 // GET /admin/hub-revenue-targets?year= - per agency, the Hub heads working there
 // (an active client in that agency, or an existing target) with their ANNUAL
 // revenue target (full LKR). Drives the Business Unit Revenue drill-down.
-export async function listHubRevenueTargets(req, res) {
+export const listHubRevenueTargets = (req, res) => listHubTargets(req, res, 'revenue');
+export const setHubRevenueTarget = (req, res) => saveHubTarget(req, res, 'revenue');
+export const listHubSpendTargets = (req, res) => listHubTargets(req, res, 'spend');
+export const setHubSpendTarget = (req, res) => saveHubTarget(req, res, 'spend');
+
+async function listHubTargets(req, res, kind) {
   try {
     const year = parseInt(req.query.year, 10) || new Date().getFullYear();
     const [{ byAgency, targets }, agencies] = await Promise.all([
-      hubHeadsByAgency(year),
+      hubHeadsByAgency(year, kind),
       prisma.agency.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ]);
     const amountBy = new Map(targets.map((t) => [`${t.agencyId}:${t.headUserId}`, Number(t.amount)]));
@@ -1932,14 +1945,15 @@ export async function listHubRevenueTargets(req, res) {
       })),
     });
   } catch (error) {
-    console.error('listHubRevenueTargets error:', error);
-    return res.status(500).json({ error: 'Failed to load Hub revenue targets', detail: error.message });
+    console.error('listHubTargets error:', error);
+    return res.status(500).json({ error: `Failed to load Hub ${kind} targets`, detail: error.message });
   }
 }
 
 // POST /admin/hub-revenue-targets { year, agencyId, headUserId, amount } -
 // upsert one head's annual target; blank/0 clears it.
-export async function setHubRevenueTarget(req, res) {
+async function saveHubTarget(req, res, kind) {
+  const model = kind === 'spend' ? prisma.hubSpendTarget : prisma.hubRevenueTarget;
   try {
     const year = parseInt(req.body.year, 10);
     const agencyId = parseInt(req.body.agencyId, 10);
@@ -1953,17 +1967,46 @@ export async function setHubRevenueTarget(req, res) {
     const num = raw === '' || raw == null ? null : Number(raw);
     if (num != null && isNaN(num)) return res.status(400).json({ error: 'Amount must be a number' });
     if (num == null || num <= 0) {
-      await prisma.hubRevenueTarget.deleteMany({ where: { headUserId, agencyId, year } });
+      await model.deleteMany({ where: { headUserId, agencyId, year } });
       return res.json({ cleared: true });
     }
-    const row = await prisma.hubRevenueTarget.upsert({
+    const row = await model.upsert({
       where: { headUserId_agencyId_year: { headUserId, agencyId, year } },
       update: { amount: num, createdById: req.user?.id ?? null },
       create: { headUserId, agencyId, year, amount: num, createdById: req.user?.id ?? null },
     });
     return res.json({ target: { ...row, amount: Number(row.amount) } });
   } catch (error) {
-    console.error('setHubRevenueTarget error:', error);
-    return res.status(500).json({ error: 'Failed to save Hub revenue target', detail: error.message });
+    console.error('saveHubTarget error:', error);
+    return res.status(500).json({ error: `Failed to save Hub ${kind} target`, detail: error.message });
+  }
+}
+
+// ─── New-year target setup ───────────────────────────────────────────────────
+// GET /admin/year-setup?year= - per target type: how many are set, which are still
+// missing, and whether the previous year has anything to copy.
+export async function getYearSetup(req, res) {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    return res.json(await getYearSetupData(year));
+  } catch (error) {
+    console.error('getYearSetup error:', error);
+    return res.status(500).json({ error: 'Failed to load year setup', detail: error.message });
+  }
+}
+
+// POST /admin/year-setup/copy { type, fromYear, toYear, upliftPct, overwrite }
+export async function copyYearTargets(req, res) {
+  try {
+    const { type, fromYear, toYear, upliftPct, overwrite } = req.body || {};
+    const result = await copyYearTargetsData({
+      type, fromYear: parseInt(fromYear, 10), toYear: parseInt(toYear, 10),
+      upliftPct: Number(upliftPct) || 0, overwrite: !!overwrite, userId: req.user?.id ?? null,
+    });
+    return res.json(result);
+  } catch (error) {
+    if (/Unknown target type|different valid years|Uplift/.test(error.message)) return res.status(400).json({ error: error.message });
+    console.error('copyYearTargets error:', error);
+    return res.status(500).json({ error: 'Failed to copy targets', detail: error.message });
   }
 }
