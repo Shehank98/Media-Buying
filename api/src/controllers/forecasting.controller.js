@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { getAccessibleClientIds } from '../middleware/access.js';
 import { accountManagerByClient, buildForecastBudgetDetail } from './forecastInsights.controller.js';
+import { monthState, openMonthsFor, pickMonthFor, notifyWindowOpened, monthLabel } from '../services/forecastWindow.service.js';
 
 const MEDIUM_ORDER = ['TV', 'RADIO', 'PRINT', 'CINEMA', 'OOH', 'DIGITAL'];
 
@@ -35,18 +36,41 @@ async function accessibleClientIds(user) {
 }
 
 // SUPER_ADMIN may target any month (e.g. backfilling June so it can be
-// copied into July) via ?year=&month=; everyone else is locked to next month.
-function resolveTargetMonth(req) {
-  if (req.user.role === 'SUPER_ADMIN') {
-    const y = parseInt(req.query.year);
-    const m = parseInt(req.query.month);
-    if (y >= 2000 && m >= 1 && m <= 12) return { year: y, month: m };
-  }
+// copied into July) via ?year=&month=. A Hub head (GROUP_HEAD) may pick any month
+// an admin forecast window (or the calendar rule) has open for them; if the
+// requested month isn't open they get their default/first open month. Everyone
+// else is locked to the calendar's next month.
+async function resolveTargetMonth(req) {
+  const y = parseInt(req.query.year);
+  const m = parseInt(req.query.month);
+  const requested = y >= 2000 && m >= 1 && m <= 12 ? { year: y, month: m } : null;
+  if (req.user.role === 'SUPER_ADMIN') return requested || nextMonth();
+  if (req.user.role === 'GROUP_HEAD') return pickMonthFor(req.user, requested, nextMonth());
   return nextMonth();
 }
 
+// Can this user currently enter (year, month)? { open, deadline, reason }.
+async function entryState(user, year, month) {
+  return monthState(user, year, month, nextMonth());
+}
+
+const closedMessage = (what, y, m, st) => `${what} for ${monthLabel(y, m)} is closed (${st.reason}). Ask an admin to open it.`;
+
 export async function getNextMonth(req, res) {
   return res.json(nextMonth());
+}
+
+// Months the caller may currently enter (Hub heads: calendar default + any open
+// admin windows, with deadlines). Drives the month picker + closed banner.
+export async function getOpenMonths(req, res) {
+  try {
+    const def = nextMonth();
+    const months = await openMonthsFor(req.user, def);
+    return res.json({ default: def, months });
+  } catch (error) {
+    console.error('getOpenMonths error:', error);
+    return res.status(500).json({ error: 'Failed to load open months', detail: error.message });
+  }
 }
 
 // Months that have any forecast data (for the variance month picker), newest first.
@@ -127,6 +151,7 @@ export async function getVariance(req, res) {
     return res.json({
       year,
       month,
+      window: await entryState(user, year, month),
       rows,
       totals: {
         forecastMillions: Number(totals.f.toFixed(2)),
@@ -211,7 +236,7 @@ export async function listForecastClients(req, res) {
       orderBy: { name: 'asc' },
     });
 
-    const { year, month } = resolveTargetMonth(req);
+    const { year, month } = await resolveTargetMonth(req);
     // Latest submission time per client for this month, so the roster can show
     // the most-recently-submitted clients first.
     const submittedAgg = await prisma.monthlyForecast.groupBy({
@@ -244,7 +269,8 @@ export async function listForecastClients(req, res) {
       return a.name.localeCompare(b.name);
     });
 
-    return res.json({ year, month, clients: rows });
+    const window = await entryState(user, year, month);
+    return res.json({ year, month, clients: rows, window });
   } catch (error) {
     console.error('listForecastClients error:', error);
     return res.status(500).json({ error: 'Failed to load forecasting clients', detail: error.message });
@@ -305,7 +331,7 @@ export async function getForecastEntry(req, res) {
     const ids = await accessibleClientIds(user);
     if (ids && !ids.includes(clientId)) return res.status(403).json({ error: 'No access to this client' });
 
-    const { year, month } = resolveTargetMonth(req);
+    const { year, month } = await resolveTargetMonth(req);
     const rows = await prisma.monthlyForecast.findMany({
       where: { clientId, year, month },
       select: { channelMasterId: true, amountMillions: true, notes: true },
@@ -331,7 +357,7 @@ export async function getPreviousForecast(req, res) {
     const ids = await accessibleClientIds(user);
     if (ids && !ids.includes(clientId)) return res.status(403).json({ error: 'No access to this client' });
 
-    const { year, month } = resolveTargetMonth(req);
+    const { year, month } = await resolveTargetMonth(req);
     const latest = await prisma.monthlyForecast.findFirst({
       where: { clientId, OR: [{ year: { lt: year } }, { year, month: { lt: month } }] },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -374,13 +400,13 @@ export async function submitForecast(req, res) {
     const client = await prisma.client.findUnique({ where: { id: cid }, select: { id: true, agencyId: true, isActive: true } });
     if (!client || !client.isActive) return res.status(404).json({ error: 'Client not found or inactive' });
 
-    // Group heads may only submit the upcoming month.
-    const nm = nextMonth();
-    if (user.role !== 'SUPER_ADMIN' && (y !== nm.year || m !== nm.month)) {
-      return res.status(403).json({ error: "You can only submit the upcoming month's forecast" });
-    }
+    // Group heads may only submit a month that is open for them (calendar rule
+    // or an admin forecast window that hasn't expired).
+    const st = await entryState(user, y, m);
+    if (!st.open) return res.status(403).json({ error: closedMessage('Forecasting', y, m, st) });
 
     const ops = [];
+    const snapshotItems = [];
     for (const it of items) {
       const chId = parseInt(it.channelMasterId);
       if (!Number.isInteger(chId)) continue;
@@ -391,14 +417,23 @@ export async function submitForecast(req, res) {
         continue;
       }
       const notes = it.notes ? String(it.notes).slice(0, 500) : null;
+      snapshotItems.push({ channelMasterId: chId, amountMillions: amt, notes });
       ops.push(prisma.monthlyForecast.upsert({
         where: { year_month_clientId_channelMasterId: { year: y, month: m, clientId: cid, channelMasterId: chId } },
         update: { amountMillions: amt, notes, submittedById: user.id, agencyId: client.agencyId },
         create: { year: y, month: m, clientId: cid, channelMasterId: chId, agencyId: client.agencyId, amountMillions: amt, notes, submittedById: user.id },
       }));
     }
+    // History: keep this save's full state (the live rows above are overwritten in place).
+    ops.push(prisma.forecastSubmission.create({
+      data: {
+        year: y, month: m, clientId: cid, submittedById: user.id,
+        totalMillions: snapshotItems.reduce((a, i) => a + i.amountMillions, 0),
+        items: snapshotItems,
+      },
+    }));
     await prisma.$transaction(ops);
-    return res.json({ message: 'Forecast saved', rows: ops.length });
+    return res.json({ message: 'Forecast saved', rows: ops.length - 1 });
   } catch (error) {
     console.error('submitForecast error:', error);
     return res.status(500).json({ error: 'Failed to save forecast', detail: error.message });
@@ -513,7 +548,7 @@ export async function listBudget(req, res) {
       orderBy: { name: 'asc' },
     });
     const clientIds = clients.map(c => c.id);
-    const { year, month } = resolveTargetMonth(req);
+    const { year, month } = await resolveTargetMonth(req);
 
     const [forecastRows, budgetRows] = await Promise.all([
       prisma.monthlyForecast.groupBy({ by: ['clientId'], where: { year, month, clientId: { in: clientIds } }, _sum: { amountMillions: true } }),
@@ -589,11 +624,8 @@ export async function submitBudget(req, res) {
     const client = await prisma.client.findUnique({ where: { id: cid }, select: { id: true, agencyId: true, isActive: true } });
     if (!client || !client.isActive) return res.status(404).json({ error: 'Client not found or inactive' });
 
-    // Group heads may only submit the upcoming month.
-    const nm = nextMonth();
-    if (user.role !== 'SUPER_ADMIN' && (y !== nm.year || m !== nm.month)) {
-      return res.status(403).json({ error: "You can only submit the upcoming month's budget" });
-    }
+    const st = await entryState(user, y, m);
+    if (!st.open) return res.status(403).json({ error: closedMessage('The budget', y, m, st) });
 
     const parseAmt = (v) => {
       if (v == null || v === '') return null;

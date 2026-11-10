@@ -171,6 +171,7 @@ model Client {
   channelDeals    ChannelClientDeal[]
   targets         ClientTarget[]
   revenueTargets  ClientRevenueTarget[]
+  forecastSubmissions ForecastSubmission[]
   revenues        ClientRevenue[]
   requisitions    MediaBuyingRequisition[]
 
@@ -705,6 +706,48 @@ model MonthlyForecast {
   @@unique([year, month, clientId, channelMasterId])
   @@index([year, month])
   @@map("monthly_forecasts")
+}
+
+// Admin-controlled forecast window for ONE month. Without a window the calendar
+// rule applies (nextMonth(): the current month through the 19th, next month from
+// the 20th). A window overrides that for the Hub heads it targets
+// (`headUserIds`; empty = every Hub head): status OPEN lets them enter that month
+// (until `deadline`, after which it is treated as closed), status CLOSED locks it
+// - including the calendar's default month. SUPER_ADMIN is never restricted.
+model ForecastWindow {
+  id          Int       @id @default(autoincrement())
+  year        Int
+  month       Int // 1=Jan
+  status      String    @default("OPEN") // OPEN | CLOSED
+  headUserIds Int[]     @map("head_user_ids")
+  deadline    DateTime?
+  note        String?
+  createdById Int?      @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([year, month])
+  @@map("forecast_windows")
+}
+
+// One row per forecast SAVE (history): the client's whole forecast for the month
+// as it stood after that save, so "what was forecast, by whom, when" survives the
+// in-place overwrite of MonthlyForecast. items = [{channelMasterId, amountMillions, notes}].
+model ForecastSubmission {
+  id            Int      @id @default(autoincrement())
+  year          Int
+  month         Int
+  clientId      Int      @map("client_id")
+  submittedById Int      @map("submitted_by_id")
+  submittedAt   DateTime @default(now()) @map("submitted_at")
+  totalMillions Decimal  @map("total_millions") @db.Decimal(18, 6)
+  items         Json
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([year, month, clientId])
+  @@index([clientId])
+  @@map("forecast_submissions")
 }
 
 // Overall Budget worksheet, one row per client per month (the month rolls on

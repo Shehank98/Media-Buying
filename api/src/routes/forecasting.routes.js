@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import {
   getNextMonth,
+  getOpenMonths,
   getVariance,
   exportForecastEntries,
   listForecastClients,
@@ -16,11 +17,19 @@ import {
   submitBudget,
 } from '../controllers/forecasting.controller.js';
 
+import { listWindows, saveWindow, deleteWindow, listSubmissions } from '../controllers/forecastWindow.controller.js';
+
 const router = Router();
 
 router.get('/next-month', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getNextMonth);
 // MANAGER (Boardroom) has read-only visibility of their agency's forecasts, so
 // the GET/view endpoints allow MANAGER; writes (submit/request/export) do not.
+router.get('/open-months', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD'), getOpenMonths);
+// Forecast windows (admin opens/closes months for Hub heads) + submission history
+router.get('/windows', authenticate, requireRole('SUPER_ADMIN'), listWindows);
+router.post('/windows', authenticate, requireRole('SUPER_ADMIN'), saveWindow);
+router.delete('/windows/:id', authenticate, requireRole('SUPER_ADMIN'), deleteWindow);
+router.get('/submissions', authenticate, requireRole('SUPER_ADMIN'), listSubmissions);
 router.get('/clients', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'MANAGER'), listForecastClients);
 router.get('/export-entries', authenticate, requireRole('SUPER_ADMIN'), exportForecastEntries);
 router.get('/channels', authenticate, requireRole('SUPER_ADMIN', 'GROUP_HEAD', 'MANAGER'), listForecastChannels);

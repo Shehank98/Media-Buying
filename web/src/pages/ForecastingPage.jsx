@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Icon from '../components/Icon';
 import OrbitLoader from '../components/OrbitLoader';
+import ForecastWindowsModal from '../components/ForecastWindowsModal';
+import ForecastHistoryModal from '../components/ForecastHistoryModal';
 import api from '../lib/api';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -982,7 +984,36 @@ function Empty({ text = 'No data for this selection.' }) {
 // Best & Billing-last-month + the client's commission. Same 20th-rollover month
 // as the entry grid (admins can target any month). GROUP_HEAD + SUPER_ADMIN.
 // ════════════════════════════════════════════════════════════════════════════
-function BudgetTab({ isAdmin, canEdit = true }) {
+// Months a Hub head may currently enter (calendar default + admin-opened windows).
+function useOpenMonths(isHub) {
+  const [months, setMonths] = useState([]);
+  useEffect(() => {
+    if (!isHub) return;
+    api.get('/forecasting/open-months').then(r => setMonths(r.data.months || [])).catch(() => {});
+  }, [isHub]);
+  return months;
+}
+
+const fmtDeadline = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+// Closed / "open until" notice for Hub heads, from the `window` the API returns.
+function WindowBanner({ info, label }) {
+  if (!info) return null;
+  if (!info.open) {
+    return <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>
+      Forecasting for {label} is closed ({info.reason}). You can view it, but not change it. Ask an admin to open it.
+    </div>;
+  }
+  if (info.deadline) {
+    return <div style={{ background: '#FFF7E6', border: '1px solid #F2D8A0', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#9A5B00', marginBottom: 16 }}>
+      {label} is open until <b>{fmtDeadline(info.deadline)}</b>. After that it locks automatically.
+    </div>;
+  }
+  return null;
+}
+
+function BudgetTab({ isAdmin, isHub = false, canEdit = true }) {
+  const hubMonths = useOpenMonths(isHub);
   const [anchorMonth, setAnchorMonth] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState(null); // admin override
   const [agencyFilter, setAgencyFilter] = useState('');
@@ -1010,9 +1041,9 @@ function BudgetTab({ isAdmin, canEdit = true }) {
   const params = useMemo(() => {
     const p = {};
     if (agencyFilter) p.agencyId = agencyFilter;
-    if (isAdmin && selectedPeriod) { p.year = selectedPeriod.year; p.month = selectedPeriod.month; }
+    if ((isAdmin || isHub) && selectedPeriod) { p.year = selectedPeriod.year; p.month = selectedPeriod.month; }
     return p;
-  }, [agencyFilter, selectedPeriod, isAdmin]);
+  }, [agencyFilter, selectedPeriod, isAdmin, isHub]);
 
   useEffect(() => {
     setLoading(true);
@@ -1028,6 +1059,7 @@ function BudgetTab({ isAdmin, canEdit = true }) {
   }, [params]);
 
   const rows = data?.rows || [];
+  const canEditNow = canEdit && (isAdmin || data?.window?.open !== false);
   const num = (v) => { const n = parseFloat(v); return Number.isNaN(n) ? 0 : n; };
   const norm = (v) => (v === '' || v == null ? null : num(v));
 
@@ -1101,6 +1133,7 @@ function BudgetTab({ isAdmin, canEdit = true }) {
 
   return (
     <div>
+      {isHub && data && <WindowBanner info={data.window} label={`${MONTHS[data.month - 1]} ${data.year}`} />}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
         {isAdmin && monthOptions.length > 0 && (
           <select
@@ -1113,6 +1146,11 @@ function BudgetTab({ isAdmin, canEdit = true }) {
             {monthOptions.map(o => (
               <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}{o.year === anchorMonth.year && o.month === anchorMonth.month ? ' (upcoming)' : ''}</option>
             ))}
+          </select>
+        )}
+        {isHub && hubMonths.length > 1 && data && (
+          <select className="select" value={`${data.year}-${data.month}`} onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setSelectedPeriod({ year: y, month: m }); }} style={{ maxWidth: 200 }} title="Month to enter">
+            {hubMonths.map(o => <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>{MONTHS[o.month - 1]} {o.year}</option>)}
           </select>
         )}
         {agencies.length > 1 && (
@@ -1160,13 +1198,13 @@ function BudgetTab({ isAdmin, canEdit = true }) {
                       </td>
                       <td className="mono" style={{ textAlign: 'right', color: r.actualAmount ? '#16243C' : '#93A0B5' }}>{r.actualAmount ? fmtAmt(r.actualAmount) : '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" disabled={!canEdit} value={fmtMoneyInput(d.best)} placeholder={canEdit ? '0.00' : '-'}
+                        <input className="input mono" inputMode="decimal" disabled={!canEditNow} value={fmtMoneyInput(d.best)} placeholder={canEditNow ? '0.00' : '-'}
                           onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], best: c } })); }}
                           onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
                       <td style={{ textAlign: 'center', color: cl ? '#16243C' : '#C7D0DD', fontWeight: 600 }}>{cl || '-'}</td>
                       <td style={{ textAlign: 'right' }}>
-                        <input className="input mono" inputMode="decimal" disabled={!canEdit} value={fmtMoneyInput(d.billing)} placeholder={canEdit ? '0.00' : '-'}
+                        <input className="input mono" inputMode="decimal" disabled={!canEditNow} value={fmtMoneyInput(d.billing)} placeholder={canEditNow ? '0.00' : '-'}
                           onChange={e => { const c = cleanMoney(e.target.value); if (c !== null) setDrafts(p => ({ ...p, [r.clientId]: { ...p[r.clientId], billing: c } })); }}
                           onBlur={() => blurMoney(r)} style={inputStyle} />
                       </td>
@@ -1197,6 +1235,12 @@ export default function ForecastingPage() {
   const isManager = user?.role === 'MANAGER';
   // MANAGER (Boardroom) has read-only visibility of their agency's forecasts.
   const canEdit = isAdmin || user?.role === 'GROUP_HEAD';
+  const isHub = user?.role === 'GROUP_HEAD';
+  const openMonths = useOpenMonths(isHub);
+  const [windowInfo, setWindowInfo] = useState(null); // open/closed state of the month on screen (Hub heads)
+  const [showWindows, setShowWindows] = useState(false); // admin: forecast windows modal
+  const [historyFor, setHistoryFor] = useState(null); // admin: submission history of the open client
+  const canEditNow = canEdit && (isAdmin || windowInfo?.open !== false);
 
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState({ year: null, month: null });
@@ -1329,9 +1373,9 @@ export default function ForecastingPage() {
     setLoading(true);
     const params = {};
     if (agencyFilter) params.agencyId = agencyFilter;
-    if (isAdmin && selectedPeriod) { params.year = selectedPeriod.year; params.month = selectedPeriod.month; }
+    if ((isAdmin || isHub) && selectedPeriod) { params.year = selectedPeriod.year; params.month = selectedPeriod.month; }
     api.get('/forecasting/clients', { params })
-      .then(r => { setClients(r.data.clients || []); setPeriod({ year: r.data.year, month: r.data.month }); })
+      .then(r => { setClients(r.data.clients || []); setPeriod({ year: r.data.year, month: r.data.month }); setWindowInfo(r.data.window || null); })
       .catch(() => setError('Failed to load clients.'))
       .finally(() => setLoading(false));
   };
@@ -1354,7 +1398,7 @@ export default function ForecastingPage() {
     setEntryLoading(true);
     try {
       const entryParams = { clientId: client.id };
-      if (isAdmin && selectedPeriod) { entryParams.year = selectedPeriod.year; entryParams.month = selectedPeriod.month; }
+      if ((isAdmin || isHub) && selectedPeriod) { entryParams.year = selectedPeriod.year; entryParams.month = selectedPeriod.month; }
       const [chRes, enRes] = await Promise.all([
         api.get('/forecasting/channels'),
         api.get('/forecasting/entry', { params: entryParams }),
@@ -1450,7 +1494,7 @@ export default function ForecastingPage() {
     let data;
     try {
       const prevParams = { clientId: active.id };
-      if (isAdmin && selectedPeriod) { prevParams.year = selectedPeriod.year; prevParams.month = selectedPeriod.month; }
+      if ((isAdmin || isHub) && selectedPeriod) { prevParams.year = selectedPeriod.year; prevParams.month = selectedPeriod.month; }
       ({ data } = await api.get('/forecasting/previous', { params: prevParams }));
     } catch (err) {
       // Only a genuine fetch failure means the copy failed.
@@ -1567,7 +1611,7 @@ export default function ForecastingPage() {
           <p style={{ fontSize: 13.5, color: '#6B7790', margin: '6px 0 0' }}>
             {view === 'insights' ? 'Forecast accuracy, variance and spend insights'
               : view === 'budget' ? 'Best-case & last-month billing per client · Actual auto-fills from entered forecasts'
-              : canEdit ? `Enter the ${periodLabel} forecast for your clients`
+              : canEditNow ? `Enter the ${periodLabel} forecast for your clients`
               : `${periodLabel} forecast across your agency clients (view only)`}
           </p>
         </div>
@@ -1591,6 +1635,22 @@ export default function ForecastingPage() {
                 ))}
               </select>
             )}
+            {isHub && openMonths.length > 1 && period.month && (
+              <select
+                className="select"
+                value={`${period.year}-${period.month}`}
+                onChange={e => { const [y, m] = e.target.value.split('-').map(Number); setSelectedPeriod({ year: y, month: m }); }}
+                style={{ maxWidth: 230 }}
+                title="Months open for forecasting"
+              >
+                {openMonths.map(o => (
+                  <option key={`${o.year}-${o.month}`} value={`${o.year}-${o.month}`}>
+                    {MONTHS[o.month - 1]} {o.year}{o.deadline ? ` · until ${fmtDeadline(o.deadline)}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowWindows(true)} title="Open or close forecast months for Hub heads"><Icon name="calendar" size={14} /> Forecast windows</button>}
             {(isAdmin || isManager) && agencies.length > 1 && (
               <select className="select" value={agencyFilter} onChange={e => setAgencyFilter(e.target.value)} style={{ maxWidth: 220 }}>
                 <option value="">All agencies</option>
@@ -1636,10 +1696,12 @@ export default function ForecastingPage() {
 
       {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 16 }}>{error}</div>}
 
+      {isHub && view === 'clients' && <WindowBanner info={windowInfo} label={periodLabel} />}
+
       {isAdmin && view === 'insights' ? (
         <InsightsTab />
       ) : view === 'budget' ? (
-        <BudgetTab isAdmin={isAdmin} canEdit={canEdit} />
+        <BudgetTab isAdmin={isAdmin} isHub={isHub} canEdit={canEdit} />
       ) : filtered.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center', color: '#6B7790', background: '#fff', border: '1px solid #E5E8ED', borderRadius: 14 }}>No clients available.</div>
       ) : (
@@ -1667,7 +1729,7 @@ export default function ForecastingPage() {
                       <span className="mono" style={{ marginLeft: 4, color: '#16243C', fontWeight: 700, whiteSpace: 'nowrap' }}>· LKR {fmtShortLKR(c.totalAmount)}</span>
                     )}
                   </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C', flex: 'none' }}>{canEdit ? 'Enter' : 'View'} <Icon name="chevR" size={14} /></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#D9521C', flex: 'none' }}>{canEditNow ? 'Enter' : 'View'} <Icon name="chevR" size={14} /></span>
                 </div>
               </div>
             );
@@ -1682,10 +1744,15 @@ export default function ForecastingPage() {
             <div className="modal-head">
               <div>
                 <h2 style={{ margin: 0 }}>{active.name}</h2>
-                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{periodLabel} forecast · {canEdit ? 'enter amounts in LKR' : 'view only'}</p>
+                <p style={{ margin: '3px 0 0', fontSize: 12.5, color: 'var(--muted)' }}>{periodLabel} forecast · {canEditNow ? 'enter amounts in LKR' : 'view only'}</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {canEdit && !entryLoading && (
+                {isAdmin && !entryLoading && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setHistoryFor({ clientId: active.id, clientName: active.name, year: period.year, month: period.month })} title="Every save of this client's forecast for the month">
+                    <Icon name="history" size={14} /> History
+                  </button>
+                )}
+                {canEditNow && !entryLoading && (
                   <button className="btn btn-ghost btn-sm" onClick={copyLast} disabled={copying}>
                     <Icon name="history" size={14} /> {copying ? 'Copying…' : 'Copy last month'}
                   </button>
@@ -1698,7 +1765,7 @@ export default function ForecastingPage() {
               {savedMsg && <div style={{ background: '#ECF8F1', border: '1px solid #cdebd9', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#15814B', marginBottom: 14 }}>{savedMsg}</div>}
               {entryLoading ? <OrbitLoader label="Loading…" /> : (
                 <>
-                  {canEdit && categories.length > 0 && (
+                  {canEditNow && categories.length > 0 && (
                     <div style={{ background: '#FCF4E2', border: '1px solid #F0DFAE', borderRadius: 8, padding: '9px 13px', fontSize: 12.5, color: '#9A5B00', marginBottom: 14, lineHeight: 1.5 }}>
                       <Icon name="clock" size={13} style={{ marginRight: 5, verticalAlign: '-2px' }} />
                       Enter each channel where you can. If you don’t yet know the split for a medium, put the amount in its <strong>Unspecified</strong> row. It still counts toward that medium’s total. Please finalise the per-channel breakdown <strong>before the 20th</strong>.
@@ -1720,7 +1787,7 @@ export default function ForecastingPage() {
                       {(() => {
                         const isActive = activeCat === ALL_CAT;
                         const filled = categories.reduce((s, cat) => s + entryRows(cat).filter(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0).length, 0);
-                        const overlap = canEdit && categories.some(cat => unspecifiedOverlap(cat) > 0);
+                        const overlap = canEditNow && categories.some(cat => unspecifiedOverlap(cat) > 0);
                         return (
                           <button
                             type="button"
@@ -1753,7 +1820,7 @@ export default function ForecastingPage() {
                         const subtotal = catTotal(cat);
                         const filled = entryRows(cat).filter(ch => (parseFloat(amounts[ch.id]?.amount) || 0) > 0).length;
                         const hasMatch = matchingCats.includes(cat.category);
-                        const overlap = canEdit && unspecifiedOverlap(cat) > 0;
+                        const overlap = canEditNow && unspecifiedOverlap(cat) > 0;
                         return (
                           <button
                             key={cat.category}
@@ -1811,16 +1878,16 @@ export default function ForecastingPage() {
                                 {ch.unspecified && <span style={{ fontStyle: 'normal', fontSize: 10.5, color: '#93A0B5', marginLeft: 6 }}>· counts as {cat.category}</span>}
                               </td>
                               <td>
-                                <input className="input" type="text" inputMode="decimal" disabled={!canEdit} value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder={canEdit ? 'e.g. 100,000,000' : '-'} style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="text" inputMode="decimal" disabled={!canEditNow} value={fmtAmountInput(amounts[ch.id]?.amount)} onChange={e => onAmountChange(ch.id, e.target.value)} placeholder={canEditNow ? 'e.g. 100,000,000' : '-'} style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                               <td>
-                                <input className="input" type="text" disabled={!canEdit} value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder={canEdit ? 'optional' : ''} style={{ height: 32, fontSize: 12.5 }} />
+                                <input className="input" type="text" disabled={!canEditNow} value={amounts[ch.id]?.notes || ''} onChange={e => setCell(ch.id, 'notes', e.target.value)} placeholder={canEditNow ? 'optional' : ''} style={{ height: 32, fontSize: 12.5 }} />
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {canEdit && unspecifiedOverlap(cat) > 0 && (
+                      {canEditNow && unspecifiedOverlap(cat) > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6, padding: '8px 11px', background: '#FEF6E7', border: '1px solid #F3D28B', borderRadius: 8, fontSize: 12, color: '#8A5A00' }}>
                           <Icon name="alert" size={14} style={{ color: '#B8860B', flexShrink: 0 }} />
                           <span style={{ flex: 1, minWidth: 180 }}>
@@ -1851,8 +1918,8 @@ export default function ForecastingPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#16243C' }}>Total: <span className="mono">LKR {Math.round(total).toLocaleString('en-US')}</span></div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost" onClick={closeEntry}>{canEdit ? 'Cancel' : 'Close'}</button>
-                  {canEdit && <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>}
+                  <button className="btn btn-ghost" onClick={closeEntry}>{canEditNow ? 'Cancel' : 'Close'}</button>
+                  {canEditNow && <button className="btn btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Submit forecast'}</button>}
                 </div>
               </div>
             </div>
@@ -1905,6 +1972,9 @@ export default function ForecastingPage() {
           </div>
         </div>
       )}
+
+      {showWindows && <ForecastWindowsModal onClose={() => setShowWindows(false)} onChanged={fetchClients} />}
+      {historyFor && <ForecastHistoryModal {...historyFor} onClose={() => setHistoryFor(null)} />}
     </div>
   );
 }
